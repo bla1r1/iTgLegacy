@@ -8,6 +8,11 @@
 // root is a short list of doors, and the settings themselves live behind them.
 // The same class draws each page, because they differ only in their rows.
 //
+// A page is now a list of sections and a section a list of rows, each row
+// carrying what it says and what it does. Every page used to be spelled out
+// again in six switch statements keyed on section and row number, which is
+// where each new setting had to be threaded through by hand.
+//
 #import <UIKit/UIKit.h>
 
 typedef NS_ENUM(NSInteger, TGSettingsPage) {
@@ -17,7 +22,12 @@ typedef NS_ENUM(NSInteger, TGSettingsPage) {
 	TGSettingsPageNotifications,
 	TGSettingsPagePrivacy,
 	TGSettingsPageLanguage,
-	TGSettingsPageBlocked
+	TGSettingsPageBlocked,
+	TGSettingsPagePowerSaving,
+	TGSettingsPageRecentCalls,
+	/// Reached by tapping the version under the root list ten times, the way
+	/// their Debug Menu is. Not linked from anywhere.
+	TGSettingsPageDebug
 };
 
 @interface TGSettingsViewController : UITableViewController

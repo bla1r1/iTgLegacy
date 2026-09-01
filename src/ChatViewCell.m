@@ -20,9 +20,15 @@
 		self.textView.editable = NO;
 		self.textView.dataDetectorTypes = UIDataDetectorTypeAll;
 		self.textView.scrollEnabled = NO;
-    self.textView.font = 
-			[UIFont systemFontOfSize:[UIFont systemFontSize]];
-    self.textView.backgroundColor = [UIColor clearColor];
+		self.textView.font = [UIFont fontWithName:@"OpenMojiColor" size:[UIFont systemFontSize]];
+		if (!self.textView.font) {
+			self.textView.font = [UIFont fontWithName:@"OpenMoji" size:[UIFont systemFontSize]];
+		}
+		if (!self.textView.font) {
+			self.textView.font = [UIFont systemFontOfSize:[UIFont systemFontSize]];
+			NSLog(@"Could not find OpenMoji font! Fonts: %@", [UIFont familyNames]);
+		}
+		self.textView.backgroundColor = [UIColor clearColor];
 		[self.contentView addSubview:self.textView];
     
 		self.timeLabael = [[UILabel alloc] init];

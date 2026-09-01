@@ -49,6 +49,14 @@
 /// Wallpapers, which cost a full-screen image held in memory.
 + (BOOL)canShowWallpaper;
 
+/// Power Saving. These say what the user has asked for, not what the device
+/// can manage - nothing here turns on what the hardware cannot do, it only
+/// turns off what it can. Default on.
++ (BOOL)animatedStickersWanted;
++ (void)setAnimatedStickersWanted:(BOOL)wanted;
++ (BOOL)wallpaperWanted;
++ (void)setWallpaperWanted:(BOOL)wanted;
+
 /// Every capability with its state, for the Device screen.
 + (NSArray *)all;
 

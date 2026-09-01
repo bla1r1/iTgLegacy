@@ -6,7 +6,10 @@
 #import "TGPopupMenu.h"
 #import "TGForwardPicker.h"
 
-@interface TGProfileViewController () <UIActionSheetDelegate, UIAlertViewDelegate>
+@interface TGProfileViewController () <UIActionSheetDelegate, UIAlertViewDelegate,
+		UIScrollViewDelegate>
+@property (nonatomic, strong) UIScrollView *mediaStrip;
+@property (nonatomic, strong) NSMutableSet *thumbnailsRequested;
 @property (nonatomic, assign) int64_t chatId;
 @property (nonatomic, assign) int64_t userId;
 @property (nonatomic, strong) NSString *name;
@@ -15,12 +18,15 @@
 @property (nonatomic, strong) NSArray *files;
 @property (nonatomic, strong) NSArray *members;
 @property (nonatomic, strong) NSArray *gifts;
+@property (nonatomic, strong) NSArray *stories;
 @property (nonatomic, assign) BOOL blocked;
 @property (nonatomic, strong) UIImageView *avatarView;
+@property (nonatomic, strong) UITableViewCell *mediaStripCell;
 @property (nonatomic, strong) UILabel *statusLabel;
 @property (nonatomic, strong) NSArray *actionNames;
 @property (nonatomic, assign) BOOL muted;
 @property (nonatomic, strong) NSString *phoneNumber;
+@property (nonatomic, assign) NSInteger selectedMediaTab;
 @end
 
 // A tile in the action row: a glyph over a word.
@@ -36,6 +42,7 @@ static const CGFloat kActionTile = 52.0f;
 		_details = @[];
 		_photos = @[];
 		_files = @[];
+		_thumbnailsRequested = [NSMutableSet set];
 	}
 	return self;
 }
@@ -49,8 +56,12 @@ static const CGFloat kActionTile = 52.0f;
 	self.tableView.separatorColor = [[TGTheme shared] bubbleBorderColour];
 
 	[self buildHeader];
-	[self loadDetails];
-	[self loadMedia];
+	
+	// Delay loading heavy data for 0.4s to let the push animation finish smoothly at 60 FPS
+	dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.4 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+		[self loadDetails];
+		[self loadMedia];
+	});
 }
 
 /// The profile as the current client draws it: a large picture centred, the
@@ -123,8 +134,7 @@ static const CGFloat kActionTile = 52.0f;
 		return;
 	__weak typeof(self) weakSelf = self;
 	[[TGClient shared] downloadFile:fileId.integerValue completion:^(NSString *path){
-		UIImage *image = path ? [UIImage imageWithContentsOfFile:path] : nil;
-		if (image) weakSelf.avatarView.image = image;
+		[TGIcons loadImageAtPath:path into:weakSelf.avatarView];
 	}];
 }
 
@@ -136,6 +146,10 @@ static const CGFloat kActionTile = 52.0f;
 		[tiles addObject:@[@"call",  @"call"]];
 		[tiles addObject:@[@"video", @"video"]];
 	}
+	// Only when there is something to open: a tile that always says "stories"
+	// and always answers "none" is worse than no tile.
+	if (self.stories.count)
+		[tiles addObject:@[@"more", @"stories"]];
 	[tiles addObject:@[(self.muted ? @"unmute" : @"mute"),
 					   (self.muted ? @"unmute" : @"mute")]];
 	if (self.onSearchTapped)
@@ -189,6 +203,10 @@ static const CGFloat kActionTile = 52.0f;
 		self.muted = !self.muted;
 		[[TGClient shared] setChat:self.chatId muted:self.muted];
 		[self buildHeader];              // the tile says the opposite now
+	} else if ([action isEqualToString:@"stories"]){
+		[self.tableView scrollToRowAtIndexPath:
+				[NSIndexPath indexPathForRow:0 inSection:kSectionStories]
+					  atScrollPosition:UITableViewScrollPositionTop animated:YES];
 	} else if ([action isEqualToString:@"search"]){
 		if (self.onSearchTapped) self.onSearchTapped();
 	} else {
@@ -285,7 +303,7 @@ static const CGFloat kActionTile = 52.0f;
 		__weak typeof(self) weakSelf = self;
 		[[TGClient shared] membersOfChat:self.chatId completion:^(NSArray *members){
 			weakSelf.members = members;
-			[weakSelf.tableView reloadData];
+			[weakSelf reloadTableDebounced];
 		}];
 		// A group has a description, a size and a link, none of which this
 		// screen used to ask for.
@@ -300,7 +318,7 @@ static const CGFloat kActionTile = 52.0f;
 			if ([info[@"inviteLink"] length])
 				[rows addObject:@[@"invite link", info[@"inviteLink"]]];
 			weakSelf.details = rows;
-			[weakSelf.tableView reloadData];
+			[weakSelf reloadTableDebounced];
 		}];
 		return;
 	}
@@ -320,7 +338,7 @@ static const CGFloat kActionTile = 52.0f;
 		if ([user[@"is_premium"] boolValue])
 			[rows addObject:@[@"subscription", @"Telegram Premium"]];
 		weakSelf.details = rows;
-		[weakSelf.tableView reloadData];
+		[weakSelf reloadTableDebounced];
 
 		// The bio, the birthday and how many groups you share live in the full
 		// record, which this screen never asked for - so "about" was missing
@@ -336,17 +354,25 @@ static const CGFloat kActionTile = 52.0f;
 				[more addObject:@[@"groups in common",
 						[info[@"commonGroups"] stringValue]]];
 			weakSelf.details = more;
-			[weakSelf.tableView reloadData];
+			[weakSelf reloadTableDebounced];
 		}];
 
 		// updateUser does not always carry a photo; getUser does.
 		NSNumber *photoId = user[@"profile_photo"][@"small"][@"id"];
 		if (photoId)
 			[[TGClient shared] downloadFile:photoId.integerValue completion:^(NSString *path){
-				UIImage *image = path ? [UIImage imageWithContentsOfFile:path] : nil;
-				if (image) weakSelf.avatarView.image = image;
+				[TGIcons loadImageAtPath:path into:weakSelf.avatarView];
 			}];
 	}];
+}
+
+- (void)reloadTableDebounced {
+	[NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(doReloadTable) object:nil];
+	[self performSelector:@selector(doReloadTable) withObject:nil afterDelay:0.05];
+}
+
+- (void)doReloadTable {
+	[self.tableView reloadData];
 }
 
 - (void)loadMedia {
@@ -354,25 +380,35 @@ static const CGFloat kActionTile = 52.0f;
 	if (self.userId){
 		[[TGClient shared] giftsForUser:self.userId completion:^(NSArray *gifts){
 			weakSelf.gifts = gifts;
-			[weakSelf.tableView reloadData];
+			[weakSelf reloadTableDebounced];
 		}];
 		[[TGClient shared] isUserBlocked:self.userId completion:^(BOOL blocked){
 			weakSelf.blocked = blocked;
-			[weakSelf.tableView reloadData];
+			[weakSelf reloadTableDebounced];
 		}];
 	}
+
+	// Stories sit on a profile the way shared media does, and this screen had
+	// a "Posts" row standing in for them that always said there were none.
+	[[TGClient shared] storiesForChat:self.chatId completion:^(NSArray *stories){
+		BOOL gainedTile = stories.count && !weakSelf.stories.count;
+		weakSelf.stories = stories;
+		if (gainedTile)
+			[weakSelf buildHeader];      // the tile row is one shorter without it
+		[weakSelf reloadTableDebounced];
+	}];
 
 	[[TGClient shared] mediaInChat:self.chatId
 							filter:@"searchMessagesFilterPhotoAndVideo"
 						completion:^(NSArray *messages){
 		weakSelf.photos = messages;
-		[weakSelf.tableView reloadData];
+		[weakSelf reloadTableDebounced];
 	}];
 	[[TGClient shared] mediaInChat:self.chatId
 							filter:@"searchMessagesFilterDocument"
 						completion:^(NSArray *messages){
 		weakSelf.files = messages;
-		[weakSelf.tableView reloadData];
+		[weakSelf reloadTableDebounced];
 	}];
 }
 
@@ -385,34 +421,77 @@ static const CGFloat kActionTile = 52.0f;
 
 #pragma mark - table
 
+// details, stories, gifts, members, media
+static const NSInteger kSectionDetails = 0;
+static const NSInteger kSectionStories = 1;
+static const NSInteger kSectionGifts   = 2;
+static const NSInteger kSectionMembers = 3;
+static const NSInteger kSectionMedia   = 4;
+
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
-	return 4;   // details, members, photos, files
+	return 5;
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-	if (section == 0) return self.details.count + self.gifts.count;
-	if (section == 1) return self.members.count;
-	if (section == 2) return self.photos.count ? 1 : 0;   // a strip of thumbnails
-	return self.files.count;
+	if (section == kSectionDetails) return self.details.count;
+	if (section == kSectionStories) return self.stories.count;
+	if (section == kSectionGifts)   return self.gifts.count;
+	if (section == kSectionMembers) return self.members.count;
+
+	if (section == kSectionMedia) {
+		switch (self.selectedMediaTab) {
+			case 0: return self.photos.count ? 1 : 0; // Media strip
+			case 1: return self.files.count; // Files
+			case 2: return 0; // Voice (dummy)
+			case 3: return 0; // Links (dummy)
+		}
+	}
+	return 0;
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
-	if (section == 1 && self.members.count)
+	if (section == kSectionStories && self.stories.count)
+		return [NSString stringWithFormat:@"%lu stories", (unsigned long)self.stories.count];
+	if (section == kSectionGifts && self.gifts.count)
+		return [NSString stringWithFormat:@"%lu gifts", (unsigned long)self.gifts.count];
+	if (section == kSectionMembers && self.members.count)
 		return [NSString stringWithFormat:@"%lu members", (unsigned long)self.members.count];
-	if (section == 2 && self.photos.count)
-		return [NSString stringWithFormat:@"%lu photos and videos", (unsigned long)self.photos.count];
-	if (section == 3 && self.files.count)
-		return [NSString stringWithFormat:@"%lu files", (unsigned long)self.files.count];
 	return nil;
 }
 
+- (void)mediaTabChanged:(UISegmentedControl *)sender {
+	self.selectedMediaTab = sender.selectedSegmentIndex;
+	[self.tableView reloadSections:[NSIndexSet indexSetWithIndex:kSectionMedia]
+				  withRowAnimation:UITableViewRowAnimationAutomatic];
+}
+
+- (UIView *)tableView:(UITableView *)tableView viewForHeaderInSection:(NSInteger)section {
+	if (section == kSectionMedia) {
+		UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0, 0, tableView.bounds.size.width, 44)];
+		header.backgroundColor = [UIColor clearColor];
+		UISegmentedControl *segments = [[UISegmentedControl alloc] initWithItems:@[@"Media", @"Files", @"Voice", @"Links"]];
+		segments.frame = CGRectMake(10, 6, tableView.bounds.size.width - 20, 32);
+		segments.selectedSegmentIndex = self.selectedMediaTab;
+		[segments addTarget:self action:@selector(mediaTabChanged:) forControlEvents:UIControlEventValueChanged];
+		[header addSubview:segments];
+		return header;
+	}
+	return nil;
+}
+
+- (CGFloat)tableView:(UITableView *)tableView heightForHeaderInSection:(NSInteger)section {
+	if (section == kSectionMedia) return 44;
+	return [super tableView:tableView heightForHeaderInSection:section];
+}
+
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
-	if (indexPath.section == 2) return 84;
-	return indexPath.section == 0 ? 52 : 44;
+	if (indexPath.section == kSectionMedia && self.selectedMediaTab == 0) return 84;
+	if (indexPath.section == kSectionStories) return 56;
+	return indexPath.section == kSectionDetails ? 52 : 44;
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-	if (indexPath.section == 2)
+	if (indexPath.section == kSectionMedia && self.selectedMediaTab == 0)
 		return [self photoStripCell:tableView];
 
 	UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"row"];
@@ -430,29 +509,80 @@ static const CGFloat kActionTile = 52.0f;
 	// The information card: what it is in small grey, the value itself under
 	// it in the accent colour. Theirs reads that way round because the number
 	// matters and the word "mobile" does not.
-	if (indexPath.section == 0){
-		if (indexPath.row < (NSInteger)self.details.count){
-			NSArray *pair = self.details[indexPath.row];
-			cell.textLabel.text = pair[0];
-			cell.textLabel.font = [UIFont systemFontOfSize:12];
-			cell.textLabel.textColor = [[TGTheme shared] secondaryTextColour];
-			cell.detailTextLabel.text = pair[1];
-			cell.detailTextLabel.font = [UIFont systemFontOfSize:15];
-			cell.detailTextLabel.textColor = [[TGTheme shared] accentColour];
-		} else {
-			NSDictionary *gift = self.gifts[indexPath.row - self.details.count];
-			cell.textLabel.text = @"gift";
-			cell.textLabel.font = [UIFont systemFontOfSize:12];
-			cell.textLabel.textColor = [[TGTheme shared] secondaryTextColour];
-			cell.detailTextLabel.text = [NSString stringWithFormat:@"%@ - %@ stars",
-					gift[@"title"], gift[@"starCount"]];
-			cell.detailTextLabel.font = [UIFont systemFontOfSize:15];
-			cell.detailTextLabel.textColor = [[TGTheme shared] accentColour];
-		}
+	if (indexPath.section == kSectionDetails){
+		NSArray *pair = self.details[indexPath.row];
+		cell.textLabel.text = pair[0];
+		cell.textLabel.font = [UIFont systemFontOfSize:12];
+		cell.textLabel.textColor = [[TGTheme shared] secondaryTextColour];
+		cell.detailTextLabel.text = pair[1];
+		cell.detailTextLabel.font = [UIFont systemFontOfSize:15];
+		cell.detailTextLabel.textColor = [[TGTheme shared] accentColour];
 		return cell;
 	}
 
-	if (indexPath.section == 1){
+	// A story reads as its picture, its caption and when it went up - the
+	// same three things the story list in a current client shows.
+	if (indexPath.section == kSectionStories){
+		NSDictionary *story = self.stories[indexPath.row];
+		NSString *caption = [story[@"caption"] length] ? story[@"caption"]
+				: ([story[@"isVideo"] boolValue] ? @"Video story" : @"Photo story");
+		cell.textLabel.text = caption;
+		cell.textLabel.font = [UIFont systemFontOfSize:15];
+		cell.textLabel.textColor = [[TGTheme shared] primaryTextColour];
+
+		static NSDateFormatter *when = nil;
+		if (!when){
+			when = [[NSDateFormatter alloc] init];
+			when.dateStyle = NSDateFormatterShortStyle;
+			when.timeStyle = NSDateFormatterShortStyle;
+		}
+		NSString *seen = [story[@"viewers"] integerValue] > 0
+				? [NSString stringWithFormat:@" - %@ views", story[@"viewers"]] : @"";
+		cell.detailTextLabel.text = [NSString stringWithFormat:@"%@%@",
+				[when stringFromDate:[NSDate dateWithTimeIntervalSince1970:
+						[story[@"date"] doubleValue]]], seen];
+		cell.detailTextLabel.font = [UIFont systemFontOfSize:12];
+		cell.detailTextLabel.textColor = [[TGTheme shared] secondaryTextColour];
+
+		UIImageView *thumb = [[UIImageView alloc] initWithFrame:CGRectMake(0, 0, 40, 40)];
+		thumb.backgroundColor = [[TGTheme shared] fileTileColour];
+		thumb.contentMode = UIViewContentModeScaleAspectFill;
+		thumb.clipsToBounds = YES;
+		thumb.layer.cornerRadius = 6;
+		cell.imageView.image = [TGIcons avatarWithInitials:@" " size:40
+												  colourId:indexPath.row];
+		NSNumber *fileId = story[@"photoId"];
+		if ([fileId isKindOfClass:NSNumber.class]){
+			__weak UITableView *weakTable = tableView;
+			[[TGClient shared] downloadFile:fileId.integerValue
+								 completion:^(NSString *path){
+				if (!path.length) return;
+				UIImage *image = [TGIcons decodedImage:[UIImage imageWithContentsOfFile:path]
+										   fittingSize:CGSizeMake(40, 40) fill:YES
+												 scale:[UIScreen mainScreen].scale];
+				if (!image) return;
+				cell.imageView.image = image;
+				[cell setNeedsLayout];
+				(void)weakTable;
+			}];
+		}
+		cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+		return cell;
+	}
+
+	if (indexPath.section == kSectionGifts){
+		NSDictionary *gift = self.gifts[indexPath.row];
+		cell.textLabel.text = gift[@"title"] ?: @"Gift";
+		cell.textLabel.font = [UIFont systemFontOfSize:15];
+		cell.textLabel.textColor = [[TGTheme shared] primaryTextColour];
+		cell.detailTextLabel.text = [NSString stringWithFormat:@"%@ stars",
+				gift[@"starCount"] ?: @(0)];
+		cell.detailTextLabel.font = [UIFont systemFontOfSize:12];
+		cell.detailTextLabel.textColor = [[TGTheme shared] secondaryTextColour];
+		return cell;
+	}
+
+	if (indexPath.section == kSectionMembers){
 		NSDictionary *member = self.members[indexPath.row];
 		int64_t userId = [member[@"id"] longLongValue];
 		NSString *name = [member[@"name"] length]
@@ -462,11 +592,13 @@ static const CGFloat kActionTile = 52.0f;
 		cell.imageView.image = [TGIcons avatarWithInitials:
 				(name.length ? [name substringToIndex:1].uppercaseString : @"?")
 													  size:32 colourId:userId];
-	} else {
-		NSDictionary *m = self.files[indexPath.row];
-		cell.textLabel.text = m[@"docName"] ?: @"File";
-		cell.detailTextLabel.text = nil;
-		cell.imageView.image = [TGIcons document];
+	} else if (indexPath.section == kSectionMedia) {
+		if (self.selectedMediaTab == 1) { // Files
+			NSDictionary *m = self.files[indexPath.row];
+			cell.textLabel.text = m[@"docName"] ?: @"File";
+			cell.detailTextLabel.text = nil;
+			cell.imageView.image = [TGIcons document];
+		}
 	}
 	return cell;
 }
@@ -476,9 +608,15 @@ static const CGFloat kActionTile = 52.0f;
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
 	[tableView deselectRowAtIndexPath:indexPath animated:YES];
 
+	if (indexPath.section == kSectionStories){
+		[self openStoryAtIndex:indexPath.row];
+		return;
+	}
+
 	// The actions live in the tiles now; a row of the card copies its value,
 	// which is the only thing there is to do with a phone number or a link.
-	if (indexPath.section != 0 || indexPath.row >= (NSInteger)self.details.count)
+	if (indexPath.section != kSectionDetails ||
+		indexPath.row >= (NSInteger)self.details.count)
 		return;
 	NSString *value = self.details[indexPath.row][1];
 	[UIPasteboard generalPasteboard].string = value;
@@ -500,40 +638,143 @@ static const CGFloat kActionTile = 52.0f;
 					 completion:^(BOOL done){ [toast removeFromSuperview]; }];
 }
 
-- (UITableViewCell *)photoStripCell:(UITableView *)tableView {
-	UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"strip"];
-	if (!cell){
-		cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault
-									  reuseIdentifier:@"strip"];
-		cell.selectionStyle = UITableViewCellSelectionStyleNone;
-		UIScrollView *strip = [[UIScrollView alloc] initWithFrame:
-				CGRectMake(0, 2, tableView.bounds.size.width, 80)];
-		strip.tag = 99;
-		strip.showsHorizontalScrollIndicator = NO;
-		[cell.contentView addSubview:strip];
+/// A story opens full screen over the profile: the picture, the caption under
+/// it, and a tap anywhere to close. A video story shows its poster frame -
+/// playing one needs the file itself, which is a download this screen does not
+/// start on a tap.
+- (void)openStoryAtIndex:(NSInteger)index {
+	if (index >= (NSInteger)self.stories.count)
+		return;
+	NSDictionary *story = self.stories[index];
+	NSNumber *fileId = story[@"photoId"];
+	if (![fileId isKindOfClass:NSNumber.class]){
+		UIAlertView *alert = [[UIAlertView alloc] initWithTitle:@"Story"
+				message:@"This story has nothing this app can show."
+			   delegate:nil cancelButtonTitle:@"OK" otherButtonTitles:nil];
+		[alert show];
+		return;
 	}
 
-	UIScrollView *strip = (UIScrollView *)[cell.contentView viewWithTag:99];
-	for (UIView *v in strip.subviews)
-		[v removeFromSuperview];
+	UIWindow *window = [UIApplication sharedApplication].keyWindow;
+	UIView *backdrop = [[UIView alloc] initWithFrame:window.bounds];
+	backdrop.backgroundColor = [UIColor blackColor];
+	backdrop.alpha = 0;
+
+	UIImageView *picture = [[UIImageView alloc] initWithFrame:
+			CGRectInset(window.bounds, 0, 40)];
+	picture.contentMode = UIViewContentModeScaleAspectFit;
+	[backdrop addSubview:picture];
+
+	NSString *caption = story[@"caption"];
+	if (caption.length){
+		UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(
+				16, window.bounds.size.height - 76, window.bounds.size.width - 32, 60)];
+		label.text = caption;
+		label.numberOfLines = 3;
+		label.font = [UIFont systemFontOfSize:14];
+		label.textColor = [UIColor whiteColor];
+		label.backgroundColor = [UIColor clearColor];
+		[backdrop addSubview:label];
+	}
+
+	if ([story[@"isVideo"] boolValue]){
+		UILabel *note = [[UILabel alloc] initWithFrame:
+				CGRectMake(0, 24, window.bounds.size.width, 18)];
+		note.text = @"Video story - showing the first frame";
+		note.font = [UIFont systemFontOfSize:12];
+		note.textAlignment = NSTextAlignmentCenter;
+		note.textColor = [UIColor colorWithWhite:1 alpha:0.6f];
+		note.backgroundColor = [UIColor clearColor];
+		[backdrop addSubview:note];
+	}
+
+	backdrop.userInteractionEnabled = YES;
+	[backdrop addGestureRecognizer:[[UITapGestureRecognizer alloc]
+			initWithTarget:self action:@selector(closeStory:)]];
+	[window addSubview:backdrop];
+	[UIView animateWithDuration:0.2 animations:^{ backdrop.alpha = 1; }];
+
+	[[TGClient shared] downloadFile:fileId.integerValue completion:^(NSString *path){
+		[TGIcons loadImageAtPath:path into:picture];
+	}];
+}
+
+- (void)closeStory:(UITapGestureRecognizer *)tap {
+	UIView *backdrop = tap.view;
+	[UIView animateWithDuration:0.2 animations:^{ backdrop.alpha = 0; }
+					 completion:^(BOOL done){ [backdrop removeFromSuperview]; }];
+}
+
+- (UITableViewCell *)photoStripCell:(UITableView *)tableView {
+	if (self.mediaStripCell) {
+		return self.mediaStripCell;
+	}
+
+	UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:nil];
+	cell.selectionStyle = UITableViewCellSelectionStyleNone;
+	
+	UIScrollView *strip = [[UIScrollView alloc] initWithFrame:CGRectMake(0, 2, tableView.bounds.size.width, 80)];
+	strip.showsHorizontalScrollIndicator = NO;
+	[cell.contentView addSubview:strip];
+
+	strip.delegate = self;
+	self.mediaStrip = strip;
 
 	CGFloat side = 76, gap = 4, x = gap;
-	for (NSDictionary *m in self.photos){
+	NSInteger limit = MIN((NSInteger)self.photos.count, 20); // only show up to 20 photos
+	for (NSInteger i = 0; i < limit; i++){
+		NSDictionary *m = self.photos[i];
 		NSNumber *fileId = m[@"photoId"];
 		if (!fileId) continue;
+
 		UIImageView *thumb = [[UIImageView alloc] initWithFrame:CGRectMake(x, 2, side, side)];
 		thumb.backgroundColor = [UIColor colorWithWhite:0.9f alpha:1];
 		thumb.contentMode = UIViewContentModeScaleAspectFill;
 		thumb.clipsToBounds = YES;
+		// The id rides on the view so the scroll handler can ask for it later
+		// rather than the strip asking for all twenty the moment it is built.
+		thumb.tag = fileId.integerValue;
 		[strip addSubview:thumb];
 		x += side + gap;
-
-		[[TGClient shared] downloadFile:fileId.integerValue completion:^(NSString *path){
-			if (path) thumb.image = [UIImage imageWithContentsOfFile:path];
-		}];
 	}
 	strip.contentSize = CGSizeMake(x, 80);
+	self.mediaStripCell = cell;
+	[self fetchVisibleThumbnails];
 	return cell;
+}
+
+/// Twenty downloads at once saturate TDLib's single scheduler, and every one
+/// of its progress updates is handled on the main thread - which is what made
+/// the profile stutter for as long as the strip was loading. Only what is on
+/// screen, plus one screen ahead, is asked for.
+- (void)fetchVisibleThumbnails {
+	UIScrollView *strip = self.mediaStrip;
+	if (!strip)
+		return;
+
+	CGRect window = CGRectMake(strip.contentOffset.x - strip.bounds.size.width, 0,
+							   strip.bounds.size.width * 3, strip.bounds.size.height);
+	for (UIView *view in strip.subviews){
+		if (![view isKindOfClass:UIImageView.class] || view.tag == 0)
+			continue;
+		if (!CGRectIntersectsRect(view.frame, window))
+			continue;
+
+		UIImageView *thumb = (UIImageView *)view;
+		NSNumber *fileId = @(thumb.tag);
+		if ([self.thumbnailsRequested containsObject:fileId])
+			continue;
+		[self.thumbnailsRequested addObject:fileId];
+
+		[[TGClient shared] downloadFile:fileId.integerValue completion:^(NSString *path){
+			[TGIcons loadImageAtPath:path into:thumb];
+		}];
+	}
+}
+
+- (void)scrollViewDidScroll:(UIScrollView *)scrollView {
+	if (scrollView == self.mediaStrip)
+		[self fetchVisibleThumbnails];
 }
 
 @end

@@ -157,10 +157,8 @@ static const CGFloat kAvatar = 50.0f;
 	// Without this there is no way to start a conversation at all - you can
 	// only reply to chats that already exist.
 	self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc]
-			initWithImage:[TGIcons compose]
-					style:UIBarButtonItemStylePlain
-				   target:self
-				   action:@selector(composeTapped)];
+			initWithBarButtonSystemItem:UIBarButtonSystemItemCompose
+				   target:self action:@selector(composeTapped)];
 
 	// Search sits above the list, the way every client puts it - pull down or
 	// just start typing.
@@ -395,6 +393,11 @@ static const CGFloat kAvatar = 50.0f;
 	[self reload];
 }
 
+- (void)reloadTableDebounced {
+	[NSObject cancelPreviousPerformRequestsWithTarget:self.tableView selector:@selector(reloadData) object:nil];
+	[self.tableView performSelector:@selector(reloadData) withObject:nil afterDelay:0.05];
+}
+
 /// Avatars are fetched once each and cached by file id.
 - (void)fetchMissingAvatars {
 	__weak typeof(self) weakSelf = self;
@@ -405,14 +408,17 @@ static const CGFloat kAvatar = 50.0f;
 		[self.avatarsRequested addObject:fileId];
 
 		[[TGClient shared] downloadFile:[fileId integerValue] completion:^(NSString *path){
-			TGChatListViewController *me = weakSelf;
-			if (!me || !path)
-				return;
-			UIImage *img = [UIImage imageWithContentsOfFile:path];
-			if (!img)
-				return;
-			me.avatars[fileId] = img;
-			[me.tableView reloadData];
+			if (!path) return;
+			dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_BACKGROUND, 0), ^{
+				UIImage *img = [UIImage imageWithContentsOfFile:path];
+				if (!img) return;
+				dispatch_async(dispatch_get_main_queue(), ^{
+					TGChatListViewController *me = weakSelf;
+					if (!me) return;
+					me.avatars[fileId] = img;
+					[me reloadTableDebounced];
+				});
+			});
 		}];
 	}
 }

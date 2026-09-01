@@ -25,12 +25,27 @@ static const CGFloat kContactAvatar = 36.0f;
 		self.edgesForExtendedLayout = UIRectEdgeNone;
 
 	self.title = @"Contacts";
+	[[TGTheme shared] styleNavigationBar:self.navigationController.navigationBar];
 	self.users = @[];
 	self.photos = [NSMutableDictionary dictionary];
 	self.photosRequested = [NSMutableSet set];
 	self.tableView.rowHeight = 56;
 	self.tableView.backgroundColor = [[TGTheme shared] listBackgroundColour];
 	self.tableView.separatorColor = [[TGTheme shared] separatorColour];
+
+	// This is a tab, so it is on screen behind Settings when a theme changes -
+	// switching back to it used to show the old colours until the app restarted.
+	__weak typeof(self) weakContacts = self;
+	[[NSNotificationCenter defaultCenter] addObserverForName:TGThemeChangedNotification
+			object:nil queue:[NSOperationQueue mainQueue]
+		 usingBlock:^(NSNotification *note){
+		TGContactsViewController *me = weakContacts;
+		[TGIcons flush];
+		me.tableView.backgroundColor = [[TGTheme shared] listBackgroundColour];
+		me.tableView.separatorColor = [[TGTheme shared] separatorColour];
+		[[TGTheme shared] styleNavigationBar:me.navigationController.navigationBar];
+		[me.tableView reloadData];
+	}];
 
 	__weak typeof(self) weakSelf = self;
 	[[TGClient shared] contactsWithCompletion:^(NSArray *users){
@@ -49,29 +64,41 @@ static const CGFloat kContactAvatar = 36.0f;
 
 /// One request per picture, cached by file id: the list scrolls past the same
 /// rows repeatedly and re-downloading on every pass would never settle.
+- (void)reloadTableDebounced {
+	[NSObject cancelPreviousPerformRequestsWithTarget:self.tableView selector:@selector(reloadData) object:nil];
+	[self.tableView performSelector:@selector(reloadData) withObject:nil afterDelay:0.05];
+}
+
 - (void)fetchMissingPhotos {
 	__weak typeof(self) weakSelf = self;
 	for (NSDictionary *u in self.users){
 		NSNumber *fileId = u[@"photoFileId"];
-		if (![fileId isKindOfClass:NSNumber.class])
-			continue;
+		if (![fileId isKindOfClass:NSNumber.class]) continue;
 		if (self.photos[fileId] || [self.photosRequested containsObject:fileId])
 			continue;
 		[self.photosRequested addObject:fileId];
 
 		[[TGClient shared] downloadFile:fileId.integerValue completion:^(NSString *path){
-			TGContactsViewController *me = weakSelf;
-			UIImage *photo = path ? [UIImage imageWithContentsOfFile:path] : nil;
-			if (!me || !photo)
-				return;
-			// A cell's own imageView takes the image's size, so a 160px photo
-			// would shove the name off the row. Scale once, on arrival.
-			UIGraphicsBeginImageContextWithOptions(
-					CGSizeMake(kContactAvatar, kContactAvatar), NO, 0);
-			[photo drawInRect:CGRectMake(0, 0, kContactAvatar, kContactAvatar)];
-			me.photos[fileId] = UIGraphicsGetImageFromCurrentImageContext();
-			UIGraphicsEndImageContext();
-			[me.tableView reloadData];
+			if (!path) return;
+			dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_BACKGROUND, 0), ^{
+				UIImage *photo = [UIImage imageWithContentsOfFile:path];
+				if (!photo) return;
+				
+				// A cell's own imageView takes the image's size, so a 160px photo
+				// would shove the name off the row. Scale once, on arrival.
+				UIGraphicsBeginImageContextWithOptions(
+						CGSizeMake(kContactAvatar, kContactAvatar), NO, 0);
+				[photo drawInRect:CGRectMake(0, 0, kContactAvatar, kContactAvatar)];
+				UIImage *scaled = UIGraphicsGetImageFromCurrentImageContext();
+				UIGraphicsEndImageContext();
+				
+				dispatch_async(dispatch_get_main_queue(), ^{
+					TGContactsViewController *me = weakSelf;
+					if (!me) return;
+					me.photos[fileId] = scaled;
+					[me reloadTableDebounced];
+				});
+			});
 		}];
 	}
 }
@@ -145,6 +172,10 @@ static NSString *TGContactName(NSDictionary *u) {
 		vc.hidesBottomBarWhenPushed = YES;
 		[me.navigationController pushViewController:vc animated:YES];
 	}];
+}
+
+- (void)dealloc {
+	[[NSNotificationCenter defaultCenter] removeObserver:self];
 }
 
 @end

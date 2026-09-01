@@ -116,17 +116,15 @@ static void TGAppendIntegrityAndFingerprint(NSMutableData *message, NSString *pa
 	if (request.length < 20)
 		return nil;
 
+	const uint8_t *reqBytes = (const uint8_t *)request.bytes;
+
 	NSMutableData *message = [NSMutableData data];
 	TGAppend16(message, 0x0101);   // binding success response
 	TGAppend16(message, 0);
 	TGAppend32(message, kMagicCookie);
 	// The transaction id ties the answer to the question.
-	[message appendBytes:((const uint8_t *)request.bytes) + 8 length:12];
+	[message appendBytes:reqBytes + 8 length:12];
 
-	// XOR-MAPPED-ADDRESS tells the peer how we saw it. Over a reflector there
-	// is no such thing, and the attribute is left out.
-	// Without a real address, name the unspecified one rather than leaving the
-	// attribute out: a response without it is discarded outright.
 	struct sockaddr_in unspecified;
 	memset(&unspecified, 0, sizeof(unspecified));
 	unspecified.sin_family = AF_INET;
@@ -140,8 +138,27 @@ static void TGAppendIntegrityAndFingerprint(NSMutableData *message, NSString *pa
 	TGAppendAttribute(message, kAttrXorMappedAddr, mapped);
 
 	TGAppendIntegrityAndFingerprint(message, password);
+
+	// Once per call: our answer laid out whole, so it can be held against one of
+	// theirs. This is the one packet in the exchange never confirmed to be
+	// accepted, and everything downstream depends on it.
+	static BOOL logged = NO;
+	if (!logged){
+		logged = YES;
+		NSLog(@"TGCallStun: their request  %@", [self hexOf:request]);
+		NSLog(@"TGCallStun: our response   %@", [self hexOf:message]);
+	}
 	return message;
 }
+
++ (NSString *)hexOf:(NSData *)data {
+	const uint8_t *bytes = (const uint8_t *)data.bytes;
+	NSMutableString *hex = [NSMutableString string];
+	for (NSUInteger i = 0; i < data.length; i++)
+		[hex appendFormat:@"%02x", bytes[i]];
+	return hex;
+}
+
 
 @end
 

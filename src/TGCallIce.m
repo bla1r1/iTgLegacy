@@ -13,6 +13,7 @@
 @property (nonatomic, strong) NSTimer *checker;
 @property (nonatomic, assign) uint64_t tieBreaker;
 @property (nonatomic, assign) BOOL connectedOverRelay;
+@property (nonatomic, assign) BOOL peerAddressIsPublic;
 @end
 
 @implementation TGCallIce
@@ -75,9 +76,18 @@
 		return;
 
 	NSData *address = [NSData dataWithBytes:&target length:sizeof(target)];
-	// The first public address they publish is the one worth quoting back.
-	if (!self.peerAddress && [candidate rangeOfString:@"typ srflx"].location != NSNotFound)
+	// XOR-MAPPED-ADDRESS has to name an address the peer recognises as its own,
+	// or WebRTC invents a peer-reflexive local candidate for whatever we put
+	// there - and 0.0.0.0:0, which is what an unset one becomes, leaves it with
+	// a candidate it can never send from. A public address is the honest answer;
+	// any address they published is a usable one. This peer offered only host
+	// candidates, so waiting for srflx meant never answering at all.
+	BOOL isPublic = [candidate rangeOfString:@"typ srflx"].location != NSNotFound;
+	if (!self.peerAddress || (isPublic && !self.peerAddressIsPublic)){
 		self.peerAddress = address;
+		self.peerAddressIsPublic = isPublic;
+		NSLog(@"TGCallIce: quoting %@:%d back as their mapped address", ip, port);
+	}
 
 	for (NSData *existing in self.targets)
 		if ([existing isEqualToData:address])
@@ -87,8 +97,9 @@
 }
 
 - (void)sendChecks {
-	if (!self.peerPwd.length || self.socketHandle < 0)
+	if (!self.peerPwd.length || (!self.transport && self.socketHandle < 0))
 		return;
+
 
 	// The username is the peer's fragment first: it names who is being asked.
 	NSString *username = [NSString stringWithFormat:@"%@:%@",

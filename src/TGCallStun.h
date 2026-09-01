@@ -30,6 +30,9 @@
 /// 0x0001 request, 0x0101 success, 0x0111 error, or -1 when not STUN.
 + (int)messageTypeOf:(NSData *)packet;
 
+/// For holding two packets side by side in the log.
++ (NSString *)hexOf:(NSData *)data;
+
 @end
 
 #endif

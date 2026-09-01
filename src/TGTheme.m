@@ -7,8 +7,19 @@ static NSString *const kStyleKey  = @"themeStyle";
 static NSString *const kImportKey = @"themeImportPath";
 static NSString *const kFontKey   = @"messageFontSize";
 
+static UIColor *rgb(int r, int g, int b);   // defined with the palette below
+
+static NSString *const kAutoNightKey     = @"themeAutoNight";
+static NSString *const kAutoNightFromKey = @"themeAutoNightFrom";
+static NSString *const kAutoNightToKey   = @"themeAutoNightTo";
+static NSString *const kBeforeNightKey   = @"themeStyleBeforeNight";
+
 @implementation TGTheme {
 	NSDictionary *_imported;
+	/// A built-in theme that is expressed as a palette rather than as branches
+	/// in every accessor. Night Blue is the first; adding another is a
+	/// dictionary, not twenty more `if`s.
+	NSDictionary *_builtinPalette;
 	UIImage *_wallpaper;
 }
 
@@ -35,7 +46,182 @@ static NSString *const kFontKey   = @"messageFontSize";
 	NSString *imported = [NSUserDefaults.standardUserDefaults stringForKey:kImportKey];
 	if (imported.length)
 		[self loadImportedTheme:[TGTheme pathInDocuments:imported]];
+	[self loadBuiltinPalette];
+	[self applyAutoNightIfDue];
 	return self;
+}
+
+#pragma mark - the theme list
+
+/// Telegram's Night Blue, by the colours their nightBluePresentationTheme uses.
++ (NSDictionary *)nightBluePalette {
+	static NSDictionary *palette = nil;
+	if (!palette)
+		palette = @{
+			@"bar"            : rgb(0x21, 0x30, 0x40),
+			@"barTitle"       : [UIColor whiteColor],
+			@"accent"         : rgb(0x2E, 0xA6, 0xFF),
+			@"chatBackground" : rgb(0x18, 0x22, 0x2D),
+			@"bubbleMine"     : rgb(0x2B, 0x52, 0x78),
+			@"bubbleTheirs"   : rgb(0x18, 0x25, 0x33),
+			@"listBackground" : rgb(0x17, 0x21, 0x2B),
+			@"primaryText"    : [UIColor whiteColor],
+			@"secondaryText"  : rgb(0x7B, 0x87, 0x90),
+			@"isDark"         : @YES,
+		};
+	return palette;
+}
+
+- (void)loadBuiltinPalette {
+	_builtinPalette = (_style == TGThemeStyleNightBlue)
+			? [TGTheme nightBluePalette] : nil;
+}
+
+/// An imported file wins over a built-in palette, which wins over the style's
+/// own defaults. Everything undefined falls through, so a partial theme works.
+- (BOOL)hasCustomPalette {
+	return _imported != nil || _builtinPalette != nil;
+}
+
++ (NSArray *)availableThemes {
+	NSMutableArray *themes = [@[
+		@{@"id" : @"classic",   @"name" : @"Classic",    @"dark" : @NO},
+		@{@"id" : @"day",       @"name" : @"Day",        @"dark" : @NO},
+		@{@"id" : @"night",     @"name" : @"Night",      @"dark" : @YES},
+		@{@"id" : @"nightblue", @"name" : @"Night Blue", @"dark" : @YES},
+	] mutableCopy];
+
+	for (NSString *path in [self availableThemeFiles]){
+		NSString *name = [path.lastPathComponent stringByDeletingPathExtension];
+		[themes addObject:@{
+			@"id"   : [@"file:" stringByAppendingString:path.lastPathComponent],
+			@"name" : name,
+			@"dark" : @NO,          // only known once the file has been read
+			@"path" : path,
+		}];
+	}
+	return themes;
+}
+
+static NSString *TGIdForStyle(TGThemeStyle style) {
+	switch (style){
+		case TGThemeStyleFlat:      return @"day";
+		case TGThemeStyleDark:      return @"night";
+		case TGThemeStyleNightBlue: return @"nightblue";
+		default:                    return @"classic";
+	}
+}
+
+- (NSString *)currentThemeId {
+	NSString *imported = [NSUserDefaults.standardUserDefaults stringForKey:kImportKey];
+	if (_imported && imported.length)
+		return [@"file:" stringByAppendingString:imported];
+	return TGIdForStyle(_style);
+}
+
+- (BOOL)selectThemeId:(NSString *)themeId {
+	if (![themeId isKindOfClass:NSString.class] || !themeId.length)
+		return NO;
+
+	if ([themeId hasPrefix:@"file:"]){
+		NSString *name = [themeId substringFromIndex:5];
+		if (![self loadImportedTheme:[TGTheme pathInDocuments:name]])
+			return NO;
+		_builtinPalette = nil;
+		[NSUserDefaults.standardUserDefaults setObject:name forKey:kImportKey];
+		[NSUserDefaults.standardUserDefaults synchronize];
+		[self themeChanged];
+		return YES;
+	}
+
+	TGThemeStyle style = TGThemeStyleSkeuomorphic;
+	if ([themeId isEqualToString:@"day"])            style = TGThemeStyleFlat;
+	else if ([themeId isEqualToString:@"night"])     style = TGThemeStyleDark;
+	else if ([themeId isEqualToString:@"nightblue"]) style = TGThemeStyleNightBlue;
+
+	// A file and a style are one choice, so picking a style drops the file -
+	// and both used to post their own notification, which repainted twice.
+	_imported = nil;
+	_importedName = nil;
+	[NSUserDefaults.standardUserDefaults removeObjectForKey:kImportKey];
+	_style = style;
+	[NSUserDefaults.standardUserDefaults setInteger:style forKey:kStyleKey];
+	[NSUserDefaults.standardUserDefaults synchronize];
+	[self loadBuiltinPalette];
+	[self themeChanged];
+	return YES;
+}
+
+- (void)themeChanged {
+	[[NSNotificationCenter defaultCenter] postNotificationName:TGThemeChangedNotification
+													   object:nil];
+}
+
+#pragma mark - auto-night
+
+- (TGAutoNightMode)autoNight {
+	return (TGAutoNightMode)[NSUserDefaults.standardUserDefaults integerForKey:kAutoNightKey];
+}
+
+- (void)setAutoNight:(TGAutoNightMode)mode {
+	[NSUserDefaults.standardUserDefaults setInteger:mode forKey:kAutoNightKey];
+	[NSUserDefaults.standardUserDefaults synchronize];
+	[self applyAutoNightIfDue];
+}
+
+- (NSInteger)autoNightFromHour {
+	NSNumber *stored = [NSUserDefaults.standardUserDefaults objectForKey:kAutoNightFromKey];
+	return stored ? stored.integerValue : 22;
+}
+
+- (void)setAutoNightFromHour:(NSInteger)hour {
+	[NSUserDefaults.standardUserDefaults setInteger:hour forKey:kAutoNightFromKey];
+	[NSUserDefaults.standardUserDefaults synchronize];
+	[self applyAutoNightIfDue];
+}
+
+- (NSInteger)autoNightToHour {
+	NSNumber *stored = [NSUserDefaults.standardUserDefaults objectForKey:kAutoNightToKey];
+	return stored ? stored.integerValue : 7;
+}
+
+- (void)setAutoNightToHour:(NSInteger)hour {
+	[NSUserDefaults.standardUserDefaults setInteger:hour forKey:kAutoNightToKey];
+	[NSUserDefaults.standardUserDefaults synchronize];
+	[self applyAutoNightIfDue];
+}
+
+- (void)applyAutoNightIfDue {
+	if (self.autoNight != TGAutoNightScheduled)
+		return;
+
+	NSInteger hour = [[[NSCalendar currentCalendar]
+			components:NSHourCalendarUnit fromDate:[NSDate date]] hour];
+	NSInteger from = self.autoNightFromHour, to = self.autoNightToHour;
+	// The window normally crosses midnight, which is why this is an OR.
+	BOOL night = (from <= to) ? (hour >= from && hour < to)
+							  : (hour >= from || hour < to);
+
+	NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
+	if (night){
+		if (self.isDark)
+			return;
+		// Remember what to go back to, so morning does not land on whichever
+		// light theme happens to be first in the list.
+		[defaults setObject:[self currentThemeId] forKey:kBeforeNightKey];
+		[defaults synchronize];
+		[self selectThemeId:@"night"];
+		return;
+	}
+
+	if (!self.isDark)
+		return;
+	NSString *before = [defaults stringForKey:kBeforeNightKey];
+	if (!before.length)
+		return;              // the user chose a dark theme themselves
+	[defaults removeObjectForKey:kBeforeNightKey];
+	[defaults synchronize];
+	[self selectThemeId:before];
 }
 
 - (CGFloat)messageFontSize {
@@ -52,17 +238,12 @@ static NSString *const kFontKey   = @"messageFontSize";
 
 #pragma mark - imported themes
 
+/// Kept for anything that has a path rather than an id. Only the file name is
+/// stored: the container path changes on every reinstall, and an absolute one
+/// saved across that points at a directory that is gone.
 - (BOOL)importThemeAtPath:(NSString *)path {
-	if (![self loadImportedTheme:path])
-		return NO;
-	// Only the file name: the container path changes on every reinstall, and
-	// an absolute path stored across one points at a directory that is gone.
-	[NSUserDefaults.standardUserDefaults setObject:path.lastPathComponent
-											forKey:kImportKey];
-	[NSUserDefaults.standardUserDefaults synchronize];
-	[[NSNotificationCenter defaultCenter] postNotificationName:TGThemeChangedNotification
-													   object:nil];
-	return YES;
+	return [self selectThemeId:
+			[@"file:" stringByAppendingString:path.lastPathComponent]];
 }
 
 + (NSString *)pathInDocuments:(NSString *)name {
@@ -82,18 +263,13 @@ static NSString *const kFontKey   = @"messageFontSize";
 }
 
 - (void)clearImportedTheme {
-	_imported = nil;
-	_importedName = nil;
-	[NSUserDefaults.standardUserDefaults removeObjectForKey:kImportKey];
-	[NSUserDefaults.standardUserDefaults synchronize];
-	[[NSNotificationCenter defaultCenter] postNotificationName:TGThemeChangedNotification
-													   object:nil];
+	[self selectThemeId:TGIdForStyle(_style)];
 }
 
 - (BOOL)isDark {
 	if (_imported)
 		return [_imported[@"isDark"] boolValue];
-	return _style == TGThemeStyleDark;
+	return _style == TGThemeStyleDark || _style == TGThemeStyleNightBlue;
 }
 
 + (NSArray *)availableThemeFiles {
@@ -112,7 +288,7 @@ static NSString *const kFontKey   = @"messageFontSize";
 /// An imported colour wins over the built-in style; anything the file did not
 /// define falls through, so a partial theme still works.
 - (UIColor *)importedColour:(NSString *)key {
-	return _imported[key];
+	return _imported[key] ?: _builtinPalette[key];
 }
 
 - (void)setStyle:(TGThemeStyle)style {
@@ -121,19 +297,25 @@ static NSString *const kFontKey   = @"messageFontSize";
 	_style = style;
 	[NSUserDefaults.standardUserDefaults setInteger:style forKey:kStyleKey];
 	[NSUserDefaults.standardUserDefaults synchronize];
-	[[NSNotificationCenter defaultCenter] postNotificationName:TGThemeChangedNotification
-													   object:nil];
+	[self loadBuiltinPalette];
+	[self themeChanged];
 }
 
 /// Dark is flat drawn on dark surfaces, so everything that asks "flat?" to
 /// decide whether to draw a bevel gets the same answer for both.
 - (BOOL)isFlat {
-	return _style == TGThemeStyleFlat || _style == TGThemeStyleDark;
+	// An imported theme brings flat colours whatever style was underneath, so
+	// a bevel drawn from a stale skeuomorphic style was the one thing that
+	// still looked wrong after importing one.
+	if (_imported)
+		return YES;
+	return _style != TGThemeStyleSkeuomorphic;
 }
 
 /// The built-in dark style, which an imported theme overrides colour by colour.
 - (BOOL)isDarkStyle {
-	return _style == TGThemeStyleDark && _imported == nil;
+	return (_style == TGThemeStyleDark || _style == TGThemeStyleNightBlue) &&
+		   _imported == nil;
 }
 
 - (void)styleCell:(UITableViewCell *)cell {
@@ -142,8 +324,13 @@ static NSString *const kFontKey   = @"messageFontSize";
 	cell.detailTextLabel.font = [UIFont systemFontOfSize:15];
 	cell.detailTextLabel.textColor = [self cellDetailColour];
 
-	if (!_imported && !self.isDarkStyle){
+	// Every branch assigns both, because cells are reused across a theme
+	// change: returning early left a dark background and a dark selection view
+	// on a cell that a light theme then drew black text into.
+	if (![self hasCustomPalette] && !self.isDarkStyle){
+		cell.backgroundColor = [UIColor whiteColor];
 		cell.textLabel.textColor = [UIColor blackColor];
+		cell.selectedBackgroundView = nil;
 		return;
 	}
 	cell.backgroundColor = [self listBackgroundColour];
@@ -155,10 +342,11 @@ static NSString *const kFontKey   = @"messageFontSize";
 }
 
 - (void)styleTabBar:(UITabBar *)bar {
-	if (!bar || (!_imported && !self.isDarkStyle))
+	if (!bar)
 		return;
+
 	if ([bar respondsToSelector:@selector(setBarTintColor:)]){
-		bar.translucent = NO;
+		bar.translucent = NO;      // see -styleNavigationBar:
 		bar.barTintColor = [self barColour];
 		bar.tintColor = [self accentColour];
 	} else {
@@ -314,6 +502,15 @@ static UIColor *rgb(int r, int g, int b) {
 }
 
 
+- (UIColor *)groupedBackgroundColour {
+	UIColor *imported = [self importedColour:@"chatBackground"];
+	if (imported) return imported;
+	if (self.isDarkStyle) return rgb(0x0E, 0x0E, 0x0E);
+	// Their settings page is the grey iOS has used behind grouped lists since
+	// iOS 7, and the cards on it are white.
+	return rgb(0xEF, 0xEF, 0xF4);
+}
+
 - (UIColor *)primaryTextColour {
 	UIColor *imported = [self importedColour:@"primaryText"];
 	if (imported) return imported;
@@ -356,7 +553,7 @@ static UIColor *rgb(int r, int g, int b) {
 }
 
 - (UIColor *)inputBarColour {
-	if (_imported)
+	if ([self hasCustomPalette])
 		return [self barColour];
 	return self.isDarkStyle ? TG_GRAY_DARK16 : TG_GRAY_LIGHT3;
 }
@@ -409,7 +606,7 @@ static UIColor *rgb(int r, int g, int b) {
 }
 
 - (UIColor *)separatorColour {
-	if (_imported)
+	if ([self hasCustomPalette])
 		return [self bubbleBorderColour];
 	return self.isDarkStyle ? TG_GRAY_DARK13 : TG_STEEL_LIGHT3;
 }
@@ -434,7 +631,10 @@ static UIColor *rgb(int r, int g, int b) {
 }
 
 - (CGFloat)bubbleBorderWidth {
-	return 1.0f;
+	// A drawn edge is what makes a skeuomorphic bubble sit on the surface. A
+	// flat one is the shape and nothing else, which is what the header has
+	// always said this returns.
+	return self.isFlat ? 0.0f : 1.0f;
 }
 
 - (void)styleNavigationBar:(UINavigationBar *)bar {
@@ -448,10 +648,21 @@ static UIColor *rgb(int r, int g, int b) {
 	if ([bar respondsToSelector:@selector(setBarTintColor:)]){
 		// A translucent bar blends with whatever is behind it, which turns a
 		// dark bar pale. Anything dark gets an opaque bar.
-		bar.translucent = (_imported == nil && !self.isDarkStyle);
+		// Opaque, always. iOS 7 builds a bar's backdrop when translucency is
+		// switched on and then keeps it: turning it on during a theme change
+		// left the bar painted in the theme before last, whatever it was asked
+		// to redraw afterwards. Nothing scrolls under a bar here anyway - every
+		// screen sets edgesForExtendedLayout to none - so translucency was only
+		// ever costing a blur nobody sees.
+		bar.translucent = NO;
 		bar.barTintColor = [self barColour];
 		bar.tintColor = self.isFlat ? [self accentColour] : [UIColor whiteColor];
-		bar.titleTextAttributes = @{ NSForegroundColorAttributeName : [self barTitleColour] };
+		// The settings bar is short, so the title has to be too or it sits with
+		// its descenders against the hairline.
+		bar.titleTextAttributes = @{
+			NSForegroundColorAttributeName : [self barTitleColour],
+			NSFontAttributeName            : [UIFont boldSystemFontOfSize:16],
+		};
 	} else {
 		bar.tintColor = [self barColour];
 		bar.titleTextAttributes = @{ UITextAttributeTextColor : [self barTitleColour] };

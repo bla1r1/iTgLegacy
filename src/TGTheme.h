@@ -9,9 +9,17 @@
 #import <UIKit/UIKit.h>
 
 typedef NS_ENUM(NSInteger, TGThemeStyle) {
-    TGThemeStyleSkeuomorphic = 0,
-    TGThemeStyleFlat         = 1,
-    TGThemeStyleDark         = 2
+    TGThemeStyleSkeuomorphic = 0,   ///< "Classic"
+    TGThemeStyleFlat         = 1,   ///< "Day"
+    TGThemeStyleDark         = 2,   ///< "Night"
+    TGThemeStyleNightBlue    = 3    ///< "Night Blue"
+};
+
+/// Auto-Night, as their Appearance page offers it. There is no system dark
+/// mode to follow on this OS, so scheduled is the only automatic there is.
+typedef NS_ENUM(NSInteger, TGAutoNightMode) {
+    TGAutoNightOff = 0,
+    TGAutoNightScheduled
 };
 
 @interface TGTheme : NSObject
@@ -47,6 +55,35 @@ extern NSString *const TGThemeChangedNotification;
 /// received in a chat and saved there. Paths.
 + (NSArray *)availableThemeFiles;
 
+#pragma mark - one list of themes
+
+/// Every theme the user can pick, built-in and imported alike. Splitting them
+/// into "the app's styles" and "Telegram themes" was how this file happened to
+/// store them, not a distinction anyone choosing a look cares about.
+///
+/// Each entry: "id", "name", "dark" (NSNumber BOOL), and "path" for the ones
+/// that came from a file.
++ (NSArray *)availableThemes;
+
+/// The id of the theme in use.
+- (NSString *)currentThemeId;
+
+/// Adopt one by id. NO when a theme file cannot be read; the previous theme
+/// stays in that case. Posts TGThemeChangedNotification once.
+- (BOOL)selectThemeId:(NSString *)themeId;
+
+#pragma mark - auto-night
+
+/// Off unless the user asked for it. When scheduled, the theme becomes Night
+/// between -autoNightFromHour and -autoNightToHour and goes back after.
+@property (nonatomic, assign) TGAutoNightMode autoNight;
+@property (nonatomic, assign) NSInteger autoNightFromHour;   ///< default 22
+@property (nonatomic, assign) NSInteger autoNightToHour;     ///< default 7
+
+/// Switch to or away from Night if the schedule says so. Cheap and idempotent;
+/// called when the app comes forward and once an hour while it is open.
+- (void)applyAutoNightIfDue;
+
 /// Message text size in points. Persisted; 15 is the default.
 @property (nonatomic, assign) CGFloat messageFontSize;
 
@@ -69,6 +106,10 @@ extern NSString *const TGThemeChangedNotification;
 - (UIColor *)bubbleTheirsColour;
 - (UIColor *)bubbleBorderColour;    ///< clear when flat
 - (UIColor *)listBackgroundColour;
+/// The page behind a settings list. Their sections are rounded cards floating
+/// on it, so it has to differ from the card - a grouped table on this OS draws
+/// both the same and the cards disappear.
+- (UIColor *)groupedBackgroundColour;
 - (UIColor *)primaryTextColour;
 - (UIColor *)secondaryTextColour;
 - (UIColor *)inputBarColour;

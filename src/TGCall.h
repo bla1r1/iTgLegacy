@@ -31,6 +31,9 @@ typedef NS_ENUM(NSInteger, TGCallState) {
 @property (nonatomic, readonly) int64_t peerUserId;
 @property (nonatomic, readonly) BOOL outgoing;
 @property (nonatomic, readonly) BOOL muted;
+@property (nonatomic, readonly) NSData *callKey;
+
+- (void)setSpeaker:(BOOL)speaker;
 
 /// Why the last call ended, when the other side said. Nil otherwise.
 @property (nonatomic, readonly) NSString *endReason;

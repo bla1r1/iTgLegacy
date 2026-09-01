@@ -57,7 +57,7 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.16.48</string>
+	<string>1.0</string>
 	<key>CFBundleSignature</key>
 	<string>????</string>
 	<key>CFBundleSupportedPlatforms</key>
@@ -98,14 +98,24 @@
 		</dict>
 	</array>
 	<key>CFBundleVersion</key>
-	<string>1.16.48</string>
-	<key>MinimumOSVersion</key>
-	<string>6.0</string>
+	<string>1.0</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>MinimumOSVersion</key>
+	<string>6.0</string>
 	<key>NSUserActivityTypes</key>
 	<array>
 		<string>org.telegram.conversation</string>
+	</array>
+	<!-- Music from a chat goes on playing with the screen off, which is the
+	     difference between a track and a voice note. -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+	</array>
+	<key>UIAppFonts</key>
+	<array>
+		<string>OpenMoji.ttf</string>
 	</array>
 	<key>UIDeviceFamily</key>
 	<array>

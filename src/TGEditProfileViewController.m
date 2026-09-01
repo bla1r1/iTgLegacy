@@ -1,12 +1,27 @@
 #import "TGEditProfileViewController.h"
 #import "TGClient.h"
 #import "TGTheme.h"
+#import "TGIcons.h"
+#import <QuartzCore/QuartzCore.h>
 
-@interface TGEditProfileViewController () <UITextFieldDelegate>
+// Their page: the picture with "Change Photo" under it, the two name fields,
+// the bio, then a card of rows carrying values - birthday, number, username.
+// This screen used to be three text fields and nothing else, so a birthday
+// could not be set from here and the number was not shown at all.
+static const CGFloat kPhotoSide = 88.0f;
+
+@interface TGEditProfileViewController () <UITextFieldDelegate, UIActionSheetDelegate,
+		UIImagePickerControllerDelegate, UINavigationControllerDelegate>
 @property (nonatomic, strong) UITextField *firstField;
 @property (nonatomic, strong) UITextField *lastField;
 @property (nonatomic, strong) UITextField *usernameField;
 @property (nonatomic, strong) UITextField *bioField;
+@property (nonatomic, strong) UIImageView *photoView;
+@property (nonatomic, assign) NSInteger birthDay;
+@property (nonatomic, assign) NSInteger birthMonth;
+@property (nonatomic, assign) NSInteger birthYear;
+@property (nonatomic, assign) BOOL birthdayChanged;
+@property (nonatomic, strong) UIActionSheet *birthdaySheet;
 @end
 
 @implementation TGEditProfileViewController
@@ -20,8 +35,7 @@
 	self.title = @"Edit Profile";
 	if ([self respondsToSelector:@selector(setEdgesForExtendedLayout:)])
 		self.edgesForExtendedLayout = UIRectEdgeNone;
-	self.tableView.backgroundColor = [[TGTheme shared] listBackgroundColour];
-	self.tableView.separatorColor = [[TGTheme shared] bubbleBorderColour];
+	[self applyTheme];
 
 	self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc]
 			initWithTitle:@"Save" style:UIBarButtonItemStyleDone
@@ -32,9 +46,9 @@
 	self.lastField     = [self fieldWithPlaceholder:@"Last name"  text:me[@"last_name"]];
 	self.usernameField = [self fieldWithPlaceholder:@"username"   text:me[@"username"]];
 	self.usernameField.autocapitalizationType = UITextAutocapitalizationTypeNone;
+	self.usernameField.autocorrectionType = UITextAutocorrectionTypeNo;
 	self.bioField      = [self fieldWithPlaceholder:@"A few words about you" text:nil];
 
-	// getUserFullInfo carries the bio; `me` does not.
 	__weak typeof(self) weakSelf = self;
 	[[TGClient shared] request:@{
 		@"@type"   : @"getUserFullInfo",
@@ -42,22 +56,58 @@
 	} completion:^(NSDictionary *full){
 		weakSelf.bioField.text = full[@"bio"][@"text"] ?: full[@"bio"] ?: @"";
 	}];
+
+	[[TGClient shared] myBirthdayWithCompletion:^(NSInteger day, NSInteger month,
+												 NSInteger year){
+		weakSelf.birthDay = day;
+		weakSelf.birthMonth = month;
+		weakSelf.birthYear = year;
+		[weakSelf.tableView reloadData];
+	}];
+}
+
+- (void)applyTheme {
+	self.tableView.backgroundColor = [[TGTheme shared] listBackgroundColour];
+	self.tableView.separatorColor = [[TGTheme shared] separatorColour];
 }
 
 - (UITextField *)fieldWithPlaceholder:(NSString *)placeholder text:(NSString *)text {
 	UITextField *field = [[UITextField alloc] initWithFrame:CGRectMake(15, 0, 290, 44)];
-	field.placeholder = placeholder;
 	field.text = [text isKindOfClass:NSString.class] ? text : @"";
 	field.font = [UIFont systemFontOfSize:16];
 	field.delegate = self;
 	field.returnKeyType = UIReturnKeyDone;
 	field.textColor = [[TGTheme shared] primaryTextColour];
+	[self setPlaceholder:placeholder on:field];
 	return field;
 }
+
+/// UITextField draws its placeholder in a fixed pale grey, which on a dark
+/// theme is grey on near-black and effectively invisible - an empty Last name
+/// field looked like an empty row with nothing in it at all.
+- (void)setPlaceholder:(NSString *)placeholder on:(UITextField *)field {
+	if (!placeholder.length)
+		return;
+	UIColor *colour = [[TGTheme shared] secondaryTextColour];
+	if ([field respondsToSelector:@selector(setAttributedPlaceholder:)]){
+		field.attributedPlaceholder = [[NSAttributedString alloc]
+				initWithString:placeholder
+					attributes:@{NSForegroundColorAttributeName : colour}];
+		return;
+	}
+	field.placeholder = placeholder;
+}
+
+#pragma mark - saving
 
 - (void)save {
 	[[TGClient shared] setName:self.firstField.text last:self.lastField.text];
 	[[TGClient shared] setBio:self.bioField.text];
+
+	if (self.birthdayChanged)
+		[[TGClient shared] setBirthdayDay:self.birthDay
+									month:self.birthMonth
+									 year:self.birthYear];
 
 	NSString *username = [self.usernameField.text
 			stringByReplacingOccurrencesOfString:@"@" withString:@""];
@@ -86,35 +136,265 @@
 - (void)viewWillAppear:(BOOL)animated {
 	[super viewWillAppear:animated];
 	[[TGTheme shared] styleNavigationBar:self.navigationController.navigationBar];
+	[self applyTheme];
+	// The fields are built once and outlive a theme change.
+	for (UITextField *field in @[self.firstField, self.lastField,
+								 self.usernameField, self.bioField]){
+		field.textColor = [[TGTheme shared] primaryTextColour];
+		[self setPlaceholder:field.attributedPlaceholder.string ?: field.placeholder
+						  on:field];
+	}
+	[self.tableView reloadData];
+}
+
+#pragma mark - birthday
+
+- (NSString *)birthdayText {
+	if (self.birthDay <= 0)
+		return @"Add";
+	static NSArray *months = nil;
+	if (!months) months = @[@"", @"January", @"February", @"March", @"April",
+			@"May", @"June", @"July", @"August", @"September", @"October",
+			@"November", @"December"];
+	NSString *month = (self.birthMonth > 0 && self.birthMonth < 13)
+			? months[self.birthMonth] : @"";
+	return self.birthYear > 0
+			? [NSString stringWithFormat:@"%@ %ld, %ld", month,
+					(long)self.birthDay, (long)self.birthYear]
+			: [NSString stringWithFormat:@"%@ %ld", month, (long)self.birthDay];
+}
+
+/// A date picker in a sheet: iOS 7 has no way to put one in a row, and a
+/// birthday is picked once.
+- (void)editBirthday {
+	UIActionSheet *sheet = [[UIActionSheet alloc] initWithTitle:nil
+			delegate:self cancelButtonTitle:nil destructiveButtonTitle:nil
+			otherButtonTitles:nil];
+	sheet.actionSheetStyle = UIActionSheetStyleBlackTranslucent;
+
+	UIDatePicker *picker = [[UIDatePicker alloc] initWithFrame:
+			CGRectMake(0, 44, 320, 216)];
+	picker.datePickerMode = UIDatePickerModeDate;
+	picker.maximumDate = [NSDate date];
+	picker.tag = 0x8001;
+	if (self.birthDay > 0){
+		NSDateComponents *components = [[NSDateComponents alloc] init];
+		components.day = self.birthDay;
+		components.month = self.birthMonth;
+		components.year = self.birthYear > 0 ? self.birthYear : 1990;
+		NSDate *date = [[NSCalendar currentCalendar] dateFromComponents:components];
+		if (date) picker.date = date;
+	}
+	[sheet addSubview:picker];
+
+	UIToolbar *bar = [[UIToolbar alloc] initWithFrame:CGRectMake(0, 0, 320, 44)];
+	bar.items = @[
+		[[UIBarButtonItem alloc] initWithTitle:(self.birthDay > 0 ? @"Remove" : @"Cancel")
+				style:UIBarButtonItemStylePlain target:self action:@selector(clearBirthday)],
+		[[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace
+				target:nil action:nil],
+		[[UIBarButtonItem alloc] initWithTitle:@"Done"
+				style:UIBarButtonItemStyleDone target:self action:@selector(commitBirthday)],
+	];
+	[sheet addSubview:bar];
+
+	[sheet showInView:self.view.window ?: self.view];
+	[sheet setBounds:CGRectMake(0, 0, 320, 500)];
+	self.birthdaySheet = sheet;
+}
+
+- (void)commitBirthday {
+	UIDatePicker *picker = (UIDatePicker *)[self.birthdaySheet viewWithTag:0x8001];
+	NSDateComponents *c = [[NSCalendar currentCalendar]
+			components:(NSDayCalendarUnit | NSMonthCalendarUnit | NSYearCalendarUnit)
+			  fromDate:picker.date];
+	self.birthDay = c.day;
+	self.birthMonth = c.month;
+	self.birthYear = c.year;
+	self.birthdayChanged = YES;
+	[self.birthdaySheet dismissWithClickedButtonIndex:0 animated:YES];
+	[self.tableView reloadData];
+}
+
+- (void)clearBirthday {
+	self.birthDay = self.birthMonth = self.birthYear = 0;
+	self.birthdayChanged = YES;
+	[self.birthdaySheet dismissWithClickedButtonIndex:0 animated:YES];
+	[self.tableView reloadData];
+}
+
+#pragma mark - photo
+
+- (void)changePhoto {
+	if (![UIImagePickerController isSourceTypeAvailable:
+			UIImagePickerControllerSourceTypePhotoLibrary])
+		return;
+	UIImagePickerController *picker = [[UIImagePickerController alloc] init];
+	picker.sourceType = UIImagePickerControllerSourceTypePhotoLibrary;
+	picker.delegate = self;
+	[self presentViewController:picker animated:YES completion:nil];
+}
+
+- (void)imagePickerController:(UIImagePickerController *)picker
+		didFinishPickingMediaWithInfo:(NSDictionary *)info {
+	[picker dismissViewControllerAnimated:YES completion:nil];
+	UIImage *image = info[UIImagePickerControllerOriginalImage];
+	if (!image)
+		return;
+
+	UIImage *scaled = [TGIcons decodedImage:image
+								fittingSize:CGSizeMake(640, 640) fill:NO scale:1.0f];
+	NSString *path = [NSTemporaryDirectory()
+			stringByAppendingPathComponent:@"profile-photo.jpg"];
+	if (![UIImageJPEGRepresentation(scaled, 0.9f) writeToFile:path atomically:YES])
+		return;
+
+	self.photoView.image = scaled;      // show it before the upload finishes
+	[[TGClient shared] setProfilePhotoAtPath:path completion:^(BOOL ok){
+		if (ok)
+			return;
+		UIAlertView *alert = [[UIAlertView alloc] initWithTitle:@"Profile Photo"
+				message:@"Telegram refused the picture."
+			   delegate:nil cancelButtonTitle:@"OK" otherButtonTitles:nil];
+		[alert show];
+	}];
+}
+
+- (void)imagePickerControllerDidCancel:(UIImagePickerController *)picker {
+	[picker dismissViewControllerAnimated:YES completion:nil];
 }
 
 #pragma mark - table
 
-- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView { return 3; }
+- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView { return 4; }
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
-	if (section == 0) return @"Name";
-	if (section == 1) return @"Username";
-	return @"Bio";
+	if (section == 1) return @"Name";
+	if (section == 2) return @"Bio";
+	return nil;
+}
+
+- (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
+	if (section == 1)
+		return @"Enter your name and, if you like, add a profile photo.";
+	if (section == 2)
+		return @"Any details such as age, occupation or city. Only contacts "
+			   @"can see this.";
+	if (section == 3)
+		return @"Only contacts can see your birthday.";
+	return nil;
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-	return section == 0 ? 2 : 1;
+	if (section == 0) return 1;    // the picture
+	if (section == 1) return 2;    // first, last
+	if (section == 2) return 1;    // bio
+	return 3;                      // birthday, number, username
 }
 
-- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-	UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault
-												  reuseIdentifier:nil];
+- (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)path {
+	return path.section == 0 ? kPhotoSide + 46 : 44;
+}
+
+- (UITableViewCell *)tableView:(UITableView *)tableView
+		 cellForRowAtIndexPath:(NSIndexPath *)path
+{
+	TGTheme *theme = [TGTheme shared];
+
+	if (path.section == 0)
+		return [self photoCellFor:tableView];
+
+	// The last card carries values rather than fields: a number cannot be
+	// typed here at all, and a username needs its own screen to check itself.
+	if (path.section == 3){
+		UITableViewCell *cell = [[UITableViewCell alloc]
+				initWithStyle:UITableViewCellStyleValue1 reuseIdentifier:nil];
+		[theme styleCell:cell];
+		cell.textLabel.font = [UIFont systemFontOfSize:16];
+		cell.detailTextLabel.font = [UIFont systemFontOfSize:15];
+		cell.detailTextLabel.textColor = [theme cellDetailColour];
+
+		NSDictionary *me = [TGClient shared].me;
+		if (path.row == 0){
+			cell.textLabel.text = @"Birthday";
+			cell.detailTextLabel.text = [self birthdayText];
+			cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+		} else if (path.row == 1){
+			cell.textLabel.text = @"Phone Number";
+			cell.detailTextLabel.text = [me[@"phone"] length]
+					? [NSString stringWithFormat:@"+%@", me[@"phone"]] : @"unknown";
+			// Changing a number is a whole login flow; this shows it.
+			cell.selectionStyle = UITableViewCellSelectionStyleNone;
+		} else {
+			cell.textLabel.text = @"Username";
+			cell.detailTextLabel.text = [me[@"username"] length]
+					? [NSString stringWithFormat:@"@%@", me[@"username"]] : @"none";
+			cell.selectionStyle = UITableViewCellSelectionStyleNone;
+		}
+		return cell;
+	}
+
+	UITableViewCell *cell = [[UITableViewCell alloc]
+			initWithStyle:UITableViewCellStyleDefault reuseIdentifier:nil];
+	[theme styleCell:cell];
 	cell.selectionStyle = UITableViewCellSelectionStyleNone;
 
 	UITextField *field = nil;
-	if (indexPath.section == 0)      field = indexPath.row == 0 ? self.firstField : self.lastField;
-	else if (indexPath.section == 1) field = self.usernameField;
-	else                             field = self.bioField;
+	if (path.section == 1) field = path.row == 0 ? self.firstField : self.lastField;
+	else                   field = self.bioField;
 
 	field.frame = CGRectMake(15, 0, tableView.bounds.size.width - 30, 44);
+	field.textColor = [theme primaryTextColour];
 	[cell.contentView addSubview:field];
 	return cell;
+}
+
+- (UITableViewCell *)photoCellFor:(UITableView *)tableView {
+	TGTheme *theme = [TGTheme shared];
+	CGFloat width = tableView.bounds.size.width;
+
+	UITableViewCell *cell = [[UITableViewCell alloc]
+			initWithStyle:UITableViewCellStyleDefault reuseIdentifier:nil];
+	[theme styleCell:cell];
+	cell.selectionStyle = UITableViewCellSelectionStyleNone;
+
+	NSDictionary *me = [TGClient shared].me;
+	NSString *name = [me[@"first_name"] length] ? me[@"first_name"] : @"?";
+
+	self.photoView = [[UIImageView alloc] initWithFrame:
+			CGRectMake((width - kPhotoSide) / 2, 8, kPhotoSide, kPhotoSide)];
+	self.photoView.layer.cornerRadius = kPhotoSide / 2;
+	self.photoView.clipsToBounds = YES;
+	self.photoView.contentMode = UIViewContentModeScaleAspectFill;
+	self.photoView.image = [TGIcons avatarWithInitials:
+			[name substringToIndex:1].uppercaseString
+												  size:kPhotoSide
+											  colourId:[me[@"id"] longLongValue]];
+	[cell.contentView addSubview:self.photoView];
+
+	NSNumber *fileId = [[TGClient shared] photoFileIdForUserId:[me[@"id"] longLongValue]];
+	if (fileId)
+		[[TGClient shared] downloadFile:fileId.integerValue completion:^(NSString *path){
+			[TGIcons loadImageAtPath:path into:self.photoView];
+		}];
+
+	UIButton *change = [UIButton buttonWithType:UIButtonTypeCustom];
+	change.frame = CGRectMake(0, kPhotoSide + 12, width, 26);
+	[change setTitle:(fileId ? @"Change Photo" : @"Set Photo")
+			forState:UIControlStateNormal];
+	[change setTitleColor:[theme accentColour] forState:UIControlStateNormal];
+	change.titleLabel.font = [UIFont systemFontOfSize:16];
+	[change addTarget:self action:@selector(changePhoto)
+	 forControlEvents:UIControlEventTouchUpInside];
+	[cell.contentView addSubview:change];
+
+	return cell;
+}
+
+- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)path {
+	[tableView deselectRowAtIndexPath:path animated:YES];
+	if (path.section == 3 && path.row == 0)
+		[self editBirthday];
 }
 
 @end

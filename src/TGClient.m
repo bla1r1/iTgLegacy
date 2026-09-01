@@ -72,16 +72,21 @@ static NSDictionary *TGFlattenMessage(NSDictionary *m);
 	NSString *path = [[NSBundle mainBundle].bundlePath
 			stringByAppendingPathComponent:@"libtdjson.dylib"];
 
+	// armv7 carries TDLib as a dylib beside the binary: linked statically its
+	// __TEXT goes past the 16MB a Thumb branch can reach. arm64 has no such
+	// limit and no dylib was ever built for it, so there TDLib is linked in
+	// and the symbols are already in this image - which is what RTLD_DEFAULT
+	// searches. One lookup handles both.
 	self.handle = dlopen(path.UTF8String, RTLD_NOW | RTLD_LOCAL);
-	if (!self.handle){
-		NSLog(@"TGClient: dlopen failed: %s", dlerror());
-		return NO;
-	}
+	void *lookup = self.handle ?: RTLD_DEFAULT;
+	if (!self.handle)
+		NSLog(@"TGClient: no libtdjson.dylib (%s) - looking in the app itself",
+				dlerror());
 
-	td_create_fn create = dlsym(self.handle, "td_json_client_create");
-	td_exec_fn   exec   = dlsym(self.handle, "td_json_client_execute");
-	self.td_send = dlsym(self.handle, "td_json_client_send");
-	self.td_recv = dlsym(self.handle, "td_json_client_receive");
+	td_create_fn create = dlsym(lookup, "td_json_client_create");
+	td_exec_fn   exec   = dlsym(lookup, "td_json_client_execute");
+	self.td_send = dlsym(lookup, "td_json_client_send");
+	self.td_recv = dlsym(lookup, "td_json_client_receive");
 	if (!create || !self.td_send || !self.td_recv){
 		NSLog(@"TGClient: missing td_json_client_* symbols");
 		return NO;
@@ -483,7 +488,7 @@ static NSDictionary *TGFlattenMessage(NSDictionary *m);
 		@"system_language_code"   : @"en",
 		@"device_model"           : dev.model ?: @"iPhone",
 		@"system_version"         : dev.systemVersion ?: @"7.1.2",
-		@"application_version"    : @"1.16.48",
+		@"application_version"    : @"1.0",
 	}];
 }
 
@@ -602,6 +607,8 @@ static NSDictionary *TGFlattenMessage(NSDictionary *m) {
 	NSNumber *latitude = nil, *longitude = nil;
 	NSNumber *duration = nil;
 	NSData *waveform = nil;
+	NSString *audioTitle = nil, *audioPerformer = nil;
+	NSNumber *albumCoverId = nil;
 	BOOL isService = NO;
 	NSString *callState = nil;     // "missed" or "answered" on a call message
 
@@ -670,8 +677,13 @@ static NSDictionary *TGFlattenMessage(NSDictionary *m) {
 	} else if ([ctype isEqualToString:@"messageAudio"]){
 		docFileId = content[@"audio"][@"audio"][@"id"];
 		docName   = content[@"audio"][@"file_name"];
-		NSString *title = content[@"audio"][@"title"];
-		extra = title.length ? title : (docName ?: @"Audio");
+		// A track has a name and a performer of its own, and a player that has
+		// to fall back to the file name has nothing to put on a lock screen.
+		audioTitle     = content[@"audio"][@"title"];
+		audioPerformer = content[@"audio"][@"performer"];
+		duration       = content[@"audio"][@"duration"];
+		albumCoverId   = content[@"audio"][@"album_cover_thumbnail"][@"file"][@"id"];
+		extra = [audioTitle length] ? audioTitle : (docName ?: @"Audio");
 
 	} else if ([ctype isEqualToString:@"messageContact"]){
 		NSDictionary *c = content[@"contact"];
@@ -911,6 +923,9 @@ static NSDictionary *TGFlattenMessage(NSDictionary *m) {
 		@"pollAnonymous": m[@"content"][@"poll"][@"is_anonymous"] ?: @YES,
 		@"duration"  : duration ?: @0,
 		@"waveform"  : waveform ?: [NSData data],
+		@"audioTitle"     : audioTitle     ?: @"",
+		@"audioPerformer" : audioPerformer ?: @"",
+		@"albumCoverId"   : albumCoverId   ?: [NSNull null],
 		@"senderId"  : m[@"sender_id"][@"user_id"] ?: @(0),
 		@"lat"       : latitude    ?: [NSNull null],
 		@"lon"       : longitude   ?: [NSNull null],
@@ -1006,13 +1021,20 @@ static NSDictionary *TGFlattenMessage(NSDictionary *m) {
 - (void)historyForChat:(int64_t)chatId
                  limit:(NSInteger)limit
             completion:(void (^)(NSArray *))completion {
+    [self historyForChat:chatId fromMessageId:0 limit:limit completion:completion];
+}
+
+- (void)historyForChat:(int64_t)chatId
+         fromMessageId:(int64_t)fromMessageId
+                 limit:(NSInteger)limit
+            completion:(void (^)(NSArray *))completion {
 	// getChatHistory returns only what TDLib already holds, and picks the
 	// batch size itself - a first call on a cold chat often answers with one
 	// message. Walk backwards from the newest until we have enough or the
 	// chat runs out.
 	NSMutableArray *collected = [NSMutableArray array];
 	[self fetchHistoryChunkForChat:chatId
-					 fromMessageId:0
+					 fromMessageId:fromMessageId
 							 limit:limit
 						 collected:collected
 						completion:completion];
@@ -1958,16 +1980,362 @@ static NSString *TGScopeType(NSString *scope) {
 	}];
 }
 
-- (void)setScope:(NSString *)scope muted:(BOOL)muted {
-	[self send:@{
-		@"@type" : @"setScopeNotificationSettings",
+/// setScopeNotificationSettings replaces the whole record, so writing one field
+/// means reading the rest back first - otherwise muting a scope silently reset
+/// its preview setting, and turning previews off unmuted it.
+- (void)updateScope:(NSString *)scope
+			 change:(NSDictionary *(^)(NSDictionary *current))change
+{
+	[self request:@{
+		@"@type" : @"getScopeNotificationSettings",
 		@"scope" : @{@"@type" : TGScopeType(scope)},
-		@"notification_settings" : @{
+	} completion:^(NSDictionary *current){
+		NSMutableDictionary *next = [@{
 			@"@type"        : @"scopeNotificationSettings",
-			@"mute_for"     : @(muted ? 365 * 24 * 3600 : 0),
-			@"sound_id"     : @(0),
-			@"show_preview" : @YES,
-		},
+			@"mute_for"     : current[@"mute_for"] ?: @(0),
+			@"sound_id"     : current[@"sound_id"] ?: @(0),
+			@"show_preview" : current[@"show_preview"] ?: @YES,
+		} mutableCopy];
+		[next addEntriesFromDictionary:change(current)];
+		[self send:@{
+			@"@type" : @"setScopeNotificationSettings",
+			@"scope" : @{@"@type" : TGScopeType(scope)},
+			@"notification_settings" : next,
+		}];
+	}];
+}
+
+- (void)setScope:(NSString *)scope muted:(BOOL)muted {
+	[self updateScope:scope change:^NSDictionary *(NSDictionary *current){
+		return @{@"mute_for" : @(muted ? 365 * 24 * 3600 : 0)};
+	}];
+}
+
+- (void)notificationPreviewForScope:(NSString *)scope
+						 completion:(void (^)(BOOL))completion {
+	[self request:@{
+		@"@type" : @"getScopeNotificationSettings",
+		@"scope" : @{@"@type" : TGScopeType(scope)},
+	} completion:^(NSDictionary *settings){
+		if (completion) completion([settings[@"show_preview"] boolValue]);
+	}];
+}
+
+- (void)setScope:(NSString *)scope showPreview:(BOOL)show {
+	[self updateScope:scope change:^NSDictionary *(NSDictionary *current){
+		return @{@"show_preview" : @(show)};
+	}];
+}
+
+- (void)resetAllNotificationSettings {
+	[self send:@{@"@type" : @"resetAllNotificationSettings"}];
+}
+
+#pragma mark - options
+
+- (void)optionValue:(NSString *)name completion:(void (^)(id))completion {
+	[self request:@{@"@type" : @"getOption", @"name" : name}
+	   completion:^(NSDictionary *option){
+		if (completion) completion(option[@"value"]);
+	}];
+}
+
+- (void)setOption:(NSString *)name boolValue:(BOOL)value {
+	[self send:@{
+		@"@type" : @"setOption",
+		@"name"  : name,
+		@"value" : @{@"@type" : @"optionValueBoolean", @"value" : @(value)},
+	}];
+}
+
+#pragma mark - network and downloads
+
+- (void)networkStatsWithCompletion:(void (^)(long long, long long))completion {
+	[self request:@{@"@type" : @"getNetworkStatistics", @"only_current" : @NO}
+	   completion:^(NSDictionary *stats){
+		long long sent = 0, received = 0;
+		for (NSDictionary *entry in stats[@"entries"]){
+			sent     += [entry[@"sent_bytes"] longLongValue];
+			received += [entry[@"received_bytes"] longLongValue];
+		}
+		if (completion) completion(sent, received);
+	}];
+}
+
+- (void)resetNetworkStats {
+	[self send:@{@"@type" : @"resetNetworkStatistics"}];
+}
+
+/// TDLib only offers presets through getAutoDownloadSettingsPresets; what is
+/// actually in force is not readable back, so the app keeps the answer it
+/// wrote. Off over mobile by default: this is a 3G phone with a small disk.
+- (BOOL)autoDownloadOverMobile {
+	NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+	return [defaults objectForKey:@"TGAutoDownloadMobile"]
+			? [defaults boolForKey:@"TGAutoDownloadMobile"] : NO;
+}
+
+- (BOOL)autoDownloadOverWifi {
+	NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+	return [defaults objectForKey:@"TGAutoDownloadWifi"]
+			? [defaults boolForKey:@"TGAutoDownloadWifi"] : YES;
+}
+
+- (void)setAutoDownloadOverMobile:(BOOL)mobile wifi:(BOOL)wifi {
+	NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+	[defaults setBool:mobile forKey:@"TGAutoDownloadMobile"];
+	[defaults setBool:wifi forKey:@"TGAutoDownloadWifi"];
+	[defaults synchronize];
+
+	// "Off" here means off in TDLib too, not merely hidden in the interface.
+	NSDictionary *(^settingsFor)(BOOL) = ^NSDictionary *(BOOL enabled){
+		return @{
+			@"@type"                    : @"autoDownloadSettings",
+			@"is_auto_download_enabled" : @(enabled),
+			@"max_photo_file_size"      : @(10 * 1024 * 1024),
+			@"max_video_file_size"      : @(10 * 1024 * 1024),
+			@"max_other_file_size"      : @(10 * 1024 * 1024),
+			@"video_upload_bitrate"     : @(0),
+			@"preload_large_videos"     : @NO,
+			@"preload_next_audio"       : @NO,
+			@"use_less_data_for_calls"  : @YES,
+		};
+	};
+	[self send:@{@"@type" : @"setAutoDownloadSettings", @"settings" : settingsFor(mobile),
+				 @"type"  : @{@"@type" : @"networkTypeMobile"}}];
+	[self send:@{@"@type" : @"setAutoDownloadSettings", @"settings" : settingsFor(wifi),
+				 @"type"  : @{@"@type" : @"networkTypeWiFi"}}];
+}
+
+- (void)hasPasswordWithCompletion:(void (^)(BOOL, NSString *))completion {
+	[self request:@{@"@type" : @"getPasswordState"} completion:^(NSDictionary *state){
+		if (completion)
+			completion([state[@"has_password"] boolValue],
+					   state[@"recovery_email_address_pattern"] ?: @"");
+	}];
+}
+
+/// Flatten one TDLib story down to what a profile row needs.
+static NSDictionary *TGFlattenStory(NSDictionary *story) {
+	NSDictionary *content = story[@"content"];
+	NSString *kind = content[@"@type"];
+
+	// A story is a photo or a video; a video's poster frame is its thumbnail,
+	// which is the only frame this device is going to show in a list anyway.
+	NSNumber *fileId = nil;
+	if ([kind isEqualToString:@"storyContentPhoto"]){
+		NSArray *sizes = content[@"photo"][@"sizes"];
+		fileId = [sizes lastObject][@"photo"][@"id"] ?: [sizes firstObject][@"photo"][@"id"];
+	} else if ([kind isEqualToString:@"storyContentVideo"]){
+		fileId = content[@"video"][@"thumbnail"][@"file"][@"id"];
+	}
+
+	NSMutableDictionary *out = [@{
+		@"storyId"  : story[@"id"] ?: @(0),
+		@"date"     : story[@"date"] ?: @(0),
+		@"caption"  : story[@"caption"][@"text"] ?: @"",
+		@"isVideo"  : @([kind isEqualToString:@"storyContentVideo"]),
+		@"viewers"  : story[@"interaction_info"][@"view_count"] ?: @(0),
+	} mutableCopy];
+	if (fileId)
+		out[@"photoId"] = fileId;
+	return out;
+}
+
+/// Stories a profile shows. Telegram keeps two lists: the ones still up (24h)
+/// and the ones the account chose to keep on its page. A profile shows the
+/// kept ones, and falls back to the live ones when nothing is kept - which is
+/// what the "Posts" row on this screen was always standing in for.
+///
+/// Nothing here needs Premium: reading someone's stories is what the server
+/// allows any account to do, and it refuses on its own when it does not.
+- (void)storiesForChat:(int64_t)chatId completion:(void (^)(NSArray *))completion {
+	__weak typeof(self) weakSelf = self;
+
+	void (^flattenAll)(NSArray *) = ^(NSArray *stories){
+		NSMutableArray *out = [NSMutableArray array];
+		for (NSDictionary *story in stories)
+			if ([story isKindOfClass:NSDictionary.class])
+				[out addObject:TGFlattenStory(story)];
+		if (completion) completion(out);
+	};
+
+	[self request:@{
+		@"@type"         : @"getChatPostedToChatPageStories",
+		@"chat_id"       : @(chatId),
+		@"from_story_id" : @(0),
+		@"limit"         : @(20),
+	} completion:^(NSDictionary *posted){
+		NSArray *stories = posted[@"stories"];
+		if ([stories count]){
+			flattenAll(stories);
+			return;
+		}
+
+		// Nothing kept on the page: the active list needs each story fetched
+		// by id, because it only carries the ids.
+		[weakSelf request:@{@"@type" : @"getChatActiveStories", @"chat_id" : @(chatId)}
+			   completion:^(NSDictionary *active){
+			NSArray *infos = active[@"stories"];
+			if (![infos count]){
+				if (completion) completion(@[]);
+				return;
+			}
+
+			NSMutableArray *collected = [NSMutableArray array];
+			__block NSUInteger outstanding = infos.count;
+			for (NSDictionary *info in infos){
+				[weakSelf request:@{
+					@"@type"                : @"getStory",
+					@"story_sender_chat_id" : @(chatId),
+					@"story_id"             : info[@"story_id"] ?: @(0),
+					@"only_local"           : @NO,
+				} completion:^(NSDictionary *story){
+					if ([story[@"@type"] isEqualToString:@"story"])
+						[collected addObject:TGFlattenStory(story)];
+					if (--outstanding == 0 && completion)
+						completion(collected);
+				}];
+			}
+		}];
+	}];
+}
+
+/// What the cache is made of, which the fast statistics call cannot say - it
+/// only knows the total. This one walks the database, so it is asked for once
+/// when the storage page opens and not on a timer.
+///
+/// Each entry: "name", "bytes", "kinds" (the TDLib file types it covers).
+- (void)storageBreakdownWithCompletion:(void (^)(NSArray *, long long))completion {
+	// The categories their page shows, and the TDLib file types under each.
+	static NSArray *groups = nil;
+	if (!groups)
+		groups = @[
+			@[@"Photos",   @[@"fileTypePhoto", @"fileTypeProfilePhoto", @"fileTypeThumbnail"]],
+			@[@"Video",    @[@"fileTypeVideo", @"fileTypeVideoNote", @"fileTypeAnimation"]],
+			@[@"Stickers", @[@"fileTypeSticker"]],
+			@[@"Music",    @[@"fileTypeAudio", @"fileTypeVoiceNote"]],
+			@[@"Files",    @[@"fileTypeDocument"]],
+		];
+
+	[self request:@{@"@type" : @"getStorageStatistics", @"chat_limit" : @(256)}
+	   completion:^(NSDictionary *stats){
+		NSMutableDictionary *bytesByType = [NSMutableDictionary dictionary];
+		for (NSDictionary *chat in stats[@"by_chat"]){
+			for (NSDictionary *entry in chat[@"by_file_type"]){
+				NSString *type = entry[@"file_type"][@"@type"];
+				if (!type) continue;
+				long long previous = [bytesByType[type] longLongValue];
+				bytesByType[type] = @(previous + [entry[@"size"] longLongValue]);
+			}
+		}
+
+		long long total = [stats[@"size"] longLongValue];
+		long long accounted = 0;
+		NSMutableArray *out = [NSMutableArray array];
+		for (NSArray *group in groups){
+			long long bytes = 0;
+			for (NSString *kind in group[1])
+				bytes += [bytesByType[kind] longLongValue];
+			accounted += bytes;
+			if (bytes > 0)
+				[out addObject:@{@"name" : group[0], @"bytes" : @(bytes),
+								 @"kinds" : group[1]}];
+		}
+
+		// Whatever the walk did not attribute is still on the disk, and a chart
+		// that silently drops it does not add up to the number above it.
+		if (total > accounted)
+			[out addObject:@{@"name"  : @"Other",
+							 @"bytes" : @(total - accounted),
+							 @"kinds" : @[]}];
+
+		[out sortUsingComparator:^NSComparisonResult(NSDictionary *a, NSDictionary *b){
+			long long x = [a[@"bytes"] longLongValue], y = [b[@"bytes"] longLongValue];
+			return x > y ? NSOrderedAscending : (x < y ? NSOrderedDescending : NSOrderedSame);
+		}];
+		if (completion) completion(out, total);
+	}];
+}
+
+/// Their Edit Profile has a birthday row; TDLib keeps it as three numbers and
+/// a zero day means it is not set. Year is optional, which is why it is only
+/// written when it is there.
+- (void)setBirthdayDay:(NSInteger)day month:(NSInteger)month year:(NSInteger)year {
+	if (day <= 0){
+		[self send:@{@"@type" : @"setBirthdate", @"birthdate" : [NSNull null]}];
+		return;
+	}
+	NSMutableDictionary *birthdate = [@{
+		@"@type" : @"birthdate",
+		@"day"   : @(day),
+		@"month" : @(month),
+	} mutableCopy];
+	if (year > 0)
+		birthdate[@"year"] = @(year);
+	[self send:@{@"@type" : @"setBirthdate", @"birthdate" : birthdate}];
+}
+
+/// The signed-in account's own birthday as TDLib stores it: "day", "month",
+/// "year" (0 when unset).
+- (void)myBirthdayWithCompletion:(void (^)(NSInteger, NSInteger, NSInteger))completion {
+	[self request:@{@"@type"   : @"getUserFullInfo",
+					@"user_id" : self.me[@"id"] ?: @0}
+	   completion:^(NSDictionary *full){
+		NSDictionary *birth = full[@"birthdate"];
+		if (completion)
+			completion([birth[@"day"] integerValue], [birth[@"month"] integerValue],
+					   [birth[@"year"] integerValue]);
+	}];
+}
+
+/// Their profile page leads with this, and there was no way to set a picture
+/// from the app at all - only to look at one already set from another client.
+- (void)setProfilePhotoAtPath:(NSString *)path completion:(void (^)(BOOL))completion {
+	[self request:@{
+		@"@type" : @"setProfilePhoto",
+		@"photo" : @{@"@type" : @"inputChatPhotoStatic",
+					 @"photo" : @{@"@type" : @"inputFileLocal", @"path" : path ?: @""}},
+	} completion:^(NSDictionary *result){
+		BOOL ok = ![result[@"@type"] isEqualToString:@"error"];
+		if (!ok)
+			NSLog(@"setProfilePhoto: %@", result[@"message"]);
+		if (completion) completion(ok);
+	}];
+}
+
+- (void)clearImportedContacts {
+	[self send:@{@"@type" : @"clearImportedContacts"}];
+}
+
+/// Their Recent Calls page is a search across every chat for call messages -
+/// there is no separate call log in TDLib.
+- (void)recentCallsWithCompletion:(void (^)(NSArray *))completion {
+	__weak typeof(self) weakSelf = self;
+	[self request:@{
+		@"@type"         : @"searchCallMessages",
+		@"offset"        : @"",
+		@"limit"         : @(50),
+		@"only_missed"   : @NO,
+	} completion:^(NSDictionary *result){
+		NSMutableArray *out = [NSMutableArray array];
+		for (NSDictionary *m in result[@"messages"]){
+			NSDictionary *content = m[@"content"];
+			if (![content[@"@type"] isEqualToString:@"messageCall"])
+				continue;
+			int64_t chatId = [m[@"chat_id"] longLongValue];
+			NSString *reason = content[@"discard_reason"][@"@type"];
+			[out addObject:@{
+				@"userId"   : @(chatId),
+				@"name"     : [weakSelf nameForUserId:chatId] ?: @"Unknown",
+				@"outgoing" : @([m[@"is_outgoing"] boolValue]),
+				@"missed"   : @([reason isEqualToString:@"callDiscardReasonMissed"] ||
+								[reason isEqualToString:@"callDiscardReasonDeclined"]),
+				@"date"     : m[@"date"] ?: @(0),
+				@"duration" : content[@"duration"] ?: @(0),
+			}];
+		}
+		if (completion) completion(out);
 	}];
 }
 

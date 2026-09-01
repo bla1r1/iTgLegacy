@@ -12,6 +12,7 @@
 #import "TGSnackbar.h"
 #import "TGSearchViewController.h"
 #import "TGDeviceViewController.h"
+#import "TGSettingsViewController.h"
 #import "TGCall.h"
 #import "TGCallViewController.h"
 #import "TGChatViewController.h"
@@ -84,10 +85,28 @@ static void TGWatchForIncomingCalls(void) {
 
 	[self startTDLib];
 
+	// A theme change used to rebuild the whole tab controller and swap the
+	// window's root: every open screen was thrown away, so picking a theme (or
+	// a text size, or a wallpaper - all three post this) dropped you back out
+	// of wherever you were. Each screen repaints itself on the notification
+	// instead; RootViewController restyles the tab bar.
+
 	return YES;
 }
 
 #pragma mark - TDLib
+
+/// Auto-Night has no system dark mode to follow here, so the schedule is
+/// checked when the app comes forward and once an hour while it is open.
+- (void)applicationDidBecomeActive:(UIApplication *)application {
+	[[TGTheme shared] applyAutoNightIfDue];
+
+	static NSTimer *nightTimer = nil;
+	if (!nightTimer)
+		nightTimer = [NSTimer scheduledTimerWithTimeInterval:3600
+				target:[TGTheme shared] selector:@selector(applyAutoNightIfDue)
+			  userInfo:nil repeats:YES];
+}
 
 - (void)startTDLib {
 	TGClient *tg = [TGClient shared];
@@ -378,8 +397,9 @@ static void TGWatchForIncomingCalls(void) {
 				return;
 			}
 
-			// Rows are reachable through itglegacy://tap/N, so anything that is
-			// not a control is left alone rather than guessed at.
+			// Rows are reachable through itglegacy://tap/N and settings pages
+			// through itglegacy://settings/N, so anything that is not a control
+			// is left alone rather than guessed at.
 			NSLog(@"touch: nothing actionable at that point");
 		});
 		return YES;
@@ -548,6 +568,31 @@ static void TGWatchForIncomingCalls(void) {
 		return YES;
 	}
 
+	// itglegacy://settings/<page> - open one settings page directly, by the
+	// number in TGSettingsPage. Row indexes move whenever a setting is added,
+	// which makes a script built out of tap/S/R go stale silently; and the
+	// debug menu is reachable only through ten taps on a label, which no URL
+	// can do at all.
+	if ([host isEqualToString:@"settings"]){
+		dispatch_async(dispatch_get_main_queue(), ^{
+			UITabBarController *tabs = (UITabBarController *)self.rootViewController;
+			if (![tabs isKindOfClass:UITabBarController.class])
+				return;
+			tabs.selectedIndex = tabs.viewControllers.count - 1;
+			UINavigationController *nc = tabs.viewControllers[tabs.selectedIndex];
+			[nc popToRootViewControllerAnimated:NO];
+			if (!arg.length)
+				return;                     // the root is where we already are
+			TGSettingsViewController *page = [[TGSettingsViewController alloc] init];
+			page.page = (TGSettingsPage)[arg integerValue];
+			// As the rows push it, so a screenshot shows the page the way a
+			// finger would reach it rather than under the tab bar.
+			page.hidesBottomBarWhenPushed = YES;
+			[nc pushViewController:page animated:NO];
+		});
+		return YES;
+	}
+
 	// itglegacy://tab/N - switch tabs, so screens behind them can be checked.
 	if ([host isEqualToString:@"tab"]){
 		dispatch_async(dispatch_get_main_queue(), ^{
@@ -572,30 +617,22 @@ static void TGWatchForIncomingCalls(void) {
 		return YES;
 	}
 
-	// itglegacy://theme/<file> - apply a theme file sitting in Documents.
-	// The three built-in styles answer to their own names, because reaching a
-	// settings row from a URL is not possible and checking a theme on the
-	// device otherwise means a finger.
+	// itglegacy://theme/<id> - switch theme without a finger on the device.
+	// Built-in and imported answer the same way now that they are one list:
+	// "classic", "day", "night", "nightblue", or a file name in Documents.
 	if ([host isEqualToString:@"theme"]){
 		dispatch_async(dispatch_get_main_queue(), ^{
-			NSArray *builtIn = @[@"skeuomorphic", @"flat", @"dark"];
-			NSUInteger style = [builtIn indexOfObject:arg.lowercaseString];
-			if (style != NSNotFound){
-				[[TGTheme shared] clearImportedTheme];
-				[TGTheme shared].style = (TGThemeStyle)style;
-				NSLog(@"theme: built-in %@", arg);
-				return;
-			}
-			if ([arg isEqualToString:@"none"]){
-				[[TGTheme shared] clearImportedTheme];
-				NSLog(@"theme: cleared");
-				return;
-			}
-			NSString *documents = [NSSearchPathForDirectoriesInDomains(
-					NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
-			NSString *path = [documents stringByAppendingPathComponent:arg];
+			NSString *themeId = arg.lowercaseString;
+			// The old names still work; scripts on the device use them.
+			if ([themeId isEqualToString:@"skeuomorphic"]) themeId = @"classic";
+			else if ([themeId isEqualToString:@"flat"])    themeId = @"day";
+			else if ([themeId isEqualToString:@"dark"])    themeId = @"night";
+			else if ([themeId isEqualToString:@"none"])    themeId = @"day";
+			else if (![@[@"classic", @"day", @"night", @"nightblue"] containsObject:themeId])
+				themeId = [@"file:" stringByAppendingString:arg];
+
 			NSLog(@"theme: %@ -> %@", arg,
-					[[TGTheme shared] importThemeAtPath:path] ? @"applied" : @"rejected");
+					[[TGTheme shared] selectThemeId:themeId] ? @"applied" : @"rejected");
 		});
 		return YES;
 	}

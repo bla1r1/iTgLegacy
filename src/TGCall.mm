@@ -7,6 +7,8 @@
 #include "TGCallCrypto.h"
 #import <AVFoundation/AVFoundation.h>
 
+#import "TGCallAudioEngine.h"
+
 #include "libtgvoip/VoIPController.h"
 #include <openssl/aes.h>
 #include <openssl/modes.h>
@@ -122,26 +124,70 @@ static void TGInstallCrypto(void) {
 @property (nonatomic, assign) uint32_t signallingSeq;
 @property (nonatomic, assign) BOOL sentCandidates;
 @property (nonatomic, assign) BOOL loggedHeader;
+@property (nonatomic, assign) BOOL sentMediaState;
+@property (nonatomic, assign) uint32_t videoParametersSeq;
+@property (nonatomic, assign) uint32_t mediaStateSeq;
+@property (nonatomic, strong) NSTimer *mediaStateTimer;
+@property (nonatomic, assign) uint32_t audioProbeSeq;
+@property (nonatomic, assign) BOOL audioFramingProven;
 @property (nonatomic, assign) uint32_t currentSenderTag;
 @property (nonatomic, strong) TGCallReflector *currentReflector;
 @property (nonatomic, strong) NSString *peerUfrag;
 @property (nonatomic, strong) NSString *peerPwd;
 @property (nonatomic, strong) TGCallIce *ice;
+@property (nonatomic, strong) TGCallAudioEngine *audioEngine;
+@property (nonatomic, assign) uint32_t mediaSeqOut;
+@property (nonatomic, assign) uint16_t rtpSeqOut;
+@property (nonatomic, assign) uint32_t rtpTimestampOut;
+@property (nonatomic, assign) uint16_t transportSeqOut;
 @end
 
+
+static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V5";
+
+
+
+
 @implementation TGCall {
-	VoIPController *_controller;
+	uint32_t _mediaPacketsIn;
+	uint32_t _stunRequestsIn;
+	uint32_t _stunResponsesIn;
+	uint32_t _unreadablePacketsIn;
+	uint32_t _audioFramesIn;
+	uint32_t _audioFramesOut;
+	uint32_t _highestRtpSeqIn;
+	uint32_t _decryptFailuresIn;
+	BOOL _loggedTheirResponse;
+	BOOL _speakerEnabled;
 }
+
+
 
 + (instancetype)shared {
 	static TGCall *s = nil;
 	static dispatch_once_t once;
-	dispatch_once(&once, ^{ s = [[TGCall alloc] init]; });
+	dispatch_once(&once, ^{
+		NSLog(@"TGCall: %s", kBuildMarker);
+		s = [[TGCall alloc] init];
+	});
 	return s;
 }
 
+
 - (NSTimeInterval)duration {
-	return self.establishedAt ? -[self.establishedAt timeIntervalSinceNow] : 0;
+	if (!self.establishedAt)
+		return 0;
+	return [[NSDate date] timeIntervalSinceDate:self.establishedAt];
+}
+
+- (void)setSpeaker:(BOOL)speaker {
+    _speakerEnabled = speaker;
+    AVAudioSession *session = [AVAudioSession sharedInstance];
+    if (speaker) {
+        [session overrideOutputAudioPort:AVAudioSessionPortOverrideSpeaker error:nil];
+    } else {
+        [session overrideOutputAudioPort:AVAudioSessionPortOverrideNone error:nil];
+    }
 }
 
 - (void)setState:(TGCallState)state {
@@ -196,8 +242,10 @@ static void TGInstallCrypto(void) {
 	self.ice.onConnected = ^(NSString *address, uint16_t port){
 		NSLog(@"TGCall: media path is %@:%u", address, port);
 		weakSelf.state = TGCallStateEstablished;
+		[weakSelf startAudioEngine];
 	};
 	[self.ice start];
+
 
 	// The address is a name rather than an IP: the peer reads our four-byte
 	// tag out of it and uses that to address us through the reflector.
@@ -223,6 +271,17 @@ static void TGInstallCrypto(void) {
 	[self sendSignalling:message
 					 seq:[TGCallMessages markSeq:++self.signallingSeq requiresAck:YES]];
 	NSLog(@"TGCall: sent our candidates, ufrag=%@", self.localUfrag);
+
+	// The peer announces its video formats and waits for ours. This build has
+	// no video, so the honest answer is an empty list - but an answer, because
+	// silence leaves its half of the negotiation open.
+	//   uint8 format count, then the formats, then uint8 encoder count
+	uint8_t formats[2] = { 0, 0 };
+	NSData *videoFormats = [TGCallMessages messageWithType:TGCallMessageVideoFormats
+													  body:[NSData dataWithBytes:formats length:2]];
+	[self sendSignalling:videoFormats
+					 seq:[TGCallMessages markSeq:++self.signallingSeq requiresAck:YES]];
+	NSLog(@"TGCall: sent our video formats (none)");
 }
 
 /// The peer's half of the negotiation. Decrypting it is also the check that
@@ -249,16 +308,32 @@ static void TGInstallCrypto(void) {
 		uint32_t messageSeq = [message[@"seq"] unsignedIntValue];
 
 		// Without an acknowledgement the peer keeps resending and never moves
-		// on to the next step of the negotiation.
-		if ([TGCallMessages seqRequiresAck:messageSeq])
-			[self sendSignalling:[TGCallMessages ackForSeq:messageSeq]
-							 seq:++self.signallingSeq];
+		// on to the next step of the negotiation. Send ACK unconditionally for signaling.
+		[self sendSignalling:[TGCallMessages ackForSeq:messageSeq]
+						 seq:++self.signallingSeq];
+
+		if (type == TGCallMessageVideoFormats) {
+			NSLog(@"TGCall: peer sent VideoFormats (type 2), responding with empty video formats");
+			uint8_t formats[2] = { 0, 0 };
+			NSData *videoFormats = [TGCallMessages messageWithType:TGCallMessageVideoFormats
+															  body:[NSData dataWithBytes:formats length:2]];
+			[self sendSignalling:videoFormats
+							 seq:[TGCallMessages markSeq:++self.signallingSeq requiresAck:YES]];
+		}
 
 		if (type != TGCallMessageCandidates){
 			NSLog(@"TGCall: signalling message type %d, %lu bytes", type,
 					(unsigned long)[message[@"body"] length]);
+			if (type == 127) {
+				NSData *b = message[@"body"];
+				if (b.length > 4) { // skip the 4-byte size
+					NSString *str = [[NSString alloc] initWithData:[b subdataWithRange:NSMakeRange(4, b.length - 4)] encoding:NSUTF8StringEncoding];
+					NSLog(@"TGCall: JSON: %@", str);
+				}
+			}
 			continue;
 		}
+
 		NSDictionary *ice = [TGCallMessages parseCandidates:message[@"body"]];
 		self.peerUfrag = ice[@"ufrag"];
 		self.peerPwd = ice[@"pwd"];
@@ -417,7 +492,8 @@ static void TGInstallCrypto(void) {
 #pragma mark - media
 
 - (void)startMediaWithState:(NSDictionary *)state {
-	if (_controller)
+	// callStateReady can arrive more than once; the first one owns the call.
+	if (self.callKey.length)
 		return;
 
 	TGInstallCrypto();
@@ -426,9 +502,10 @@ static void TGInstallCrypto(void) {
 	// The audio session has to be a call, or iOS routes it to the speaker and
 	// ignores the proximity sensor.
 	AVAudioSession *session = [AVAudioSession sharedInstance];
-	[session setCategory:AVAudioSessionCategoryPlayAndRecord error:nil];
+	[session setCategory:AVAudioSessionCategoryPlayAndRecord withOptions:AVAudioSessionCategoryOptionAllowBluetooth error:nil];
 	[session setMode:AVAudioSessionModeVoiceChat error:nil];
 	[session setActive:YES error:nil];
+
 
 	NSData *key = [[NSData alloc] initWithBase64EncodedString:state[@"encryption_key"]
 													  options:0];
@@ -442,58 +519,16 @@ static void TGInstallCrypto(void) {
 	self.callKey = key;
 	[self probeReflectorsIn:state key:key];
 
-	std::vector<Endpoint> endpoints;
-	for (NSDictionary *server in state[@"servers"]){
-		NSDictionary *type = server[@"type"];
-		if (![type[@"@type"] isEqualToString:@"callServerTypeTelegramReflector"])
-			continue;   // webrtc reflectors belong to tgcalls, not this library
-
-		NSData *peerTag = [[NSData alloc] initWithBase64EncodedString:type[@"peer_tag"]
-															 options:0];
-		unsigned char tag[16] = {0};
-		if (peerTag.length >= 16)
-			memcpy(tag, peerTag.bytes, 16);
-
-		IPv4Address v4([server[@"ip_address"] UTF8String] ?: "");
-		IPv6Address v6([server[@"ipv6_address"] UTF8String] ?: "");
-		endpoints.push_back(Endpoint([server[@"id"] longLongValue],
-									 (uint16_t)[server[@"port"] intValue],
-									 v4, v6, Endpoint::Type::UDP_RELAY, tag));
-	}
-
-	if (endpoints.empty()){
+	if (!self.reflectors.count){
 		NSLog(@"TGCall: no reflector this build can use");
 		self.state = TGCallStateFailed;
 		return;
 	}
+	NSLog(@"TGCall: negotiated %@", state[@"protocol"][@"library_versions"]);
 
-	_controller = new VoIPController();
-
-	VoIPController::Config config(30.0, 20.0, DATA_SAVING_NEVER,
-								  false /* AEC */, false /* NS */, false /* AGC */,
-								  false /* call upgrade */);
-	_controller->SetConfig(config);
-	_controller->SetEncryptionKey((char *)key.bytes, self.outgoing);
-	_controller->SetRemoteEndpoints(endpoints,
-									[state[@"allow_p2p"] boolValue],
-									[state[@"protocol"][@"max_layer"] intValue] ?: 65);
-
-	VoIPController::Callbacks callbacks = {0};
-	callbacks.connectionStateChanged = [](VoIPController *controller, int newState){
-		dispatch_async(dispatch_get_main_queue(), ^{
-			TGCall *call = [TGCall shared];
-			switch (newState){
-				case STATE_ESTABLISHED:  call.state = TGCallStateEstablished; break;
-				case STATE_FAILED:       call.state = TGCallStateFailed; break;
-				case STATE_RECONNECTING: call.state = TGCallStateConnecting; break;
-				default: break;
-			}
-		});
-	};
-	_controller->SetCallbacks(callbacks);
-
-	_controller->Start();
-	_controller->Connect();
+	// libtgvoip is no longer driven here. The peer speaks tgcalls, which is what
+	// the reflector, ICE and audio engine above implement; running VoIPController
+	// alongside them only put a second recorder on the audio session.
 }
 
 /// Stage one of speaking tgcalls rather than libtgvoip: open the reflector
@@ -542,74 +577,485 @@ static void TGInstallCrypto(void) {
 	[self sendOurCandidates];
 }
 
+- (void)startAudioEngine {
+	if (self.audioEngine)
+		return;
+
+	self.audioEngine = [[TGCallAudioEngine alloc] init];
+	__weak __typeof__(self) weakSelf = self;
+	// ponytail: both on while the call path is being proved out, two lines to
+	// drop once it is. The loopback feeds our own encoded frames back into the
+	// decoder so the speaker proves the encode-decode-play chain works without
+	// the peer having to send anything - it has never sent us a frame, so that
+	// half of the engine has never once run.
+	self.audioEngine.emitMorseSignal = YES;
+	self.audioEngine.loopbackToSpeaker = NO;   // proved; anything heard now is theirs
+	self.audioEngine.onOutgoingOpusFrame = ^(NSData *opusFrame) {
+		[weakSelf sendOutgoingAudioFrame:opusFrame];
+	};
+	[self.audioEngine start];
+	if (self.currentSenderTag && !self.sentMediaState){
+		self.sentMediaState = YES;
+		[self sendMediaStateMessage];
+	}
+	NSLog(@"TGCall: audio engine started for call");
+
+}
+
+- (void)sendOutgoingAudioFrame:(NSData *)opusFrame {
+	if (!self.callKey.length || opusFrame.length == 0 || self.muted)
+		return;
+
+	// Official tgcalls single-message audio packet:
+	// Byte 0: 0x05 (TGCallMessageAudioData)
+	// Bytes 1..12: 12-byte RTP header (V=2, PT=111, seq, ts, SSRC)
+	// Bytes 13..N: Opus frame
+	// Encrypted under sequence number with bit 31 set (0x80000000).
+
+	uint8_t rtpHeader[12];
+	rtpHeader[0] = 0x80; // V=2, P=0, X=0, CC=0
+	rtpHeader[1] = 111;  // Payload Type 111 (Opus)
+
+	uint16_t seq = self.rtpSeqOut++;
+	rtpHeader[2] = (uint8_t)(seq >> 8);
+	rtpHeader[3] = (uint8_t)(seq);
+
+	uint32_t ts = self.rtpTimestampOut;
+	self.rtpTimestampOut += 960;
+	rtpHeader[4] = (uint8_t)(ts >> 24);
+	rtpHeader[5] = (uint8_t)(ts >> 16);
+	rtpHeader[6] = (uint8_t)(ts >> 8);
+	rtpHeader[7] = (uint8_t)(ts);
+
+	uint32_t ssrc = self.outgoing ? 2 : 1;
+	rtpHeader[8]  = (uint8_t)(ssrc >> 24);
+	rtpHeader[9]  = (uint8_t)(ssrc >> 16);
+	rtpHeader[10] = (uint8_t)(ssrc >> 8);
+	rtpHeader[11] = (uint8_t)(ssrc);
+
+	uint8_t type = TGCallMessageAudioData;
+	NSMutableData *msg = [NSMutableData dataWithCapacity:1 + 12 + opusFrame.length];
+	[msg appendBytes:&type length:1];
+	[msg appendBytes:rtpHeader length:12];
+	[msg appendData:opusFrame];
+
+	NSMutableData *encrypted = [NSMutableData dataWithLength:msg.length + 32];
+	uint32_t mediaSeq = [TGCallMessages markSeq:++self.mediaSeqOut requiresAck:NO]; // bit 31 set!
+	int encSize = TGCallEncryptPacket((const uint8_t *)self.callKey.bytes,
+									  self.outgoing, 0 /* media */,
+									  (const uint8_t *)msg.bytes, msg.length,
+									  mediaSeq,
+									  (uint8_t *)encrypted.mutableBytes);
+	if (encSize <= 0)
+		return;
+	encrypted.length = encSize;
+
+	if (++_audioFramesOut % 50 == 0){
+		NSLog(@"TGCall: sent %u audio frames (single-msg format, seq %08x)",
+				_audioFramesOut, mediaSeq);
+		[self sendRtcpReceiverReport];
+	}
+
+
+	// Send encrypted packet over reflector transport
+	if (self.currentSenderTag) {
+		[(self.currentReflector ?: self.reflector) sendPayload:encrypted toTag:self.currentSenderTag];
+	}
+	for (TGCallReflector *reflector in self.reflectors) {
+		if (reflector.remoteTag && reflector.remoteTag != self.currentSenderTag) {
+			[reflector sendPayload:encrypted toTag:reflector.remoteTag];
+		}
+	}
+}
+
+- (void)handleIncomingMediaPacket:(NSData *)decryptedData seq:(uint32_t)seq {
+	const uint8_t *b = (const uint8_t *)decryptedData.bytes;
+	NSLog(@"TGCall: decrypted media packet seq %08x, len %lu, first byte %02x", seq, (unsigned long)decryptedData.length, b ? b[0] : 0);
+
+	// Each message inside carries its own sequence number, and it is that one
+	// the peer waits to hear back - acknowledging the packet's number instead
+	// left it resending its opening pair once a second and never starting audio.
+	for (NSDictionary *message in [TGCallMessages parseMediaPacket:decryptedData seq:seq]){
+		uint8_t type = [message[@"type"] unsignedCharValue];
+		uint32_t messageSeq = [message[@"seq"] unsignedIntValue];
+
+		if ([TGCallMessages seqRequiresAck:messageSeq])
+			[self sendAckForSeq:messageSeq signaling:NO];
+
+		if (type == TGCallMessageAck){
+			// The sequence number in front of an acknowledgement is the one it
+			// confirms; the bits it was sent with are not part of the counter.
+			uint32_t counter = messageSeq & ~((uint32_t)3 << 30);
+			if (counter == self.mediaStateSeq)
+				[self mediaStateAcknowledged];
+			if (counter == self.audioProbeSeq && !self.audioFramingProven){
+				self.audioFramingProven = YES;
+				NSLog(@"TGCall: AUDIO FRAMING ACCEPTED - the peer parsed our "
+					   "audio message and acknowledged what followed it");
+			}
+			continue;
+		}
+
+		if (type == TGCallMessageAudioData){
+			[self handleIncomingRTP:message[@"body"]];
+		} else {
+			// Log ALL non-audio types (they are rare enough)
+			NSLog(@"TGCall: peer media msg type %d seq %08x, %lu bytes", type,
+					messageSeq, (unsigned long)[message[@"body"] length]);
+			if (type == TGCallMessageMediaState) {
+				const uint8_t *b = (const uint8_t *)[(NSData *)message[@"body"] bytes];
+				NSLog(@"TGCall: peer MediaState byte: %02x (audio=%d video=%d)",
+						b[0], b[0] & 1, (b[0] >> 1) & 1);
+			}
+		}
+	}
+}
+
+/// An RTP packet as WebRTC wrote it: fixed header, optional CSRCs and one
+/// optional extension block, then the Opus frame.
+- (void)handleIncomingRTP:(NSData *)packet {
+	const uint8_t *rtp = (const uint8_t *)packet.bytes;
+	size_t rtpLen = packet.length;
+
+	if (rtpLen < 12)
+		return;
+
+	uint16_t rtpSeq = ((uint16_t)rtp[2] << 8) | rtp[3];
+	if (rtpSeq > _highestRtpSeqIn)
+		_highestRtpSeqIn = rtpSeq;
+
+	uint8_t cc = rtp[0] & 0x0F;
+	BOOL hasExt = (rtp[0] & 0x10) != 0;
+	size_t headerLen = 12 + 4 * cc;
+
+	if (hasExt && rtpLen >= headerLen + 4) {
+		uint16_t extLen = ((uint16_t)rtp[headerLen + 2] << 8) | rtp[headerLen + 3];
+		headerLen += 4 + 4 * extLen;
+	}
+
+	if (rtpLen <= headerLen)
+		return;
+
+	NSData *opusFrame = [NSData dataWithBytes:rtp + headerLen length:rtpLen - headerLen];
+	if (++_audioFramesIn == 1 || _audioFramesIn % 50 == 0)
+		NSLog(@"TGCall: %u audio frames in, last %lu bytes", _audioFramesIn,
+				(unsigned long)opusFrame.length);
+	
+	[self.audioEngine handleIncomingOpusFrame:opusFrame];
+}
+
+
+
 /// Anything that arrives gets held against the call key both ways round: if it
 /// decrypts, the crypto port is right and the packet is real call traffic.
 - (void)inspectReflectorPacket:(NSData *)packet {
 	const uint8_t *bytes = (const uint8_t *)packet.bytes;
-	if (packet.length <= 32){
-		NSLog(@"TGCall: reflector service packet, %lu bytes, first %02x%02x%02x%02x",
-				(unsigned long)packet.length, bytes[0], bytes[1], bytes[2], bytes[3]);
+	if (packet.length <= 24)
 		return;
+
+	// Update sender tag from reflector header (ignoring 0xFFFFFFFF service tags)
+	uint32_t senderTag = 0;
+	memcpy(&senderTag, bytes + 16, 4);
+	if (senderTag && senderTag != 0xFFFFFFFF && senderTag != self.reflector.localTag)
+		self.currentSenderTag = senderTag;
+
+	// The media state is what tells the peer our microphone is live, and it
+	// cannot go anywhere until a tag to address it to has shown up. Whichever
+	// happens last - the tag or the audio engine - sends it.
+	if (self.currentSenderTag && self.audioEngine && !self.sentMediaState){
+		self.sentMediaState = YES;
+		[self sendMediaStateMessage];
 	}
 
-	// The header the reflector puts in front of relayed data is not worth
-	// guessing at: STUN announces itself with a magic cookie four bytes in, so
-	// the payload is found by looking for it.
+
+	// The reflector pads the payload out to a multiple of four and states the
+	// real length at offset 20. Handing the padding to the decryptor as if it
+	// were part of the message makes the hash over the plaintext disagree, and
+	// every packet whose length is not already a multiple of four is thrown
+	// away - which is most of them, and all the interesting ones.
+	size_t declared = ((size_t)bytes[20] << 24) | ((size_t)bytes[21] << 16) |
+					  ((size_t)bytes[22] << 8)  |  (size_t)bytes[23];
+
 	static const size_t offsets[] = { 24, 16, 20, 0 };
-	for (unsigned i = 0; i < sizeof(offsets) / sizeof(offsets[0]); i++){
+	for (unsigned i = 0; i < sizeof(offsets) / sizeof(offsets[0]); i++) {
 		size_t offset = offsets[i];
 		if (packet.length <= offset + 20)
 			continue;
-		NSData *payload = [packet subdataWithRange:
-				NSMakeRange(offset, packet.length - offset)];
-		if ([TGCallStun messageTypeOf:payload] < 0)
-			continue;
-		// The eight bytes between the tag and the payload decide how a reply is
-		// addressed, so they are logged every time rather than once: syslog
-		// drops lines under a burst and this one must not be missed.
-		// The sender's four bytes sit between the destination tag and the
-		// length; an answer goes back to exactly those.
-		const uint8_t *raw = (const uint8_t *)packet.bytes;
-		if (offset >= 24)
-			memcpy(&_currentSenderTag, raw + 16, 4);
-		if (offset >= 24)
-			NSLog(@"hdr %02x%02x%02x%02x|%02x%02x%02x%02x|%02x%02x%02x%02x ours %08x",
-					raw[12], raw[13], raw[14], raw[15],
-					raw[16], raw[17], raw[18], raw[19],
-					raw[20], raw[21], raw[22], raw[23],
-					self.reflector.localTag);
-		[self.ice handleRelayedPacket:payload];
+
+		size_t available = packet.length - offset;
+		if (offset == 24 && declared > 0 && declared <= available)
+			available = declared;
+
+		NSData *payload = [packet subdataWithRange:NSMakeRange(offset, available)];
+		int stunType = [TGCallStun messageTypeOf:payload];
+
+		if (stunType >= 0) {
+			// 0001 is a check from them, 0101 their answer to ours. Seeing only
+			// one of the two is the difference between a path that works and a
+			// path that looks like it does.
+			if (stunType == 0x0001) _stunRequestsIn++; else _stunResponsesIn++;
+			// Their answer to our check, once: a known-good response from a
+			// real WebRTC agent to compare ours against.
+			if (stunType == 0x0101 && !_loggedTheirResponse){
+				_loggedTheirResponse = YES;
+				NSLog(@"TGCallStun: their response %@", [TGCallStun hexOf:payload]);
+			}
+			if ((_stunRequestsIn + _stunResponsesIn) % 10 == 0)
+				NSLog(@"TGCall: STUN in: %u checks, %u answers",
+						_stunRequestsIn, _stunResponsesIn);
+			[self.ice handleRelayedPacket:payload];
+			return;
+		}
+
+		if (self.callKey.length && payload.length >= 21) {
+			NSMutableData *decrypted = [NSMutableData dataWithLength:payload.length];
+			uint32_t mediaSeq = 0;
+			int decSize = TGCallDecryptPacket((const uint8_t *)self.callKey.bytes,
+											  self.outgoing, 0 /* media */,
+											  (const uint8_t *)payload.bytes, payload.length,
+											  (uint8_t *)decrypted.mutableBytes, &mediaSeq);
+			if (decSize > 0) {
+				decrypted.length = decSize;
+				if (++_mediaPacketsIn == 1 || _mediaPacketsIn % 50 == 0)
+					NSLog(@"TGCall: %u incoming media packets, last %d bytes (seq %08x, offset %zu)",
+							_mediaPacketsIn, decSize, mediaSeq, offset);
+				if ([TGCallMessages seqRequiresAck:mediaSeq]) {
+					[self sendAckForSeq:mediaSeq signaling:NO];
+				}
+				[self handleIncomingMediaPacket:decrypted seq:mediaSeq];
+				return;
+			} else if (payload.length >= 4) {
+				// Log decrypt failure for diagnosis (once per 20 failures)
+				if (++_decryptFailuresIn % 20 == 1) {
+					const uint8_t *pb = (const uint8_t *)payload.bytes;
+					NSLog(@"TGCall: decrypt fail #%u offset=%zu pklen=%lu paylen=%lu first=%02x%02x%02x%02x",
+							_decryptFailuresIn, offset,
+							(unsigned long)packet.length,
+							(unsigned long)payload.length,
+							pb[0], pb[1], pb[2], pb[3]);
+				}
+			}
+		}
+	}
+
+	// Neither STUN nor anything the call key opens. Worth counting: it is the
+	// difference between the peer sending us nothing and sending us something
+	// we cannot read.
+	if (++_unreadablePacketsIn % 10 == 1)
+		NSLog(@"TGCall: %u unreadable packets, last %lu bytes starting %02x %02x",
+				_unreadablePacketsIn, (unsigned long)packet.length,
+				bytes[24], packet.length > 25 ? bytes[25] : 0);
+}
+
+- (void)sendAckForSeq:(uint32_t)seq signaling:(BOOL)signaling {
+	if (!self.callKey.length || !self.currentSenderTag)
+		return;
+
+	NSData *ack = [TGCallMessages ackForSeq:seq];
+	NSMutableData *encrypted = [NSMutableData dataWithLength:ack.length + 32];
+	// An ack packet is an empty message followed by the ack, so it is neither a
+	// single-message packet nor one asking to be acknowledged: bare counter.
+	uint32_t outSeq = signaling ? ++self.signallingSeq : ++self.mediaSeqOut;
+
+	int encSize = TGCallEncryptPacket((const uint8_t *)self.callKey.bytes,
+									  self.outgoing, signaling,
+									  (const uint8_t *)ack.bytes, ack.length,
+									  outSeq,
+									  (uint8_t *)encrypted.mutableBytes);
+	if (encSize > 0) {
+		encrypted.length = encSize;
+		[(self.currentReflector ?: self.reflector) sendPayload:encrypted toTag:self.currentSenderTag];
+	}
+}
+
+/// Our opening pair on the media channel. The peer sends its own once a second
+/// until it is acknowledged and only then moves on, so this does the same: the
+/// sequence numbers are allocated once and the same packet goes out until an
+/// acknowledgement for the media state comes back.
+- (void)sendMediaStateMessage {
+	if (!self.callKey.length || !self.currentSenderTag){
+		NSLog(@"TGCall: media state not sent, no sender tag yet");
 		return;
 	}
 
-	// Not STUN, so it is either the reflector's own service traffic or media.
-	if (packet.length > 32)
-		NSLog(@"TGCall: %lu bytes from the reflector, not STUN",
-				(unsigned long)packet.length);
+	if (!self.mediaStateSeq){
+		self.videoParametersSeq = ++self.mediaSeqOut;
+		self.mediaStateSeq = ++self.mediaSeqOut;
+	}
+
+	NSData *body = [TGCallMessages
+			mediaStateBundleWithVideoSeq:[TGCallMessages markSeq:self.videoParametersSeq
+													 requiresAck:YES]
+								stateSeq:[TGCallMessages markSeq:self.mediaStateSeq
+													 requiresAck:YES]
+							 audioActive:!self.muted];
+
+	// The packet carries an empty message first, so its own sequence number is a
+	// bare counter - no single-message bit, nothing asking to be acknowledged.
+	NSMutableData *encrypted = [NSMutableData dataWithLength:body.length + 32];
+	int encSize = TGCallEncryptPacket((const uint8_t *)self.callKey.bytes,
+									  self.outgoing, 0 /* media */,
+									  (const uint8_t *)body.bytes, body.length,
+									  ++self.mediaSeqOut,
+									  (uint8_t *)encrypted.mutableBytes);
+	if (encSize <= 0)
+		return;
+	encrypted.length = encSize;
+	[(self.currentReflector ?: self.reflector) sendPayload:encrypted
+													 toTag:self.currentSenderTag];
+	NSLog(@"TGCall: media state sent to tag %u (video seq %u, state seq %u)",
+			self.currentSenderTag, self.videoParametersSeq, self.mediaStateSeq);
+
+	if (!self.mediaStateTimer)
+		self.mediaStateTimer = [NSTimer scheduledTimerWithTimeInterval:1.0
+																target:self
+															  selector:@selector(sendMediaStateMessage)
+															  userInfo:nil
+															   repeats:YES];
 }
 
+/// The one question that cannot be answered by listening: does the peer parse
+/// our audio message at all? Put a message it must acknowledge directly behind
+/// one, in the same packet. Their parser reaches the second only by having read
+/// the first correctly - a malformed message aborts the whole packet - so an
+/// acknowledgement is proof the audio framing is right, and its absence is
+/// proof it is wrong.
+- (void)probeAudioFramingWith:(NSData *)audioMessage {
+	if (self.audioFramingProven || !self.currentSenderTag)
+		return;
+
+	self.audioProbeSeq = ++self.mediaSeqOut;
+
+	NSMutableData *body = [NSMutableData dataWithData:audioMessage];
+	uint32_t marked = [TGCallMessages markSeq:self.audioProbeSeq requiresAck:YES];
+	uint8_t seqBytes[4] = {
+		(uint8_t)(marked >> 24), (uint8_t)(marked >> 16),
+		(uint8_t)(marked >> 8),  (uint8_t)marked,
+	};
+	[body appendBytes:seqBytes length:4];
+	uint8_t trailer[2] = { TGCallMessageMediaState, 1 };
+	[body appendBytes:trailer length:2];
+
+	NSMutableData *encrypted = [NSMutableData dataWithLength:body.length + 32];
+	int encSize = TGCallEncryptPacket((const uint8_t *)self.callKey.bytes,
+									  self.outgoing, 0 /* media */,
+									  (const uint8_t *)body.bytes, body.length,
+									  ++self.mediaSeqOut,
+									  (uint8_t *)encrypted.mutableBytes);
+	if (encSize <= 0)
+		return;
+	encrypted.length = encSize;
+	[(self.currentReflector ?: self.reflector) sendPayload:encrypted
+													 toTag:self.currentSenderTag];
+	NSLog(@"TGCall: audio framing probe sent, waiting on seq %u", self.audioProbeSeq);
+}
+
+- (void)mediaStateAcknowledged {
+	if (!self.mediaStateTimer)
+		return;
+	NSLog(@"TGCall: peer acknowledged our media state");
+	[self.mediaStateTimer invalidate];
+	self.mediaStateTimer = nil;
+	[self sendRemoteNetworkStatusMessage];
+}
+
+- (void)sendRtcpReceiverReport {
+	if (!self.callKey.length || !self.currentSenderTag)
+		return;
+
+	uint32_t ourSSRC = self.outgoing ? 2 : 1;
+	uint32_t peerSSRC = self.outgoing ? 1 : 2;
+
+	NSData *rrPayload = [TGCallMessages rtcpReceiverReportWithOurSSRC:ourSSRC
+															 peerSSRC:peerSSRC
+														   highestSeq:_highestRtpSeqIn];
+
+	uint16_t rtpLength = (uint16_t)rrPayload.length;
+	uint8_t header[3] = {
+		TGCallMessageAudioData,
+		(uint8_t)(rtpLength >> 8),
+		(uint8_t)rtpLength,
+	};
+	NSMutableData *msg = [NSMutableData dataWithCapacity:3 + rtpLength];
+	[msg appendBytes:header length:3];
+	[msg appendData:rrPayload];
+
+	NSMutableData *encrypted = [NSMutableData dataWithLength:msg.length + 32];
+	uint32_t mediaSeq = ++self.mediaSeqOut;
+	int encSize = TGCallEncryptPacket((const uint8_t *)self.callKey.bytes,
+									  self.outgoing, 0 /* media */,
+									  (const uint8_t *)msg.bytes, msg.length,
+									  mediaSeq,
+									  (uint8_t *)encrypted.mutableBytes);
+	if (encSize <= 0)
+		return;
+	encrypted.length = encSize;
+
+	[(self.currentReflector ?: self.reflector) sendPayload:encrypted toTag:self.currentSenderTag];
+	for (TGCallReflector *reflector in self.reflectors) {
+		if (reflector.remoteTag && reflector.remoteTag != self.currentSenderTag) {
+			[reflector sendPayload:encrypted toTag:reflector.remoteTag];
+		}
+	}
+	NSLog(@"TGCall: sent RTCP Receiver Report (our SSRC %u, peer SSRC %u, highest rtp seq %u)",
+			ourSSRC, peerSSRC, _highestRtpSeqIn);
+}
+
+- (void)sendRemoteNetworkStatusMessage {
+	if (!self.callKey.length || !self.currentSenderTag)
+		return;
+
+	NSData *body = [TGCallMessages messageWithType:TGCallMessageRemoteNetworkStatus
+											  body:[TGCallMessages remoteNetworkStatusBody]];
+	NSMutableData *encrypted = [NSMutableData dataWithLength:body.length + 32];
+	uint32_t mediaSeq = [TGCallMessages markSeq:++self.mediaSeqOut requiresAck:YES];
+	int encSize = TGCallEncryptPacket((const uint8_t *)self.callKey.bytes,
+									  self.outgoing, 0 /* media */,
+									  (const uint8_t *)body.bytes, body.length,
+									  mediaSeq,
+									  (uint8_t *)encrypted.mutableBytes);
+	if (encSize <= 0)
+		return;
+	encrypted.length = encSize;
+	[(self.currentReflector ?: self.reflector) sendPayload:encrypted toTag:self.currentSenderTag];
+	NSLog(@"TGCall: sent RemoteNetworkStatusMessage (type 10)");
+}
+
+
 - (void)setMuted:(BOOL)muted {
+	// ponytail: the mic keeps running and the frames are dropped on the way out.
+	// Stopping the input queue would mean restarting it, for no audible gain.
 	_muted = muted;
-	if (_controller)
-		_controller->SetMicMute(muted);
 }
 
 - (void)teardown {
+	if (self.audioEngine) {
+		[self.audioEngine stop];
+		self.audioEngine = nil;
+	}
 	[self.ice stop];
 	self.ice = nil;
 	for (TGCallReflector *reflector in self.reflectors)
 		[reflector stop];
 	self.reflectors = nil;
 	self.reflector = nil;
-	if (_controller){
-		_controller->Stop();
-		delete _controller;
-		_controller = NULL;
-	}
+	self.currentReflector = nil;
+	self.currentSenderTag = 0;
+	self.callKey = nil;
+	self.sentCandidates = NO;
+	[self.mediaStateTimer invalidate];
+	self.mediaStateTimer = nil;
+	self.sentMediaState = NO;
+	self.mediaStateSeq = 0;
+	self.videoParametersSeq = 0;
+	self.mediaSeqOut = 0;
+	self.signallingSeq = 0;
+	_mediaPacketsIn = 0;
 	self.establishedAt = nil;
 	self.callId = 0;
 	[[AVAudioSession sharedInstance] setActive:NO error:nil];
 }
+
 
 @end
 

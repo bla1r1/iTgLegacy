@@ -155,6 +155,11 @@ typedef NS_ENUM(NSInteger, TGConnectionState) {
                  limit:(NSInteger)limit
             completion:(void (^)(NSArray *messages))completion;
 
+- (void)historyForChat:(int64_t)chatId
+         fromMessageId:(int64_t)fromMessageId
+                 limit:(NSInteger)limit
+            completion:(void (^)(NSArray *messages))completion;
+
 /// History of one forum topic. `threadId` is the topic's message_thread_id.
 - (void)historyForChat:(int64_t)chatId
                 thread:(int64_t)threadId
@@ -200,6 +205,49 @@ typedef NS_ENUM(NSInteger, TGConnectionState) {
 - (void)notificationsMutedForScope:(NSString *)scope
                         completion:(void (^)(BOOL muted))completion;
 - (void)setScope:(NSString *)scope muted:(BOOL)muted;
+
+/// Whether a scope's notifications carry the message text.
+- (void)notificationPreviewForScope:(NSString *)scope
+                         completion:(void (^)(BOOL show))completion;
+- (void)setScope:(NSString *)scope showPreview:(BOOL)show;
+
+/// Forget every per-chat notification exception, as their reset row does.
+- (void)resetAllNotificationSettings;
+
+/// A TDLib option by name, and the boolean setter for the handful of them the
+/// settings screens expose ("disable_top_chats", "disable_animated_emoji", ...).
+- (void)optionValue:(NSString *)name completion:(void (^)(id value))completion;
+- (void)setOption:(NSString *)name boolValue:(BOOL)value;
+
+/// Bytes over the wire since TDLib last reset its counters.
+- (void)networkStatsWithCompletion:(void (^)(long long sent, long long received))completion;
+- (void)resetNetworkStats;
+
+/// Whether media downloads itself, per network. TDLib cannot read the setting
+/// back, so these answer with what the app last wrote.
+- (BOOL)autoDownloadOverMobile;
+- (BOOL)autoDownloadOverWifi;
+- (void)setAutoDownloadOverMobile:(BOOL)mobile wifi:(BOOL)wifi;
+
+/// Whether two-step verification is on, and the recovery address if it is.
+- (void)hasPasswordWithCompletion:(void (^)(BOOL hasPassword,
+                                            NSString *recoveryEmail))completion;
+
+/// Drop the phone contacts this account uploaded to Telegram.
+- (void)clearImportedContacts;
+
+/// Set the signed-in account's own picture from a local file.
+- (void)setProfilePhotoAtPath:(NSString *)path completion:(void (^)(BOOL ok))completion;
+
+/// The account's own birthday. Day 0 means it is not set; year 0 means it is
+/// set but the year was left out, which Telegram allows.
+- (void)myBirthdayWithCompletion:(void (^)(NSInteger day, NSInteger month,
+                                           NSInteger year))completion;
+- (void)setBirthdayDay:(NSInteger)day month:(NSInteger)month year:(NSInteger)year;
+
+/// Calls this account made or received, newest first: "name", "outgoing",
+/// "missed", "date", "duration", "userId".
+- (void)recentCallsWithCompletion:(void (^)(NSArray *calls))completion;
 
 /// The privacy rules, by the name TDLib gives them without the prefix:
 /// "ShowStatus", "ShowProfilePhoto", "AllowCalls", "AllowChatInvites",
@@ -315,6 +363,11 @@ typedef NS_ENUM(NSInteger, TGConnectionState) {
 /// them; `completion` gets the number of bytes freed.
 - (void)clearCacheOfTypes:(NSArray *)kinds completion:(void (^)(long long freed))completion;
 
+/// What the cache is made of, largest first: "name", "bytes", "kinds". Walks
+/// the database, so it takes a moment on this hardware - ask once per screen.
+- (void)storageBreakdownWithCompletion:(void (^)(NSArray *categories,
+                                                 long long total))completion;
+
 #pragma mark - account
 
 /// Other devices signed into this account: "id", "name", "platform", "ip",
@@ -336,6 +389,11 @@ typedef NS_ENUM(NSInteger, TGConnectionState) {
 
 /// Gifts a user has received and kept on their profile: "title", "starCount".
 - (void)giftsForUser:(int64_t)userId completion:(void (^)(NSArray *gifts))completion;
+
+/// Stories on a profile: the ones kept on the page, or the ones still live if
+/// none are kept. Each: "storyId", "date", "caption", "photoId" (a file id for
+/// the picture or a video's poster frame), "isVideo", "viewers".
+- (void)storiesForChat:(int64_t)chatId completion:(void (^)(NSArray *stories))completion;
 
 /// Premium state of the signed-in account: nil when it is not active.
 - (void)premiumStateWithCompletion:(void (^)(NSString *summary))completion;

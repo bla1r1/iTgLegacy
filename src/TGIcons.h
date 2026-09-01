@@ -66,6 +66,20 @@
 /// "react". Nil for a name it does not draw, which leaves the row plain.
 + (UIImage *)menuGlyphNamed:(NSString *)name;
 
++ (UIImage *)settingsIconNamed:(NSString *)name color:(UIColor *)color;
+
+/// Read and decode a downloaded picture off the main thread, then hand it to
+/// the view. UIImage's own decode is lazy and lands on the main thread at draw
+/// time, which is what made a profile stutter as its pictures arrived.
++ (void)loadImageAtPath:(NSString *)path into:(UIImageView *)view;
+
+/// The same decode without a view to hand it to: call it off the main thread.
+/// `fill` covers the box, otherwise the picture is fitted inside it.
++ (UIImage *)decodedImage:(UIImage *)image
+			  fittingSize:(CGSize)target
+					 fill:(BOOL)fill
+					scale:(CGFloat)scale;
+
 /// Drop the cache after a theme change.
 + (void)flush;
 

@@ -82,7 +82,21 @@ FRAMEWORKS := -framework UIKit -framework Foundation -framework QuickLook \
 
 
 # TDLib is loaded at runtime from libtdjson.dylib, never linked.
+# armv7 loads TDLib from a dylib and links none of it: static, its __TEXT goes
+# past 19MB and a Thumb BL only reaches 16, which this linker cannot bridge.
+# arm64 has no such limit, and no arm64 dylib was ever built - so it links the
+# static libraries it already has. That is why this is per-architecture.
 TDLIB_LIBS :=
+# -u forces each entry point in even though nothing references it at link
+# time: the app reaches TDLib through dlsym, so -dead_strip would otherwise
+# throw the whole library away and leave a binary that links but cannot talk.
+TDLIB_KEEP_ARM64 := -Wl,-u,_td_json_client_create -Wl,-u,_td_json_client_send \
+                    -Wl,-u,_td_json_client_receive -Wl,-u,_td_json_client_execute \
+                    -Wl,-u,_td_json_client_destroy
+TDLIB_LIBS_ARM64 := $(TDLIB_KEEP_ARM64) \
+                    -ltdjson_static -ltdjson_private -ltdclient -ltdcore \
+                    -ltdapi -ltddb -ltdactor -ltdnet -ltdmtproto -ltdsqlite \
+                    -ltde2e -ltdutils -ltdtl -lssl
 # libcrypto: TDLib brings its own copy inside the dylib, but libtgvoip is
 # linked into the app and needs AES and SHA here.
 DEPS_LIBS  := -lopus -lstdc++ -lz -lcrypto
@@ -144,6 +158,7 @@ APP_SRC_M := \
 	src/TGPopupMenu.m \
 	src/TGSnackbar.m \
 	src/TGSearchViewController.m \
+	src/TGPlaceholderViewController.m \
 	src/TGQRViewController.m \
 	src/TGLoginViewController.m \
 	src/TGChatListViewController.m \
@@ -166,7 +181,11 @@ APP_SRC_M := \
 	src/TGVoiceRecorder.m \
 	src/opusenc/opusenc.m \
 	src/UIImage+WebP.m \
-	src/TGLottieView.m
+	src/TGLottieView.m \
+	src/TGMediaViewer.m \
+	src/TGMusicPlayer.m \
+	src/TGCallAudioEngine.m
+
 
 APP_SRC_C := \
 	src/tlv_polyfill.c \
@@ -196,8 +215,11 @@ ARMV7_ALL_OBJS   := $(ARMV7_LIBTG_OBJS) $(ARMV7_APP_OBJS)
 ARM64_OBJ_DIR := $(BUILD_DIR)/arm64/obj
 ARM64_LIBTG_OBJS := $(patsubst %.c,$(ARM64_OBJ_DIR)/%.o,$(LIBTG_SRC_C)) \
                     $(patsubst %.cpp,$(ARM64_OBJ_DIR)/%.o,$(LIBTG_SRC_CXX))
+ARM64_VOIP_OBJS  := $(patsubst %.cpp,$(ARM64_OBJ_DIR)/%.o,$(VOIP_SRC_CXX)) \
+                    $(patsubst %.mm,$(ARM64_OBJ_DIR)/%.o,$(VOIP_SRC_MM))
 ARM64_APP_OBJS   := $(patsubst %.m,$(ARM64_OBJ_DIR)/%.o,$(APP_SRC_M)) \
-                    $(patsubst %.c,$(ARM64_OBJ_DIR)/%.o,$(APP_SRC_C))
+                    $(patsubst %.c,$(ARM64_OBJ_DIR)/%.o,$(APP_SRC_C)) \
+                    $(ARM64_VOIP_OBJS)
 ARM64_ALL_OBJS   := $(ARM64_LIBTG_OBJS) $(ARM64_APP_OBJS)
 
 # Compiler Flags per Architecture
@@ -223,6 +245,10 @@ ipa: ipa-armv7 ipa-arm64
 	@mkdir -p "$(IPA_DIR)" "$(BUILD_DIR)/fat_app/iTgLegacy.app"
 	@cp -rf "$(BUILD_DIR)/arm64/app/iTgLegacy.app/"* "$(BUILD_DIR)/fat_app/iTgLegacy.app/"
 	@lipo -create "$(BUILD_DIR)/armv7/app/iTgLegacy.app/iTgLegacy" "$(BUILD_DIR)/arm64/app/iTgLegacy.app/iTgLegacy" -output "$(BUILD_DIR)/fat_app/iTgLegacy.app/iTgLegacy"
+	# The armv7 slice dlopens this; the arm64 slice has TDLib linked in and
+	# ignores it. Packaging from the arm64 bundle alone left it out, and the
+	# universal build installed on a 4S with no TDLib at all.
+	@cp -f "$(BUILD_DIR)/armv7/app/iTgLegacy.app/libtdjson.dylib" "$(BUILD_DIR)/fat_app/iTgLegacy.app/" 2>/dev/null || echo "[!] no armv7 libtdjson.dylib to package"
 	@codesign -s - --force "$(BUILD_DIR)/fat_app/iTgLegacy.app" 2>/dev/null || true
 	@rm -rf "$(BUILD_DIR)/Payload"
 	@mkdir -p "$(BUILD_DIR)/Payload"
@@ -248,6 +274,7 @@ ipa-armv7: $(MACHOFIX) $(ARMV7_ALL_OBJS)
 		-L$(BUILD_DIR)/armv7/libs -L$(BUILD_DIR)/armv7/tdlib/lib -L$(ROOT_DIR)/src/opus/lib \
 		$(ARMV7_ALL_OBJS) $(FRAMEWORKS) $(WEBP_ARMV7) $(TDLIB_LIBS) $(DEPS_LIBS) -o "$(BUILD_DIR)/armv7/app/iTgLegacy.app/iTgLegacy"
 	@cp -f "$(ROOT_DIR)/src/Info.plist" "$(BUILD_DIR)/armv7/app/iTgLegacy.app/Info.plist" 2>/dev/null || true
+	@cp -f "$(ROOT_DIR)/src/"*.ttf "$(BUILD_DIR)/armv7/app/iTgLegacy.app/" 2>/dev/null || true
 	@cp -rf "$(ROOT_DIR)/images/"* "$(BUILD_DIR)/armv7/app/iTgLegacy.app/" 2>/dev/null || true
 	@# TDLib rides along as its own image: statically linked it pushes __TEXT
 	@# past the 16MB armv7 thumb branch limit. Built by scripts/build_tdlib_dylib.sh.
@@ -266,8 +293,9 @@ ipa-arm64: $(ARM64_ALL_OBJS)
 	@mkdir -p "$(IPA_DIR)" "$(BUILD_DIR)/arm64/app/iTgLegacy.app"
 	$(CC) -arch arm64 -isysroot $(SDK_PATH) $(MIN_IOS) -Wl,-dead_strip \
 		-L$(BUILD_DIR)/arm64/libs -L$(BUILD_DIR)/arm64/tdlib/lib -L$(ROOT_DIR)/src/opus/lib \
-		$(ARM64_ALL_OBJS) $(FRAMEWORKS) $(WEBP_ARM64) $(TDLIB_LIBS) $(DEPS_LIBS) -o "$(BUILD_DIR)/arm64/app/iTgLegacy.app/iTgLegacy"
+		$(ARM64_ALL_OBJS) $(FRAMEWORKS) $(WEBP_ARM64) $(TDLIB_LIBS_ARM64) $(DEPS_LIBS) -o "$(BUILD_DIR)/arm64/app/iTgLegacy.app/iTgLegacy"
 	@cp -f "$(ROOT_DIR)/src/Info.plist" "$(BUILD_DIR)/arm64/app/iTgLegacy.app/Info.plist" 2>/dev/null || true
+	@cp -f "$(ROOT_DIR)/src/"*.ttf "$(BUILD_DIR)/arm64/app/iTgLegacy.app/" 2>/dev/null || true
 	@cp -rf "$(ROOT_DIR)/images/"* "$(BUILD_DIR)/arm64/app/iTgLegacy.app/" 2>/dev/null || true
 	@codesign -s - --force "$(BUILD_DIR)/arm64/app/iTgLegacy.app" 2>/dev/null || true
 	@rm -rf "$(BUILD_DIR)/Payload" "$(IPA_ARM64)"
@@ -309,6 +337,14 @@ $(ARM64_OBJ_DIR)/%.o: %.c
 $(ARM64_OBJ_DIR)/%.o: %.m
 	@mkdir -p $(dir $@)
 	$(CC) $(OBJCFLAGS_ARM64) -c $< -o $@
+
+$(ARM64_OBJ_DIR)/src/libtgvoip/%.o: src/libtgvoip/%.cpp
+	@mkdir -p $(dir $@)
+	$(CXX) $(subst -std=c++11,-std=c++14,$(CXXFLAGS_ARM64)) $(VOIP_FLAGS) -c $< -o $@
+
+$(ARM64_OBJ_DIR)/%.o: %.mm
+	@mkdir -p $(dir $@)
+	$(CXX) $(subst -std=c++11,-std=c++14,$(CXXFLAGS_ARM64)) $(VOIP_FLAGS) -fobjc-arc -c $< -o $@
 
 $(ARM64_OBJ_DIR)/%.o: %.cpp
 	@mkdir -p $(dir $@)

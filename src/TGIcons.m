@@ -2,11 +2,16 @@
 #import "TGTheme.h"
 
 static NSMutableDictionary *sCache = nil;
+/// Settings icons bake a glyph into a coloured plate, and the glyph itself is
+/// drawn differently flat and skeuomorphic - so this cache has to go when the
+/// theme does, same as the other one.
+static NSMutableDictionary *sSettingsIconCache = nil;
 
 @implementation TGIcons
 
 + (void)flush {
 	[sCache removeAllObjects];
+	[sSettingsIconCache removeAllObjects];
 }
 
 /// Every icon goes through here: same size, same cache, same styling rules.
@@ -770,11 +775,22 @@ static UIImage *TGGlyphAvatar(CGFloat side, void (^draw)(CGContextRef ctx, CGFlo
 		CGContextFillPath(ctx);
 	});
 }
-
 + (UIImage *)avatarWithInitials:(NSString *)initials
                            size:(CGFloat)size
                        colourId:(int64_t)colourId
 {
+	static NSCache *avatarCache = nil;
+	static dispatch_once_t onceToken;
+	dispatch_once(&onceToken, ^{
+		avatarCache = [[NSCache alloc] init];
+		avatarCache.countLimit = 200; // Keep up to 200 avatars in memory
+	});
+
+	BOOL isFlat = [TGTheme shared].isFlat;
+	NSString *cacheKey = [NSString stringWithFormat:@"%@_%.1f_%lld_%d", initials ?: @"?", size, colourId, isFlat];
+	UIImage *cached = [avatarCache objectForKey:cacheKey];
+	if (cached) return cached;
+
 	// Telegram's own placeholder colours, and its own mapping: the palette is
 	// indexed through [0,7,4,1,6,3,5] so that the same person gets the same
 	// colour here as in every other client.
@@ -798,7 +814,7 @@ static UIImage *TGGlyphAvatar(CGFloat side, void (^draw)(CGContextRef ctx, CGFlo
 								  [c[2] floatValue], 1.0f);
 	CGContextFillEllipseInRect(ctx, CGRectMake(0, 0, size, size));
 
-	if (![TGTheme shared].isFlat){
+	if (!isFlat){
 		// a glassy highlight across the top half
 		CGContextSaveGState(ctx);
 		CGContextAddEllipseInRect(ctx, CGRectMake(0, 0, size, size));
@@ -819,7 +835,134 @@ static UIImage *TGGlyphAvatar(CGFloat side, void (^draw)(CGContextRef ctx, CGFlo
 
 	UIImage *image = UIGraphicsGetImageFromCurrentImageContext();
 	UIGraphicsEndImageContext();
+	
+	if (image) [avatarCache setObject:image forKey:cacheKey];
 	return image;
+}
+
++ (UIImage *)settingsIconNamed:(NSString *)name color:(UIColor *)color {
+	// Every settings row asks for its icon in cellForRow, and the list reloads
+	// on every appearance - redrawing sixteen of these each time is what made
+	// the screen crawl on a 4S.
+	if (!sSettingsIconCache) sSettingsIconCache = [NSMutableDictionary dictionary];
+	NSString *cacheKey = [NSString stringWithFormat:@"%@|%@", name, color];
+	UIImage *hit = sSettingsIconCache[cacheKey];
+	if (hit) return hit;
+
+	CGFloat side = 29.0;
+	UIGraphicsBeginImageContextWithOptions(CGSizeMake(side, side), NO, 0);
+	CGContextRef ctx = UIGraphicsGetCurrentContext();
+	(void)ctx;
+
+	// Draw rounded square background
+	UIBezierPath *path = [UIBezierPath bezierPathWithRoundedRect:CGRectMake(0, 0, side, side) cornerRadius:6.0];
+	[color setFill];
+	[path fill];
+
+	// Get line glyph and draw it centered in white
+	UIImage *glyph = [self menuGlyphNamed:name];
+	if (!glyph) {
+		// Fallback for missing glyphs: use a generic dot or similar if needed,
+		// but we'll map them carefully.
+		if ([name isEqualToString:@"star"]) glyph = [self menuGlyphNamed:@"folder"]; // Placeholder
+		if ([name isEqualToString:@"battery"]) glyph = [self menuGlyphNamed:@"call"]; // Placeholder
+		if ([name isEqualToString:@"devices"]) glyph = [self menuGlyphNamed:@"chat"]; // Placeholder
+		if ([name isEqualToString:@"gift"]) glyph = [self menuGlyphNamed:@"policy"]; // Placeholder
+		if ([name isEqualToString:@"briefcase"]) glyph = [self menuGlyphNamed:@"archive"]; // Placeholder
+		// The sticker glyph is drawn as a top-level icon rather than a menu one,
+		// so it never matched here and the row got a plain coloured square.
+		if ([name isEqualToString:@"sticker"]) glyph = [self sticker];
+	}
+
+	if (glyph) {
+		// The glyph goes on top of the plate. It used to be composited with
+		// kCGBlendModeDestinationIn, which cut the coloured square down to the
+		// glyph instead of drawing a white glyph on it.
+		CGFloat w = glyph.size.width;
+		CGFloat h = glyph.size.height;
+		CGRect rect = CGRectMake((side - w) / 2.0, (side - h) / 2.0, w, h);
+		
+		// To tint the template image white
+		UIGraphicsBeginImageContextWithOptions(glyph.size, NO, 0);
+		CGContextRef tintCtx = UIGraphicsGetCurrentContext();
+		CGContextTranslateCTM(tintCtx, 0, h);
+		CGContextScaleCTM(tintCtx, 1.0, -1.0);
+		CGContextClipToMask(tintCtx, CGRectMake(0, 0, w, h), glyph.CGImage);
+		[[UIColor whiteColor] setFill];
+		CGContextFillRect(tintCtx, CGRectMake(0, 0, w, h));
+		UIImage *tintedGlyph = UIGraphicsGetImageFromCurrentImageContext();
+		UIGraphicsEndImageContext();
+		
+		[tintedGlyph drawInRect:rect];
+	}
+
+	UIImage *image = UIGraphicsGetImageFromCurrentImageContext();
+	UIGraphicsEndImageContext();
+	if (image) sSettingsIconCache[cacheKey] = image;
+	return image;
+}
+
+/// imageWithContentsOfFile: does not decode; the first draw does, on whatever
+/// thread draws - the main one. Redrawing it here decodes it off the main
+/// thread and scales it down to the size it will be shown at, so a 1280px
+/// photo stops being resampled every frame it is on screen.
++ (UIImage *)decodedImage:(UIImage *)image
+			  fittingSize:(CGSize)target
+					 fill:(BOOL)fill
+					scale:(CGFloat)scale
+{
+	if (!image)
+		return nil;
+	CGSize size = image.size;
+	if (size.width < 1 || size.height < 1)
+		return image;
+
+	// Fill covers the box and comes back at exactly that size, cropped - a
+	// nine-by-sixteen story thumbnail scaled to "cover" a 40pt square is still
+	// 40x71, which then pushed the row it sat in out of shape. Fit sits inside
+	// the box instead and keeps its own proportions (a photo in a bubble).
+	if (fill && target.width > 0 && target.height > 0){
+		CGFloat grow = MAX(target.width / size.width, target.height / size.height);
+		CGSize drawn = CGSizeMake(size.width * grow, size.height * grow);
+		UIGraphicsBeginImageContextWithOptions(target, NO, scale > 0 ? scale : 1.0f);
+		[image drawInRect:CGRectMake((target.width - drawn.width) / 2,
+									 (target.height - drawn.height) / 2,
+									 drawn.width, drawn.height)];
+		UIImage *cropped = UIGraphicsGetImageFromCurrentImageContext();
+		UIGraphicsEndImageContext();
+		return cropped ?: image;
+	}
+
+	if (target.width > 0 && target.height > 0){
+		// Only ever shrink - upscaling here would cost memory and buy nothing.
+		CGFloat shrink = MIN(target.width / size.width, target.height / size.height);
+		if (shrink < 1.0f)
+			size = CGSizeMake(MAX(1.0f, floorf(size.width * shrink)),
+							  MAX(1.0f, floorf(size.height * shrink)));
+	}
+
+	UIGraphicsBeginImageContextWithOptions(size, NO, scale > 0 ? scale : 1.0f);
+	[image drawInRect:CGRectMake(0, 0, size.width, size.height)];
+	UIImage *decoded = UIGraphicsGetImageFromCurrentImageContext();
+	UIGraphicsEndImageContext();
+	return decoded ?: image;
+}
+
++ (void)loadImageAtPath:(NSString *)path into:(UIImageView *)view {
+	if (!path.length || !view)
+		return;
+	__weak UIImageView *weakView = view;
+	CGSize target = view.bounds.size;
+	CGFloat screenScale = [UIScreen mainScreen].scale;   // UIScreen is main-thread only
+	dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_LOW, 0), ^{
+		UIImage *decoded = [TGIcons decodedImage:[UIImage imageWithContentsOfFile:path]
+									 fittingSize:target fill:YES scale:screenScale];
+		if (!decoded)
+			return;
+		dispatch_async(dispatch_get_main_queue(), ^{
+			weakView.image = decoded;
+		});
+	});
 }
 
 @end

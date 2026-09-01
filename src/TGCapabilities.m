@@ -25,15 +25,35 @@
 	return [self systemVersion] >= 9.0;
 }
 
+/// A Power Saving switch, defaulting to on when the user has never touched it.
+static BOOL TGWanted(NSString *key) {
+	NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+	return [defaults objectForKey:key] ? [defaults boolForKey:key] : YES;
+}
+
+static void TGSetWanted(NSString *key, BOOL wanted) {
+	[[NSUserDefaults standardUserDefaults] setBool:wanted forKey:key];
+	[[NSUserDefaults standardUserDefaults] synchronize];
+}
+
++ (BOOL)animatedStickersWanted { return TGWanted(@"TGWantAnimatedStickers"); }
++ (void)setAnimatedStickersWanted:(BOOL)wanted {
+	TGSetWanted(@"TGWantAnimatedStickers", wanted);
+}
++ (BOOL)wallpaperWanted { return TGWanted(@"TGWantWallpaper"); }
++ (void)setWallpaperWanted:(BOOL)wanted {
+	TGSetWanted(@"TGWantWallpaper", wanted);
+}
+
 + (BOOL)canPlayAnimatedStickers {
 	// TGLottieView does play these on an A5 - not at full speed, but it plays.
 	// Custom emoji are the ones that need a newer chip, because they animate
 	// inside every message rather than one at a time.
-	return [TGDevice tier] >= TGDeviceTierLegacy;
+	return [TGDevice tier] >= TGDeviceTierLegacy && [self animatedStickersWanted];
 }
 
 + (BOOL)canShowWallpaper {
-	return [TGDevice tier] >= TGDeviceTierLegacy;
+	return [TGDevice tier] >= TGDeviceTierLegacy && [self wallpaperWanted];
 }
 
 + (BOOL)canAnimateInline {

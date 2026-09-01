@@ -105,6 +105,13 @@
 	if (!destination)
 		return;
 
+	// Audio comes through here fifty times a second and syslog drops lines when
+	// it is flooded - which costs exactly the lines worth reading.
+	if (tag != self.lastDestination){
+		self.lastDestination = tag;
+		NSLog(@"TGCallReflector: addressing tag %u on %@", tag, self.host);
+	}
+
 	NSMutableData *packet = [NSMutableData dataWithData:destination];
 	[packet appendBytes:&_localTag length:4];
 
@@ -117,6 +124,7 @@
 
 	[self send:packet];
 }
+
 
 - (void)sendPayload:(NSData *)payload {
 	// Answer whoever actually wrote to us: the tag in the header of the last
@@ -171,9 +179,10 @@
 		if (got > 20){
 			uint32_t sender = 0;
 			memcpy(&sender, buffer + 16, 4);
-			if (sender && sender != self.localTag)
+			if (sender && sender != 0xFFFFFFFF && sender != self.localTag)
 				self.observedTag = sender;
 		}
+
 		dispatch_async(dispatch_get_main_queue(), ^{
 			NSLog(@"TGCallReflector: %ld bytes in", (long)got);
 			if (self.onPacket)

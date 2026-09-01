@@ -21,6 +21,8 @@
 #import "TGCallViewController.h"
 #import "TGPopupMenu.h"
 #import "TGSnackbar.h"
+#import "TGMediaViewer.h"
+#import "TGMusicPlayer.h"
 
 // Their design system is drawn for Android at 360dp; a 4S is 320pt, so
 // everything taken from it is scaled by 0.889 and rounded to a whole point.
@@ -38,6 +40,118 @@ static const CGFloat kFileDisc    = 37.0f;
 static const CGFloat kMediaRadius = 6.0f;
 // One option of a poll: a 16 circle, the text, the share, and the bar under it.
 static const CGFloat kPollRow     = 30.0f;
+
+/// UITableView asks for the height of every row on every reloadData, and a
+/// chat reloads on each arriving message, avatar and thumbnail. Laying out the
+/// same strings again each time is where a 4S spent its frame, so measurements
+/// are kept: the text of a message never changes, only which rows exist.
+/// ponytail: flat dictionary with a size cap, an LRU would not buy anything
+/// at these counts.
+static CGSize TGTextSize(NSString *text, UIFont *font, CGFloat width) {
+	if (!text.length)
+		return CGSizeZero;
+
+	static NSMutableDictionary *cache = nil;
+	if (!cache)
+		cache = [NSMutableDictionary dictionary];
+
+	NSString *key = [NSString stringWithFormat:@"%.0f|%.0f|%@", width, font.pointSize, text];
+	NSValue *hit = cache[key];
+	if (hit)
+		return [hit CGSizeValue];
+
+	CGSize size = (width > 0)
+			? [text sizeWithFont:font
+			   constrainedToSize:CGSizeMake(width, 10000)
+				   lineBreakMode:NSLineBreakByWordWrapping]
+			: [text sizeWithFont:font];
+
+	if (cache.count > 500)
+		[cache removeAllObjects];
+	cache[key] = [NSValue valueWithCGSize:size];
+	return size;
+}
+
+/// This OS shipped with Apple Color Emoji as it stood in 2013: everything
+/// standardised since - and that is most of what people send - comes out as a
+/// blank box. The bundled OpenMoji covers it. The system font still draws the
+/// words; only the emoji runs are handed over, which is what keeps the line
+/// metrics of ordinary text unchanged.
+static UIFont *TGEmojiFontOfSize(CGFloat size) {
+	static BOOL logged = NO;
+	// PostScript name first - that is what fontWithName: wants. "OpenMoji
+	// Color" is the full name and "OpenMoji" the family, either of which some
+	// builds of the font answer to instead.
+	UIFont *font = [UIFont fontWithName:@"OpenMojiColor" size:size];
+	if (!font) font = [UIFont fontWithName:@"OpenMoji Color" size:size];
+	if (!font) font = [UIFont fontWithName:@"OpenMoji" size:size];
+	if (!logged){
+		logged = YES;
+		NSLog(@"emoji font: %@", font ? font.fontName
+				: @"NOT REGISTERED - check UIAppFonts in Info.plist");
+	}
+	return font;
+}
+
+static BOOL TGIsEmojiScalar(UTF32Char c) {
+	return (c >= 0x1F000 && c <= 0x1FAFF) ||   // pictographs, faces, flags
+		   (c >= 0x2600  && c <= 0x27BF)  ||   // misc symbols and dingbats
+		   (c >= 0x2B00  && c <= 0x2BFF);      // arrows and stars
+}
+
+/// Nil when the text is plain, so the common message keeps the cheap path and
+/// only one carrying emoji pays for an attributed string.
+static NSAttributedString *TGEmojiAttributedText(NSString *text, UIFont *base) {
+	if (!text.length)
+		return nil;
+
+	static NSMutableDictionary *cache = nil;
+	if (!cache)
+		cache = [NSMutableDictionary dictionary];
+	NSString *key = [NSString stringWithFormat:@"%.0f|%@", base.pointSize, text];
+	id hit = cache[key];
+	if (hit)
+		return (hit == [NSNull null]) ? nil : hit;
+
+	UIFont *emojiFont = TGEmojiFontOfSize(base.pointSize);
+	__block NSMutableAttributedString *styled = nil;
+	if (emojiFont){
+		[text enumerateSubstringsInRange:NSMakeRange(0, text.length)
+								 options:NSStringEnumerationByComposedCharacterSequences
+							  usingBlock:^(NSString *piece, NSRange range,
+										   NSRange enclosing, BOOL *stop){
+			UTF32Char first = [piece characterAtIndex:0];
+			if (piece.length >= 2 && CFStringIsSurrogateHighCharacter(first))
+				first = (UTF32Char)CFStringGetLongCharacterForSurrogatePair(
+						first, [piece characterAtIndex:1]);
+			if (!TGIsEmojiScalar(first))
+				return;
+			if (!styled)
+				styled = [[NSMutableAttributedString alloc] initWithString:text
+						attributes:@{NSFontAttributeName : base}];
+			[styled addAttribute:NSFontAttributeName value:emojiFont range:range];
+		}];
+	}
+
+	if (cache.count > 300)
+		[cache removeAllObjects];
+	cache[key] = styled ?: (id)[NSNull null];
+	return styled;
+}
+
+/// attributedText ignores the label's textColor, so the colour goes on here.
+static void TGSetBodyText(UILabel *label, NSString *text, UIColor *colour) {
+	NSAttributedString *rich = TGEmojiAttributedText(text, label.font);
+	if (!rich){
+		label.textColor = colour;
+		label.text = text;
+		return;
+	}
+	NSMutableAttributedString *coloured = [rich mutableCopy];
+	[coloured addAttribute:NSForegroundColorAttributeName value:colour
+					 range:NSMakeRange(0, coloured.length)];
+	label.attributedText = coloured;
+}
 
 #pragma mark - bubble cell
 
@@ -212,11 +326,16 @@ static const CGFloat kPollRow     = 30.0f;
 @property (nonatomic, strong) UILabel *recordClock;
 @property (nonatomic, strong) UIView *recordDot;
 @property (nonatomic, assign) int64_t playingMessageId;
+@property (nonatomic, assign) BOOL isLoadingMoreHistory;
 @property (nonatomic, strong) NSTimer *playbackTimer;
 @property (nonatomic, strong) MPMoviePlayerController *videoNotePlayer;
+@property (nonatomic, strong) CAShapeLayer *videoNoteProgressLayer;
 @property (nonatomic, strong) UIView *playerBar;        // the strip under the header
 @property (nonatomic, strong) UIView *playerProgress;   // its line
 @property (nonatomic, strong) UIButton *playerToggle;
+@property (nonatomic, strong) UIButton *playerSpeed;
+@property (nonatomic, strong) UIButton *musicPrevious;
+@property (nonatomic, strong) UIButton *musicNext;
 @property (nonatomic, strong) UILabel *playerLabel;
 @property (nonatomic, strong) NSMutableDictionary *senderAvatars;   // userId -> UIImage
 @property (nonatomic, strong) NSMutableSet *senderAvatarsRequested;
@@ -311,7 +430,13 @@ static const CGFloat kPollRow     = 30.0f;
 		[me reload];
 	};
 
-	[self reload];
+	[[NSNotificationCenter defaultCenter] addObserver:self
+			selector:@selector(musicChanged)
+				name:TGMusicPlayerChangedNotification object:nil];
+
+	dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.4 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+		[self reload];
+	});
 }
 
 /// A two-line header: the chat name with member count or status beneath it,
@@ -500,6 +625,8 @@ static const CGFloat kPollRow     = 30.0f;
 /// nobody expects, and the timer would outlive the screen it repaints.
 - (void)viewWillDisappear:(BOOL)animated {
 	[super viewWillDisappear:animated];
+	// Music deliberately survives this: it goes on in the background, which is
+	// the whole reason it has a player of its own.
 	if (self.voicePlayer)
 		[self stopPlayback];
 	[self stopVideoNote];
@@ -515,6 +642,11 @@ static const CGFloat kPollRow     = 30.0f;
 }
 
 #pragma mark - data
+
+- (void)reloadTableDebounced {
+	[NSObject cancelPreviousPerformRequestsWithTarget:self.table selector:@selector(reloadData) object:nil];
+	[self.table performSelector:@selector(reloadData) withObject:nil afterDelay:0.05];
+}
 
 - (void)reload {
 	__weak typeof(self) weakSelf = self;
@@ -630,7 +762,7 @@ static const CGFloat kPollRow     = 30.0f;
 
 	for (NSNumber *uid in wanted){
 		[[TGClient shared] ensureUserName:uid.longLongValue completion:^{
-			[weakSelf.table reloadData];
+			[weakSelf reloadTableDebounced];
 		}];
 	}
 }
@@ -650,18 +782,19 @@ static const CGFloat kPollRow     = 30.0f;
 
 		[[TGClient shared] messageWithId:replyId.longLongValue
 								  inChat:self.chatId
-							  completion:^(NSDictionary *original){
+							  completion:^(NSDictionary *m){
 			TGChatViewController *me = weakSelf;
-			if (!me || !original)
+			if (!me || !m)
 				return;
-			me.quotes[replyId] = original;
-			[me.table reloadData];
+			me.quotes[replyId] = m;
+			[me reloadTableDebounced];
 		}];
 	}
 }
 
 - (void)fetchMissingImages {
 	__weak typeof(self) weakSelf = self;
+	CGFloat screenScale = [UIScreen mainScreen].scale;   // read here, used off-thread
 	[self fetchMissingMaps];
 
 	// Animated stickers need the .tgs itself, not the still thumbnail.
@@ -680,7 +813,7 @@ static const CGFloat kPollRow     = 30.0f;
 			if (!me || !path)
 				return;
 			me.lottiePaths[docId] = path;
-			[me.table reloadData];
+			[me reloadTableDebounced];
 			if (me.anchorToBottom)
 				[me scrollToBottomAnimated:NO];
 		}];
@@ -695,25 +828,37 @@ static const CGFloat kPollRow     = 30.0f;
 		[self.imagesRequested addObject:fileId];
 
 		[[TGClient shared] downloadFile:[fileId integerValue] completion:^(NSString *path){
-			TGChatViewController *me = weakSelf;
-			if (!me || !path)
-				return;
-			// Stickers arrive as WebP, which UIImage does not know on iOS 7.
-			UIImage *img = [UIImage imageWithContentsOfFile:path];
-			if (!img && [path.pathExtension.lowercaseString isEqualToString:@"webp"])
-				img = [UIImage convertFromWebP:path compressedData:nil error:nil];
-			if (!img){
-				NSLog(@"image: cannot decode %@", path.lastPathComponent);
-				return;
-			}
-			NSLog(@"image: %@ -> %.0fx%.0f", path.lastPathComponent,
-					img.size.width, img.size.height);
-			me.images[fileId] = img;
-			[me.table reloadData];
-			// Rows grow when an image arrives, pushing the newest messages
-			// below the fold, so re-anchor to the bottom while first showing.
-			if (me.anchorToBottom)
-				[me scrollToBottomAnimated:NO];
+			if (!path) return;
+			dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_BACKGROUND, 0), ^{
+				// Stickers arrive as WebP, which UIImage does not know on iOS 7.
+				UIImage *img = [UIImage imageWithContentsOfFile:path];
+				if (!img && [path.pathExtension.lowercaseString isEqualToString:@"webp"])
+					img = [UIImage convertFromWebP:path compressedData:nil error:nil];
+
+				if (!img) {
+					NSLog(@"image: cannot decode %@", path.lastPathComponent);
+					return;
+				}
+
+				// A bubble never shows more than kImageMax across, and the file
+				// off the wire can be ten times that - decoding it full size and
+				// letting the main thread resample it on every frame is what made
+				// a chat with pictures stutter.
+				img = [TGIcons decodedImage:img
+								fittingSize:CGSizeMake(kImageMax, kImageMax)
+									   fill:NO scale:screenScale];
+
+				dispatch_async(dispatch_get_main_queue(), ^{
+					TGChatViewController *me = weakSelf;
+					if (!me) return;
+					me.images[fileId] = img;
+					[me reloadTableDebounced];
+					// Rows grow when an image arrives, pushing the newest messages
+					// below the fold, so re-anchor to the bottom while first showing.
+					if (me.anchorToBottom)
+						[me scrollToBottomAnimated:NO];
+				});
+			});
 		}];
 	}
 }
@@ -780,9 +925,18 @@ static const CGFloat kPollRow     = 30.0f;
 	NSNumber *fileId = [[TGClient shared] photoFileIdForChat:self.chatId];
 	if (!fileId)
 		return;
+	CGFloat screenScale = [UIScreen mainScreen].scale;
 	[[TGClient shared] downloadFile:fileId.integerValue completion:^(NSString *path){
-		UIImage *photo = path ? [UIImage imageWithContentsOfFile:path] : nil;
-		if (photo) [button setImage:photo forState:UIControlStateNormal];
+		if (!path.length) return;
+		dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_LOW, 0), ^{
+			UIImage *photo = [TGIcons decodedImage:[UIImage imageWithContentsOfFile:path]
+									   fittingSize:CGSizeMake(side, side)
+											  fill:YES scale:screenScale];
+			if (!photo) return;
+			dispatch_async(dispatch_get_main_queue(), ^{
+				[button setImage:photo forState:UIControlStateNormal];
+			});
+		});
 	}];
 }
 
@@ -872,7 +1026,10 @@ static const CGFloat kPollRow     = 30.0f;
 		[[NSFileManager defaultManager] removeItemAtPath:saved error:nil];
 		[[NSFileManager defaultManager] copyItemAtPath:path toPath:saved error:nil];
 
-		BOOL applied = [[TGTheme shared] importThemeAtPath:saved];
+		// Through the one theme list, so a file adopted from a chat clears
+		// whatever built-in theme was in force rather than layering over it.
+		BOOL applied = [[TGTheme shared] selectThemeId:
+				[@"file:" stringByAppendingString:saved.lastPathComponent]];
 		UIAlertView *alert = [[UIAlertView alloc] initWithTitle:@"Theme"
 				message:(applied ? [NSString stringWithFormat:@"%@ applied.",
 						[TGTheme shared].importedName ?: name]
@@ -1089,11 +1246,21 @@ static const CGFloat kPollRow     = 30.0f;
 	void (^fetch)(NSNumber *) = ^(NSNumber *fileId){
 		if (!fileId)
 			return;
+		CGFloat screenScale = [UIScreen mainScreen].scale;
 		[[TGClient shared] downloadFile:fileId.integerValue completion:^(NSString *path){
-			UIImage *photo = path ? [UIImage imageWithContentsOfFile:path] : nil;
-			if (!photo) return;
-			weakSelf.senderAvatars[key] = photo;
-			[weakSelf.table reloadData];
+			if (!path.length) return;
+			dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_LOW, 0), ^{
+				UIImage *photo = [TGIcons decodedImage:[UIImage imageWithContentsOfFile:path]
+										   fittingSize:CGSizeMake(kAvatarSide, kAvatarSide)
+												  fill:YES scale:screenScale];
+				if (!photo) return;
+				dispatch_async(dispatch_get_main_queue(), ^{
+					weakSelf.senderAvatars[key] = photo;
+					// One reload per arriving avatar reloaded the whole table
+					// once per participant in a busy group.
+					[weakSelf reloadTableDebounced];
+				});
+			});
 		}];
 	};
 
@@ -1203,7 +1370,7 @@ static const CGFloat kPollRow     = 30.0f;
 		// Until the picture is decoded the emoji stands in, so the strip is
 		// usable immediately rather than a row of blanks.
 		[button setTitle:sticker[@"emoji"] forState:UIControlStateNormal];
-		button.titleLabel.font = [UIFont systemFontOfSize:34];
+		button.titleLabel.font = TGEmojiFontOfSize(34) ?: [UIFont systemFontOfSize:34];
 		[panel addSubview:button];
 		x += side + gap;
 
@@ -1390,11 +1557,26 @@ static const CGFloat kPollRow     = 30.0f;
 	player.view.frame = circle.bounds;
 	player.shouldAutoplay = YES;
 	[circle addSubview:player.view];
+    
+    // Add progress ring
+    self.videoNoteProgressLayer = [CAShapeLayer layer];
+    self.videoNoteProgressLayer.frame = circle.bounds;
+    self.videoNoteProgressLayer.path = [UIBezierPath bezierPathWithArcCenter:CGPointMake(side/2, side/2)
+                                                                      radius:side/2 - 2
+                                                                  startAngle:-M_PI_2
+                                                                    endAngle:M_PI_2 * 3
+                                                                   clockwise:YES].CGPath;
+    self.videoNoteProgressLayer.strokeColor = [[TGTheme shared] accentColour].CGColor;
+    self.videoNoteProgressLayer.fillColor = [UIColor clearColor].CGColor;
+    self.videoNoteProgressLayer.lineWidth = 4.0;
+    self.videoNoteProgressLayer.strokeEnd = 0.0;
+    [circle.layer addSublayer:self.videoNoteProgressLayer];
+
 	[self.view addSubview:circle];
 	self.videoNotePlayer = player;
 
 	[circle addGestureRecognizer:[[UITapGestureRecognizer alloc]
-			initWithTarget:self action:@selector(stopVideoNote)]];
+			initWithTarget:self action:@selector(togglePlayback)]];
 
 	[[NSNotificationCenter defaultCenter] addObserver:self
 			selector:@selector(stopVideoNote)
@@ -1402,6 +1584,11 @@ static const CGFloat kPollRow     = 30.0f;
 			  object:player];
 	[player prepareToPlay];
 	[player play];
+    
+    self.playingMessageId = [m[@"id"] longLongValue];
+    [self showPlayerBar];
+    self.playerLabel.text = @"Video message";
+    [self startPlaybackTimer];
 }
 
 - (void)stopVideoNote {
@@ -1413,6 +1600,14 @@ static const CGFloat kPollRow     = 30.0f;
 	[self.videoNotePlayer stop];
 	[[self.view viewWithTag:0xF119] removeFromSuperview];
 	self.videoNotePlayer = nil;
+    self.videoNoteProgressLayer = nil;
+    
+    [self.playbackTimer invalidate];
+    self.playbackTimer = nil;
+    if (!self.voicePlayer) {
+        self.playingMessageId = 0;
+        [self hidePlayerBar];
+    }
 }
 
 #pragma mark - playback
@@ -1435,7 +1630,7 @@ static const CGFloat kPollRow     = 30.0f;
 		[self.playerBar addSubview:self.playerToggle];
 
 		self.playerLabel = [[UILabel alloc] initWithFrame:
-				CGRectMake(40, 8, b.size.width - 80, 20)];
+				CGRectMake(40, 8, b.size.width - 128, 20)];
 		self.playerLabel.font = [UIFont systemFontOfSize:14];
 		self.playerLabel.backgroundColor = [UIColor clearColor];
 		self.playerLabel.autoresizingMask = UIViewAutoresizingFlexibleWidth;
@@ -1452,6 +1647,22 @@ static const CGFloat kPollRow     = 30.0f;
 		[close setTitleColor:[[TGTheme shared] secondaryTextColour]
 					forState:UIControlStateNormal];
 
+		self.playerSpeed = [UIButton buttonWithType:UIButtonTypeCustom];
+		self.playerSpeed.frame = CGRectMake(b.size.width - 82, 4, 42, 28);
+		self.playerSpeed.titleLabel.font = [UIFont systemFontOfSize:13];
+		self.playerSpeed.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
+		[self.playerSpeed setTitle:@"1x" forState:UIControlStateNormal];
+		[self.playerSpeed setTitleColor:[[TGTheme shared] accentColour]
+							   forState:UIControlStateNormal];
+		[self.playerSpeed addTarget:self action:@selector(cyclePlaybackSpeed)
+				   forControlEvents:UIControlEventTouchUpInside];
+		[self.playerBar addSubview:self.playerSpeed];
+
+		[self.playerBar addGestureRecognizer:[[UITapGestureRecognizer alloc]
+				initWithTarget:self action:@selector(playerBarScrubbed:)]];
+		[self.playerBar addGestureRecognizer:[[UIPanGestureRecognizer alloc]
+				initWithTarget:self action:@selector(playerBarScrubbed:)]];
+
 		UIView *track = [[UIView alloc] initWithFrame:CGRectMake(0, 34, b.size.width, 2)];
 		track.backgroundColor = [[TGTheme shared] separatorColour];
 		track.autoresizingMask = UIViewAutoresizingFlexibleWidth;
@@ -1466,6 +1677,10 @@ static const CGFloat kPollRow     = 30.0f;
 	self.playerLabel.text = @"Voice message";
 	self.playerProgress.frame = CGRectMake(0, 34, 0, 2);
 	[self.playerToggle setImage:[TGIcons pause] forState:UIControlStateNormal];
+	self.playerSpeed.hidden = (self.voicePlayer == nil);   // video notes have no rate
+	[self.playerSpeed setTitle:@"1x" forState:UIControlStateNormal];
+	self.musicPrevious.hidden = YES;
+	self.musicNext.hidden = YES;
 	[self.view addSubview:self.playerBar];
 
 	// Push the messages down so the strip does not cover the newest one.
@@ -1497,15 +1712,24 @@ static const CGFloat kPollRow     = 30.0f;
 }
 
 - (CGFloat)playedFraction {
-	if (!self.voicePlayer || self.voicePlayer.duration <= 0)
-		return 0;
-	return (CGFloat)(self.voicePlayer.currentTime / self.voicePlayer.duration);
+    TGMusicPlayer *music = [TGMusicPlayer shared];
+    if (music.current && music.duration > 0)
+        return (CGFloat)(music.position / music.duration);
+    if (self.voicePlayer && self.voicePlayer.duration > 0)
+        return (CGFloat)(self.voicePlayer.currentTime / self.voicePlayer.duration);
+    if (self.videoNotePlayer && self.videoNotePlayer.duration > 0)
+        return (CGFloat)(self.videoNotePlayer.currentPlaybackTime / self.videoNotePlayer.duration);
+    return 0;
 }
 
 - (void)playbackTick {
 	CGFloat played = [self playedFraction];
 	self.playerProgress.frame = CGRectMake(0, 34,
 			self.playerBar.bounds.size.width * played, 2);
+            
+    if (self.videoNoteProgressLayer) {
+        self.videoNoteProgressLayer.strokeEnd = played;
+    }
 
 	// Only the row being played changes, and reloading the whole table five
 	// times a second on this hardware is visible as a stutter.
@@ -1522,23 +1746,153 @@ static const CGFloat kPollRow     = 30.0f;
 	}
 }
 
-- (void)togglePlayback {
-	if (!self.voicePlayer)
-		return;
-	if (self.voicePlayer.playing){
-		[self.voicePlayer pause];
-		[self.playbackTimer invalidate];
-		self.playbackTimer = nil;
-		[self.playerToggle setImage:[TGIcons play] forState:UIControlStateNormal];
-	} else {
-		[self.voicePlayer play];
-		[self startPlaybackTimer];
-		[self.playerToggle setImage:[TGIcons pause] forState:UIControlStateNormal];
+/// The music strip: the same place as the voice strip, but it names the track
+/// and carries the two buttons that only mean something with a queue behind
+/// them. Their player puts previous and next either side of play.
+- (void)showMusicBar {
+	[self showPlayerBar];
+
+	if (!self.musicPrevious){
+		CGFloat width = self.playerBar.bounds.size.width;
+
+		self.musicPrevious = [UIButton buttonWithType:UIButtonTypeCustom];
+		self.musicPrevious.frame = CGRectMake(width - 120, 4, 28, 28);
+		self.musicPrevious.titleLabel.font = [UIFont systemFontOfSize:18];
+		[self.musicPrevious setTitle:@"◀" forState:UIControlStateNormal];
+		self.musicPrevious.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
+		[self.musicPrevious addTarget:self action:@selector(musicPreviousTapped)
+					 forControlEvents:UIControlEventTouchUpInside];
+		[self.playerBar addSubview:self.musicPrevious];
+
+		self.musicNext = [UIButton buttonWithType:UIButtonTypeCustom];
+		self.musicNext.frame = CGRectMake(width - 92, 4, 28, 28);
+		self.musicNext.titleLabel.font = [UIFont systemFontOfSize:18];
+		[self.musicNext setTitle:@"▶" forState:UIControlStateNormal];
+		self.musicNext.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
+		[self.musicNext addTarget:self action:@selector(musicNextTapped)
+				 forControlEvents:UIControlEventTouchUpInside];
+		[self.playerBar addSubview:self.musicNext];
 	}
+
+	UIColor *accent = [[TGTheme shared] accentColour];
+	[self.musicPrevious setTitleColor:accent forState:UIControlStateNormal];
+	[self.musicNext setTitleColor:accent forState:UIControlStateNormal];
+	self.musicPrevious.hidden = NO;
+	self.musicNext.hidden = NO;
+	self.playerSpeed.hidden = YES;      // the two buttons take that corner
+
+	[self musicChanged];
+	[self startPlaybackTimer];
+}
+
+- (void)musicPreviousTapped { [[TGMusicPlayer shared] previous]; }
+- (void)musicNextTapped     { [[TGMusicPlayer shared] next]; }
+
+/// Called on the notification as well as directly, so the strip follows a
+/// track change that came from the lock screen rather than from this screen.
+- (void)musicChanged {
+	TGMusicPlayer *music = [TGMusicPlayer shared];
+	if (!music.current){
+		if (self.musicPrevious && !self.musicPrevious.hidden)
+			[self stopPlayback];
+		return;
+	}
+
+	NSString *title = [music.current[@"audioTitle"] length]
+			? music.current[@"audioTitle"]
+			: (music.current[@"docName"] ?: @"Audio");
+	NSString *performer = music.current[@"audioPerformer"];
+	self.playerLabel.text = performer.length
+			? [NSString stringWithFormat:@"%@ - %@", performer, title] : title;
+	[self.playerToggle setImage:(music.playing ? [TGIcons pause] : [TGIcons play])
+					   forState:UIControlStateNormal];
 	[self.table reloadData];
 }
 
+/// Dragging or tapping the bars seeks, and only for the message that is
+/// actually playing - scrubbing one that is not would have to start it, which
+/// is what tapping the disc is for.
+- (void)waveformScrubbed:(UIGestureRecognizer *)gesture {
+	if (!self.voicePlayer)
+		return;
+
+	UIView *wave = gesture.view;
+	TGBubbleCell *cell = nil;
+	for (UIView *view = wave; view; view = view.superview)
+		if ([view isKindOfClass:TGBubbleCell.class]){
+			cell = (TGBubbleCell *)view;
+			break;
+		}
+	if (!cell || cell.voiceMessageId != self.playingMessageId)
+		return;
+
+	CGFloat x = [gesture locationInView:wave].x;
+	CGFloat fraction = MIN(MAX(x / MAX(1.0f, wave.bounds.size.width), 0.0f), 1.0f);
+	self.voicePlayer.currentTime = fraction * self.voicePlayer.duration;
+	[self playbackTick];
+}
+
+/// 1x, 1.5x, 2x - the three their player offers. AVAudioPlayer will not change
+/// rate unless it was told to expect it before playing, which is why
+/// enableRate is set when the player is built rather than here.
+- (void)cyclePlaybackSpeed {
+	if (!self.voicePlayer)
+		return;
+	float rate = self.voicePlayer.rate;
+	float next = (rate < 1.25f) ? 1.5f : ((rate < 1.75f) ? 2.0f : 1.0f);
+	self.voicePlayer.rate = next;
+	[self.playerSpeed setTitle:(next == 1.0f ? @"1x" :
+			(next == 1.5f ? @"1.5x" : @"2x")) forState:UIControlStateNormal];
+}
+
+/// Tapping anywhere along the strip's line jumps there.
+- (void)playerBarScrubbed:(UIGestureRecognizer *)gesture {
+	CGFloat width = self.playerBar.bounds.size.width;
+	CGFloat fraction = MIN(MAX([gesture locationInView:self.playerBar].x /
+			MAX(1.0f, width), 0.0f), 1.0f);
+	if ([TGMusicPlayer shared].current)
+		[[TGMusicPlayer shared] seekToFraction:fraction];
+	else if (self.voicePlayer)
+		self.voicePlayer.currentTime = fraction * self.voicePlayer.duration;
+	else if (self.videoNotePlayer && self.videoNotePlayer.duration > 0)
+		self.videoNotePlayer.currentPlaybackTime = fraction * self.videoNotePlayer.duration;
+	[self playbackTick];
+}
+
+- (void)togglePlayback {
+	if ([TGMusicPlayer shared].current){
+		[[TGMusicPlayer shared] togglePlayPause];
+		return;
+	}
+	if (self.voicePlayer) {
+        if (self.voicePlayer.playing){
+            [self.voicePlayer pause];
+            [self.playbackTimer invalidate];
+            self.playbackTimer = nil;
+            [self.playerToggle setImage:[TGIcons play] forState:UIControlStateNormal];
+        } else {
+            [self.voicePlayer play];
+            [self startPlaybackTimer];
+            [self.playerToggle setImage:[TGIcons pause] forState:UIControlStateNormal];
+        }
+        [self.table reloadData];
+    } else if (self.videoNotePlayer) {
+        if (self.videoNotePlayer.playbackState == MPMoviePlaybackStatePlaying) {
+            [self.videoNotePlayer pause];
+            [self.playbackTimer invalidate];
+            self.playbackTimer = nil;
+            [self.playerToggle setImage:[TGIcons play] forState:UIControlStateNormal];
+        } else {
+            [self.videoNotePlayer play];
+            [self startPlaybackTimer];
+            [self.playerToggle setImage:[TGIcons pause] forState:UIControlStateNormal];
+        }
+    }
+}
+
 - (void)stopPlayback {
+	if ([TGMusicPlayer shared].current)
+		[[TGMusicPlayer shared] stop];
 	[self.voicePlayer stop];
 	self.voicePlayer = nil;
 	[self.playbackTimer invalidate];
@@ -1851,25 +2205,34 @@ static const NSInteger kMessageSheetTag = 42;
 		return;
 	}
 
-	if ([kind isEqualToString:@"messageVideo"]){
-		NSNumber *docId = m[@"docId"];
-		if (![docId isKindOfClass:NSNumber.class])
+	// Video and photos share one viewer: it pages between them, which is how
+	// every current client shows a chat's media.
+	if ([kind isEqualToString:@"messageVideo"] ||
+		[kind isEqualToString:@"messagePhoto"]){
+		[TGMediaViewer presentItems:self.messages
+							startAt:indexPath.row
+							 inChat:self.chatId];
+		return;
+	}
+
+	// A track is not a voice note: it belongs to the run of music in this chat
+	// and it keeps playing when the app goes away.
+	if ([kind isEqualToString:@"messageAudio"]){
+		if ([TGMusicPlayer shared].currentMessageId == [m[@"id"] longLongValue]){
+			[[TGMusicPlayer shared] togglePlayPause];
 			return;
-		[self beginDownloadHUDForFile:[docId integerValue]];
-		[[TGClient shared] downloadFile:[docId integerValue] completion:^(NSString *path){
-			[self endDownloadHUD];
-			if (!path)
-				return;
-			MPMoviePlayerViewController *player = [[MPMoviePlayerViewController alloc]
-					initWithContentURL:[NSURL fileURLWithPath:path]];
-			[self presentMoviePlayerViewControllerAnimated:player];
-		}];
+		}
+		if (self.voicePlayer)
+			[self stopPlayback];
+		[[TGMusicPlayer shared] playTracks:self.messages
+								   atIndex:indexPath.row
+									inChat:self.chatId];
+		[self showMusicBar];
 		return;
 	}
 
 	// Voice notes are Opus, which iOS 7 cannot decode - convert, then play.
-	if ([kind isEqualToString:@"messageVoiceNote"] ||
-		[kind isEqualToString:@"messageAudio"]){
+	if ([kind isEqualToString:@"messageVoiceNote"]){
 		NSNumber *docId = m[@"docId"];
 		if (![docId isKindOfClass:NSNumber.class])
 			return;
@@ -1911,6 +2274,7 @@ static const NSInteger kMessageSheetTag = 42;
 					}
 					NSLog(@"voice: playing %.1f s", self.voicePlayer.duration);
 					self.voicePlayer.delegate = self;
+					self.voicePlayer.enableRate = YES;   // for the speed button
 					self.playingMessageId = [m[@"id"] longLongValue];
 					[self.voicePlayer play];
 					[self showPlayerBar];
@@ -1922,12 +2286,6 @@ static const NSInteger kMessageSheetTag = 42;
 		return;
 	}
 
-	if ([kind isEqualToString:@"messagePhoto"]){
-		NSNumber *fileId = m[@"photoId"];
-		UIImage *img = [fileId isKindOfClass:NSNumber.class] ? self.images[fileId] : nil;
-		if (img)
-			[self showFullScreenImage:img];
-	}
 }
 
 - (UIView *)viewForZoomingInScrollView:(UIScrollView *)scrollView {
@@ -2072,7 +2430,7 @@ static const NSInteger kMessageSheetTag = 42;
 }
 
 - (CGFloat)timeWidthFor:(NSDictionary *)m {
-	CGFloat w = [[self stampFor:m] sizeWithFont:[UIFont systemFontOfSize:11]].width + 2;
+	CGFloat w = TGTextSize([self stampFor:m], [UIFont systemFontOfSize:11], 0).width + 2;
 	if ([m[@"outgoing"] boolValue])
 		w += 18;   // room for the ticks
 	return w;
@@ -2086,8 +2444,8 @@ static const NSInteger kMessageSheetTag = 42;
 	if (!text.length || [text rangeOfString:@"\n"].location != NSNotFound)
 		return NO;
 
-	CGFloat oneLine = [text sizeWithFont:
-			[UIFont systemFontOfSize:[TGTheme shared].messageFontSize]].width;
+	CGFloat oneLine = TGTextSize(text,
+			[UIFont systemFontOfSize:[TGTheme shared].messageFontSize], 0).width;
 	if (oneLine > kBubbleMaxW - 2 * kPadH)
 		return NO;   // it wraps, so there is no short last line to share
 
@@ -2136,9 +2494,8 @@ static const NSInteger kMessageSheetTag = 42;
 /// Question, the "N voted" line, one row per option, and the stamp.
 - (CGFloat)pollHeightFor:(NSDictionary *)m {
 	NSString *question = m[@"pollQuestion"] ?: @"Poll";
-	CGSize qs = [question sizeWithFont:[UIFont boldSystemFontOfSize:15]
-					 constrainedToSize:CGSizeMake(kBubbleMaxW - 2 * kPadH, 200)
-						 lineBreakMode:NSLineBreakByWordWrapping];
+	CGSize qs = TGTextSize(question, [UIFont boldSystemFontOfSize:15],
+			kBubbleMaxW - 2 * kPadH);
 	NSArray *options = m[@"pollOptions"];
 	return kPadV + qs.height + 22 + kPollRow * options.count + 18;
 }
@@ -2156,9 +2513,8 @@ static const NSInteger kMessageSheetTag = 42;
 	NSString *text = m[@"text"] ?: @"";
 	if (!text.length)
 		return CGSizeZero;
-	return [text sizeWithFont:[UIFont systemFontOfSize:[TGTheme shared].messageFontSize]
-			constrainedToSize:CGSizeMake(kBubbleMaxW - 2 * kPadH, 10000)
-				lineBreakMode:NSLineBreakByWordWrapping];
+	return TGTextSize(text, [UIFont systemFontOfSize:[TGTheme shared].messageFontSize],
+			kBubbleMaxW - 2 * kPadH);
 }
 
 - (UIImage *)imageFor:(NSDictionary *)m {
@@ -2181,6 +2537,7 @@ static const NSInteger kMessageSheetTag = 42;
 
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
 	NSDictionary *m = self.messages[indexPath.row];
+
 	// A voice message is a fixed block rather than a run of text: the disc,
 	// the bars and the duration, sized the way their media components are.
 	BOOL isVoice = [m[@"kind"] isEqualToString:@"messageVoiceNote"];
@@ -2238,6 +2595,48 @@ static UIColor *TGSenderColour(int64_t userId) {
 	return palette[(NSUInteger)llabs(userId) % palette.count];
 }
 
+#pragma mark - pagination
+
+- (void)scrollViewDidScroll:(UIScrollView *)scrollView {
+    if (self.isLoadingMoreHistory || !self.messages.count)
+        return;
+    
+    // Load more when scrolled near the top
+    if (scrollView.contentOffset.y < 100) {
+        self.isLoadingMoreHistory = YES;
+        int64_t fromMessageId = [self.messages.firstObject[@"id"] longLongValue];
+        
+        [[TGClient shared] historyForChat:self.chatId fromMessageId:fromMessageId limit:60 completion:^(NSArray *older) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (older.count == 0) {
+                    // No more history
+                    return;
+                }
+                
+                NSMutableArray *indexPaths = [NSMutableArray array];
+                for (NSUInteger i = 0; i < older.count; i++) {
+                    [indexPaths addObject:[NSIndexPath indexPathForRow:i inSection:0]];
+                }
+                
+                CGFloat oldHeight = self.table.contentSize.height;
+                CGFloat oldOffset = self.table.contentOffset.y;
+                
+                self.messages = [older arrayByAddingObjectsFromArray:self.messages];
+                
+                [UIView setAnimationsEnabled:NO];
+                [self.table beginUpdates];
+                [self.table insertRowsAtIndexPaths:indexPaths withRowAnimation:UITableViewRowAnimationNone];
+                [self.table endUpdates];
+                
+                self.table.contentOffset = CGPointMake(0, oldOffset + (self.table.contentSize.height - oldHeight));
+                [UIView setAnimationsEnabled:YES];
+                
+                self.isLoadingMoreHistory = NO;
+            });
+        }];
+    }
+}
+
 #pragma mark - table
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
@@ -2281,7 +2680,7 @@ static UIColor *TGSenderColour(int64_t userId) {
 		// wash with white text rather than grey on grey.
 		UIFont *font = [UIFont systemFontOfSize:12];
 		CGFloat full = tableView.bounds.size.width;
-		CGFloat textW = MIN([line sizeWithFont:font].width, full - 60);
+		CGFloat textW = MIN(TGTextSize(line, font, 0).width, full - 60);
 		CGFloat plateW = textW + 20;
 
 		cell.bubble.frame = CGRectMake((full - plateW) / 2, 4, plateW, 21);
@@ -2331,9 +2730,7 @@ static UIColor *TGSenderColour(int64_t userId) {
 		cell.body.font = [UIFont boldSystemFontOfSize:15];
 		cell.body.textColor = [pollTheme primaryTextColour];
 		cell.body.text = question;
-		CGSize qs = [question sizeWithFont:cell.body.font
-						 constrainedToSize:CGSizeMake(width - 2 * kPadH, 200)
-							 lineBreakMode:NSLineBreakByWordWrapping];
+		CGSize qs = TGTextSize(question, cell.body.font, width - 2 * kPadH);
 		cell.body.frame = CGRectMake(kPadH, kPadV, width - 2 * kPadH, qs.height);
 
 		cell.subtitle.hidden = NO;
@@ -2433,7 +2830,7 @@ static UIColor *TGSenderColour(int64_t userId) {
 		NSString *line = m[@"text"] ?: @"Call";
 
 		CGFloat width = MIN(kBubbleMaxW,
-				[line sizeWithFont:[UIFont systemFontOfSize:15]].width + 76);
+				TGTextSize(line, [UIFont systemFontOfSize:15], 0).width + 76);
 		CGFloat fwd = [self layoutForwardIn:cell message:m width:width];
 		CGFloat height = 44 + fwd;
 		CGFloat x = mine ? (tableView.bounds.size.width - width - 8) : 8;
@@ -2742,7 +3139,7 @@ static UIColor *TGSenderColour(int64_t userId) {
 		// goes on the picture itself, on a plate.
 		if (!body.height){
 			NSString *stamp = [self stampFor:m];
-			CGFloat plateW = [stamp sizeWithFont:cell.mediaStamp.font].width +
+			CGFloat plateW = TGTextSize(stamp, cell.mediaStamp.font, 0).width +
 					(mine ? 30 : 14);
 			cell.mediaStamp.hidden = NO;
 			cell.mediaStamp.backgroundColor = [theme mediaStampColour];
@@ -2784,6 +3181,16 @@ static UIColor *TGSenderColour(int64_t userId) {
 									 played:(isPlaying ? [self playedFraction] : 0)
 									 colour:[voiceTheme accentColour]];
 		cell.wave.frame = CGRectMake(left, fwd + 10, waveSize.width, waveSize.height);
+		// The bars are the only scrubber a voice message has, and they were
+		// decoration - there was no way to go back four seconds and hear a
+		// name again short of playing the whole thing over.
+		cell.wave.userInteractionEnabled = YES;
+		if (!cell.wave.gestureRecognizers.count){
+			[cell.wave addGestureRecognizer:[[UIPanGestureRecognizer alloc]
+					initWithTarget:self action:@selector(waveformScrubbed:)]];
+			[cell.wave addGestureRecognizer:[[UITapGestureRecognizer alloc]
+					initWithTarget:self action:@selector(waveformScrubbed:)]];
+		}
 
 		NSInteger seconds = [m[@"duration"] integerValue];
 		cell.body.hidden = NO;
@@ -2811,7 +3218,7 @@ static UIColor *TGSenderColour(int64_t userId) {
 	cell.body.hidden = (body.height == 0);
 	cell.body.numberOfLines = 0;
 	cell.body.font = [UIFont systemFontOfSize:[TGTheme shared].messageFontSize];
-	cell.body.text = m[@"text"];
+	TGSetBodyText(cell.body, m[@"text"], [theme primaryTextColour]);
 	cell.body.frame = CGRectMake(kPadH, y, body.width, body.height);
 
 	// Reactions sit under the message, as they do everywhere else.
