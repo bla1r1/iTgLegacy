@@ -1,12 +1,18 @@
 // TGCallIceTests.m — unit tests for TGCallIce (ICE connectivity checks).
 //
-// All tests use a custom `transport` block so no real UDP socket is opened.
-// This lets us capture outgoing STUN packets and feed incoming ones
-// synchronously inside the test process.
+// Most tests use a custom `transport` block so packets can be captured and
+// fed synchronously. The socket section at the bottom does the opposite: it
+// opens real loopback UDP sockets and asserts what TGCallIce sends and how it
+// reacts to what arrives, because that path is what a call actually uses.
 #import "TGTestRunner.h"
 #import "TGCallIce.h"
 #import "TGCallStun.h"
 #import "TGCallTestHelpers.h"
+
+// Needed to discover the ephemeral port of the socket opened by -start.
+@interface TGCallIce (TestSupport)
+- (int)socketHandle;
+@end
 
 @interface TGCallIceTests : XCTestCase
 @end
@@ -168,34 +174,178 @@
 // ──────────────────────────────────────────────────────────────────────────────
 #pragma mark - addPeerCandidate
 
-/// A well-formed relay candidate is parsed and queued without crashing.
-- (void)testAddPeerCandidate_ValidRelayCandidate {
+/// A relay candidate names the peer by reflector hostname, not by IP. It
+/// cannot be turned into a sockaddr, so it must not become peerAddress.
+- (void)testAddPeerCandidate_ReflectorHostnameIsIgnored {
     TGCallIce *ice = [[TGCallIce alloc] init];
-    ice.transport = ^(NSData *pkt){};
-    [ice start];
-    // Should not crash; actual routing happens via transport or direct socket.
     [ice addPeerCandidate:@"candidate:1 1 udp 2130706431 reflector-1-99999.reflector "
                            @"443 typ relay generation 0 ufrag ABCD network-id 9 network-cost 50"];
-    [ice stop];
+    XCTAssertNil(ice.peerAddress,
+                 @"a hostname is not an address this agent can send to");
+}
+
+/// A host candidate with a real IPv4 address is recorded as peerAddress,
+/// which is what XOR-MAPPED-ADDRESS quotes back to the peer.
+- (void)testAddPeerCandidate_IPv4BecomesPeerAddress {
+    TGCallIce *ice = [[TGCallIce alloc] init];
+    [ice addPeerCandidate:@"candidate:1 1 udp 100 192.0.2.10 5000 typ host generation 0 ufrag AB"];
+
+    XCTAssertNotNil(ice.peerAddress);
+    struct sockaddr_in addr;
+    memset(&addr, 0, sizeof(addr));
+    [ice.peerAddress getBytes:&addr length:sizeof(addr)];
+    XCTAssertEqual(addr.sin_family, AF_INET);
+    XCTAssertEqual(ntohs(addr.sin_port), (uint16_t)5000);
+
+    char text[INET_ADDRSTRLEN] = {0};
+    inet_ntop(AF_INET, &addr.sin_addr, text, sizeof(text));
+    XCTAssertTrue([[NSString stringWithUTF8String:text] isEqualToString:@"192.0.2.10"]);
 }
 
 /// An IPv6 candidate is silently skipped (device has no route for it).
 - (void)testAddPeerCandidate_IPv6IsSkipped {
     TGCallIce *ice = [[TGCallIce alloc] init];
-    ice.transport = ^(NSData *pkt){};
-    [ice start];
-    // Must not crash and must not add any target.
     [ice addPeerCandidate:@"candidate:1 1 udp 100 2001:db8::1 12345 typ host generation 0 ufrag AB"];
-    [ice stop];
+    XCTAssertNil(ice.peerAddress, @"IPv6 must not become a target");
 }
 
 /// A candidate with fewer than 6 space-separated parts is silently skipped.
 - (void)testAddPeerCandidate_TooFewPartsSilentlyIgnored {
     TGCallIce *ice = [[TGCallIce alloc] init];
-    ice.transport = ^(NSData *pkt){};
-    [ice start];
     [ice addPeerCandidate:@"bad data"];
+    XCTAssertNil(ice.peerAddress);
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+#pragma mark - real socket path
+//
+// These tests do not set `transport`, so TGCallIce opens its own UDP socket
+// and uses readLoop. They cover the path a real call takes: sendto of checks,
+// recvfrom of checks and responses, and media delivery.
+
+- (void)testStartWithoutTransportOpensSocket {
+    TGCallIce *ice = [[TGCallIce alloc] init];
+
+    XCTAssertTrue([ice start]);
+    int handle = [ice socketHandle];
+    XCTAssertGreaterThanOrEqual(handle, 0);
+
+    struct sockaddr_in bound;
+    socklen_t len = sizeof(bound);
+    XCTAssertEqual(getsockname(handle, (struct sockaddr *)&bound, &len), 0);
+    XCTAssertEqual(bound.sin_family, AF_INET);
+    XCTAssertGreaterThan(ntohs(bound.sin_port), 0);
+
     [ice stop];
+    XCTAssertEqual([ice socketHandle], -1, @"stop must close the socket");
+}
+
+/// A peer's binding request arriving on the socket must be answered with a
+/// binding success response and must mark the connection as usable.
+- (void)testSocketAnswersBindingRequest {
+    TGCallIce *ice = [[TGCallIce alloc] init];
+    ice.localUfrag = @"LOCAL";
+    ice.localPwd   = @"localpwd123456789012345";
+    XCTAssertTrue([ice start]);
+
+    __block NSString *connected = nil;
+    ice.onConnected = ^(NSString *address, uint16_t port){
+        connected = address ?: @"relay";
+    };
+
+    struct sockaddr_in bound;
+    socklen_t len = sizeof(bound);
+    XCTAssertEqual(getsockname([ice socketHandle], (struct sockaddr *)&bound, &len), 0);
+
+    int peer = TGTestUDPSocket(NULL);
+    XCTAssertGreaterThanOrEqual(peer, 0);
+
+    NSData *request = [TGCallStun bindingRequestWithUsername:@"LOCAL:PEER"
+                                                    password:ice.localPwd
+                                                   tieBreaker:0x1234567890ULL
+                                                  useCandidate:YES];
+    XCTAssertTrue(TGTestSendTo(peer, request, ntohs(bound.sin_port)));
+
+    NSData *response = TGTestRecvFrom(peer, NULL, 2.0);
+    XCTAssertNotNil(response, @"the socket must answer a binding request");
+    XCTAssertEqual([TGCallStun messageTypeOf:response], 0x0101);
+
+    XCTAssertTrue(TGWaitForCondition(^{ return (BOOL)(connected != nil); }, 2.0),
+                  @"answering a check must call onConnected");
+
+    [ice stop];
+    close(peer);
+}
+
+/// With no transport block, the periodic check must be written to the socket
+/// and addressed to the candidate added over signalling.
+- (void)testSocketSendsCheckToPeerCandidate {
+    TGCallIce *ice = [[TGCallIce alloc] init];
+    ice.localUfrag = @"LOCAL";
+    ice.localPwd   = @"localpwd123456789012345";
+    ice.peerUfrag  = @"PEER";
+    ice.peerPwd    = @"peerpwd123456789012345";
+
+    uint16_t peerPort = 0;
+    int peer = TGTestUDPSocket(&peerPort);
+    XCTAssertGreaterThanOrEqual(peer, 0);
+
+    NSString *candidate = [NSString stringWithFormat:
+        @"candidate:1 1 udp 100 127.0.0.1 %u typ host generation 0 ufrag PEER",
+        (unsigned)peerPort];
+    [ice addPeerCandidate:candidate];
+    XCTAssertNotNil(ice.peerAddress, @"the IPv4 candidate must be recorded");
+
+    __block BOOL connected = NO;
+    ice.onConnected = ^(NSString *address, uint16_t port){ connected = YES; };
+
+    XCTAssertTrue([ice start]);
+
+    struct sockaddr_in sender;
+    NSData *check = TGTestRecvFrom(peer, &sender, 2.0);
+    XCTAssertNotNil(check, @"the check must arrive on the peer socket");
+    XCTAssertEqual([TGCallStun messageTypeOf:check], 0x0001);
+
+    // Answer the check from the peer's socket. The response goes back to the
+    // address the check came from, which is TGCallIce's own socket.
+    NSData *iceAddress = [NSData dataWithBytes:&sender length:sizeof(sender)];
+    NSData *response = [TGCallStun bindingResponseTo:check
+                                            password:ice.localPwd
+                                         fromAddress:iceAddress];
+    XCTAssertNotNil(response);
+    XCTAssertTrue(TGTestSendTo(peer, response, ntohs(sender.sin_port)));
+
+    XCTAssertTrue(TGWaitForCondition(^{ return connected; }, 2.0),
+                  @"a success response must mark the pair connected");
+
+    [ice stop];
+    close(peer);
+}
+
+/// Non-STUN traffic on the socket is media and must reach onMedia unchanged.
+- (void)testSocketDeliversMediaToOnMedia {
+    TGCallIce *ice = [[TGCallIce alloc] init];
+    XCTAssertTrue([ice start]);
+
+    __block NSData *media = nil;
+    ice.onMedia = ^(NSData *packet){ media = packet; };
+
+    struct sockaddr_in bound;
+    socklen_t len = sizeof(bound);
+    XCTAssertEqual(getsockname([ice socketHandle], (struct sockaddr *)&bound, &len), 0);
+
+    int peer = TGTestUDPSocket(NULL);
+    XCTAssertGreaterThanOrEqual(peer, 0);
+
+    uint8_t bytes[] = { 0xDE, 0xAD, 0xBE, 0xEF };
+    NSData *payload = [NSData dataWithBytes:bytes length:sizeof(bytes)];
+    XCTAssertTrue(TGTestSendTo(peer, payload, ntohs(bound.sin_port)));
+
+    XCTAssertTrue(TGWaitForCondition(^{ return (BOOL)(media != nil); }, 2.0));
+    XCTAssertEqualObjects(media, payload);
+
+    [ice stop];
+    close(peer);
 }
 
 // ──────────────────────────────────────────────────────────────────────────────

@@ -138,8 +138,7 @@
 	}
 }
 
-/// For packets that arrived over the reflector, where there is no sender
-/// address to speak of.
+// Handle STUN packet received via reflector
 - (void)handleRelayedPacket:(NSData *)packet {
 	int type = [TGCallStun messageTypeOf:packet];
 
@@ -227,8 +226,12 @@
 	self.checker = nil;
 	int handle = self.socketHandle;
 	self.socketHandle = -1;
-	if (handle >= 0)
+	if (handle >= 0){
+		// Wake the blocked read loop before the descriptor number can be
+		// reused by the next socket; otherwise it keeps reading a stranger.
+		shutdown(handle, SHUT_RDWR);
 		close(handle);
+	}
 }
 
 @end

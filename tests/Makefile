@@ -26,8 +26,10 @@ ARCH    := $(shell uname -m)
 CFLAGS  := \
     -arch $(ARCH) \
     $(if $(SDK),-isysroot $(SDK),) \
+    -I$(TESTS)/shim \
     -I$(ROOT)/include \
     -I$(SRC) \
+    -I$(SRC)/libtgvoip \
     -I$(TESTS) \
     -I$(OPENSSL)/include \
     -fobjc-arc \
@@ -40,6 +42,7 @@ LDFLAGS := \
     -L$(OPENSSL)/lib \
     -lcrypto \
     -lz \
+    -lc++ \
     -framework Foundation
 
 # ─── sources ──────────────────────────────────────────────────────────────────
@@ -52,12 +55,18 @@ OBJC_SRCS := \
     $(SRC)/TGCallStun.m \
     $(SRC)/TGCallMessages.m \
     $(SRC)/TGCallIce.m \
-    $(SRC)/TGCallReflector.m
+    $(SRC)/TGCallReflector.m \
+    $(SRC)/TGCall.mm
 
-# Test helper ObjC sources
+# Test helper ObjC sources. TGClientStub and TGCallAudioEngineStub stand in
+# for the iOS-only production classes that TGCall.mm would otherwise need.
 TEST_HELPER_SRCS := \
     $(TESTS)/TGCallPeer.m \
-    $(TESTS)/TGCallReflectorStub.m
+    $(TESTS)/TGCallReflectorStub.m \
+    $(TESTS)/TGClientStub.m \
+    $(TESTS)/TGCallAudioEngineStub.m \
+    $(TESTS)/TGAudioSessionShim.m \
+    $(TESTS)/TGLibTgvoipBridge.mm
 
 # Test files (included via main.m, not compiled separately)
 TEST_SRCS := \
@@ -65,7 +74,9 @@ TEST_SRCS := \
     $(TESTS)/TGCallStunTests.m \
     $(TESTS)/TGCallMessagesTests.m \
     $(TESTS)/TGCallIceTests.m \
-    $(TESTS)/TGCallReflectorTests.m
+    $(TESTS)/TGCallReflectorTests.m \
+    $(TESTS)/TGCallIntegrationTests.m \
+    $(TESTS)/TGLibTgvoipHooksTests.m
 
 TEST_BINARY := $(BUILD)/TGCallTests
 

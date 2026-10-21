@@ -38,10 +38,7 @@
 	return self;
 }
 
-/// Twelve bytes from TDLib name the call; the last four name one side of it.
-/// Each end announces its four bytes inside a candidate, as a hostname of the
-/// form reflector-<server id>-<tag>.reflector, and addresses the other by the
-/// four it read there.
+// Tag for addressing peer on reflector
 - (NSData *)tagFor:(uint32_t)tag {
 	if (self.peerTag.length < 16)
 		return nil;
@@ -199,8 +196,13 @@
 	self.pinger = nil;
 	int handle = self.socketHandle;
 	self.socketHandle = -1;
-	if (handle >= 0)
+	if (handle >= 0){
+		// The read loop is blocked in recv(). Closing alone does not wake it on
+		// every platform, and the descriptor number can be reused before the
+		// thread notices, so it would start reading someone else's socket.
+		shutdown(handle, SHUT_RDWR);
 		close(handle);
+	}
 }
 
 @end

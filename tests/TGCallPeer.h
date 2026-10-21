@@ -29,11 +29,18 @@
 /// Port we listen on (assigned after -start).
 @property (nonatomic, readonly) uint16_t listenPort;
 
+/// The four bytes this peer puts in the reflector header as the sender tag.
+@property (nonatomic, readonly) uint32_t localTag;
+
 // ── statistics ──────────────────────────────────────────────────────────────
 @property (nonatomic, readonly) uint32_t stunRequestsReceived;
 @property (nonatomic, readonly) uint32_t stunResponsesReceived;
 @property (nonatomic, readonly) uint32_t audioFramesReceived;
 @property (nonatomic, readonly) uint32_t decryptFailures;
+@property (nonatomic, readonly) uint32_t acksReceived;
+@property (nonatomic, readonly) uint32_t mediaStateMessagesReceived;
+@property (nonatomic, readonly) uint32_t remoteStatusMessagesReceived;
+@property (nonatomic, readonly) uint32_t rtcpReportsReceived;
 
 /// Called on main queue whenever a decrypted Opus frame arrives.
 @property (nonatomic, copy) void (^onAudioFrame)(NSData *opusFrame);
@@ -51,10 +58,27 @@
 
 // ── peer actions ────────────────────────────────────────────────────────────
 
-/// Inject an encrypted, framed audio packet into TGCall via the shared
-/// reflector stub (only when using TGCallReflectorStub, not real UDP).
-/// Direct delivery path: build a real tgcalls-format single-message audio
-/// packet and encrypt it with the call key (from our side's perspective).
+/// Build a real tgcalls-format single-message audio packet and encrypt it with
+/// the call key (from our side's perspective).
 - (NSData *)encryptedAudioPacketWithOpusFrame:(NSData *)frame seq:(uint32_t)seq;
+
+/// Same, with control over the acknowledgement bit. A packet that asks to be
+/// acknowledged makes TGCall send an ACK back.
+- (NSData *)encryptedAudioPacketWithOpusFrame:(NSData *)frame
+                                          seq:(uint32_t)seq
+                                   requiresAck:(BOOL)requiresAck;
+
+/// Build an audio message around an arbitrary RTP payload (header, CSRC list,
+/// extension block and Opus frame). Encrypts and returns it for sending.
+- (NSData *)encryptedAudioPacketWithRTPPayload:(NSData *)rtpPayload;
+
+/// Send bytes as-is to the reflector socket learned from the last packet.
+/// Used to exercise the packet layouts TGCall's inspector falls back to.
+- (BOOL)sendRawToLastReflector:(NSData *)bytes;
+
+/// Wrap `payload` in the reflector header learned from the last packet that
+/// arrived, and send it back to that socket. Returns NO until TGCall has sent
+/// something through its reflector, because there is no address to answer yet.
+- (BOOL)sendReflectorPayload:(NSData *)payload;
 
 @end

@@ -25,17 +25,12 @@
 extern "C" {
 #endif
 
-/// `key` is the 256-byte call key from TDLib. `outgoing` is whether we placed
-/// the call, and `signaling` selects the signaling keyspace over the media one
-/// - both shift which part of the key is used.
-///
-/// Returns the payload length written to `out` (which needs `length` bytes),
-/// or -1 when the packet is not for us. `seq` receives the packet counter.
+// Decrypt call packet using 256-byte TDLib key. Returns decrypted length or -1.
 int TGCallDecryptPacket(const uint8_t *key, int outgoing, int signaling,
                         const uint8_t *packet, size_t length,
                         uint8_t *out, uint32_t *seq);
 
-/// The inverse. `out` needs `length + 20` bytes; returns bytes written.
+// Encrypt call packet using 256-byte TDLib key. Returns bytes written.
 int TGCallEncryptPacket(const uint8_t *key, int outgoing, int signaling,
                         const uint8_t *payload, size_t length,
                         uint32_t seq, uint8_t *out);

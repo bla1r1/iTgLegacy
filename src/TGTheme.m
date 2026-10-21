@@ -16,9 +16,7 @@ static NSString *const kBeforeNightKey   = @"themeStyleBeforeNight";
 
 @implementation TGTheme {
 	NSDictionary *_imported;
-	/// A built-in theme that is expressed as a palette rather than as branches
-	/// in every accessor. Night Blue is the first; adding another is a
-	/// dictionary, not twenty more `if`s.
+	// Built-in theme palette (e.g. Night Blue)
 	NSDictionary *_builtinPalette;
 	UIImage *_wallpaper;
 }
@@ -53,7 +51,7 @@ static NSString *const kBeforeNightKey   = @"themeStyleBeforeNight";
 
 #pragma mark - the theme list
 
-/// Telegram's Night Blue, by the colours their nightBluePresentationTheme uses.
+// Telegram's Night Blue presentation palette
 + (NSDictionary *)nightBluePalette {
 	static NSDictionary *palette = nil;
 	if (!palette)
@@ -77,8 +75,7 @@ static NSString *const kBeforeNightKey   = @"themeStyleBeforeNight";
 			? [TGTheme nightBluePalette] : nil;
 }
 
-/// An imported file wins over a built-in palette, which wins over the style's
-/// own defaults. Everything undefined falls through, so a partial theme works.
+// Whether custom palette or imported theme is active
 - (BOOL)hasCustomPalette {
 	return _imported != nil || _builtinPalette != nil;
 }
@@ -238,9 +235,7 @@ static NSString *TGIdForStyle(TGThemeStyle style) {
 
 #pragma mark - imported themes
 
-/// Kept for anything that has a path rather than an id. Only the file name is
-/// stored: the container path changes on every reinstall, and an absolute one
-/// saved across that points at a directory that is gone.
+// Store file name only to survive container path changes across reinstall
 - (BOOL)importThemeAtPath:(NSString *)path {
 	return [self selectThemeId:
 			[@"file:" stringByAppendingString:path.lastPathComponent]];
@@ -285,8 +280,7 @@ static NSString *TGIdForStyle(TGThemeStyle style) {
 	return found;
 }
 
-/// An imported colour wins over the built-in style; anything the file did not
-/// define falls through, so a partial theme still works.
+// Imported color override with fallback
 - (UIColor *)importedColour:(NSString *)key {
 	return _imported[key] ?: _builtinPalette[key];
 }
@@ -301,18 +295,14 @@ static NSString *TGIdForStyle(TGThemeStyle style) {
 	[self themeChanged];
 }
 
-/// Dark is flat drawn on dark surfaces, so everything that asks "flat?" to
-/// decide whether to draw a bevel gets the same answer for both.
+// Check if flat styling is active
 - (BOOL)isFlat {
-	// An imported theme brings flat colours whatever style was underneath, so
-	// a bevel drawn from a stale skeuomorphic style was the one thing that
-	// still looked wrong after importing one.
 	if (_imported)
 		return YES;
 	return _style != TGThemeStyleSkeuomorphic;
 }
 
-/// The built-in dark style, which an imported theme overrides colour by colour.
+// Built-in dark style
 - (BOOL)isDarkStyle {
 	return (_style == TGThemeStyleDark || _style == TGThemeStyleNightBlue) &&
 		   _imported == nil;
@@ -527,8 +517,7 @@ static UIColor *rgb(int r, int g, int b) {
 }
 
 
-/// An imported theme rarely names the composer separately, so it takes the
-/// bar colour - which is what the official clients do with it anyway.
+// Time text color
 - (UIColor *)timeColour {
 	UIColor *imported = [self importedColour:@"secondaryText"];
 	if (imported) return imported;
@@ -560,8 +549,7 @@ static UIColor *rgb(int r, int g, int b) {
 
 #pragma mark - media and file blocks
 
-/// These four are the file block from their design system, and they are the
-/// same blue in every theme: it is the block's own colour, not the accent.
+// File tile background color
 - (UIColor *)fileTileColour {
 	return self.isDarkStyle ? TG_GRAY_DARK13 : TG_FILE_TILE;
 }
@@ -579,8 +567,7 @@ static UIColor *rgb(int r, int g, int b) {
 	return self.isDarkStyle ? TG_GRAY_DARK6 : TG_STEEL_LIGHT13;
 }
 
-/// The stamp over a picture has to read against whatever the picture is, so it
-/// gets a plate rather than a colour.
+// Timestamp badge plate over media
 - (UIColor *)mediaStampColour {
 	return [UIColor colorWithWhite:0.0f alpha:0.35f];
 }
@@ -613,8 +600,7 @@ static UIColor *rgb(int r, int g, int b) {
 
 #pragma mark - service messages
 
-/// A narrow plate centred on the wallpaper. Because it sits over a picture as
-/// often as over a colour, it is drawn as a wash rather than a fixed grey.
+// Date plate wash over wallpaper
 - (UIColor *)serviceBubbleColour {
 	return self.isDarkStyle ? [UIColor colorWithWhite:1.0f alpha:0.12f]
 							: [UIColor colorWithWhite:0.0f alpha:0.30f];

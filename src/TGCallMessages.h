@@ -22,57 +22,42 @@ extern const uint8_t TGCallMessageAck;          // 0xFF, confirms the seq before
 
 @interface TGCallMessages : NSObject
 
-/// Split a decrypted packet into messages. Each entry has "type" (NSNumber),
-/// "body" (NSData) and "seq" (NSNumber) - the sequence number that message
-/// arrived under, which is what an acknowledgement refers to.
+// Split a decrypted packet into messages.
 + (NSArray *)parsePacket:(NSData *)plaintext seq:(uint32_t)packetSeq;
 
-/// The same for a packet off the media channel, where several messages really
-/// do share a packet and each carries its own sequence number. Acknowledging
-/// the packet's number instead of theirs leaves the peer resending forever.
+// Parse messages from media packet.
 + (NSArray *)parseMediaPacket:(NSData *)plaintext seq:(uint32_t)packetSeq;
 
-/// An acknowledgement for a message the peer sent: an empty message, then the
-/// sequence number being confirmed, then the ack marker.
+// Build ACK for message seq.
 + (NSData *)ackForSeq:(uint32_t)seq;
 
-/// YES when a sequence number asks to be acknowledged.
+// Check if sequence number requests ACK.
 + (BOOL)seqRequiresAck:(uint32_t)seq;
 
-/// YES when the packet holds exactly one message. It decides how the message
-/// body is framed: a lone message runs to the end of the packet, while one of
-/// several is preceded by its length.
+// Check if packet holds single message.
 + (BOOL)seqIsSingleMessage:(uint32_t)seq;
 
-/// The candidate strings and ICE credentials out of a candidates message.
-/// Keys: "candidates" (NSArray of NSString), "ufrag", "pwd".
+// Parse candidates and credentials.
 + (NSDictionary *)parseCandidates:(NSData *)body;
 
-/// One message, ready to be encrypted. The sequence number is not written
-/// here: the crypto layer puts it in front of the plaintext, and writing it
-/// twice makes the peer read our second copy as a message type and drop the
-/// packet.
+// Frame message with type.
 + (NSData *)messageWithType:(uint8_t)type body:(NSData *)body;
 
-/// The sequence number as it goes on the wire. Bit 30 asks for an
-/// acknowledgement, bit 31 says the packet holds exactly one message.
+// Mark sequence number with flags.
 + (uint32_t)markSeq:(uint32_t)seq requiresAck:(BOOL)requiresAck;
 
-/// Our opening pair on the media channel, shaped exactly the way the peer
-/// sends its own: an empty message carrying the packet's sequence number, then
-/// video parameters, then the media state, each under a sequence number of its
-/// own that asks to be acknowledged.
+// Opening media state bundle.
 + (NSData *)mediaStateBundleWithVideoSeq:(uint32_t)videoSeq
 								stateSeq:(uint32_t)stateSeq
 							 audioActive:(BOOL)audioActive;
 
-/// The body of a candidates message: the list, then our ICE credentials.
+// Candidates message body.
 + (NSData *)candidatesBody:(NSArray *)candidates ufrag:(NSString *)ufrag pwd:(NSString *)pwd;
 
-/// RTCP Receiver Report packet (32 bytes, PT=201) to inform peer of reception quality.
+// RTCP Receiver Report packet (PT=201).
 + (NSData *)rtcpReceiverReportWithOurSSRC:(uint32_t)ourSSRC peerSSRC:(uint32_t)peerSSRC highestSeq:(uint32_t)highestSeq;
 
-/// RemoteNetworkStatus body (2 bytes).
+// Remote network status body.
 + (NSData *)remoteNetworkStatusBody;
 
 @end

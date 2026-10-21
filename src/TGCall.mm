@@ -63,10 +63,7 @@ namespace tgvoip { namespace video {
 
 #pragma mark - crypto
 
-// libtgvoip is built with TGVOIP_USE_CUSTOM_CRYPTO, which means it ships no
-// crypto of its own and expects these filled in before any controller runs.
-// OpenSSL is already in the build for TDLib.
-
+// OpenSSL crypto hooks for libtgvoip
 static void TGRandBytes(uint8_t *buffer, size_t length) {
 	RAND_bytes(buffer, (int)length);
 }
@@ -225,10 +222,15 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V5";
 	_state = state;
 	if (state == TGCallStateEstablished && !self.establishedAt)
 		self.establishedAt = [NSDate date];
-	dispatch_async(dispatch_get_main_queue(), ^{
+	void (^notify)(void) = ^{
 		if (self.onStateChanged)
 			self.onStateChanged(state);
-	});
+	};
+	if ([NSThread isMainThread]) {
+		notify();
+	} else {
+		dispatch_async(dispatch_get_main_queue(), notify);
+	}
 }
 
 #pragma mark - signalling
@@ -322,9 +324,7 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V5";
 	return _pendingSignalingData;
 }
 
-/// The peer's half of the negotiation. Decrypting it is also the check that
-/// the crypto is right: the msgKey is a slice of SHA256 over the plaintext, so
-/// a wrong key cannot produce a match.
+// Decrypt and process incoming signaling data
 - (void)handleSignalingData:(NSData *)data {
 	NSLog(@"TGCall: handleSignalingData len=%lu, callKey=%lu, outgoing=%d",
 		(unsigned long)data.length, (unsigned long)self.callKey.length, self.outgoing);
@@ -375,9 +375,12 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V5";
 				if (b.length > 4) { // skip the 4-byte size
 					NSData *pData = [b subdataWithRange:NSMakeRange(4, b.length - 4)];
 					pData = TGDecompressIfNeeded(pData);
-					NSString *str = [[NSString alloc] initWithData:pData encoding:NSUTF8StringEncoding];
-					NSLog(@"TGCall: JSON: %@", str);
-					NSDictionary *json = [NSJSONSerialization JSONObjectWithData:[str dataUsingEncoding:NSUTF8StringEncoding] options:0 error:nil];
+					if (pData.length) {
+						NSString *str = [[NSString alloc] initWithData:pData encoding:NSUTF8StringEncoding];
+						if (str) {
+							NSLog(@"TGCall: JSON: %@", str);
+						}
+						NSDictionary *json = [NSJSONSerialization JSONObjectWithData:pData options:0 error:nil];
 					if ([json isKindOfClass:[NSDictionary class]]) {
 						NSString *jtype = json[@"@type"];
 						if ([jtype isEqualToString:@"offer"] || [jtype isEqualToString:@"answer"]) {
@@ -441,8 +444,9 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V5";
 					}
 				}
 			}
-			continue;
 		}
+		continue;
+	}
 
 		NSDictionary *ice = [TGCallMessages parseCandidates:message[@"body"]];
 		self.peerUfrag = ice[@"ufrag"];
@@ -458,7 +462,7 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V5";
 	}
 }
 
-/// Their relay candidate carries their four bytes the same way ours does.
+// Extract remote reflector tag from candidate
 - (void)readPeerTagFromCandidate:(NSString *)candidate {
 	NSRange marker = [candidate rangeOfString:@"reflector-"];
 	if (marker.location == NSNotFound || self.reflector.remoteTag)
@@ -533,9 +537,7 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V5";
 	self.state = TGCallStateEnded;
 }
 
-/// 65 to 92 with library version 2.4.4 is exactly what the official clients
-/// advertised while libtgvoip was their call library. A peer that only speaks
-/// tgcalls refuses this outright - see the note in ROADMAP.
+// Supported call protocol versions
 - (NSDictionary *)protocol {
 	return @{
 		@"@type"            : @"callProtocol",
@@ -543,7 +545,7 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V5";
 		@"udp_reflector"    : @YES,
 		@"min_layer"        : @(65),
 		@"max_layer"        : @(92),
-		@"library_versions" : @[@"9.0.0", @"3.0.0", @"2.4.4"],
+		@"library_versions" : @[@"3.0.0", @"2.4.4"],
 	};
 }
 
@@ -643,20 +645,9 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V5";
 	}
 	NSLog(@"TGCall: negotiated %@", state[@"protocol"][@"library_versions"]);
 
-	// libtgvoip is no longer driven here. The peer speaks tgcalls, which is what
-	// the reflector, ICE and audio engine above implement; running VoIPController
-	// alongside them only put a second recorder on the audio session.
 }
-
-/// Stage one of speaking tgcalls rather than libtgvoip: open the reflector
-/// ourselves and see what comes back. Nothing can arrive until the peer knows
-/// our four-byte tag, which travels over the signalling channel - so for now
-/// this proves the socket, the tag format and the address, and logs anything
-/// the reflector says on its own.
-/// Both ends have to sit on the same reflector: the twelve-byte prefix of the
-/// tag is per server, so packets crossing different ones never meet. TDLib
-/// hands out several and the peer picks its own, so this connects to all of
-/// them and lets the tags decide which one carries the call.
+ 
+// Connect to all candidate reflectors from TDLib
 - (void)probeReflectorsIn:(NSDictionary *)state key:(NSData *)key {
 	self.reflectors = [NSMutableArray array];
 	__weak __typeof__(self) weakSelf = self;
@@ -1034,12 +1025,7 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V5";
 															   repeats:YES];
 }
 
-/// The one question that cannot be answered by listening: does the peer parse
-/// our audio message at all? Put a message it must acknowledge directly behind
-/// one, in the same packet. Their parser reaches the second only by having read
-/// the first correctly - a malformed message aborts the whole packet - so an
-/// acknowledgement is proof the audio framing is right, and its absence is
-/// proof it is wrong.
+// Probe audio packet framing with required ACK
 - (void)probeAudioFramingWith:(NSData *)audioMessage {
 	if (self.audioFramingProven || !self.currentSenderTag)
 		return;

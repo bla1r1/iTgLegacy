@@ -52,11 +52,9 @@
 // ──────────────────────────────────────────────────────────────────────────────
 #pragma mark - data framing (sendPayload:toTag:)
 //
-// We cannot easily capture what sendto() sends in a unit test without a second
-// socket.  Instead we verify the invariants that *are* visible:
-//   – sending with a valid tag does not crash,
-//   – sending with a nil/empty peerTag is handled gracefully,
-//   – the port accessor returns the value supplied at init time.
+// The live loopback tests below capture the actual datagrams. The tests here
+// cover the framings that must not crash: sending before start, sending with
+// no known peer tag, and the port accessor.
 
 - (void)testPortMatchesInit {
     NSData *tag = TGTestPeerTag();
@@ -101,103 +99,175 @@
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-#pragma mark - live loopback (requires network — skipped in unit env)
+#pragma mark - live loopback
 //
-// This test verifies that onPacket is called when a UDP datagram is delivered
-// to the socket.  It starts a real listener, sends a datagram to itself, and
-// waits for onPacket.  It needs a working loopback interface and therefore
-// runs only when the environment permits network access.
+// The reflector talks UDP only. These tests point it at a loopback socket
+// standing in for the Telegram server, then assert the datagrams byte by byte
+// and feed a relayed frame back to exercise readLoop and onPacket.
 
+static uint32_t TGReflectorRead32BE(const uint8_t *bytes) {
+    return ((uint32_t)bytes[0] << 24) | ((uint32_t)bytes[1] << 16) |
+           ((uint32_t)bytes[2] << 8)  |  (uint32_t)bytes[3];
+}
+
+static uint64_t TGReflectorRead64BE(const uint8_t *bytes) {
+    uint64_t value = 0;
+    for (int i = 0; i < 8; i++)
+        value = (value << 8) | bytes[i];
+    return value;
+}
+
+/// A server socket plus a started reflector pointed at it. The ping that
+/// -start sends immediately is consumed, so the test starts from a quiet queue.
+- (TGCallReflector *)reflectorAgainstServer:(int)server
+                                      port:(uint16_t)serverPort
+                                   peerTag:(NSData *)peerTag {
+    TGCallReflector *reflector = [[TGCallReflector alloc] initWithHost:@"127.0.0.1"
+                                                                  port:serverPort
+                                                               peerTag:peerTag];
+    XCTAssertTrue([reflector start]);
+    NSData *ping = TGTestRecvFrom(server, NULL, 2.0);
+    XCTAssertNotNil(ping, @"reflector must ping the server on start");
+    return reflector;
+}
+
+- (void)testPingPacketFormat {
+    uint16_t serverPort = 0;
+    int server = TGTestUDPSocket(&serverPort);
+    XCTAssertGreaterThanOrEqual(server, 0);
+
+    NSData *peerTag = TGTestPeerTag();
+    TGCallReflector *reflector = [[TGCallReflector alloc] initWithHost:@"127.0.0.1"
+                                                                  port:serverPort
+                                                               peerTag:peerTag];
+    XCTAssertTrue([reflector start]);
+
+    NSData *ping = TGTestRecvFrom(server, NULL, 2.0);
+    XCTAssertNotNil(ping);
+    XCTAssertEqual(ping.length, (NSUInteger)40);
+
+    const uint8_t *bytes = (const uint8_t *)ping.bytes;
+    XCTAssertEqual(memcmp(bytes, peerTag.bytes, 12), 0,
+                   @"the first 12 bytes name the call");
+
+    uint32_t tag = 0;
+    memcpy(&tag, bytes + 12, 4);
+    XCTAssertEqual(tag, reflector.localTag, @"the next 4 bytes name our side");
+
+    for (int i = 16; i < 28; i++)
+        XCTAssertEqual(bytes[i], (uint8_t)0xFF);
+    XCTAssertEqual(bytes[28], (uint8_t)0xFE, @"0xFE marks a ping");
+    for (int i = 29; i < 32; i++)
+        XCTAssertEqual(bytes[i], (uint8_t)0xFF);
+
+    XCTAssertEqual(TGReflectorRead64BE(bytes + 32), (uint64_t)123);
+
+    [reflector stop];
+    close(server);
+}
+
+- (void)testSendPayloadToTagFraming {
+    uint16_t serverPort = 0;
+    int server = TGTestUDPSocket(&serverPort);
+    XCTAssertGreaterThanOrEqual(server, 0);
+
+    NSData *peerTag = TGTestPeerTag();
+    TGCallReflector *reflector = [self reflectorAgainstServer:server
+                                                         port:serverPort
+                                                      peerTag:peerTag];
+
+    uint32_t remoteTag = 0x11223344;
+    uint8_t payloadBytes[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0x01 };
+    NSData *payload = [NSData dataWithBytes:payloadBytes length:sizeof(payloadBytes)];
+
+    [reflector sendPayload:payload toTag:remoteTag];
+
+    NSData *packet = TGTestRecvNonPing(server, NULL, 2.0);
+    XCTAssertNotNil(packet);
+
+    // 16-byte destination tag + sender tag 4 + size 4 + 5 bytes, padded to 32.
+    XCTAssertEqual(packet.length, (NSUInteger)32);
+    const uint8_t *bytes = (const uint8_t *)packet.bytes;
+
+    XCTAssertEqual(memcmp(bytes, peerTag.bytes, 12), 0,
+                   @"destination tag keeps the call's 12-byte prefix");
+    uint32_t destination = 0;
+    memcpy(&destination, bytes + 12, 4);
+    XCTAssertEqual(destination, remoteTag, @"last 4 bytes select the peer side");
+
+    uint32_t sender = 0;
+    memcpy(&sender, bytes + 16, 4);
+    XCTAssertEqual(sender, reflector.localTag, @"our four bytes follow");
+
+    XCTAssertEqual(TGReflectorRead32BE(bytes + 20), (uint32_t)payload.length,
+                   @"the size field excludes padding");
+    XCTAssertEqual(memcmp(bytes + 24, payload.bytes, payload.length), 0);
+    for (NSUInteger i = 24 + payload.length; i < packet.length; i++)
+        XCTAssertEqual(bytes[i], (uint8_t)0, @"payload is padded to four bytes");
+
+    [reflector stop];
+    close(server);
+}
+
+/// A relayed packet must reach onPacket, and the sender tag inside it must
+/// become the destination of subsequent bare sendPayload: calls.
 - (void)testOnPacketCalledOnLoopbackDelivery {
-    // Open a plain UDP socket to act as the "reflector server" sender.
-    int sender = socket(AF_INET, SOCK_DGRAM, 0);
-    if (sender < 0) { XCTSkip("cannot open sender socket"); return; }
+    uint16_t serverPort = 0;
+    int server = TGTestUDPSocket(&serverPort);
+    XCTAssertGreaterThanOrEqual(server, 0);
 
-    // Build a fake 16-byte peerTag so the reflector can start.
-    uint8_t rawTag[16];
-    arc4random_buf(rawTag, sizeof(rawTag));
-    NSData *peerTag = [NSData dataWithBytes:rawTag length:16];
+    NSData *peerTag = TGTestPeerTag();
+    TGCallReflector *reflector = [[TGCallReflector alloc] initWithHost:@"127.0.0.1"
+                                                                  port:serverPort
+                                                               peerTag:peerTag];
 
-    TGCallReflector *r = [[TGCallReflector alloc] initWithHost:@"127.0.0.1"
-                                                          port:0
-                                                       peerTag:peerTag];
-    // We need the actual port the reflector binds.  To get it we bind our own
-    // socket to any port and pass that port to the reflector's server address.
-    // Actually TGCallReflector always connects to the `host:port` given at
-    // init — we want it to "connect" to our sender.  The cleanest path is to
-    // make *our* socket the "server": bind it, get its port, init the reflector
-    // pointing at 127.0.0.1:<thatPort>.
-
-    struct sockaddr_in srvAddr;
-    memset(&srvAddr, 0, sizeof(srvAddr));
-    srvAddr.sin_family      = AF_INET;
-    srvAddr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-    srvAddr.sin_port        = 0;
-    bind(sender, (struct sockaddr *)&srvAddr, sizeof(srvAddr));
-    socklen_t srvLen = sizeof(srvAddr);
-    getsockname(sender, (struct sockaddr *)&srvAddr, &srvLen);
-    uint16_t srvPort = ntohs(srvAddr.sin_port);
-
-    // Re-init the reflector pointing at our fake server.
-    TGCallReflector *r2 = [[TGCallReflector alloc] initWithHost:@"127.0.0.1"
-                                                           port:srvPort
-                                                        peerTag:peerTag];
     __block NSData *received = nil;
-    r2.onPacket = ^(NSData *p){ received = p; };
+    reflector.onPacket = ^(NSData *packet){ received = packet; };
 
-    if (![r2 start]) {
-        close(sender);
-        XCTSkip("reflector start failed (no loopback?)");
-        return;
-    }
+    XCTAssertTrue([reflector start]);
 
-    // Give the reflector a moment to bind its own socket.
-    [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.05]];
+    // The ping's source address is the reflector's own socket.
+    struct sockaddr_in reflectorAddress;
+    NSData *ping = TGTestRecvFrom(server, &reflectorAddress, 2.0);
+    XCTAssertNotNil(ping);
 
-    // Send a minimal 21-byte datagram to the reflector's socket.
-    // The reflector's read loop listens on a socket it bound to ANY:0; we need
-    // its port.  Since we cannot directly query it, we instead send from our
-    // known sender address — the reflector will log "bytes in" and call onPacket.
-    //
-    // Rather than using a separate send socket, send from the sender socket
-    // back to itself and let the reflector's read loop receive the echo.
-    // This is a bit indirect; the real value is proving that onPacket fires.
-    //
-    // Alternative approach: the reflector's read loop is a background thread
-    // reading from its own socket.  Send to localTag's listening address.
-    // TGCallReflector does not expose its listen port, so we use a small trick:
-    // the reflector sends a PING to us (srvPort) right after -start; our
-    // sender socket can read that, extract the reflector's source port, then
-    // send a datagram back.
+    uint32_t senderTag = 0x0BADF00D;
+    uint8_t frameBytes[28] = {0};
+    memset(frameBytes, 0xAA, 16);              // destination tag, not inspected
+    memcpy(frameBytes + 16, &senderTag, 4);    // sender tag
+    uint32_t size = 4;
+    frameBytes[20] = (uint8_t)(size >> 24);
+    frameBytes[21] = (uint8_t)(size >> 16);
+    frameBytes[22] = (uint8_t)(size >> 8);
+    frameBytes[23] = (uint8_t)size;
+    uint8_t body[] = { 0x01, 0x02, 0x03, 0x04 };
+    memcpy(frameBytes + 24, body, sizeof(body));
+    NSData *frame = [NSData dataWithBytes:frameBytes length:sizeof(frameBytes)];
 
-    uint8_t pingBuf[64];
-    ssize_t pingGot = recv(sender, pingBuf, sizeof(pingBuf), 0);
-    if (pingGot <= 0) {
-        [r2 stop]; close(sender);
-        XCTSkip("did not receive reflector ping");
-        return;
-    }
+    ssize_t sent = sendto(server, frame.bytes, frame.length, 0,
+                          (struct sockaddr *)&reflectorAddress, sizeof(reflectorAddress));
+    XCTAssertEqual(sent, (ssize_t)frame.length);
 
-    // The reflector's source port is now known.
-    struct sockaddr_in reflectorAddr;
-    socklen_t rl = sizeof(reflectorAddr);
-    // Re-read with MSG_PEEK to get the source address.
-    // (We already consumed the datagram above.)  Instead, bind a second socket
-    // and use recvfrom.  Since we already consumed with recv, use the trick of
-    // re-binding.  Simplest: just send to the reflector's fixed "server" addr
-    // and it will loop back through recv().
-    //
-    // Actually the simpler thing: we know the reflector's socket is on the
-    // loopback; just broadcast to 127.0.0.1 on a range of ports.  Instead, let
-    // us just verify that the ping was received — that alone proves the socket
-    // is live and the read loop delivers packets.
+    XCTAssertTrue(TGWaitForCondition(^{ return (BOOL)(received != nil); }, 2.0),
+                  @"readLoop must deliver the datagram to onPacket");
+    XCTAssertEqualObjects(received, frame, @"onPacket receives the packet whole");
 
-    // A ping arriving at us (the fake server) is itself the proof.
-    XCTAssertGreaterThan(pingGot, 0, @"should have received reflector ping on the fake server");
+    // sendPayload: (no tag) answers whoever the frame came from.
+    uint8_t replyBytes[] = { 0x05, 0x06 };
+    [reflector sendPayload:[NSData dataWithBytes:replyBytes length:sizeof(replyBytes)]];
 
-    [r2 stop];
-    [r stop];
-    close(sender);
+    NSData *reply = TGTestRecvNonPing(server, NULL, 2.0);
+    XCTAssertNotNil(reply);
+    XCTAssertGreaterThanOrEqual(reply.length, (NSUInteger)24);
+    const uint8_t *replyBytesPtr = (const uint8_t *)reply.bytes;
+    XCTAssertEqual(memcmp(replyBytesPtr, peerTag.bytes, 12), 0);
+    uint32_t destination = 0;
+    memcpy(&destination, replyBytesPtr + 12, 4);
+    XCTAssertEqual(destination, senderTag,
+                   @"the observed sender tag is the address to answer");
+
+    [reflector stop];
+    close(server);
 }
 
 @end

@@ -69,11 +69,7 @@ static void TGAppendString(NSMutableData *data, NSString *string) {
 	return messages;
 }
 
-/// The transport channel really does carry several messages in one packet, each
-/// under its own sequence number, and each of those - not the packet's - is what
-/// an acknowledgement refers to. Walking the list needs every message's length,
-/// so the fixed sizes are from tgcalls/Message.cpp; the three that carry a raw
-/// buffer are length-prefixed unless the packet holds nothing else.
+// Parse media messages from decrypted packet
 + (NSArray *)parseMediaPacket:(NSData *)plaintext seq:(uint32_t)packetSeq {
 	const uint8_t *bytes = (const uint8_t *)plaintext.bytes;
 	NSUInteger length = plaintext.length;
@@ -147,8 +143,7 @@ static void TGAppendString(NSMutableData *data, NSString *string) {
 	return (seq & ((uint32_t)1 << 31)) != 0;
 }
 
-/// Two messages in one packet, so neither the single-message bit nor the
-/// ack-request bit belongs on the sequence number carrying it.
+// Build ACK packet
 + (NSData *)ackForSeq:(uint32_t)seq {
 	NSMutableData *packet = [NSMutableData data];
 	uint8_t empty = kEmptyId, ack = kAckId;
@@ -165,10 +160,7 @@ static void TGAppendString(NSMutableData *data, NSString *string) {
 					   : (seq | ((uint32_t)1 << 31));
 }
 
-/// Their own opening packet, byte for byte:
-///   fe | 40000001 | 08 00000000 | 40000002 | 04 01
-/// an empty message under the packet's sequence number, video parameters with
-/// an aspect ratio of zero, then the media state - one byte, (video << 1) | audio.
+// Media state packet bundle
 + (NSData *)mediaStateBundleWithVideoSeq:(uint32_t)videoSeq
 								stateSeq:(uint32_t)stateSeq
 							 audioActive:(BOOL)audioActive {
