@@ -31,6 +31,9 @@
 		// Four random bytes name this side of the call. The reflector uses
 		// them to decide which way a packet goes.
 		arc4random_buf(&_localTag, sizeof(_localTag));
+		if (peerTag.length >= 16) {
+			memcpy(&_remoteTag, (const uint8_t *)peerTag.bytes + 12, 4);
+		}
 	}
 	return self;
 }

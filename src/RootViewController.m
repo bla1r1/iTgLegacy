@@ -54,14 +54,10 @@ static const CGFloat kCompactBarHeight = 32.0f;
 	settingsNC.tabBarItem = [[UITabBarItem alloc] initWithTitle:@"Settings"
 														   image:[TGIcons settings] tag:2];
 
-	TGTheme *theme = [TGTheme shared];
-	if ([self.tabBar respondsToSelector:@selector(setBarTintColor:)]){
-		self.tabBar.barTintColor = [theme barColour];
-		self.tabBar.tintColor = [theme accentColour];
-	}
-
 	[self setViewControllers:@[chatsNC, contactsNC, settingsNC] animated:NO];
 	[self setSelectedIndex:0];
+
+	[[TGTheme shared] styleTabBar:self.tabBar];
 
 	__weak typeof(self) weakSelf = self;
 	[[NSNotificationCenter defaultCenter] addObserverForName:TGThemeChangedNotification
@@ -74,10 +70,6 @@ static const CGFloat kCompactBarHeight = 32.0f;
 
 #pragma mark - lock screen
 
-/// Remote control events go up the responder chain, so something has to be
-/// first responder to catch them. The tab controller outlives every screen in
-/// the app, which makes it the one place the buttons on a lock screen can
-/// always reach.
 - (BOOL)canBecomeFirstResponder { return YES; }
 
 - (void)viewDidAppear:(BOOL)animated {

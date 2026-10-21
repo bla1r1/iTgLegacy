@@ -23,6 +23,7 @@
 @property (nonatomic, readonly) uint32_t localTag;
 /// Set once the other side's four bytes are known.
 @property (nonatomic, assign) uint32_t remoteTag;
+@property (nonatomic, readonly) NSString *host;
 @property (nonatomic, readonly) uint16_t port;
 
 /// Main queue, for every datagram that arrives.

@@ -10,11 +10,9 @@
 #import "TGSearchViewController.h"
 #import <QuartzCore/QuartzCore.h>
 
-// Their chat item is 80dp on a 360dp screen; on 320pt that is 71, and 72
-// is what iOS uses for a two-line row anyway.
+// Standard Telegram iOS row and avatar metrics
 static const CGFloat kRowHeight = 72.0f;
-// 57dp avatar scaled the same way.
-static const CGFloat kAvatar = 50.0f;
+static const CGFloat kAvatar    = 52.0f;
 
 #pragma mark - cell
 
@@ -36,9 +34,13 @@ static const CGFloat kAvatar = 50.0f;
 	if (!self)
 		return nil;
 
-	self.avatar = [[UIImageView alloc] initWithFrame:CGRectMake(10, 8, kAvatar, kAvatar)];
+	CGFloat scale = [UIScreen mainScreen].scale;
+
+	self.avatar = [[UIImageView alloc] initWithFrame:CGRectMake(10, (kRowHeight - kAvatar) / 2, kAvatar, kAvatar)];
 	self.avatar.layer.cornerRadius = kAvatar / 2;
 	self.avatar.clipsToBounds = YES;
+	self.avatar.layer.shouldRasterize = YES;
+	self.avatar.layer.rasterizationScale = scale;
 	self.avatar.backgroundColor = [UIColor colorWithWhite:0.85f alpha:1.0f];
 	self.avatar.contentMode = UIViewContentModeScaleAspectFill;
 	[self.contentView addSubview:self.avatar];
@@ -46,7 +48,6 @@ static const CGFloat kAvatar = 50.0f;
 	self.titleLabel = [[UILabel alloc] init];
 	self.titleLabel.font = [UIFont boldSystemFontOfSize:16];
 	self.titleLabel.textColor = [UIColor colorWithWhite:0.1f alpha:1.0f];
-	// A long name has to stop at the date rather than slide under it.
 	self.titleLabel.lineBreakMode = NSLineBreakByTruncatingTail;
 	[self.contentView addSubview:self.titleLabel];
 
@@ -70,16 +71,18 @@ static const CGFloat kAvatar = 50.0f;
 	self.badge.textAlignment = NSTextAlignmentCenter;
 	self.badge.layer.cornerRadius = 10;
 	self.badge.clipsToBounds = YES;
+	self.badge.layer.shouldRasterize = YES;
+	self.badge.layer.rasterizationScale = scale;
 	self.badge.hidden = YES;
 	[self.contentView addSubview:self.badge];
 
-	// The dot sits half off the avatar, so it needs a ring of the row's own
-	// colour to stay legible against a photo.
 	self.onlineDot = [[UIView alloc] initWithFrame:
-			CGRectMake(10 + kAvatar - 14, 8 + kAvatar - 14, 14, 14)];
+			CGRectMake(10 + kAvatar - 14, (kRowHeight - kAvatar) / 2 + kAvatar - 14, 14, 14)];
 	self.onlineDot.backgroundColor = [[TGTheme shared] onlineColour];
 	self.onlineDot.layer.cornerRadius = 7;
 	self.onlineDot.layer.borderWidth = 2;
+	self.onlineDot.layer.shouldRasterize = YES;
+	self.onlineDot.layer.rasterizationScale = scale;
 	self.onlineDot.hidden = YES;
 	[self.contentView addSubview:self.onlineDot];
 
@@ -87,8 +90,6 @@ static const CGFloat kAvatar = 50.0f;
 	self.tick.hidden = YES;
 	[self.contentView addSubview:self.tick];
 
-	// A pinned chat says so where the unread count would be, and gives the
-	// place up as soon as there is a count to show.
 	self.pin = [[UIImageView alloc] init];
 	self.pin.contentMode = UIViewContentModeScaleAspectFit;
 	self.pin.hidden = YES;
@@ -154,29 +155,22 @@ static const CGFloat kAvatar = 50.0f;
 	self.avatars = [NSMutableDictionary dictionary];
 	self.avatarsRequested = [NSMutableSet set];
 
-	// Without this there is no way to start a conversation at all - you can
-	// only reply to chats that already exist.
 	self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc]
 			initWithBarButtonSystemItem:UIBarButtonSystemItemCompose
 				   target:self action:@selector(composeTapped)];
 
-	// Search sits above the list, the way every client puts it - pull down or
-	// just start typing.
 	self.searchBar = [[UISearchBar alloc] initWithFrame:CGRectMake(0, 0, 320, 44)];
 	self.searchBar.delegate = self;
 	self.searchBar.placeholder = @"Search";
 	[self styleSearchBar];
 	[self rebuildTableHeader];
 
-	// Hold a row for the two things clients put there: pin and mute.
 	UILongPressGestureRecognizer *hold = [[UILongPressGestureRecognizer alloc]
 			initWithTarget:self action:@selector(rowHeld:)];
 	[self.tableView addGestureRecognizer:hold];
 
 	self.tableView.rowHeight = kRowHeight;
 	self.tableView.separatorStyle = UITableViewCellSeparatorStyleSingleLine;
-	// iOS 7 lays content out under the bars; these screens position their own
-	// frames and expect the old behaviour.
 	if ([self respondsToSelector:@selector(setEdgesForExtendedLayout:)])
 		self.edgesForExtendedLayout = UIRectEdgeNone;
 
@@ -186,7 +180,6 @@ static const CGFloat kAvatar = 50.0f;
 	[[TGTheme shared] styleNavigationBar:self.navigationController.navigationBar];
 	[[TGTheme shared] styleTabBar:self.tabBarController.tabBar];
 
-	// Restyle in place when the setting changes, rather than needing a restart.
 	[[NSNotificationCenter defaultCenter] addObserverForName:TGThemeChangedNotification
 			object:nil queue:[NSOperationQueue mainQueue]
 		usingBlock:^(NSNotification *note){
@@ -196,6 +189,7 @@ static const CGFloat kAvatar = 50.0f;
 		weakSelf.tableView.separatorColor = [[TGTheme shared] separatorColour];
 		[[TGTheme shared] styleTabBar:weakSelf.tabBarController.tabBar];
 		[weakSelf styleSearchBar];
+		[weakSelf rebuildTableHeader];
 		[weakSelf.tableView reloadData];
 	}];
 
@@ -206,22 +200,20 @@ static const CGFloat kAvatar = 50.0f;
 		[weakSelf.tableView reloadData];
 	};
 	[TGClient shared].onConnectionState = ^(TGConnectionState state, NSString *text){
-		// Clients put this in the title bar rather than hiding it in a flag.
 		weakSelf.title = text ?: @"Chats";
 	};
 	[self reload];
 }
 
-/// The search bar and, when there is one, the archive: both above the first
-/// chat and both scrolled out of sight to begin with. Pulling the list down is
-/// what brings them back, which is how Telegram hides them.
 - (void)rebuildTableHeader {
 	CGFloat width = self.tableView.bounds.size.width ?: 320;
 	BOOL showArchive = !self.showsArchive && self.folderId == 0 &&
 					   [TGClient shared].archivedChats.count > 0;
 	CGFloat height = 44 + (showArchive ? kRowHeight : 0);
+	UIColor *bg = [[TGTheme shared] listBackgroundColour];
 
 	UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0, 0, width, height)];
+	header.backgroundColor = bg;
 	self.searchBar.frame = CGRectMake(0, 0, width, 44);
 	[header addSubview:self.searchBar];
 
@@ -229,14 +221,18 @@ static const CGFloat kAvatar = 50.0f;
 		TGChatCell *row = [[TGChatCell alloc] initWithStyle:UITableViewCellStyleDefault
 											reuseIdentifier:nil];
 		row.frame = CGRectMake(0, 44, width, kRowHeight);
+		row.backgroundColor = bg;
+		row.contentView.backgroundColor = bg;
 		row.titleLabel.text = @"Archived Chats";
 		row.titleLabel.textColor = [[TGTheme shared] primaryTextColour];
+		row.titleLabel.backgroundColor = bg;
 		row.previewLabel.text = [NSString stringWithFormat:@"%lu chats",
 				(unsigned long)[TGClient shared].archivedChats.count];
 		row.previewLabel.textColor = [[TGTheme shared] secondaryTextColour];
+		row.previewLabel.backgroundColor = bg;
+		row.dateLabel.backgroundColor = bg;
 		row.avatar.image = [TGIcons archiveAvatarOfSide:kAvatar];
 		row.avatar.backgroundColor = [UIColor clearColor];
-		row.backgroundColor = [[TGTheme shared] listBackgroundColour];
 		row.userInteractionEnabled = YES;
 		[row addGestureRecognizer:[[UITapGestureRecognizer alloc]
 				initWithTarget:self action:@selector(openArchive)]];
@@ -255,21 +251,15 @@ static const CGFloat kAvatar = 50.0f;
 	[self hideHeaderAboveFrom:wasHidingHeader];
 }
 
-/// Scroll the header off the top without animating, so the list opens on the
-/// first chat. The archive arrives after the first layout, which makes the
-/// header taller, so "still at the top" means the old height as well as zero -
-/// otherwise the row appears and stays on screen.
 - (void)hideHeaderAboveFrom:(CGFloat)previousHeight {
 	if (self.tableView.contentSize.height <= self.tableView.bounds.size.height)
 		return;
 	CGFloat y = self.tableView.contentOffset.y;
 	if (y > 0.5f && fabs(y - previousHeight) > 0.5f)
-		return;   // the user has scrolled somewhere of their own; leave it
+		return;
 	self.tableView.contentOffset = CGPointMake(0, self.headerHeight);
 }
 
-/// The bar in the header is a way in, not a place to type: touching it hands
-/// over to the search page, which has room for the results and the keyboard.
 - (BOOL)searchBarShouldBeginEditing:(UISearchBar *)searchBar {
 	TGSearchViewController *search = [[TGSearchViewController alloc] init];
 	search.hidesBottomBarWhenPushed = YES;
@@ -277,9 +267,6 @@ static const CGFloat kAvatar = 50.0f;
 	return NO;
 }
 
-/// barTintColor paints the bar around the field but leaves the field itself
-/// white, which on a dark list is a slab of light at the top. barStyle is what
-/// turns the field over too.
 - (void)styleSearchBar {
 	TGTheme *theme = [TGTheme shared];
 	self.searchBar.barStyle = theme.isDark ? UIBarStyleBlack : UIBarStyleDefault;
@@ -618,13 +605,21 @@ static const NSInteger kChatActionsTag = 77;
 		cell = [[TGChatCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:reuse];
 
 	TGTheme *theme = [TGTheme shared];
-	cell.backgroundColor = [theme listBackgroundColour];
+	UIColor *bg = [theme listBackgroundColour];
+	cell.backgroundColor = bg;
+	cell.contentView.backgroundColor = bg;
+	cell.titleLabel.backgroundColor = bg;
+	cell.titleLabel.opaque = YES;
 	cell.titleLabel.textColor = [theme primaryTextColour];
+	cell.previewLabel.backgroundColor = bg;
+	cell.previewLabel.opaque = YES;
 	cell.previewLabel.textColor = [theme secondaryTextColour];
+	cell.dateLabel.backgroundColor = bg;
+	cell.dateLabel.opaque = YES;
 	cell.dateLabel.textColor = [theme secondaryTextColour];
 	cell.onlineDot.hidden = YES;
 	cell.tick.hidden = YES;
-	cell.onlineDot.layer.borderColor = [theme listBackgroundColour].CGColor;
+	cell.onlineDot.layer.borderColor = bg.CGColor;
 
 	NSArray *header = [self headerRows];
 	if (indexPath.row < (NSInteger)header.count){

@@ -5,12 +5,12 @@
 #import "TGIcons.h"
 #import <QuartzCore/QuartzCore.h>
 
-static const CGFloat kSearchAvatar = 36.0f;
+static const CGFloat kSearchAvatar = 40.0f;
 
 @interface TGSearchViewController () <UISearchBarDelegate>
 @property (nonatomic, strong) UISearchBar *bar;
-@property (nonatomic, strong) NSArray *chatHits;      // chats whose title matches
-@property (nonatomic, strong) NSArray *messageHits;   // messages from the server
+@property (nonatomic, strong) NSArray *chatHits;
+@property (nonatomic, strong) NSArray *messageHits;
 @property (nonatomic, strong) NSMutableDictionary *avatars;
 @property (nonatomic, strong) NSMutableSet *avatarsRequested;
 @end
@@ -27,12 +27,10 @@ static const CGFloat kSearchAvatar = 36.0f;
 	self.messageHits = @[];
 	self.avatars = [NSMutableDictionary dictionary];
 	self.avatarsRequested = [NSMutableSet set];
-	self.tableView.rowHeight = 56;
+	self.tableView.rowHeight = 60;
 	self.tableView.backgroundColor = [[TGTheme shared] listBackgroundColour];
 	self.tableView.separatorColor = [[TGTheme shared] separatorColour];
 
-	// The one thing the pinned bar could not do: get out of the way. iOS 7 has
-	// this, and it is the whole reason search moved to a page.
 	if ([self.tableView respondsToSelector:@selector(setKeyboardDismissMode:)])
 		self.tableView.keyboardDismissMode = UIScrollViewKeyboardDismissModeOnDrag;
 
@@ -59,30 +57,24 @@ static const CGFloat kSearchAvatar = 36.0f;
 #pragma mark - searching
 
 - (void)searchBar:(UISearchBar *)searchBar textDidChange:(NSString *)query {
-	if (!query.length){
+	if (!query.length) {
 		self.chatHits = @[];
 		self.messageHits = @[];
 		[self.tableView reloadData];
 		return;
 	}
 
-	// Titles match here and now; the server answers about message bodies when
-	// it gets round to it. Showing the first without waiting for the second is
-	// what makes typing feel like it is doing something.
 	NSMutableArray *titles = [NSMutableArray array];
 	for (NSDictionary *c in [TGClient shared].chats)
-		if ([c[@"title"] rangeOfString:query
-							   options:NSCaseInsensitiveSearch].location != NSNotFound)
+		if ([c[@"title"] rangeOfString:query options:NSCaseInsensitiveSearch].location != NSNotFound)
 			[titles addObject:c];
 	self.chatHits = titles;
 	[self.tableView reloadData];
 
 	__weak typeof(self) weakSelf = self;
-	[[TGClient shared] searchMessages:query completion:^(NSArray *messages){
+	[[TGClient shared] searchMessages:query completion:^(NSArray *messages) {
 		TGSearchViewController *me = weakSelf;
-		// A slower answer to an older query must not replace a newer one.
-		if (!me || ![me.bar.text isEqualToString:query])
-			return;
+		if (!me || ![me.bar.text isEqualToString:query]) return;
 		me.messageHits = messages ?: @[];
 		[me.tableView reloadData];
 	}];
@@ -145,19 +137,29 @@ static const CGFloat kSearchAvatar = 36.0f;
 {
 	static NSString *reuse = @"TGSearchCell";
 	UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:reuse];
-	if (!cell)
-		cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle
-									  reuseIdentifier:reuse];
+	if (!cell) {
+		cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:reuse];
+		cell.imageView.layer.cornerRadius = kSearchAvatar / 2;
+		cell.imageView.clipsToBounds = YES;
+		cell.imageView.layer.shouldRasterize = YES;
+		cell.imageView.layer.rasterizationScale = [UIScreen mainScreen].scale;
+	}
 
 	TGTheme *theme = [TGTheme shared];
-	cell.backgroundColor = [theme listBackgroundColour];
+	UIColor *bg = [theme listBackgroundColour];
+	cell.backgroundColor = bg;
 	cell.textLabel.font = [UIFont boldSystemFontOfSize:15];
 	cell.textLabel.textColor = [theme primaryTextColour];
+	cell.textLabel.backgroundColor = bg;
+	cell.textLabel.opaque = YES;
+
 	cell.detailTextLabel.font = [UIFont systemFontOfSize:13];
 	cell.detailTextLabel.textColor = [theme secondaryTextColour];
+	cell.detailTextLabel.backgroundColor = bg;
+	cell.detailTextLabel.opaque = YES;
 	cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
 
-	if (indexPath.section == 0){
+	if (indexPath.section == 0) {
 		NSDictionary *c = self.chatHits[indexPath.row];
 		cell.textLabel.text = c[@"title"];
 		cell.detailTextLabel.text = c[@"text"];
@@ -173,8 +175,6 @@ static const CGFloat kSearchAvatar = 36.0f;
 											fileId:nil];
 	}
 
-	cell.imageView.layer.cornerRadius = kSearchAvatar / 2;
-	cell.imageView.clipsToBounds = YES;
 	return cell;
 }
 

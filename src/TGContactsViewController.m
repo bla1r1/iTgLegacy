@@ -5,8 +5,7 @@
 #import "TGTheme.h"
 #import <QuartzCore/QuartzCore.h>
 
-// Their contact row is a 40dp avatar on a 52dp row; 36 and 56 here.
-static const CGFloat kContactAvatar = 36.0f;
+static const CGFloat kContactAvatar = 40.0f;
 
 @interface TGContactsViewController ()
 @property (nonatomic, strong) NSArray *users;
@@ -19,8 +18,6 @@ static const CGFloat kContactAvatar = 36.0f;
 - (void)viewDidLoad {
 	[super viewDidLoad];
 
-	// iOS 7 lays content out under the bars; these screens position their own
-	// frames and expect the old behaviour.
 	if ([self respondsToSelector:@selector(setEdgesForExtendedLayout:)])
 		self.edgesForExtendedLayout = UIRectEdgeNone;
 
@@ -33,8 +30,6 @@ static const CGFloat kContactAvatar = 36.0f;
 	self.tableView.backgroundColor = [[TGTheme shared] listBackgroundColour];
 	self.tableView.separatorColor = [[TGTheme shared] separatorColour];
 
-	// This is a tab, so it is on screen behind Settings when a theme changes -
-	// switching back to it used to show the old colours until the app restarted.
 	__weak typeof(self) weakContacts = self;
 	[[NSNotificationCenter defaultCenter] addObserverForName:TGThemeChangedNotification
 			object:nil queue:[NSOperationQueue mainQueue]
@@ -52,18 +47,14 @@ static const CGFloat kContactAvatar = 36.0f;
 		TGContactsViewController *me = weakSelf;
 		if (!me)
 			return;
-		// Alphabetical, the way a contact list is expected to read.
 		me.users = [users sortedArrayUsingComparator:^NSComparisonResult(id a, id b){
 			return [a[@"first_name"] localizedCaseInsensitiveCompare:b[@"first_name"]];
 		}];
 		[me.tableView reloadData];
-		NSLog(@"TDLIB CONTACTS: %lu", (unsigned long)me.users.count);
 		[me fetchMissingPhotos];
 	}];
 }
 
-/// One request per picture, cached by file id: the list scrolls past the same
-/// rows repeatedly and re-downloading on every pass would never settle.
 - (void)reloadTableDebounced {
 	[NSObject cancelPreviousPerformRequestsWithTarget:self.tableView selector:@selector(reloadData) object:nil];
 	[self.tableView performSelector:@selector(reloadData) withObject:nil afterDelay:0.05];
@@ -128,18 +119,21 @@ static NSString *TGContactName(NSDictionary *u) {
 
 	NSDictionary *u = self.users[indexPath.row];
 	NSString *name = TGContactName(u);
+	UIColor *bg = [[TGTheme shared] listBackgroundColour];
+	cell.backgroundColor = bg;
+	cell.textLabel.backgroundColor = bg;
+	cell.textLabel.opaque = YES;
 	cell.textLabel.text = name;
 	cell.textLabel.font = [UIFont systemFontOfSize:15];
+	cell.detailTextLabel.backgroundColor = bg;
+	cell.detailTextLabel.opaque = YES;
 	cell.detailTextLabel.text = [u[@"phone"] length]
 		? [NSString stringWithFormat:@"+%@", u[@"phone"]] : @"";
 	cell.detailTextLabel.font = [UIFont systemFontOfSize:13];
 	cell.detailTextLabel.textColor = [[TGTheme shared] secondaryTextColour];
 	cell.textLabel.textColor = [[TGTheme shared] primaryTextColour];
-	cell.backgroundColor = [[TGTheme shared] listBackgroundColour];
 	cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
 
-	// The real picture when it has arrived, and Telegram's own initials avatar
-	// - same palette, same id-to-colour mapping - until then.
 	NSNumber *fileId = u[@"photoFileId"];
 	UIImage *photo = [fileId isKindOfClass:NSNumber.class] ? self.photos[fileId] : nil;
 	if (!photo)
@@ -150,6 +144,8 @@ static NSString *TGContactName(NSDictionary *u) {
 	cell.imageView.image = photo;
 	cell.imageView.layer.cornerRadius = kContactAvatar / 2;
 	cell.imageView.clipsToBounds = YES;
+	cell.imageView.layer.shouldRasterize = YES;
+	cell.imageView.layer.rasterizationScale = [UIScreen mainScreen].scale;
 	cell.imageView.contentMode = UIViewContentModeScaleAspectFill;
 	return cell;
 }

@@ -4,6 +4,7 @@
 #import "TGIcons.h"
 #import "UIImage+WebP.h"
 #import <MediaPlayer/MediaPlayer.h>
+#import <AVFoundation/AVFoundation.h>
 #import <QuartzCore/QuartzCore.h>
 
 // The chrome sits over the picture rather than beside it, which is what makes
@@ -256,7 +257,7 @@ static const NSInteger kZoomTag = 0x7001;
 /// photoId handed the movie player a JPEG and it sat there doing nothing.
 - (NSNumber *)fileIdForItem:(NSDictionary *)item {
 	BOOL isVideo = [item[@"kind"] isEqualToString:@"messageVideo"];
-	NSNumber *fileId = isVideo ? item[@"docId"] : item[@"photoId"];
+	NSNumber *fileId = isVideo ? item[@"docId"] : (item[@"bigPhotoId"] ?: item[@"photoId"]);
 	if ([fileId isKindOfClass:NSNumber.class])
 		return fileId;
 	// A photo with no photoId, or a video with no docId: fall back to whatever
@@ -434,6 +435,8 @@ static const NSInteger kZoomTag = 0x7001;
 	movie.controlStyle = MPMovieControlStyleNone;
 	movie.scalingMode = MPMovieScalingModeAspectFit;
 	movie.view.frame = page.bounds;
+	[[AVAudioSession sharedInstance] setCategory:AVAudioSessionCategoryPlayback error:nil];
+	[[AVAudioSession sharedInstance] setActive:YES error:nil];
 	movie.view.backgroundColor = [UIColor clearColor];
 	[page addSubview:movie.view];
 	[movie prepareToPlay];

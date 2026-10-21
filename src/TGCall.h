@@ -32,6 +32,7 @@ typedef NS_ENUM(NSInteger, TGCallState) {
 @property (nonatomic, readonly) BOOL outgoing;
 @property (nonatomic, readonly) BOOL muted;
 @property (nonatomic, readonly) NSData *callKey;
+@property (nonatomic, readonly) NSArray *emojis;
 
 - (void)setSpeaker:(BOOL)speaker;
 
@@ -40,6 +41,7 @@ typedef NS_ENUM(NSInteger, TGCallState) {
 
 /// Main queue, whenever the state changes.
 @property (nonatomic, copy) void (^onStateChanged)(TGCallState state);
+@property (nonatomic, copy) void (^onIncomingCall)(int64_t peerUserId, int32_t callId);
 
 /// Ask TDLib to place a call. The rest arrives through -handleUpdate:.
 - (void)callUser:(int64_t)userId;

@@ -319,23 +319,23 @@ static NSString *TGIdForStyle(TGThemeStyle style) {
 }
 
 - (void)styleCell:(UITableViewCell *)cell {
-	// Their settings row: 15/18 title in black, the value beside it in blue.
 	cell.textLabel.font = [UIFont systemFontOfSize:15];
 	cell.detailTextLabel.font = [UIFont systemFontOfSize:15];
 	cell.detailTextLabel.textColor = [self cellDetailColour];
 
-	// Every branch assigns both, because cells are reused across a theme
-	// change: returning early left a dark background and a dark selection view
-	// on a cell that a light theme then drew black text into.
-	if (![self hasCustomPalette] && !self.isDarkStyle){
-		cell.backgroundColor = [UIColor whiteColor];
+	UIColor *bg = (![self hasCustomPalette] && !self.isDarkStyle) ? [UIColor whiteColor] : [self listBackgroundColour];
+	cell.backgroundColor = bg;
+	cell.textLabel.backgroundColor = bg;
+	cell.textLabel.opaque = YES;
+	cell.detailTextLabel.backgroundColor = bg;
+	cell.detailTextLabel.opaque = YES;
+
+	if (![self hasCustomPalette] && !self.isDarkStyle) {
 		cell.textLabel.textColor = [UIColor blackColor];
 		cell.selectedBackgroundView = nil;
 		return;
 	}
-	cell.backgroundColor = [self listBackgroundColour];
 	cell.textLabel.textColor = [self primaryTextColour];
-	// A selection flash of white would be worse than none.
 	UIView *selected = [[UIView alloc] init];
 	selected.backgroundColor = [self bubbleTheirsColour];
 	cell.selectedBackgroundView = selected;

@@ -5,12 +5,15 @@
 @property (nonatomic, copy) void (^onPhoneSubmitted)(NSString *phoneNumber);
 @property (nonatomic, copy) void (^onCodeSubmitted)(NSString *code);
 @property (nonatomic, copy) void (^onPasswordSubmitted)(NSString *password);
+@property (nonatomic, copy) void (^onResendCode)(void);
+@property (nonatomic, copy) void (^onRequestQRCode)(void);
+@property (nonatomic, copy) void (^onResetSession)(void);
 
+- (void)showPhoneStep;
 - (void)showCodeStepWithPhoneNumber:(NSString *)phoneNumber;
+- (void)showQRCodeStepWithLink:(NSString *)link;
 - (void)showPasswordStep;
 
-/* Spinner + disabled button while a request is in flight, so a tap on Next
- * is visibly doing something instead of looking dead. */
 - (void)setBusy:(BOOL)busy;
 
 @end

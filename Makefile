@@ -31,20 +31,34 @@ IPA_ARM64  := $(IPA_DIR)/iTgLegacy-arm64.ipa
 
 # Compiler & Toolchain
 XCODE_DEV   := /Applications/Xcode-beta.app/Contents/Developer
-XCODE_CLANG := $(XCODE_DEV)/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang
-XCODE_CXX   := $(XCODE_DEV)/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang++
-XCODE_SDK   := $(XCODE_DEV)/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS.sdk
+ifneq ($(wildcard $(XCODE_DEV)),)
+  XCODE_CLANG := $(XCODE_DEV)/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang
+  XCODE_CXX   := $(XCODE_DEV)/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang++
+  XCODE_SDK   := $(XCODE_DEV)/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS.sdk
+else
+  XCODE_CLANG := $(shell which clang)
+  XCODE_CXX   := $(shell which clang++)
+  XCODE_SDK   :=
+endif
 
-# C++ stdlib include path from Xcode
-XCODE_CXX_STDLIB := $(XCODE_SDK)/usr/include/c++/v1
-CXX_STDLIB_INC   := -isystem $(XCODE_CXX_STDLIB)
-
-SDK_PATH    := $(BUILD_DIR)/sdks/iPhoneOS12.4.sdk
+SDK_PATH    := $(BUILD_DIR)/sdks/iPhoneOS15.6.sdk
+ifeq ($(wildcard $(SDK_PATH)),)
+  SDK_PATH  := $(BUILD_DIR)/sdks/iPhoneOS12.4.sdk
+endif
 ifeq ($(wildcard $(SDK_PATH)),)
   SDK_PATH  := $(BUILD_DIR)/sdks/iPhoneOS9.3.sdk
 endif
 ifeq ($(wildcard $(SDK_PATH)),)
   SDK_PATH  := $(XCODE_SDK)
+endif
+
+# C++ stdlib include path
+ifneq ($(wildcard $(SDK_PATH)/usr/include/c++/v1),)
+  CXX_STDLIB_INC := -stdlib=libc++
+else ifneq ($(wildcard $(XCODE_SDK)/usr/include/c++/v1),)
+  CXX_STDLIB_INC := -isystem $(XCODE_SDK)/usr/include/c++/v1
+else
+  CXX_STDLIB_INC := -stdlib=libc++
 endif
 
 CC  := $(shell command -v ccache 2>/dev/null) $(XCODE_CLANG)
@@ -78,7 +92,7 @@ FRAMEWORKS := -framework UIKit -framework Foundation -framework QuickLook \
               -framework CoreMedia -framework AddressBook \
               -framework AddressBookUI -framework MobileCoreServices \
               -framework CoreLocation -framework MapKit \
-              -framework CoreTelephony \
+              -framework CoreTelephony -framework CoreImage \
 
 
 # TDLib is loaded at runtime from libtdjson.dylib, never linked.
@@ -240,6 +254,10 @@ CXXFLAGS_ARM64  := $(CFLAGS_ARM64) $(CXX_STDLIB_INC) -std=c++11 -fno-use-cxa-ate
 
 all: ipa
 
+deploy:
+	@chmod +x scripts/deploy.sh
+	@./scripts/deploy.sh
+
 ipa: ipa-armv7 ipa-arm64
 	@echo "[+] Packaging universal fat IPA $(IPA_FILE)..."
 	@mkdir -p "$(IPA_DIR)" "$(BUILD_DIR)/fat_app/iTgLegacy.app"
@@ -351,7 +369,7 @@ $(ARM64_OBJ_DIR)/%.o: %.cpp
 	$(CXX) $(CXXFLAGS_ARM64) -c $< -o $@
 
 clean:
-	@rm -rf "$(BUILD_DIR)"
+	@rm -rf "$(BUILD_DIR)/armv7" "$(BUILD_DIR)/arm64" "$(BUILD_DIR)/fat_app" "$(BUILD_DIR)/ipa" "$(BUILD_DIR)/Payload" "$(BUILD_DIR)/tools"
 
 help:
 	@echo "Available targets:"

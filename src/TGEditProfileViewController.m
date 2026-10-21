@@ -8,7 +8,7 @@
 // the bio, then a card of rows carrying values - birthday, number, username.
 // This screen used to be three text fields and nothing else, so a birthday
 // could not be set from here and the number was not shown at all.
-static const CGFloat kPhotoSide = 88.0f;
+static const CGFloat kPhotoSide = 80.0f;
 
 @interface TGEditProfileViewController () <UITextFieldDelegate, UIActionSheetDelegate,
 		UIImagePickerControllerDelegate, UINavigationControllerDelegate>
@@ -365,6 +365,8 @@ static const CGFloat kPhotoSide = 88.0f;
 			CGRectMake((width - kPhotoSide) / 2, 8, kPhotoSide, kPhotoSide)];
 	self.photoView.layer.cornerRadius = kPhotoSide / 2;
 	self.photoView.clipsToBounds = YES;
+	self.photoView.layer.shouldRasterize = YES;
+	self.photoView.layer.rasterizationScale = [UIScreen mainScreen].scale;
 	self.photoView.contentMode = UIViewContentModeScaleAspectFill;
 	self.photoView.image = [TGIcons avatarWithInitials:
 			[name substringToIndex:1].uppercaseString

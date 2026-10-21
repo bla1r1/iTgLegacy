@@ -16,7 +16,34 @@
 #include <openssl/sha.h>
 
 #include "libtgvoip/video/VideoSource.h"
-#include "libtgvoip/video/VideoRenderer.h"
+#include <zlib.h>
+
+static NSData *TGDecompressIfNeeded(NSData *data) {
+	if (data.length < 2) return data;
+	const uint8_t *b = (const uint8_t *)data.bytes;
+	if ((b[0] == 0x1f && b[1] == 0x8b) || b[0] == 0x78) {
+		z_stream stream = {0};
+		if (inflateInit2(&stream, 15 + 32) != Z_OK)
+			return data;
+		stream.next_in = (Bytef *)b;
+		stream.avail_in = (uInt)data.length;
+		NSMutableData *out = [NSMutableData dataWithCapacity:data.length * 4];
+		uint8_t chunk[4096];
+		int status = Z_OK;
+		while (status == Z_OK) {
+			stream.next_out = chunk;
+			stream.avail_out = sizeof(chunk);
+			status = inflate(&stream, Z_SYNC_FLUSH);
+			if (status == Z_OK || status == Z_STREAM_END) {
+				[out appendBytes:chunk length:sizeof(chunk) - stream.avail_out];
+			}
+		}
+		inflateEnd(&stream);
+		if (out.length > 0)
+			return out;
+	}
+	return data;
+}
 
 using namespace tgvoip;
 
@@ -140,6 +167,8 @@ static void TGInstallCrypto(void) {
 @property (nonatomic, assign) uint16_t rtpSeqOut;
 @property (nonatomic, assign) uint32_t rtpTimestampOut;
 @property (nonatomic, assign) uint16_t transportSeqOut;
+@property (nonatomic, strong) NSArray *emojis;
+@property (nonatomic, strong) NSMutableArray *pendingSignalingData;
 @end
 
 
@@ -196,8 +225,10 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V5";
 	_state = state;
 	if (state == TGCallStateEstablished && !self.establishedAt)
 		self.establishedAt = [NSDate date];
-	if (self.onStateChanged)
-		self.onStateChanged(state);
+	dispatch_async(dispatch_get_main_queue(), ^{
+		if (self.onStateChanged)
+			self.onStateChanged(state);
+	});
 }
 
 #pragma mark - signalling
@@ -259,7 +290,7 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V5";
 		// raddr or rport. A line their parser rejects takes the whole message
 		// with it, and then they never learn our credentials at all.
 		[candidates addObject:[NSString stringWithFormat:
-				@"candidate:%u 1 udp 41878272 %@ %u typ relay generation 0 "
+				@"candidate:%u 0 udp 41878272 %@ %u typ relay generation 0 "
 				@"ufrag %@ network-id 9 network-cost 50",
 				reflector.localTag, hostname, reflector.port, self.localUfrag]];
 	}
@@ -284,12 +315,27 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V5";
 	NSLog(@"TGCall: sent our video formats (none)");
 }
 
+- (NSMutableArray *)pendingSignalingData {
+	if (!_pendingSignalingData) {
+		_pendingSignalingData = [NSMutableArray array];
+	}
+	return _pendingSignalingData;
+}
+
 /// The peer's half of the negotiation. Decrypting it is also the check that
 /// the crypto is right: the msgKey is a slice of SHA256 over the plaintext, so
 /// a wrong key cannot produce a match.
 - (void)handleSignalingData:(NSData *)data {
-	if (!self.callKey.length || !data.length)
+	NSLog(@"TGCall: handleSignalingData len=%lu, callKey=%lu, outgoing=%d",
+		(unsigned long)data.length, (unsigned long)self.callKey.length, self.outgoing);
+	if (!data.length)
 		return;
+
+	if (!self.callKey.length) {
+		NSLog(@"TGCall: queueing signaling data (%lu bytes) until callKey is ready", (unsigned long)data.length);
+		[self.pendingSignalingData addObject:data];
+		return;
+	}
 
 	NSMutableData *out = [NSMutableData dataWithLength:data.length];
 	uint32_t seq = 0;
@@ -327,8 +373,72 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V5";
 			if (type == 127) {
 				NSData *b = message[@"body"];
 				if (b.length > 4) { // skip the 4-byte size
-					NSString *str = [[NSString alloc] initWithData:[b subdataWithRange:NSMakeRange(4, b.length - 4)] encoding:NSUTF8StringEncoding];
+					NSData *pData = [b subdataWithRange:NSMakeRange(4, b.length - 4)];
+					pData = TGDecompressIfNeeded(pData);
+					NSString *str = [[NSString alloc] initWithData:pData encoding:NSUTF8StringEncoding];
 					NSLog(@"TGCall: JSON: %@", str);
+					NSDictionary *json = [NSJSONSerialization JSONObjectWithData:[str dataUsingEncoding:NSUTF8StringEncoding] options:0 error:nil];
+					if ([json isKindOfClass:[NSDictionary class]]) {
+						NSString *jtype = json[@"@type"];
+						if ([jtype isEqualToString:@"offer"] || [jtype isEqualToString:@"answer"]) {
+							NSString *sdp = json[@"sdp"];
+							for (NSString *line in [sdp componentsSeparatedByCharactersInSet:[NSCharacterSet newlineCharacterSet]]) {
+								if ([line hasPrefix:@"a=ice-ufrag:"]) {
+									self.peerUfrag = [line substringFromIndex:12];
+									self.ice.peerUfrag = self.peerUfrag;
+								} else if ([line hasPrefix:@"a=ice-pwd:"]) {
+									self.peerPwd = [line substringFromIndex:10];
+									self.ice.peerPwd = self.peerPwd;
+								}
+							}
+							NSLog(@"TGCall: extracted from SDP ufrag=%@ pwd=%@", self.peerUfrag, self.peerPwd);
+
+							if ([jtype isEqualToString:@"offer"]) {
+								// Send SDP answer back so the peer's WebRTC state moves to stable
+								NSString *answerSdp = [NSString stringWithFormat:
+									@"v=0\r\n"
+									@"o=- %llu 2 IN IP4 127.0.0.1\r\n"
+									@"s=-\r\n"
+									@"t=0 0\r\n"
+									@"a=group:BUNDLE 0\r\n"
+									@"a=msid-semantic: WMS 0\r\n"
+									@"m=audio 9 UDP/TLS/RTP/SAVPF 111\r\n"
+									@"c=IN IP4 0.0.0.0\r\n"
+									@"a=rtcp:9 IN IP4 0.0.0.0\r\n"
+									@"a=ice-ufrag:%@\r\n"
+									@"a=ice-pwd:%@\r\n"
+									@"a=sendrecv\r\n"
+									@"a=rtcp-mux\r\n"
+									@"a=rtpmap:111 opus/48000/2\r\n"
+									@"a=mid:0\r\n",
+									(unsigned long long)([[NSDate date] timeIntervalSince1970] * 1000),
+									self.localUfrag ?: @"", self.localPwd ?: @""];
+
+								NSDictionary *answerDict = @{
+									@"@type": @"answer",
+									@"sdp": answerSdp,
+								};
+								NSData *aData = [NSJSONSerialization dataWithJSONObject:answerDict options:0 error:nil];
+								if (aData) {
+									NSMutableData *t127 = [NSMutableData data];
+									uint32_t len = (uint32_t)aData.length;
+									uint8_t lenBytes[4] = { (uint8_t)(len >> 24), (uint8_t)(len >> 16), (uint8_t)(len >> 8), (uint8_t)len };
+									[t127 appendBytes:lenBytes length:4];
+									[t127 appendData:aData];
+									NSData *msg = [TGCallMessages messageWithType:127 body:t127];
+									[self sendSignalling:msg seq:[TGCallMessages markSeq:++self.signallingSeq requiresAck:YES]];
+									NSLog(@"TGCall: sent SDP answer (type 127)");
+								}
+							}
+						} else if ([jtype isEqualToString:@"candidate"]) {
+							NSString *cand = json[@"sdp"];
+							if (cand.length) {
+								NSLog(@"TGCall: peer candidate (type 127): %@", cand);
+								[self readPeerTagFromCandidate:cand];
+								[self.ice addPeerCandidate:cand];
+							}
+						}
+					}
 				}
 			}
 			continue;
@@ -429,20 +539,10 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V5";
 - (NSDictionary *)protocol {
 	return @{
 		@"@type"            : @"callProtocol",
-		// A direct path needs an address the peer can reach, and behind a
-		// carrier NAT there is none: checks sent to their public address are
-		// dropped by their NAT because nothing has come from us before. The
-		// reflector exists for exactly this, so it is what we ask for.
-		@"udp_p2p"          : @NO,
+		@"udp_p2p"          : @YES,
 		@"udp_reflector"    : @YES,
 		@"min_layer"        : @(65),
 		@"max_layer"        : @(92),
-		// Probing which tgcalls versions this peer still accepts. 2.4.4 alone
-		// is refused outright; if 3.0.0 is taken, its media is plain RTP with
-		// Opus inside an EncryptedConnection, which is implementable here.
-		// Probing what the peer prefers. 9.0.0 is the current tgcalls version;
-		// if it takes that, the negotiation runs v2 - JSON signalling, relay
-		// candidates with a resolvable tag, and DTLS-SRTP for the media.
 		@"library_versions" : @[@"9.0.0", @"3.0.0", @"2.4.4"],
 	};
 }
@@ -454,13 +554,22 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V5";
 
 	NSDictionary *state = call[@"state"];
 	NSString *kind = state[@"@type"];
-	NSLog(@"TGCall: %@ (call %d, outgoing %d)", kind, self.callId, self.outgoing);
+	NSLog(@"TGCall: %@ (call %d, outgoing %d) full: %@", kind, self.callId, self.outgoing, call);
 
 	if ([kind isEqualToString:@"callStatePending"]){
 		self.state = TGCallStatePending;
+		if (!self.outgoing) {
+			dispatch_async(dispatch_get_main_queue(), ^{
+				if (self.onIncomingCall)
+					self.onIncomingCall(self.peerUserId, self.callId);
+			});
+		}
 	} else if ([kind isEqualToString:@"callStateExchangingKeys"]){
 		self.state = TGCallStateExchangingKeys;
 	} else if ([kind isEqualToString:@"callStateReady"]){
+		if (state[@"emojis"]) {
+			self.emojis = state[@"emojis"];
+		}
 		[self startMediaWithState:state];
 	} else if ([kind isEqualToString:@"callStateDiscarded"] ||
 			   [kind isEqualToString:@"callStateHangingUp"]){
@@ -517,6 +626,14 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V5";
 	}
 
 	self.callKey = key;
+	if (self.pendingSignalingData.count) {
+		NSArray *pending = [self.pendingSignalingData copy];
+		[self.pendingSignalingData removeAllObjects];
+		NSLog(@"TGCall: processing %lu queued signaling data packets", (unsigned long)pending.count);
+		for (NSData *d in pending) {
+			[self handleSignalingData:d];
+		}
+	}
 	[self probeReflectorsIn:state key:key];
 
 	if (!self.reflectors.count){
@@ -758,6 +875,9 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V5";
 	memcpy(&senderTag, bytes + 16, 4);
 	if (senderTag && senderTag != 0xFFFFFFFF && senderTag != self.reflector.localTag)
 		self.currentSenderTag = senderTag;
+
+	if (senderTag == 0xFFFFFFFF)
+		return;
 
 	// The media state is what tells the peer our microphone is live, and it
 	// cannot go anywhere until a tag to address it to has shown up. Whichever
@@ -1042,6 +1162,7 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V5";
 	self.currentReflector = nil;
 	self.currentSenderTag = 0;
 	self.callKey = nil;
+	[self.pendingSignalingData removeAllObjects];
 	self.sentCandidates = NO;
 	[self.mediaStateTimer invalidate];
 	self.mediaStateTimer = nil;
@@ -1053,6 +1174,7 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V5";
 	_mediaPacketsIn = 0;
 	self.establishedAt = nil;
 	self.callId = 0;
+	self.emojis = nil;
 	[[AVAudioSession sharedInstance] setActive:NO error:nil];
 }
 

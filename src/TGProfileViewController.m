@@ -56,21 +56,16 @@ static const CGFloat kActionTile = 52.0f;
 	self.tableView.separatorColor = [[TGTheme shared] bubbleBorderColour];
 
 	[self buildHeader];
-	
-	// Delay loading heavy data for 0.4s to let the push animation finish smoothly at 60 FPS
-	dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.4 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-		[self loadDetails];
-		[self loadMedia];
-	});
+	[self loadDetails];
+	[self loadMedia];
 }
 
 /// The profile as the current client draws it: a large picture centred, the
 /// name and status under it, and a row of tiles for the things you actually do
 /// here. The coloured block this replaced is the old design; everything since
-/// puts the actions in reach instead of colouring the top of the screen.
 - (void)buildHeader {
 	CGFloat width = self.view.bounds.size.width;
-	CGFloat side = 84;
+	CGFloat side = 80;
 	CGFloat height = 16 + side + 8 + 26 + 18 + 10 + kActionTile + 12;
 
 	UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0, 0, width, height)];
@@ -82,6 +77,8 @@ static const CGFloat kActionTile = 52.0f;
 			UIViewAutoresizingFlexibleRightMargin;
 	self.avatarView.layer.cornerRadius = side / 2;
 	self.avatarView.clipsToBounds = YES;
+	self.avatarView.layer.shouldRasterize = YES;
+	self.avatarView.layer.rasterizationScale = [UIScreen mainScreen].scale;
 	self.avatarView.contentMode = UIViewContentModeScaleAspectFill;
 	NSString *initials = self.name.length ? [self.name substringToIndex:1] : @"?";
 	self.avatarView.image = [TGIcons avatarWithInitials:initials.uppercaseString

@@ -21,6 +21,14 @@
 @property (nonatomic, strong) UIButton *videoBtn;
 @property (nonatomic, strong) UIButton *micBtn;
 @property (nonatomic, strong) UIButton *endBtn;
+@property (nonatomic, strong) UIButton *acceptBtn;
+
+@property (nonatomic, strong) UILabel *speakerLbl;
+@property (nonatomic, strong) UILabel *videoLbl;
+@property (nonatomic, strong) UILabel *micLbl;
+@property (nonatomic, strong) UILabel *endLbl;
+@property (nonatomic, strong) UILabel *acceptLbl;
+@property (nonatomic, strong) UILabel *lastCreatedLabel;
 
 @property (nonatomic, strong) NSTimer *ticker;
 @end
@@ -28,14 +36,19 @@
 @implementation TGCallViewController
 
 + (void)presentForUserId:(int64_t)userId name:(NSString *)name outgoing:(BOOL)outgoing {
-    UIWindow *window = [UIApplication sharedApplication].keyWindow;
-    UIViewController *top = window.rootViewController;
-    while (top.presentedViewController)
-        top = top.presentedViewController;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        UIWindow *window = [UIApplication sharedApplication].keyWindow;
+        UIViewController *top = window.rootViewController;
+        while (top.presentedViewController)
+            top = top.presentedViewController;
 
-    TGCallViewController *screen = [[TGCallViewController alloc]
-            initWithUserId:userId name:name outgoing:outgoing];
-    [top presentViewController:screen animated:YES completion:nil];
+        if ([top isKindOfClass:[TGCallViewController class]])
+            return;
+
+        TGCallViewController *screen = [[TGCallViewController alloc]
+                initWithUserId:userId name:name outgoing:outgoing];
+        [top presentViewController:screen animated:YES completion:nil];
+    });
 }
 
 - (instancetype)initWithUserId:(int64_t)userId name:(NSString *)name outgoing:(BOOL)outgoing {
@@ -70,6 +83,8 @@
             CGRectMake((b.size.width - side) / 2, 100, side, side)];
     self.avatarView.layer.cornerRadius = side / 2;
     self.avatarView.clipsToBounds = YES;
+    self.avatarView.layer.shouldRasterize = YES;
+    self.avatarView.layer.rasterizationScale = [UIScreen mainScreen].scale;
     self.avatarView.image = [TGIcons avatarWithInitials:
             (self.peerName.length ? [self.peerName substringToIndex:1].uppercaseString : @"?")
                                                    size:side colourId:self.userId];
@@ -94,11 +109,19 @@
     CGFloat gap = (b.size.width - (60 * 4)) / 5;
     
     self.speakerBtn = [self createButtonAtX:gap y:btnY title:@"Speaker" icon:@"🔊"];
+    self.speakerLbl = self.lastCreatedLabel;
     self.videoBtn = [self createButtonAtX:gap*2 + 60 y:btnY title:@"Video" icon:@"📹"];
+    self.videoLbl = self.lastCreatedLabel;
     self.micBtn = [self createButtonAtX:gap*3 + 120 y:btnY title:@"Mute" icon:@"🎤"];
+    self.micLbl = self.lastCreatedLabel;
     self.endBtn = [self createButtonAtX:gap*4 + 180 y:btnY title:@"End" icon:@"✖️"];
-    
+    self.endLbl = self.lastCreatedLabel;
     self.endBtn.backgroundColor = [UIColor colorWithRed:0.9f green:0.2f blue:0.2f alpha:1];
+
+    self.acceptBtn = [self createButtonAtX:(b.size.width / 2) + 35 y:btnY title:@"Accept" icon:@"📞"];
+    self.acceptLbl = self.lastCreatedLabel;
+    self.acceptBtn.backgroundColor = [UIColor colorWithRed:0.2f green:0.8f blue:0.3f alpha:1];
+    [self.acceptBtn addTarget:self action:@selector(acceptCall) forControlEvents:UIControlEventTouchUpInside];
     
     [self.speakerBtn addTarget:self action:@selector(toggleSpeaker) forControlEvents:UIControlEventTouchUpInside];
     [self.micBtn addTarget:self action:@selector(toggleMute) forControlEvents:UIControlEventTouchUpInside];
@@ -125,6 +148,9 @@
     UIButton *btn = [UIButton buttonWithType:UIButtonTypeCustom];
     btn.frame = CGRectMake(x, y, 60, 60);
     btn.layer.cornerRadius = 30;
+    btn.clipsToBounds = YES;
+    btn.layer.shouldRasterize = YES;
+    btn.layer.rasterizationScale = [UIScreen mainScreen].scale;
     btn.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.2];
     [btn setTitle:icon forState:UIControlStateNormal];
     btn.titleLabel.font = [UIFont systemFontOfSize:24];
@@ -137,18 +163,78 @@
     lbl.textAlignment = NSTextAlignmentCenter;
     lbl.backgroundColor = [UIColor clearColor];
     [self.view addSubview:lbl];
-    
+
+    self.lastCreatedLabel = lbl;
     return btn;
 }
 
+- (void)acceptCall {
+    [[TGCall shared] accept];
+    self.statusLabel.text = @"Connecting...";
+    [self updateLayoutForCallActive:YES];
+}
+
+- (void)updateLayoutForCallActive:(BOOL)active {
+    CGRect b = self.view.bounds;
+    CGFloat btnY = b.size.height - 130;
+    if (!self.outgoing && !active && [TGCall shared].state == TGCallStatePending) {
+        self.speakerBtn.hidden = YES;
+        self.speakerLbl.hidden = YES;
+        self.videoBtn.hidden = YES;
+        self.videoLbl.hidden = YES;
+        self.micBtn.hidden = YES;
+        self.micLbl.hidden = YES;
+        
+        self.acceptBtn.hidden = NO;
+        self.acceptLbl.hidden = NO;
+        self.acceptBtn.frame = CGRectMake((b.size.width / 2) + 35, btnY, 60, 60);
+        self.acceptLbl.frame = CGRectMake((b.size.width / 2) + 25, btnY + 65, 80, 15);
+        
+        self.endBtn.hidden = NO;
+        self.endLbl.hidden = NO;
+        self.endBtn.frame = CGRectMake((b.size.width / 2) - 95, btnY, 60, 60);
+        self.endLbl.frame = CGRectMake((b.size.width / 2) - 105, btnY + 65, 80, 15);
+        self.endLbl.text = @"Decline";
+    } else {
+        CGFloat gap = (b.size.width - (60 * 4)) / 5;
+        self.acceptBtn.hidden = YES;
+        self.acceptLbl.hidden = YES;
+        
+        self.speakerBtn.hidden = NO;
+        self.speakerLbl.hidden = NO;
+        self.speakerBtn.frame = CGRectMake(gap, btnY, 60, 60);
+        self.speakerLbl.frame = CGRectMake(gap - 10, btnY + 65, 80, 15);
+        
+        self.videoBtn.hidden = NO;
+        self.videoLbl.hidden = NO;
+        self.videoBtn.frame = CGRectMake(gap*2 + 60, btnY, 60, 60);
+        self.videoLbl.frame = CGRectMake(gap*2 + 50, btnY + 65, 80, 15);
+        
+        self.micBtn.hidden = NO;
+        self.micLbl.hidden = NO;
+        self.micBtn.frame = CGRectMake(gap*3 + 120, btnY, 60, 60);
+        self.micLbl.frame = CGRectMake(gap*3 + 110, btnY + 65, 80, 15);
+        
+        self.endBtn.hidden = NO;
+        self.endLbl.hidden = NO;
+        self.endBtn.frame = CGRectMake(gap*4 + 180, btnY, 60, 60);
+        self.endLbl.frame = CGRectMake(gap*4 + 170, btnY + 65, 80, 15);
+        self.endLbl.text = @"End";
+    }
+}
+
 - (void)applyState:(TGCallState)state {
+    BOOL isRinging = (!self.outgoing && state == TGCallStatePending);
+    [self updateLayoutForCallActive:!isRinging];
+
     switch (state){
         case TGCallStatePending:
-            self.statusLabel.text = self.outgoing ? @"Запит..." : @"Incoming...";
+            self.statusLabel.text = self.outgoing ? @"Calling..." : @"Incoming...";
             break;
         case TGCallStateExchangingKeys:
         case TGCallStateConnecting:
             self.statusLabel.text = @"Connecting...";
+            [self setupEmojis];
             break;
         case TGCallStateEstablished:
             self.bgLayer.colors = @[(id)[UIColor colorWithRed:0.27f green:0.69f blue:0.55f alpha:1].CGColor,
@@ -169,17 +255,22 @@
 }
 
 - (void)setupEmojis {
+    NSArray *emojis = [TGCall shared].emojis;
+    if (emojis.count >= 4) {
+        self.emojiLabel.text = [NSString stringWithFormat:@"%@  %@  %@  %@", emojis[0], emojis[1], emojis[2], emojis[3]];
+        return;
+    }
     NSData *key = [TGCall shared].callKey;
     if (key.length >= 32) {
         unsigned char hash[CC_SHA256_DIGEST_LENGTH];
         CC_SHA256(key.bytes, (CC_LONG)key.length, hash);
         
-        NSArray *emojis = @[@"🐶", @"🐱", @"🐭", @"🐹", @"🐰", @"🦊", @"🐻", @"🐼", @"🐨", @"🐯", @"🦁", @"🐮", @"🐷", @"🐸", @"🐵"];
-        NSString *e1 = emojis[hash[0] % emojis.count];
-        NSString *e2 = emojis[hash[1] % emojis.count];
-        NSString *e3 = emojis[hash[2] % emojis.count];
-        NSString *e4 = emojis[hash[3] % emojis.count];
-        self.emojiLabel.text = [NSString stringWithFormat:@"%@ %@ %@ %@", e1, e2, e3, e4];
+        NSArray *emojisList = @[@"🐶", @"🐱", @"🐭", @"🐹", @"🐰", @"🦊", @"🐻", @"🐼", @"🐨", @"🐯", @"🦁", @"🐮", @"🐷", @"🐸", @"🐵"];
+        NSString *e1 = emojisList[hash[0] % emojisList.count];
+        NSString *e2 = emojisList[hash[1] % emojisList.count];
+        NSString *e3 = emojisList[hash[2] % emojisList.count];
+        NSString *e4 = emojisList[hash[3] % emojisList.count];
+        self.emojiLabel.text = [NSString stringWithFormat:@"%@  %@  %@  %@", e1, e2, e3, e4];
     }
 }
 

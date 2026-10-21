@@ -24,13 +24,12 @@
 
 /// An incoming call is the one thing that takes over the screen on its own.
 static void TGWatchForIncomingCalls(void) {
-	[TGCall shared].onStateChanged = ^(TGCallState state){
-		if (state != TGCallStatePending || [TGCall shared].outgoing)
-			return;
-		int64_t userId = [TGCall shared].peerUserId;
-		[TGCallViewController presentForUserId:userId
-										  name:[[TGClient shared] nameForUserId:userId]
-									  outgoing:NO];
+	[TGCall shared].onIncomingCall = ^(int64_t userId, int32_t callId){
+		dispatch_async(dispatch_get_main_queue(), ^{
+			[TGCallViewController presentForUserId:userId
+											  name:[[TGClient shared] nameForUserId:userId]
+										  outgoing:NO];
+		});
 	};
 }
 
@@ -76,28 +75,21 @@ static void TGWatchForIncomingCalls(void) {
 			[[NSBundle mainBundle] bundlePath]];
 
 	self.window = [[UIWindow alloc] initWithFrame:[[UIScreen mainScreen] bounds]];
-	// Only TDLib knows whether this session is signed in, and it takes a second
-	// to say so. Showing the login form meanwhile means an already-signed-in
-	// user is asked for their phone number on every launch, so show a neutral
-	// screen until the state actually arrives.
-	[self showLoadingUI];
+	BOOL hasSession = [[NSUserDefaults standardUserDefaults] boolForKey:@"hasAuthorizedSession"];
+	if (hasSession) {
+		[self showMainUI];
+	} else {
+		[self showLoadingUI];
+	}
 	[self.window makeKeyAndVisible];
 
 	[self startTDLib];
-
-	// A theme change used to rebuild the whole tab controller and swap the
-	// window's root: every open screen was thrown away, so picking a theme (or
-	// a text size, or a wallpaper - all three post this) dropped you back out
-	// of wherever you were. Each screen repaints itself on the notification
-	// instead; RootViewController restyles the tab bar.
 
 	return YES;
 }
 
 #pragma mark - TDLib
 
-/// Auto-Night has no system dark mode to follow here, so the schedule is
-/// checked when the app comes forward and once an hour while it is open.
 - (void)applicationDidBecomeActive:(UIApplication *)application {
 	[[TGTheme shared] applyAutoNightIfDue];
 
@@ -113,40 +105,65 @@ static void TGWatchForIncomingCalls(void) {
 	__weak typeof(self) weakSelf = self;
 
 	tg.onAuthState = ^(TGAuthState state){
-		AppDelegate *me = weakSelf;
-		if (!me)
-			return;
-		NSLog(@"TDLIB AUTH: state %d", (int)state);
+		dispatch_async(dispatch_get_main_queue(), ^{
+			AppDelegate *me = weakSelf;
+			if (!me)
+				return;
 
-		switch (state){
-			case TGAuthStateWaitPhoneNumber:
-				[me showLoginUI];
-				[me.loginVC setBusy:NO];
-				break;
-			case TGAuthStateWaitCode:
-				[me.loginVC showCodeStepWithPhoneNumber:me.currentPhoneNumber];
-				break;
-			case TGAuthStateWaitPassword:
-				[me.loginVC showPasswordStep];
-				break;
-			case TGAuthStateReady:
-				NSLog(@"TDLIB AUTH: READY");
-				[me.loginVC setBusy:NO];
-				[me showMainUI];
-				break;
-			case TGAuthStateClosed:
-			case TGAuthStateLoggingOut:
-				[me showLoginUI];
-				break;
-			default:
-				break;
-		}
+			switch (state){
+				case TGAuthStateWaitPhoneNumber:
+					[[NSUserDefaults standardUserDefaults] setBool:NO forKey:@"hasAuthorizedSession"];
+					[me showLoginUI];
+					[me.loginVC setBusy:NO];
+					[me.loginVC showPhoneStep];
+					break;
+				case TGAuthStateWaitCode: {
+					[[NSUserDefaults standardUserDefaults] setBool:NO forKey:@"hasAuthorizedSession"];
+					[me showLoginUI];
+					NSString *phone = me.currentPhoneNumber;
+					if (!phone.length) {
+						phone = [[TGClient shared].codeInfo objectForKey:@"phone_number"];
+					}
+					if (!phone.length) {
+						NSLog(@"AppDelegate: WaitCode but phone is empty! Showing phone step.");
+						[me.loginVC showPhoneStep];
+					} else {
+						[me.loginVC showCodeStepWithPhoneNumber:phone];
+					}
+					break;
+				}
+				case TGAuthStateWaitPassword:
+					[[NSUserDefaults standardUserDefaults] setBool:NO forKey:@"hasAuthorizedSession"];
+					[me showLoginUI];
+					[me.loginVC showPasswordStep];
+					break;
+				case TGAuthStateWaitOtherDeviceConfirmation:
+					[[NSUserDefaults standardUserDefaults] setBool:NO forKey:@"hasAuthorizedSession"];
+					[me showLoginUI];
+					[me.loginVC showQRCodeStepWithLink:[TGClient shared].qrCodeLink];
+					break;
+				case TGAuthStateReady:
+					[[NSUserDefaults standardUserDefaults] setBool:YES forKey:@"hasAuthorizedSession"];
+					[me.loginVC setBusy:NO];
+					[me showMainUI];
+					break;
+				case TGAuthStateClosed:
+				case TGAuthStateLoggingOut:
+					[[NSUserDefaults standardUserDefaults] setBool:NO forKey:@"hasAuthorizedSession"];
+					[me showLoginUI];
+					break;
+				default:
+					break;
+			}
+		});
 	};
 
 	tg.onError = ^(NSString *msg){
-		AppDelegate *me = weakSelf;
-		[me.loginVC setBusy:NO];
-		[me showMessage:msg];
+		dispatch_async(dispatch_get_main_queue(), ^{
+			AppDelegate *me = weakSelf;
+			[me.loginVC setBusy:NO];
+			[me showMessage:msg];
+		});
 	};
 
 	dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
@@ -201,6 +218,16 @@ static void TGWatchForIncomingCalls(void) {
 	};
 	loginVC.onPasswordSubmitted = ^(NSString *password) {
 		[[TGClient shared] sendPassword:password];
+	};
+	loginVC.onResendCode = ^{
+		[[TGClient shared] resendAuthenticationCode];
+	};
+	loginVC.onRequestQRCode = ^{
+		[[TGClient shared] requestQrCodeAuthentication];
+	};
+	loginVC.onResetSession = ^{
+		weakSelf.currentPhoneNumber = nil;
+		[[TGClient shared] destroySession];
 	};
 
 	UINavigationController *nav =

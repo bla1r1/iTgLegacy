@@ -1345,7 +1345,7 @@ static const CGFloat kFooterInset  = 15.0f;
 
 	TGTheme *theme = [TGTheme shared];
 	CGFloat width = tableView.bounds.size.width;
-	CGFloat side = 88;
+	CGFloat side = 80;
 
 	UITableViewCell *profile = [[UITableViewCell alloc]
 			initWithStyle:UITableViewCellStyleDefault reuseIdentifier:nil];
@@ -1366,6 +1366,8 @@ static const CGFloat kFooterInset  = 15.0f;
 			CGRectMake((width - side) / 2, 18, side, side)];
 	self.avatarView.layer.cornerRadius = side / 2;
 	self.avatarView.clipsToBounds = YES;
+	self.avatarView.layer.shouldRasterize = YES;
+	self.avatarView.layer.rasterizationScale = [UIScreen mainScreen].scale;
 	self.avatarView.contentMode = UIViewContentModeScaleAspectFill;
 	self.avatarView.image = [TGIcons avatarWithInitials:
 			[name substringToIndex:1].uppercaseString

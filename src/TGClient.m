@@ -37,6 +37,8 @@ typedef const char *(*td_exec_fn)(void *client, const char *request);
 @property (nonatomic, strong) NSMutableDictionary *pendingRequests;  // @extra -> completion
 @property (nonatomic, assign) NSUInteger requestSeq;
 @property (nonatomic, strong) NSMutableDictionary *fileWaiters;      // fileId -> completions
+@property (nonatomic, strong) NSDictionary *codeInfo;
+@property (nonatomic, copy)   NSString *qrCodeLink;
 @end
 
 static NSDictionary *TGFlattenMessage(NSDictionary *m);
@@ -177,8 +179,11 @@ static NSDictionary *TGFlattenMessage(NSDictionary *m);
 	[self.outbox removeAllObjects];
 	[self.outboxLock unlock];
 
-	for (NSData *d in pending)
+	for (NSData *d in pending) {
+		NSString *reqStr = [[NSString alloc] initWithData:d encoding:NSUTF8StringEncoding];
+		NSLog(@"TGClient: >>> SEND: %@", reqStr);
 		self.td_send(self.client, d.bytes);
+	}
 }
 
 - (void)request:(NSDictionary *)request completion:(void (^)(NSDictionary *))completion {
@@ -208,6 +213,10 @@ static NSDictionary *TGFlattenMessage(NSDictionary *m);
 		}
 	}
 	NSString *type = obj[@"@type"];
+
+	if ([type hasPrefix:@"updateAuthorization"] || [type hasPrefix:@"authorization"] || [type isEqualToString:@"error"] || [type isEqualToString:@"ok"]) {
+		NSLog(@"TGClient: <<< RECV: %@", obj);
+	}
 
 	// Log each response kind once - enough to see what TDLib actually sends
 	// without dumping the user's messages into the log.
@@ -304,25 +313,32 @@ static NSDictionary *TGFlattenMessage(NSDictionary *m);
 	}
 	if ([type isEqualToString:@"updateNewCallSignalingData"]){
 		NSData *data = [[NSData alloc] initWithBase64EncodedString:obj[@"data"] options:0];
+		NSLog(@"TGClient: <<< updateNewCallSignalingData call_id=%@ len=%lu", obj[@"call_id"], (unsigned long)data.length);
 		[[TGCall shared] handleSignalingData:data];
 		return;
 	}
 
 	if ([type isEqualToString:@"updateCall"]){
+		NSLog(@"TGClient: <<< updateCall: %@", obj[@"call"]);
 		// TDLib signals the call; TGCall owns the audio.
 		[[TGCall shared] handleUpdate:obj[@"call"]];
 		return;
 	}
 
 	if ([type isEqualToString:@"updateFile"]){
-		// Big files take long enough on a 4S that silence looks like a hang.
 		NSDictionary *file = obj[@"file"];
+		NSInteger fid = [file[@"id"] integerValue];
 		NSDictionary *local = file[@"local"];
 		if (self.onFileProgress && [local[@"is_downloading_active"] boolValue]){
 			double expected = [file[@"expected_size"] doubleValue];
 			double got = [local[@"downloaded_size"] doubleValue];
 			if (expected > 0)
-				self.onFileProgress([file[@"id"] integerValue], (float)(got / expected));
+				self.onFileProgress(fid, (float)(got / expected));
+		}
+		BOOL done = [local[@"is_downloading_completed"] boolValue];
+		NSString *path = local[@"path"];
+		if (done && path.length){
+			[self notifyFileWaiters:fid path:path];
 		}
 		return;
 	}
@@ -413,7 +429,7 @@ static NSDictionary *TGFlattenMessage(NSDictionary *m);
 	}
 	if ([type isEqualToString:@"error"]){
 		NSString *msg = obj[@"message"] ?: @"unknown error";
-		NSLog(@"TGClient: ERROR code=%@ msg=%@", obj[@"code"], msg);
+		NSLog(@"TGClient: <<< ERROR code=%@ msg=%@ details: %@", obj[@"code"], msg, obj);
 		if ([obj[@"code"] intValue] == 404){
 			// loadChats answers 404 when the whole list is loaded
 			self.chatListComplete = YES;
@@ -421,7 +437,6 @@ static NSDictionary *TGFlattenMessage(NSDictionary *m);
 					(unsigned long)self.chatsById.count);
 			return;
 		}
-		NSLog(@"TGClient: error: %@", obj);
 		if (self.onError)
 			self.onError(msg);
 		return;
@@ -430,7 +445,7 @@ static NSDictionary *TGFlattenMessage(NSDictionary *m);
 
 - (void)handleAuthState:(NSDictionary *)state {
 	NSString *type = state[@"@type"];
-	NSLog(@"TGClient: auth state %@", type);
+	NSLog(@"TGClient: <<< AUTH STATE: %@ details: %@", type, state);
 
 	TGAuthState s = TGAuthStateUnknown;
 
@@ -441,10 +456,14 @@ static NSDictionary *TGFlattenMessage(NSDictionary *m);
 		s = TGAuthStateWaitPhoneNumber;
 	} else if ([type isEqualToString:@"authorizationStateWaitCode"]){
 		s = TGAuthStateWaitCode;
+		self.codeInfo = state[@"code_info"];
 	} else if ([type isEqualToString:@"authorizationStateWaitPassword"]){
 		s = TGAuthStateWaitPassword;
 	} else if ([type isEqualToString:@"authorizationStateWaitRegistration"]){
 		s = TGAuthStateWaitRegistration;
+	} else if ([type isEqualToString:@"authorizationStateWaitOtherDeviceConfirmation"]){
+		s = TGAuthStateWaitOtherDeviceConfirmation;
+		self.qrCodeLink = state[@"link"];
 	} else if ([type isEqualToString:@"authorizationStateReady"]){
 		s = TGAuthStateReady;
 	} else if ([type isEqualToString:@"authorizationStateLoggingOut"]){
@@ -500,7 +519,7 @@ static NSDictionary *TGFlattenMessage(NSDictionary *m);
 	// send: silently drops anything sent too early. Hold it and flush once
 	// the state machine actually asks for a number.
 	self.pendingPhoneNumber = phoneNumber;
-	if (self.available && self.authState == TGAuthStateWaitPhoneNumber)
+	if (self.available && (self.authState == TGAuthStateWaitPhoneNumber || self.authState == TGAuthStateWaitCode))
 		[self flushPendingPhoneNumber];
 }
 
@@ -512,6 +531,26 @@ static NSDictionary *TGFlattenMessage(NSDictionary *m);
 	[self send:@{
 		@"@type"        : @"setAuthenticationPhoneNumber",
 		@"phone_number" : number,
+	}];
+}
+
+- (void)resendAuthenticationCode {
+	[self send:@{
+		@"@type" : @"resendAuthenticationCode"
+	}];
+}
+
+- (void)requestQrCodeAuthentication {
+	[self send:@{
+		@"@type" : @"requestQrCodeAuthentication",
+		@"other_user_ids" : @[]
+	}];
+}
+
+- (void)destroySession {
+	NSLog(@"TGClient: >>> destroySession called");
+	[self send:@{
+		@"@type" : @"destroy"
 	}];
 }
 
@@ -531,28 +570,69 @@ static NSDictionary *TGFlattenMessage(NSDictionary *m);
 
 #pragma mark - files
 
+- (void)notifyFileWaiters:(NSInteger)fileId path:(NSString *)path {
+	NSNumber *fid = @(fileId);
+	NSArray *callbacks = nil;
+	@synchronized(self.fileWaiters){
+		callbacks = [self.fileWaiters[fid] copy];
+		[self.fileWaiters removeObjectForKey:fid];
+	}
+	if (!callbacks.count)
+		return;
+
+	dispatch_async(dispatch_get_main_queue(), ^{
+		for (void (^cb)(NSString *) in callbacks){
+			cb(path);
+		}
+	});
+}
+
 - (void)downloadFile:(NSInteger)fileId completion:(void (^)(NSString *))completion {
 	if (fileId <= 0){
 		if (completion) completion(nil);
 		return;
 	}
 
+	NSNumber *fid = @(fileId);
+	BOOL firstWaiter = NO;
+	@synchronized(self.fileWaiters){
+		NSMutableArray *waiters = self.fileWaiters[fid];
+		if (!waiters){
+			waiters = [NSMutableArray array];
+			self.fileWaiters[fid] = waiters;
+			firstWaiter = YES;
+		}
+		if (completion){
+			[waiters addObject:[completion copy]];
+		}
+	}
+
+	if (!firstWaiter)
+		return;
+
 	__weak typeof(self) weakSelf = self;
 	[self request:@{
 		@"@type"       : @"downloadFile",
-		@"file_id"     : @(fileId),
+		@"file_id"     : fid,
 		@"priority"    : @(1),
 		@"offset"      : @(0),
 		@"limit"       : @(0),
-		@"synchronous" : @YES,     // reply only once the file is on disk
+		@"synchronous" : @NO,
 	} completion:^(NSDictionary *result){
 		TGClient *me = weakSelf;
-		(void)me;
+		if (!me) return;
 		NSString *path = result[@"local"][@"path"];
 		BOOL done = [result[@"local"][@"is_downloading_completed"] boolValue];
-		if (completion)
-			completion((done && path.length) ? path : nil);
+		if (done && path.length){
+			[me notifyFileWaiters:fileId path:path];
+		} else if ([result[@"@type"] isEqualToString:@"error"]){
+			[me notifyFileWaiters:fileId path:nil];
+		}
 	}];
+
+	dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(45 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+		[weakSelf notifyFileWaiters:fileId path:nil];
+	});
 }
 
 #pragma mark - messages
@@ -612,26 +692,57 @@ static NSDictionary *TGFlattenMessage(NSDictionary *m) {
 	BOOL isService = NO;
 	NSString *callState = nil;     // "missed" or "answered" on a call message
 
+	NSNumber *bigPhotoFileId = nil;
+	int mediaWidth = 0, mediaHeight = 0;
+
 	if ([ctype isEqualToString:@"messagePhoto"]){
-		// sizes run small to large; take the largest present
 		NSArray *sizes = content[@"photo"][@"sizes"];
-		if (sizes.count)
-			photoFileId = [sizes lastObject][@"photo"][@"id"];
+		if (sizes.count){
+			bigPhotoFileId = [sizes lastObject][@"photo"][@"id"];
+			NSDictionary *chosen = sizes[0];
+			for (NSDictionary *s in sizes){
+				int w = [s[@"width"] intValue];
+				int h = [s[@"height"] intValue];
+				int maxDim = MAX(w, h);
+				if (maxDim >= 200 && maxDim <= 640){
+					chosen = s;
+					break;
+				} else if (maxDim > 0 && maxDim < 640){
+					chosen = s;
+				}
+			}
+			photoFileId = chosen[@"photo"][@"id"];
+			mediaWidth = [chosen[@"width"] intValue];
+			mediaHeight = [chosen[@"height"] intValue];
+			if (mediaWidth == 0 && sizes.count > 0){
+				mediaWidth = [[sizes lastObject][@"width"] intValue];
+				mediaHeight = [[sizes lastObject][@"height"] intValue];
+			}
+		}
 
 	} else if ([ctype isEqualToString:@"messageVideo"]){
 		photoFileId = content[@"video"][@"thumbnail"][@"file"][@"id"];
 		docFileId   = content[@"video"][@"video"][@"id"];
 		docName     = content[@"video"][@"file_name"];
+		mediaWidth  = [content[@"video"][@"width"] intValue];
+		mediaHeight = [content[@"video"][@"height"] intValue];
+		if (!duration) duration = content[@"video"][@"duration"];
 
 	} else if ([ctype isEqualToString:@"messageVideoNote"]){
 		photoFileId = content[@"video_note"][@"thumbnail"][@"file"][@"id"];
 		docFileId   = content[@"video_note"][@"video"][@"id"];
+		int len     = [content[@"video_note"][@"length"] intValue];
+		mediaWidth  = len ?: 240;
+		mediaHeight = len ?: 240;
+		if (!duration) duration = content[@"video_note"][@"duration"];
 
 	} else if ([ctype isEqualToString:@"messageAnimation"]){
 		// Telegram GIFs are MP4, so they play like any video.
 		photoFileId = content[@"animation"][@"thumbnail"][@"file"][@"id"];
 		docFileId   = content[@"animation"][@"animation"][@"id"];
 		docName     = content[@"animation"][@"file_name"];
+		mediaWidth  = [content[@"animation"][@"width"] intValue];
+		mediaHeight = [content[@"animation"][@"height"] intValue];
 
 	} else if ([ctype isEqualToString:@"messageSticker"] ||
 			   [ctype isEqualToString:@"messageAnimatedEmoji"]){
@@ -906,6 +1017,9 @@ static NSDictionary *TGFlattenMessage(NSDictionary *m) {
 		@"date"      : m[@"date"] ?: @(0),
 		@"outgoing"  : m[@"is_outgoing"] ?: @NO,
 		@"photoId"   : photoFileId ?: [NSNull null],
+		@"bigPhotoId": bigPhotoFileId ?: (photoFileId ?: [NSNull null]),
+		@"mediaWidth": @(mediaWidth),
+		@"mediaHeight": @(mediaHeight),
 		@"docId"     : docFileId   ?: [NSNull null],
 		@"docName"   : docName     ?: @"",
 		@"service"   : @(isService),

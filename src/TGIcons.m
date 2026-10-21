@@ -2,10 +2,16 @@
 #import "TGTheme.h"
 
 static NSMutableDictionary *sCache = nil;
-/// Settings icons bake a glyph into a coloured plate, and the glyph itself is
-/// drawn differently flat and skeuomorphic - so this cache has to go when the
-/// theme does, same as the other one.
 static NSMutableDictionary *sSettingsIconCache = nil;
+
+static inline id sGetCached(NSString *key) {
+	return sCache ? sCache[key] : nil;
+}
+
+static inline void sSetCached(NSString *key, UIImage *img) {
+	if (!sCache) sCache = [NSMutableDictionary dictionary];
+	if (key && img) sCache[key] = img;
+}
 
 @implementation TGIcons
 
@@ -14,14 +20,10 @@ static NSMutableDictionary *sSettingsIconCache = nil;
 	[sSettingsIconCache removeAllObjects];
 }
 
-/// Every icon goes through here: same size, same cache, same styling rules.
 + (UIImage *)iconNamed:(NSString *)name draw:(void (^)(CGContextRef ctx, CGFloat s))draw {
-	if (!sCache)
-		sCache = [NSMutableDictionary dictionary];
-
 	BOOL flat = [TGTheme shared].isFlat;
 	NSString *key = [NSString stringWithFormat:@"%@-%d", name, (int)flat];
-	UIImage *cached = sCache[key];
+	UIImage *cached = sGetCached(key);
 	if (cached)
 		return cached;
 
@@ -223,11 +225,14 @@ static NSMutableDictionary *sSettingsIconCache = nil;
 }
 
 + (UIImage *)callArrowOutgoing:(BOOL)outgoing missed:(BOOL)missed {
+	NSString *key = [NSString stringWithFormat:@"callArrow_%d_%d", outgoing, missed];
+	UIImage *cached = sGetCached(key);
+	if (cached) return cached;
+
 	CGFloat s = 14;
 	UIGraphicsBeginImageContextWithOptions(CGSizeMake(s, s), NO, 0);
 	CGContextRef ctx = UIGraphicsGetCurrentContext();
 
-	// green_bright1 answered, red_3 missed - their two call colours.
 	if (missed)
 		CGContextSetRGBStrokeColor(ctx, 0.871f, 0.227f, 0.227f, 1.0f);
 	else
@@ -236,7 +241,6 @@ static NSMutableDictionary *sSettingsIconCache = nil;
 	CGContextSetLineCap(ctx, kCGLineCapRound);
 	CGContextSetLineJoin(ctx, kCGLineJoinRound);
 
-	// The shaft runs corner to corner; the head sits on the end it points at.
 	CGFloat lo = 2.5f, hi = s - 2.5f;
 	if (outgoing){
 		CGContextMoveToPoint(ctx, lo, hi);
@@ -257,6 +261,7 @@ static NSMutableDictionary *sSettingsIconCache = nil;
 
 	UIImage *image = UIGraphicsGetImageFromCurrentImageContext();
 	UIGraphicsEndImageContext();
+	sSetCached(key, image);
 	return image;
 }
 
@@ -543,10 +548,13 @@ static NSMutableDictionary *sSettingsIconCache = nil;
 }
 
 + (UIImage *)mediaDiscOfSide:(CGFloat)side playing:(BOOL)playing {
+	NSString *key = [NSString stringWithFormat:@"mediaDisc_%.0f_%d", side, playing];
+	UIImage *cached = sGetCached(key);
+	if (cached) return cached;
+
 	UIGraphicsBeginImageContextWithOptions(CGSizeMake(side, side), NO, 0);
 	CGContextRef ctx = UIGraphicsGetCurrentContext();
 
-	// #72B5E9, the blue their file and media blocks put behind a glyph.
 	CGContextSetRGBFillColor(ctx, 0.447f, 0.710f, 0.914f, 1.0f);
 	CGContextFillEllipseInRect(ctx, CGRectMake(0, 0, side, side));
 
@@ -556,7 +564,6 @@ static NSMutableDictionary *sSettingsIconCache = nil;
 		CGContextFillRect(ctx, CGRectMake(side/2 - gap/2 - w, (side - h)/2, w, h));
 		CGContextFillRect(ctx, CGRectMake(side/2 + gap/2,     (side - h)/2, w, h));
 	} else {
-		// A triangle, nudged right so it looks centred inside the disc.
 		CGContextMoveToPoint(ctx, side * 0.40f, side * 0.32f);
 		CGContextAddLineToPoint(ctx, side * 0.68f, side * 0.50f);
 		CGContextAddLineToPoint(ctx, side * 0.40f, side * 0.68f);
@@ -566,18 +573,21 @@ static NSMutableDictionary *sSettingsIconCache = nil;
 
 	UIImage *image = UIGraphicsGetImageFromCurrentImageContext();
 	UIGraphicsEndImageContext();
+	sSetCached(key, image);
 	return image;
 }
 
 + (UIImage *)fileDiscOfSide:(CGFloat)side {
+	NSString *key = [NSString stringWithFormat:@"fileDisc_%.0f", side];
+	UIImage *cached = sGetCached(key);
+	if (cached) return cached;
+
 	UIGraphicsBeginImageContextWithOptions(CGSizeMake(side, side), NO, 0);
 	CGContextRef ctx = UIGraphicsGetCurrentContext();
 
-	CGContextSetRGBFillColor(ctx, 0.447f, 0.710f, 0.914f, 1.0f);   // #72B5E9
+	CGContextSetRGBFillColor(ctx, 0.447f, 0.710f, 0.914f, 1.0f);
 	CGContextFillEllipseInRect(ctx, CGRectMake(0, 0, side, side));
 
-	// A sheet with the top right corner turned down, drawn as one path so the
-	// fold reads as a notch rather than a separate shape.
 	CGContextSetRGBFillColor(ctx, 1, 1, 1, 1);
 	CGFloat l = side * 0.34f, r = side * 0.66f, t = side * 0.28f, b = side * 0.72f;
 	CGFloat fold = side * 0.12f;
@@ -589,7 +599,6 @@ static NSMutableDictionary *sSettingsIconCache = nil;
 	CGContextClosePath(ctx);
 	CGContextFillPath(ctx);
 
-	// The fold itself, punched back out in the disc's blue.
 	CGContextSetRGBFillColor(ctx, 0.447f, 0.710f, 0.914f, 1.0f);
 	CGContextMoveToPoint(ctx, r - fold, t);
 	CGContextAddLineToPoint(ctx, r, t + fold);
@@ -599,15 +608,19 @@ static NSMutableDictionary *sSettingsIconCache = nil;
 
 	UIImage *image = UIGraphicsGetImageFromCurrentImageContext();
 	UIGraphicsEndImageContext();
+	sSetCached(key, image);
 	return image;
 }
 
 + (UIImage *)microphoneOfSide:(CGFloat)side colour:(UIColor *)colour {
+	NSString *key = [NSString stringWithFormat:@"mic_%.0f_%lu", side, (unsigned long)[colour hash]];
+	UIImage *cached = sGetCached(key);
+	if (cached) return cached;
+
 	UIGraphicsBeginImageContextWithOptions(CGSizeMake(side, side), NO, 0);
 	CGContextRef ctx = UIGraphicsGetCurrentContext();
 	[colour set];
 
-	// capsule head, the arc under it, the stand and the foot
 	UIBezierPath *head = [UIBezierPath bezierPathWithRoundedRect:
 			CGRectMake(side * 0.40f, side * 0.18f, side * 0.20f, side * 0.38f)
 												   cornerRadius:side * 0.10f];
@@ -628,24 +641,37 @@ static NSMutableDictionary *sSettingsIconCache = nil;
 
 	UIImage *image = UIGraphicsGetImageFromCurrentImageContext();
 	UIGraphicsEndImageContext();
+	sSetCached(key, image);
 	return image;
 }
 
 + (UIImage *)waveform:(NSData *)waveform size:(CGSize)size
                played:(CGFloat)played colour:(UIColor *)colour {
+	if (!waveform.length || size.width <= 0 || size.height <= 0)
+		return nil;
+
+	// Round played percentage to 20 steps to allow caching
+	int playedBucket = (int)(played * 20.0f);
+	NSString *key = [NSString stringWithFormat:@"wave_%lu_%.0f_%d_%lu",
+			(unsigned long)waveform.hash, size.width, playedBucket, (unsigned long)[colour hash]];
+	UIImage *cached = sGetCached(key);
+	if (cached) return cached;
+
 	UIGraphicsBeginImageContextWithOptions(size, NO, 0);
 	CGContextRef ctx = UIGraphicsGetCurrentContext();
 
 	const uint8_t *bytes = (const uint8_t *)waveform.bytes;
-	NSUInteger bits = waveform.length * 8 / 5;      // five bits per sample
+	NSUInteger bits = waveform.length * 8 / 5;
 	CGFloat barW = 2, gap = 1;
 	NSUInteger bars = (NSUInteger)(size.width / (barW + gap));
-	if (bars == 0)
+	if (bars == 0){
+		UIGraphicsEndImageContext();
 		return nil;
+	}
 
 	for (NSUInteger i = 0; i < bars; i++){
-		CGFloat value = 0.35f;                       // a flat line when there
-		if (bits > 0){                               // is no waveform at all
+		CGFloat value = 0.35f;
+		if (bits > 0){
 			NSUInteger index = i * bits / bars;
 			NSUInteger bit = index * 5;
 			NSUInteger byte = bit / 8;
@@ -659,9 +685,6 @@ static NSMutableDictionary *sSettingsIconCache = nil;
 		CGFloat x = i * (barW + gap);
 		CGRect bar = CGRectMake(x, (size.height - height) / 2, barW, height);
 
-		// The part already heard is solid; the rest is faded, which is how
-		// Telegram shows progress through a message. The gap between the two
-		// has to be wide enough to read at a glance on a 3.5" screen.
 		CGFloat alpha = (i < bars * played) ? 1.0f : 0.32f;
 		[[colour colorWithAlphaComponent:alpha] set];
 		UIBezierPath *rounded = [UIBezierPath bezierPathWithRoundedRect:bar cornerRadius:1];
@@ -670,16 +693,20 @@ static NSMutableDictionary *sSettingsIconCache = nil;
 
 	UIImage *image = UIGraphicsGetImageFromCurrentImageContext();
 	UIGraphicsEndImageContext();
+	sSetCached(key, image);
 	return image;
 }
 
 + (UIImage *)bubbleTailForColour:(UIColor *)colour outgoing:(BOOL)outgoing {
+	NSString *key = [NSString stringWithFormat:@"tail_%d_%lu", outgoing, (unsigned long)[colour hash]];
+	UIImage *cached = sGetCached(key);
+	if (cached) return cached;
+
 	CGSize size = CGSizeMake(6, 10);
 	UIGraphicsBeginImageContextWithOptions(size, NO, 0);
 	CGContextRef ctx = UIGraphicsGetCurrentContext();
 	[colour set];
 
-	// A curl off the bottom corner, mirrored for an incoming bubble.
 	if (outgoing){
 		CGContextMoveToPoint(ctx, 0, 0);
 		CGContextAddLineToPoint(ctx, 0, 10);
@@ -696,10 +723,15 @@ static NSMutableDictionary *sSettingsIconCache = nil;
 
 	UIImage *image = UIGraphicsGetImageFromCurrentImageContext();
 	UIGraphicsEndImageContext();
+	sSetCached(key, image);
 	return image;
 }
 
 + (UIImage *)ticksWhite:(BOOL)white {
+	NSString *key = white ? @"ticks_white" : @"ticks_green";
+	UIImage *cached = sGetCached(key);
+	if (cached) return cached;
+
 	CGSize size = CGSizeMake(15, 9);
 	UIGraphicsBeginImageContextWithOptions(size, NO, 0);
 	CGContextRef ctx = UIGraphicsGetCurrentContext();
@@ -713,8 +745,6 @@ static NSMutableDictionary *sSettingsIconCache = nil;
 	CGContextSetLineCap(ctx, kCGLineCapRound);
 	CGContextSetLineJoin(ctx, kCGLineJoinRound);
 
-	// back tick, then the front one shifted right - they overlap, which is
-	// what makes it read as one mark rather than two symbols.
 	CGContextMoveToPoint(ctx, 0.5f, 5.0f);
 	CGContextAddLineToPoint(ctx, 3.0f, 7.6f);
 	CGContextAddLineToPoint(ctx, 8.4f, 1.4f);
@@ -727,18 +757,17 @@ static NSMutableDictionary *sSettingsIconCache = nil;
 
 	UIImage *image = UIGraphicsGetImageFromCurrentImageContext();
 	UIGraphicsEndImageContext();
+	sSetCached(key, image);
 	return image;
 }
 
 #pragma mark - avatars
 
-/// Both rows are a flat disc in their steel blue with a white glyph, which is
-/// what Telegram puts there - a letter in a coloured circle reads as a person.
 static UIImage *TGGlyphAvatar(CGFloat side, void (^draw)(CGContextRef ctx, CGFloat s)) {
 	UIGraphicsBeginImageContextWithOptions(CGSizeMake(side, side), NO, 0);
 	CGContextRef ctx = UIGraphicsGetCurrentContext();
 
-	CGContextSetRGBFillColor(ctx, 0.427f, 0.588f, 0.706f, 1.0f);   // steel blue
+	CGContextSetRGBFillColor(ctx, 0.427f, 0.588f, 0.706f, 1.0f);
 	CGContextFillEllipseInRect(ctx, CGRectMake(0, 0, side, side));
 
 	CGContextSetRGBFillColor(ctx, 1, 1, 1, 1);
@@ -751,21 +780,28 @@ static UIImage *TGGlyphAvatar(CGFloat side, void (^draw)(CGContextRef ctx, CGFlo
 }
 
 + (UIImage *)archiveAvatarOfSide:(CGFloat)side {
-	return TGGlyphAvatar(side, ^(CGContextRef ctx, CGFloat s){
-		// A box: a lid across the top, the body under it, a slot for a hand.
+	NSString *key = [NSString stringWithFormat:@"archiveAvatar_%.0f", side];
+	UIImage *cached = sGetCached(key);
+	if (cached) return cached;
+
+	UIImage *img = TGGlyphAvatar(side, ^(CGContextRef ctx, CGFloat s){
 		CGFloat w = s * 0.46f, x = (s - w) / 2;
 		CGContextFillRect(ctx, CGRectMake(x, s * 0.32f, w, s * 0.10f));
 		CGContextFillRect(ctx, CGRectMake(x + s * 0.03f, s * 0.44f,
 										  w - s * 0.06f, s * 0.24f));
-		// The slot is punched back out in the disc's own blue.
 		CGContextSetRGBFillColor(ctx, 0.427f, 0.588f, 0.706f, 1.0f);
 		CGContextFillRect(ctx, CGRectMake(s * 0.44f, s * 0.50f, s * 0.12f, s * 0.05f));
 	});
+	sSetCached(key, img);
+	return img;
 }
 
 + (UIImage *)savedMessagesAvatarOfSide:(CGFloat)side {
-	return TGGlyphAvatar(side, ^(CGContextRef ctx, CGFloat s){
-		// A bookmark: a rectangle with a notch cut out of the bottom edge.
+	NSString *key = [NSString stringWithFormat:@"savedAvatar_%.0f", side];
+	UIImage *cached = sGetCached(key);
+	if (cached) return cached;
+
+	UIImage *img = TGGlyphAvatar(side, ^(CGContextRef ctx, CGFloat s){
 		CGContextMoveToPoint(ctx, s * 0.36f, s * 0.30f);
 		CGContextAddLineToPoint(ctx, s * 0.64f, s * 0.30f);
 		CGContextAddLineToPoint(ctx, s * 0.64f, s * 0.70f);
@@ -774,7 +810,10 @@ static UIImage *TGGlyphAvatar(CGFloat side, void (^draw)(CGContextRef ctx, CGFlo
 		CGContextClosePath(ctx);
 		CGContextFillPath(ctx);
 	});
+	sSetCached(key, img);
+	return img;
 }
+
 + (UIImage *)avatarWithInitials:(NSString *)initials
                            size:(CGFloat)size
                        colourId:(int64_t)colourId

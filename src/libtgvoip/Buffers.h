@@ -16,6 +16,7 @@
 #include <array>
 #include <limits>
 #include <stddef.h>
+#include <algorithm>
 #include "threading.h"
 #include "utils.h"
 

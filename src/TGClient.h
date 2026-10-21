@@ -16,6 +16,7 @@ typedef NS_ENUM(NSInteger, TGAuthState) {
     TGAuthStateWaitCode,
     TGAuthStateWaitPassword,
     TGAuthStateWaitRegistration,
+    TGAuthStateWaitOtherDeviceConfirmation,
     TGAuthStateReady,
     TGAuthStateLoggingOut,
     TGAuthStateClosed
@@ -406,7 +407,13 @@ typedef NS_ENUM(NSInteger, TGConnectionState) {
 - (void)sendPhoneNumber:(NSString *)phoneNumber;
 - (void)sendCode:(NSString *)code;
 - (void)sendPassword:(NSString *)password;
+- (void)resendAuthenticationCode;
+- (void)requestQrCodeAuthentication;
+- (void)destroySession;
 - (void)logOut;
+
+@property (nonatomic, readonly) NSDictionary *codeInfo;
+@property (nonatomic, readonly) NSString *qrCodeLink;
 
 /// Fire-and-forget request. `request` is a JSON object; @extra is not tracked.
 - (void)send:(NSDictionary *)request;
