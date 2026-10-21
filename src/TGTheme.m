@@ -60,6 +60,7 @@ static NSString *const kBeforeNightKey   = @"themeStyleBeforeNight";
 			@"barTitle"       : [UIColor whiteColor],
 			@"accent"         : rgb(0x2E, 0xA6, 0xFF),
 			@"chatBackground" : rgb(0x18, 0x22, 0x2D),
+			@"cardBackground" : rgb(0x24, 0x2F, 0x3D),
 			@"bubbleMine"     : rgb(0x2B, 0x52, 0x78),
 			@"bubbleTheirs"   : rgb(0x18, 0x25, 0x33),
 			@"listBackground" : rgb(0x17, 0x21, 0x2B),
@@ -313,19 +314,18 @@ static NSString *TGIdForStyle(TGThemeStyle style) {
 	cell.detailTextLabel.font = [UIFont systemFontOfSize:15];
 	cell.detailTextLabel.textColor = [self cellDetailColour];
 
-	UIColor *bg = (![self hasCustomPalette] && !self.isDarkStyle) ? [UIColor whiteColor] : [self listBackgroundColour];
+	UIColor *bg = [self cardBackgroundColour];
 	cell.backgroundColor = bg;
 	cell.textLabel.backgroundColor = bg;
 	cell.textLabel.opaque = YES;
 	cell.detailTextLabel.backgroundColor = bg;
 	cell.detailTextLabel.opaque = YES;
 
+	cell.textLabel.textColor = [self primaryTextColour];
 	if (![self hasCustomPalette] && !self.isDarkStyle) {
-		cell.textLabel.textColor = [UIColor blackColor];
 		cell.selectedBackgroundView = nil;
 		return;
 	}
-	cell.textLabel.textColor = [self primaryTextColour];
 	UIView *selected = [[UIView alloc] init];
 	selected.backgroundColor = [self bubbleTheirsColour];
 	cell.selectedBackgroundView = selected;
@@ -501,6 +501,20 @@ static UIColor *rgb(int r, int g, int b) {
 	return rgb(0xEF, 0xEF, 0xF4);
 }
 
+- (UIColor *)cardBackgroundColour {
+	UIColor *imported = [self importedColour:@"cardBackground"];
+	if (imported) return imported;
+	if (self.isDarkStyle) return TG_GRAY_DARK15;
+	if (self.isDark) return [self listBackgroundColour];
+	return [UIColor whiteColor];
+}
+
+- (UIColor *)placeholderColour {
+	if (self.isDark)
+		return [UIColor colorWithWhite:1.0f alpha:0.40f];
+	return [UIColor colorWithWhite:0.0f alpha:0.35f];
+}
+
 - (UIColor *)primaryTextColour {
 	UIColor *imported = [self importedColour:@"primaryText"];
 	if (imported) return imported;
@@ -533,7 +547,8 @@ static UIColor *rgb(int r, int g, int b) {
 
 - (UIColor *)sectionHeaderColour {
 	UIColor *imported = [self importedColour:@"secondaryText"];
-	return imported ?: TG_GRAY_SECTION;
+	if (imported) return imported;
+	return self.isDarkStyle ? TG_GRAY_DARK6 : TG_GRAY_SECTION;
 }
 
 - (UIColor *)profileHeaderColour {

@@ -28,25 +28,47 @@ static const CGFloat kSearchAvatar = 40.0f;
 	self.avatars = [NSMutableDictionary dictionary];
 	self.avatarsRequested = [NSMutableSet set];
 	self.tableView.rowHeight = 60;
-	self.tableView.backgroundColor = [[TGTheme shared] listBackgroundColour];
-	self.tableView.separatorColor = [[TGTheme shared] separatorColour];
-
 	if ([self.tableView respondsToSelector:@selector(setKeyboardDismissMode:)])
 		self.tableView.keyboardDismissMode = UIScrollViewKeyboardDismissModeOnDrag;
 
 	self.bar = [[UISearchBar alloc] initWithFrame:CGRectMake(0, 0, 240, 44)];
 	self.bar.delegate = self;
 	self.bar.placeholder = @"Search";
-	self.bar.barStyle = [TGTheme shared].isDark ? UIBarStyleBlack : UIBarStyleDefault;
-	self.bar.tintColor = [[TGTheme shared] accentColour];
 	self.navigationItem.titleView = self.bar;
 	self.navigationItem.hidesBackButton = YES;
 	self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc]
 			initWithTitle:@"Cancel" style:UIBarButtonItemStylePlain
 				   target:self action:@selector(cancel)];
 
-	[[TGTheme shared] styleNavigationBar:self.navigationController.navigationBar];
+	[self applyTheme];
+
+	__weak typeof(self) weakSelf = self;
+	[[NSNotificationCenter defaultCenter] addObserverForName:TGThemeChangedNotification
+			object:nil queue:[NSOperationQueue mainQueue]
+		 usingBlock:^(NSNotification *note) {
+		[weakSelf applyTheme];
+		[weakSelf.tableView reloadData];
+	}];
+
 	[self.bar becomeFirstResponder];
+}
+
+- (void)dealloc {
+	[[NSNotificationCenter defaultCenter] removeObserver:self];
+}
+
+- (void)viewWillAppear:(BOOL)animated {
+	[super viewWillAppear:animated];
+	[self applyTheme];
+}
+
+- (void)applyTheme {
+	TGTheme *theme = [TGTheme shared];
+	self.tableView.backgroundColor = [theme listBackgroundColour];
+	self.tableView.separatorColor = [theme separatorColour];
+	self.bar.barStyle = theme.isDark ? UIBarStyleBlack : UIBarStyleDefault;
+	self.bar.tintColor = [theme accentColour];
+	[theme styleNavigationBar:self.navigationController.navigationBar];
 }
 
 - (void)cancel {
@@ -98,6 +120,13 @@ static const CGFloat kSearchAvatar = 40.0f;
 	if (section == 0)
 		return self.chatHits.count ? @"Chats" : nil;
 	return self.messageHits.count ? @"Messages" : nil;
+}
+
+- (void)tableView:(UITableView *)tableView willDisplayHeaderView:(UIView *)view forSection:(NSInteger)section {
+	if ([view isKindOfClass:[UITableViewHeaderFooterView class]]) {
+		UITableViewHeaderFooterView *header = (UITableViewHeaderFooterView *)view;
+		header.textLabel.textColor = [[TGTheme shared] sectionHeaderColour];
+	}
 }
 
 - (UIImage *)avatarForChat:(int64_t)chatId

@@ -64,11 +64,38 @@ static const CGFloat kPhotoSide = 80.0f;
 		weakSelf.birthYear = year;
 		[weakSelf.tableView reloadData];
 	}];
+
+	[[NSNotificationCenter defaultCenter] addObserverForName:TGThemeChangedNotification
+			object:nil queue:[NSOperationQueue mainQueue]
+		 usingBlock:^(NSNotification *note) {
+		[weakSelf applyTheme];
+		[weakSelf updateFieldAppearances];
+		[weakSelf.tableView reloadData];
+	}];
+}
+
+- (void)dealloc {
+	[[NSNotificationCenter defaultCenter] removeObserver:self];
 }
 
 - (void)applyTheme {
-	self.tableView.backgroundColor = [[TGTheme shared] listBackgroundColour];
+	self.tableView.backgroundColor = [[TGTheme shared] groupedBackgroundColour];
 	self.tableView.separatorColor = [[TGTheme shared] separatorColour];
+	[[TGTheme shared] styleNavigationBar:self.navigationController.navigationBar];
+}
+
+- (void)updateFieldAppearances {
+	NSArray *fields = @[self.firstField, self.lastField, self.usernameField, self.bioField];
+	UIKeyboardAppearance kb = [TGTheme shared].isDark ? UIKeyboardAppearanceDark : UIKeyboardAppearanceDefault;
+	for (UITextField *f in fields) {
+		if (!f) continue;
+		f.textColor = [[TGTheme shared] primaryTextColour];
+		f.keyboardAppearance = kb;
+	}
+	[self setPlaceholder:@"First name" on:self.firstField];
+	[self setPlaceholder:@"Last name" on:self.lastField];
+	[self setPlaceholder:@"username" on:self.usernameField];
+	[self setPlaceholder:@"A few words about you" on:self.bioField];
 }
 
 - (UITextField *)fieldWithPlaceholder:(NSString *)placeholder text:(NSString *)text {
@@ -77,9 +104,24 @@ static const CGFloat kPhotoSide = 80.0f;
 	field.font = [UIFont systemFontOfSize:16];
 	field.delegate = self;
 	field.returnKeyType = UIReturnKeyDone;
+	field.keyboardAppearance = [TGTheme shared].isDark ? UIKeyboardAppearanceDark : UIKeyboardAppearanceDefault;
 	field.textColor = [[TGTheme shared] primaryTextColour];
 	[self setPlaceholder:placeholder on:field];
 	return field;
+}
+
+- (void)tableView:(UITableView *)tableView willDisplayHeaderView:(UIView *)view forSection:(NSInteger)section {
+	if ([view isKindOfClass:[UITableViewHeaderFooterView class]]) {
+		UITableViewHeaderFooterView *header = (UITableViewHeaderFooterView *)view;
+		header.textLabel.textColor = [[TGTheme shared] sectionHeaderColour];
+	}
+}
+
+- (void)tableView:(UITableView *)tableView willDisplayFooterView:(UIView *)view forSection:(NSInteger)section {
+	if ([view isKindOfClass:[UITableViewHeaderFooterView class]]) {
+		UITableViewHeaderFooterView *footer = (UITableViewHeaderFooterView *)view;
+		footer.textLabel.textColor = [[TGTheme shared] sectionHeaderColour];
+	}
 }
 
 /// UITextField draws its placeholder in a fixed pale grey, which on a dark
@@ -88,7 +130,7 @@ static const CGFloat kPhotoSide = 80.0f;
 - (void)setPlaceholder:(NSString *)placeholder on:(UITextField *)field {
 	if (!placeholder.length)
 		return;
-	UIColor *colour = [[TGTheme shared] secondaryTextColour];
+	UIColor *colour = [[TGTheme shared] placeholderColour];
 	if ([field respondsToSelector:@selector(setAttributedPlaceholder:)]){
 		field.attributedPlaceholder = [[NSAttributedString alloc]
 				initWithString:placeholder

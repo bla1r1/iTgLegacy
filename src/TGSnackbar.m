@@ -110,7 +110,7 @@ static TGSnackbar *sOpenBar = nil;
 	undo.frame = CGRectMake(self.bounds.size.width - 76, 0, 70, kBarHeight);
 	undo.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
 	[undo setTitle:@"UNDO" forState:UIControlStateNormal];
-	[undo setTitleColor:[UIColor colorWithRed:0.30f green:0.70f blue:0.96f alpha:1.0f]
+	[undo setTitleColor:[[TGTheme shared] accentColour]
 			   forState:UIControlStateNormal];
 	undo.titleLabel.font = [UIFont boldSystemFontOfSize:14];
 	undo.titleEdgeInsets = UIEdgeInsetsMake(0, 14, 0, 0);
@@ -122,7 +122,7 @@ static TGSnackbar *sOpenBar = nil;
 			self.bounds.size.width - 74, (kBarHeight - 18) / 2, 18, 18)];
 	arrow.image = [TGIcons menuGlyphNamed:@"undo"];
 	arrow.contentMode = UIViewContentModeScaleAspectFit;
-	arrow.tintColor = [UIColor colorWithRed:0.30f green:0.70f blue:0.96f alpha:1.0f];
+	arrow.tintColor = [[TGTheme shared] accentColour];
 	arrow.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
 	[self insertSubview:arrow belowSubview:undo];
 }

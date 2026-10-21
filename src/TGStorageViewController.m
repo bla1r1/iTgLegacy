@@ -30,11 +30,43 @@ static const CGFloat kRingWidth = 26.0f;
 	self.categories = @[];
 	[self applyTheme];
 	[self refresh];
+
+	__weak typeof(self) weakSelf = self;
+	[[NSNotificationCenter defaultCenter] addObserverForName:TGThemeChangedNotification
+			object:nil queue:[NSOperationQueue mainQueue]
+		 usingBlock:^(NSNotification *note) {
+		[weakSelf applyTheme];
+		[weakSelf.tableView reloadData];
+	}];
+}
+
+- (void)dealloc {
+	[[NSNotificationCenter defaultCenter] removeObserver:self];
+}
+
+- (void)viewWillAppear:(BOOL)animated {
+	[super viewWillAppear:animated];
+	[self applyTheme];
 }
 
 - (void)applyTheme {
-	self.tableView.backgroundColor = [[TGTheme shared] listBackgroundColour];
+	self.tableView.backgroundColor = [[TGTheme shared] groupedBackgroundColour];
 	self.tableView.separatorColor = [[TGTheme shared] separatorColour];
+	[[TGTheme shared] styleNavigationBar:self.navigationController.navigationBar];
+}
+
+- (void)tableView:(UITableView *)tableView willDisplayHeaderView:(UIView *)view forSection:(NSInteger)section {
+	if ([view isKindOfClass:[UITableViewHeaderFooterView class]]) {
+		UITableViewHeaderFooterView *header = (UITableViewHeaderFooterView *)view;
+		header.textLabel.textColor = [[TGTheme shared] sectionHeaderColour];
+	}
+}
+
+- (void)tableView:(UITableView *)tableView willDisplayFooterView:(UIView *)view forSection:(NSInteger)section {
+	if ([view isKindOfClass:[UITableViewHeaderFooterView class]]) {
+		UITableViewHeaderFooterView *footer = (UITableViewHeaderFooterView *)view;
+		footer.textLabel.textColor = [[TGTheme shared] sectionHeaderColour];
+	}
 }
 
 - (void)refresh {
@@ -69,15 +101,6 @@ static UIColor *TGSliceColour(NSUInteger index) {
 					[UIColor colorWithRed:0.29f green:0.80f blue:0.44f alpha:1],  // green
 					[UIColor colorWithRed:0.85f green:0.35f blue:0.35f alpha:1]]; // red
 	return palette[index % palette.count];
-}
-
-/// Settings has its own navigation controller, and nothing was styling
-/// its bar - an imported theme stopped at the top of the screen.
-- (void)viewWillAppear:(BOOL)animated {
-	[super viewWillAppear:animated];
-	[[TGTheme shared] styleNavigationBar:self.navigationController.navigationBar];
-	[self applyTheme];
-	[self.tableView reloadData];
 }
 
 #pragma mark - the ring

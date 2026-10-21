@@ -308,7 +308,7 @@ static void TGSetBodyText(UILabel *label, NSString *text, UIColor *colour) {
 
 	self.subtitle = [[UILabel alloc] init];
 	self.subtitle.font = [UIFont systemFontOfSize:13];
-	self.subtitle.textColor = [UIColor colorWithWhite:0.45f alpha:1.0f];
+	self.subtitle.textColor = [[TGTheme shared] fileMetaColour];
 	self.subtitle.backgroundColor = [UIColor clearColor];
 	self.subtitle.hidden = YES;
 	[self.bubble addSubview:self.subtitle];
@@ -397,6 +397,10 @@ static void TGSetBodyText(UILabel *label, NSString *text, UIColor *colour) {
 @property (nonatomic, strong) UIButton *stickerButton;
 @property (nonatomic, strong) UIScrollView *stickerPanel;
 @property (nonatomic, strong) NSMutableDictionary *layoutCache;
+@property (nonatomic, strong) UILabel *titleNameLabel;
+@property (nonatomic, strong) UILabel *titleSubtitleLabel;
+@property (nonatomic, strong) UIView *pinnedBannerView;
+@property (nonatomic, strong) UIView *pinnedBannerHair;
 
 - (void)clearComposeState;
 - (void)showComposeBanner:(NSString *)text;
@@ -503,6 +507,7 @@ static void TGSetBodyText(UILabel *label, NSString *text, UIColor *colour) {
 		name.shadowOffset = CGSizeMake(0, -1);
 	}
 	[header addSubview:name];
+	self.titleNameLabel = name;
 
 	UILabel *subtitle = [[UILabel alloc] initWithFrame:CGRectMake(0, 21, 200, 14)];
 	subtitle.font = [UIFont systemFontOfSize:12];
@@ -512,6 +517,7 @@ static void TGSetBodyText(UILabel *label, NSString *text, UIColor *colour) {
 	subtitle.backgroundColor = [UIColor clearColor];
 	subtitle.textAlignment = NSTextAlignmentCenter;
 	[header addSubview:subtitle];
+	self.titleSubtitleLabel = subtitle;
 
 	header.userInteractionEnabled = YES;
 	[header addGestureRecognizer:[[UITapGestureRecognizer alloc]
@@ -536,16 +542,29 @@ static void TGSetBodyText(UILabel *label, NSString *text, UIColor *colour) {
 		 usingBlock:^(NSNotification *note){
 		[TGIcons flush];
 		TGChatViewController *me = weakChat;
+		TGTheme *theme = [TGTheme shared];
 		[me.layoutCache removeAllObjects];
-		me.view.backgroundColor = [[TGTheme shared] chatBackgroundColour];
+		me.view.backgroundColor = [theme chatBackgroundColour];
 		me.table.backgroundColor = [UIColor clearColor];
-		me.inputBar.backgroundColor = [[TGTheme shared] inputBarColour];
-		me.input.backgroundColor = [[TGTheme shared] listBackgroundColour];
-		me.input.textColor = [[TGTheme shared] primaryTextColour];
-		me.input.layer.borderColor = [[TGTheme shared] separatorColour].CGColor;
-		me.sendButton.backgroundColor = [[TGTheme shared] accentColour];
-		me.wallpaperView.image = [[TGTheme shared] wallpaper];
-		[[TGTheme shared] styleNavigationBar:me.navigationController.navigationBar];
+		me.inputBar.backgroundColor = [theme inputBarColour];
+		me.input.backgroundColor = [theme listBackgroundColour];
+		me.input.textColor = [theme primaryTextColour];
+		me.input.layer.borderColor = [theme separatorColour].CGColor;
+		me.input.keyboardAppearance = theme.isDark ? UIKeyboardAppearanceDark : UIKeyboardAppearanceLight;
+		me.sendButton.backgroundColor = [theme accentColour];
+		me.wallpaperView.image = [theme wallpaper];
+		me.titleNameLabel.textColor = [theme barTitleColour];
+		me.titleSubtitleLabel.textColor = theme.isFlat
+				? [theme secondaryTextColour]
+				: [UIColor colorWithWhite:1.0f alpha:0.75f];
+		if (me.pinnedBannerView) {
+			me.pinnedBannerView.backgroundColor = [theme inputBarColour];
+			me.pinnedBannerHair.backgroundColor = [theme separatorColour];
+		}
+		if (me.recordPanel) {
+			me.recordPanel.backgroundColor = [theme inputBarColour];
+		}
+		[theme styleNavigationBar:me.navigationController.navigationBar];
 		[me.table reloadData];
 	}];
 
@@ -1186,35 +1205,38 @@ static void TGSetBodyText(UILabel *label, NSString *text, UIColor *colour) {
 
 - (void)showPinnedBanner:(NSString *)text {
 	CGRect b = self.view.bounds;
+	TGTheme *theme = [TGTheme shared];
 	UIView *banner = [[UIView alloc] initWithFrame:CGRectMake(0, 0, b.size.width, 34)];
-	banner.backgroundColor = [UIColor colorWithWhite:0.97f alpha:0.97f];
+	banner.backgroundColor = [theme inputBarColour];
 	banner.autoresizingMask = UIViewAutoresizingFlexibleWidth;
 
 	UIView *stripe = [[UIView alloc] initWithFrame:CGRectMake(8, 5, 2, 24)];
-	stripe.backgroundColor = [[TGTheme shared] accentColour];
+	stripe.backgroundColor = [theme accentColour];
 	[banner addSubview:stripe];
 
 	UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(16, 2, b.size.width - 24, 14)];
 	label.text = @"Pinned message";
 	label.font = [UIFont boldSystemFontOfSize:11];
-	label.textColor = [[TGTheme shared] accentColour];
+	label.textColor = [theme accentColour];
 	label.backgroundColor = [UIColor clearColor];
 	[banner addSubview:label];
 
 	UILabel *body = [[UILabel alloc] initWithFrame:CGRectMake(16, 16, b.size.width - 24, 16)];
 	body.text = text;
 	body.font = [UIFont systemFontOfSize:13];
-	body.textColor = [[TGTheme shared] primaryTextColour];
+	body.textColor = [theme primaryTextColour];
 	body.backgroundColor = [UIColor clearColor];
 	body.autoresizingMask = UIViewAutoresizingFlexibleWidth;
 	[banner addSubview:body];
 
 	UIView *hair = [[UIView alloc] initWithFrame:CGRectMake(0, 33, b.size.width, 1)];
-	hair.backgroundColor = [UIColor colorWithWhite:0.8f alpha:1];
+	hair.backgroundColor = [theme separatorColour];
 	hair.autoresizingMask = UIViewAutoresizingFlexibleWidth;
 	[banner addSubview:hair];
 
 	[self.view addSubview:banner];
+	self.pinnedBannerView = banner;
+	self.pinnedBannerHair = hair;
 
 	// Push the message list down so the banner does not cover the first row.
 	UIEdgeInsets insets = self.table.contentInset;
@@ -1469,13 +1491,14 @@ static void TGSetBodyText(UILabel *label, NSString *text, UIColor *colour) {
 - (void)showRecordPanel {
 	CGRect bar = self.inputBar.frame;
 	if (!self.recordPanel){
+		TGTheme *theme = [TGTheme shared];
 		self.recordPanel = [[UIView alloc] initWithFrame:bar];
-		self.recordPanel.backgroundColor = [[TGTheme shared] listBackgroundColour];
+		self.recordPanel.backgroundColor = [theme inputBarColour];
 		self.recordPanel.autoresizingMask = UIViewAutoresizingFlexibleWidth |
 											UIViewAutoresizingFlexibleTopMargin;
 
 		UIView *hair = [[UIView alloc] initWithFrame:CGRectMake(0, 0, bar.size.width, 1)];
-		hair.backgroundColor = [[TGTheme shared] separatorColour];
+		hair.backgroundColor = [theme separatorColour];
 		hair.autoresizingMask = UIViewAutoresizingFlexibleWidth;
 		[self.recordPanel addSubview:hair];
 
@@ -1490,8 +1513,7 @@ static void TGSetBodyText(UILabel *label, NSString *text, UIColor *colour) {
 		self.recordClock = [[UILabel alloc] initWithFrame:
 				CGRectMake(32, (kInputHeight - 20) / 2, 62, 20)];
 		self.recordClock.font = [UIFont systemFontOfSize:16];
-		self.recordClock.textColor = [UIColor colorWithRed:0.557f green:0.584f
-													  blue:0.608f alpha:1.0f];
+		self.recordClock.textColor = [theme primaryTextColour];
 		self.recordClock.backgroundColor = [UIColor clearColor];
 		[self.recordPanel addSubview:self.recordClock];
 
@@ -1499,8 +1521,7 @@ static void TGSetBodyText(UILabel *label, NSString *text, UIColor *colour) {
 				CGRectMake(100, (kInputHeight - 20) / 2, bar.size.width - 180, 20)];
 		cancel.text = @"‹ Slide to cancel";
 		cancel.font = [UIFont systemFontOfSize:15];
-		cancel.textColor = [UIColor colorWithRed:0.565f green:0.592f
-											blue:0.616f alpha:1.0f];
+		cancel.textColor = [theme secondaryTextColour];
 		cancel.backgroundColor = [UIColor clearColor];
 		cancel.autoresizingMask = UIViewAutoresizingFlexibleWidth;
 		[self.recordPanel addSubview:cancel];
@@ -1509,7 +1530,7 @@ static void TGSetBodyText(UILabel *label, NSString *text, UIColor *colour) {
 		CGFloat halo = kInputHeight + 12, disc = 44;
 		UIView *ring = [[UIView alloc] initWithFrame:
 				CGRectMake(bar.size.width - halo + 4, (kInputHeight - halo) / 2, halo, halo)];
-		ring.backgroundColor = [[TGTheme shared] accentColour];
+		ring.backgroundColor = [theme accentColour];
 		ring.alpha = 0.25f;
 		ring.layer.cornerRadius = halo / 2;
 		ring.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
@@ -1517,8 +1538,7 @@ static void TGSetBodyText(UILabel *label, NSString *text, UIColor *colour) {
 
 		UIImageView *button = [[UIImageView alloc] initWithFrame:CGRectMake(
 				CGRectGetMidX(ring.frame) - disc / 2, (kInputHeight - disc) / 2, disc, disc)];
-		button.backgroundColor = [UIColor colorWithRed:0.369f green:0.655f
-												  blue:0.871f alpha:1.0f];   // #5EA7DE
+		button.backgroundColor = [theme accentColour];
 		button.layer.cornerRadius = disc / 2;
 		button.image = [TGIcons microphoneOfSide:disc colour:[UIColor whiteColor]];
 		button.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
@@ -3206,14 +3226,14 @@ static UIColor *TGSenderColour(int64_t userId) {
 	// Video note
 	if (layout.isRound) {
 		CGFloat side = layout.bubbleFrame.size.width;
-		cell.bubble.backgroundColor = [UIColor colorWithWhite:0.15f alpha:1.0f];
+		cell.bubble.backgroundColor = [theme fileTileColour];
 		cell.bubble.layer.borderWidth = 0;
 		cell.bubble.frame = layout.bubbleFrame;
 		cell.bubble.layer.cornerRadius = side / 2;
 		cell.bubble.clipsToBounds = YES;
 		cell.picture.hidden = NO;
 		cell.picture.image = [self imageFor:m];
-		cell.picture.backgroundColor = [UIColor colorWithWhite:0.15f alpha:1.0f];
+		cell.picture.backgroundColor = [theme fileTileColour];
 		cell.picture.frame = CGRectMake(0, 0, side, side);
 		cell.picture.layer.cornerRadius = side / 2;
 		cell.picture.clipsToBounds = YES;
@@ -3255,7 +3275,7 @@ static UIColor *TGSenderColour(int64_t userId) {
 		static NSDateFormatter *hmt = nil;
 		if (!hmt) { hmt = [[NSDateFormatter alloc] init]; [hmt setDateFormat:@"HH:mm"]; }
 		cell.time.text = [hmt stringFromDate:[NSDate dateWithTimeIntervalSince1970:[m[@"date"] doubleValue]]];
-		cell.time.textColor = [UIColor colorWithWhite:0.35f alpha:1.0f];
+		cell.time.textColor = [theme timeColour];
 		cell.time.frame = CGRectMake(side - 44, side, 44, 12);
 		return cell;
 	}
@@ -3290,7 +3310,7 @@ static UIColor *TGSenderColour(int64_t userId) {
 		cell.picture.hidden = NO;
 		UIImage *img = [self imageFor:m];
 		cell.picture.image = img;
-		cell.picture.backgroundColor = img ? [UIColor clearColor] : [UIColor colorWithWhite:0.2f alpha:1.0f];
+		cell.picture.backgroundColor = img ? [UIColor clearColor] : [theme fileTileColour];
 		cell.picture.frame = layout.pictureFrame;
 		cell.picture.layer.cornerRadius = kMediaRadius;
 		cell.picture.clipsToBounds = YES;

@@ -110,6 +110,8 @@ extern NSString *const TGThemeChangedNotification;
 /// on it, so it has to differ from the card - a grouped table on this OS draws
 /// both the same and the cards disappear.
 - (UIColor *)groupedBackgroundColour;
+- (UIColor *)cardBackgroundColour;
+- (UIColor *)placeholderColour;
 - (UIColor *)primaryTextColour;
 - (UIColor *)secondaryTextColour;
 - (UIColor *)inputBarColour;

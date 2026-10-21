@@ -18,16 +18,31 @@
 	self.title = @"Device";
 	if ([self respondsToSelector:@selector(setEdgesForExtendedLayout:)])
 		self.edgesForExtendedLayout = UIRectEdgeNone;
-	self.tableView.backgroundColor = [[TGTheme shared] listBackgroundColour];
-	self.tableView.separatorColor = [[TGTheme shared] bubbleBorderColour];
+	[self applyTheme];
 	self.capabilities = [TGCapabilities all];
+
+	__weak typeof(self) weakSelf = self;
+	[[NSNotificationCenter defaultCenter] addObserverForName:TGThemeChangedNotification
+			object:nil queue:[NSOperationQueue mainQueue]
+		 usingBlock:^(NSNotification *note) {
+		[weakSelf applyTheme];
+		[weakSelf.tableView reloadData];
+	}];
 }
 
-/// Settings has its own navigation controller, and nothing was styling
-/// its bar - an imported theme stopped at the top of the screen.
+- (void)dealloc {
+	[[NSNotificationCenter defaultCenter] removeObserver:self];
+}
+
+- (void)applyTheme {
+	self.tableView.backgroundColor = [[TGTheme shared] groupedBackgroundColour];
+	self.tableView.separatorColor = [[TGTheme shared] separatorColour];
+	[[TGTheme shared] styleNavigationBar:self.navigationController.navigationBar];
+}
+
 - (void)viewWillAppear:(BOOL)animated {
 	[super viewWillAppear:animated];
-	[[TGTheme shared] styleNavigationBar:self.navigationController.navigationBar];
+	[self applyTheme];
 }
 
 #pragma mark - table
@@ -89,12 +104,26 @@
 	cell.textLabel.text = capability.name;
 	cell.detailTextLabel.text = capability.available ? @"on" : capability.requirement;
 	cell.detailTextLabel.textColor = capability.available
-			? [UIColor colorWithRed:0.20f green:0.60f blue:0.30f alpha:1]
+			? [[TGTheme shared] onlineColour]
 			: [[TGTheme shared] secondaryTextColour];
 	cell.textLabel.textColor = capability.available
 			? [[TGTheme shared] primaryTextColour]
 			: [[TGTheme shared] secondaryTextColour];
 	return cell;
+}
+
+- (void)tableView:(UITableView *)tableView willDisplayHeaderView:(UIView *)view forSection:(NSInteger)section {
+	if ([view isKindOfClass:[UITableViewHeaderFooterView class]]) {
+		UITableViewHeaderFooterView *header = (UITableViewHeaderFooterView *)view;
+		header.textLabel.textColor = [[TGTheme shared] sectionHeaderColour];
+	}
+}
+
+- (void)tableView:(UITableView *)tableView willDisplayFooterView:(UIView *)view forSection:(NSInteger)section {
+	if ([view isKindOfClass:[UITableViewHeaderFooterView class]]) {
+		UITableViewHeaderFooterView *footer = (UITableViewHeaderFooterView *)view;
+		footer.textLabel.textColor = [[TGTheme shared] sectionHeaderColour];
+	}
 }
 
 @end

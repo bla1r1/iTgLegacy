@@ -1,5 +1,6 @@
 #import "TGLoginViewController.h"
 #import "TGClient.h"
+#import "TGTheme.h"
 #import <QuartzCore/QuartzCore.h>
 #import <CoreImage/CoreImage.h>
 
@@ -13,7 +14,6 @@ typedef NS_ENUM(NSInteger, TGLoginStep) {
 
 @property (nonatomic, assign) TGLoginStep currentStep;
 @property (nonatomic, strong) UIScrollView *scrollView;
-@property (nonatomic, strong) UILabel *headerLabel;
 @property (nonatomic, strong) UILabel *subtitleLabel;
 @property (nonatomic, strong) UIView *inputContainer;
 @property (nonatomic, strong) UITextField *phonePrefixField;
@@ -30,17 +30,20 @@ typedef NS_ENUM(NSInteger, TGLoginStep) {
 @property (nonatomic, strong) NSTimer *resendTimer;
 @property (nonatomic, assign) NSInteger resendCountdown;
 
+@property (nonatomic, strong) UILabel *themeSectionLabel;
+@property (nonatomic, strong) UISegmentedControl *themeSegmentedControl;
+@property (nonatomic, strong) CAGradientLayer *skeuoBgLayer;
+@property (nonatomic, strong) CAGradientLayer *skeuoBtnLayer;
+@property (nonatomic, strong) UIView *skeuoShineView;
+
 @end
 
 @implementation TGLoginViewController
-
-/* ---- skeuomorphic helpers -------------------------------------------- */
 
 static UIColor *tgRGB(int r, int g, int b) {
     return [UIColor colorWithRed:r/255.0f green:g/255.0f blue:b/255.0f alpha:1.0f];
 }
 
-/* Vertical gloss gradient, the iOS 6 era look. */
 static CAGradientLayer *tgGloss(CGRect frame, UIColor *top, UIColor *bottom) {
     CAGradientLayer *g = [CAGradientLayer layer];
     g.frame = frame;
@@ -59,100 +62,90 @@ static CAGradientLayer *tgGloss(CGRect frame, UIColor *top, UIColor *bottom) {
                                                     action:@selector(actionButtonTapped)];
     self.navigationItem.rightBarButtonItem = self.nextItem;
 
-    /* Brushed-metal-ish bar rather than iOS 7 flat white.
-     * barTintColor and NSForegroundColorAttributeName are iOS 7; on iOS 6 the
-     * bar colour IS tintColor and the title key is UITextAttributeTextColor. */
-    UINavigationBar *bar = self.navigationController.navigationBar;
-    if ([bar respondsToSelector:@selector(setBarTintColor:)]){
-        bar.tintColor = tgRGB(38, 92, 140);
-        bar.barTintColor = tgRGB(64, 122, 173);
-        bar.titleTextAttributes = @{ NSForegroundColorAttributeName : [UIColor whiteColor] };
-    } else {
-        bar.tintColor = tgRGB(64, 122, 173);
-        bar.titleTextAttributes = @{ UITextAttributeTextColor : [UIColor whiteColor] };
-    }
-
     [self setupUI];
+    [self applyTheme];
 
-    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(keyboardWillShow:) name:UIKeyboardWillShowNotification object:nil];
-    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(keyboardWillHide:) name:UIKeyboardWillHideNotification object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(applyTheme)
+                                                 name:TGThemeChangedNotification
+                                               object:nil];
+
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(keyboardWillShow:)
+                                                 name:UIKeyboardWillShowNotification
+                                               object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(keyboardWillHide:)
+                                                 name:UIKeyboardWillHideNotification
+                                               object:nil];
+}
+
+- (void)viewWillAppear:(BOOL)animated {
+    [super viewWillAppear:animated];
+    [self applyTheme];
 }
 
 - (void)dealloc {
+    [self.resendTimer invalidate];
+    self.resendTimer = nil;
     [[NSNotificationCenter defaultCenter] removeObserver:self];
+}
+
+- (UIStatusBarStyle)preferredStatusBarStyle {
+    return [TGTheme shared].isDark ? UIStatusBarStyleLightContent : UIStatusBarStyleDefault;
 }
 
 - (void)setupUI {
     CGFloat width = self.view.bounds.size.width;
     CGFloat height = self.view.bounds.size.height;
 
-    /* Paper-ish backdrop with a soft vertical shade. */
-    self.view.backgroundColor = tgRGB(203, 209, 216);
-    CAGradientLayer *bg = tgGloss(self.view.bounds, tgRGB(222, 226, 232), tgRGB(186, 193, 203));
-    [self.view.layer insertSublayer:bg atIndex:0];
+    // Classic skeuomorphic background gradient layer
+    self.skeuoBgLayer = tgGloss(self.view.bounds, tgRGB(222, 226, 232), tgRGB(186, 193, 203));
+    [self.view.layer insertSublayer:self.skeuoBgLayer atIndex:0];
 
     self.scrollView = [[UIScrollView alloc] initWithFrame:CGRectMake(0, 0, width, height)];
     self.scrollView.backgroundColor = [UIColor clearColor];
     self.scrollView.alwaysBounceVertical = YES;
-    // keyboardDismissMode is iOS 7; harmless to skip on iOS 6.
-    if ([self.scrollView respondsToSelector:@selector(setKeyboardDismissMode:)])
+    if ([self.scrollView respondsToSelector:@selector(setKeyboardDismissMode:)]) {
         self.scrollView.keyboardDismissMode = UIScrollViewKeyboardDismissModeInteractive;
+    }
     [self.view addSubview:self.scrollView];
 
-    /* Embossed title: dark text with a white highlight underneath. */
-    self.headerLabel = [[UILabel alloc] initWithFrame:CGRectMake(20, 22, width - 40, 36)];
-    self.headerLabel.text = @"Telegram";
-    self.headerLabel.backgroundColor = [UIColor clearColor];
-    self.headerLabel.textColor = tgRGB(52, 74, 96);
-    self.headerLabel.shadowColor = [UIColor colorWithWhite:1.0f alpha:0.8f];
-    self.headerLabel.shadowOffset = CGSizeMake(0, 1);
-    self.headerLabel.font = [UIFont boldSystemFontOfSize:28];
-    self.headerLabel.textAlignment = NSTextAlignmentCenter;
-    [self.scrollView addSubview:self.headerLabel];
-
-    self.subtitleLabel = [[UILabel alloc] initWithFrame:CGRectMake(20, 62, width - 40, 40)];
+    // Clean native iOS 7 subtitle / instructions
+    self.subtitleLabel = [[UILabel alloc] initWithFrame:CGRectMake(20, 14, width - 40, 34)];
     self.subtitleLabel.text = @"Please confirm your country code\nand enter your phone number.";
     self.subtitleLabel.backgroundColor = [UIColor clearColor];
-    self.subtitleLabel.textColor = tgRGB(90, 103, 117);
-    self.subtitleLabel.shadowColor = [UIColor colorWithWhite:1.0f alpha:0.7f];
-    self.subtitleLabel.shadowOffset = CGSizeMake(0, 1);
     self.subtitleLabel.font = [UIFont systemFontOfSize:14];
     self.subtitleLabel.textAlignment = NSTextAlignmentCenter;
     self.subtitleLabel.numberOfLines = 2;
     [self.scrollView addSubview:self.subtitleLabel];
 
-    /* Recessed input well: bevelled border plus an inner top shadow. */
-    self.inputContainer = [[UIView alloc] initWithFrame:CGRectMake(15, 112, width - 30, 50)];
-    self.inputContainer.backgroundColor = [UIColor whiteColor];
-    self.inputContainer.layer.cornerRadius = 10.0f;
-    self.inputContainer.layer.borderWidth = 1.0f;
-    self.inputContainer.layer.borderColor = tgRGB(140, 149, 160).CGColor;
+    // Grouped input container
+    self.inputContainer = [[UIView alloc] initWithFrame:CGRectMake(15, 56, width - 30, 44)];
+    self.inputContainer.layer.cornerRadius = 8.0f;
+    self.inputContainer.layer.borderWidth = 0.5f;
     self.inputContainer.clipsToBounds = YES;
     [self.scrollView addSubview:self.inputContainer];
 
-    UIView *inner = [[UIView alloc] initWithFrame:CGRectMake(0, 0, width - 30, 3)];
-    inner.backgroundColor = [UIColor colorWithWhite:0.0f alpha:0.10f];
-    [self.inputContainer addSubview:inner];
-
-    /* Country code prefix - Ukraine by default. */
-    self.phonePrefixField = [[UITextField alloc] initWithFrame:CGRectMake(12, 1, 62, 48)];
+    // Country code prefix
+    self.phonePrefixField = [[UITextField alloc] initWithFrame:CGRectMake(10, 0, 56, 44)];
     self.phonePrefixField.text = @"+380";
     self.phonePrefixField.font = [UIFont boldSystemFontOfSize:17];
     self.phonePrefixField.keyboardType = UIKeyboardTypePhonePad;
     self.phonePrefixField.returnKeyType = UIReturnKeyNext;
-    self.phonePrefixField.textColor = tgRGB(38, 92, 140);
+    self.phonePrefixField.textAlignment = NSTextAlignmentCenter;
     self.phonePrefixField.delegate = self;
     [self.phonePrefixField addTarget:self action:@selector(prefixFieldChanged:) forControlEvents:UIControlEventEditingChanged];
     [self.inputContainer addSubview:self.phonePrefixField];
 
-    self.prefixSeparator = [[UIView alloc] initWithFrame:CGRectMake(78, 9, 1, 32)];
-    self.prefixSeparator.backgroundColor = tgRGB(190, 196, 204);
+    // Hairline vertical separator between prefix and phone number
+    self.prefixSeparator = [[UIView alloc] initWithFrame:CGRectMake(68, 7, 0.5f, 30)];
     [self.inputContainer addSubview:self.prefixSeparator];
 
-    self.inputField = [[UITextField alloc] initWithFrame:CGRectMake(90, 1, width - 132, 48)];
+    // Phone number input field
+    self.inputField = [[UITextField alloc] initWithFrame:CGRectMake(78, 0, width - 108, 44)];
     self.inputField.placeholder = @"Phone number";
     self.inputField.font = [UIFont systemFontOfSize:17];
-    self.inputField.textColor = tgRGB(40, 46, 54);
     self.inputField.keyboardType = UIKeyboardTypePhonePad;
     self.inputField.returnKeyType = UIReturnKeyGo;
     self.inputField.clearButtonMode = UITextFieldViewModeWhileEditing;
@@ -160,56 +153,159 @@ static CAGradientLayer *tgGloss(CGRect frame, UIColor *top, UIColor *bottom) {
     [self.inputField addTarget:self action:@selector(inputFieldChanged:) forControlEvents:UIControlEventEditingChanged];
     [self.inputContainer addSubview:self.inputField];
 
-    /* Glossy raised button: gradient body, dark rim, highlight on the top half. */
+    // Action button ("Next")
     self.actionButton = [UIButton buttonWithType:UIButtonTypeCustom];
-    self.actionButton.frame = CGRectMake(15, 176, width - 30, 46);
-    self.actionButton.layer.cornerRadius = 9.0f;
-    self.actionButton.layer.borderWidth = 1.0f;
-    self.actionButton.layer.borderColor = tgRGB(26, 66, 102).CGColor;
+    self.actionButton.frame = CGRectMake(15, 108, width - 30, 42);
+    self.actionButton.layer.cornerRadius = 8.0f;
     self.actionButton.clipsToBounds = YES;
-    self.actionButton.layer.shadowColor = [UIColor blackColor].CGColor;
-    self.actionButton.layer.shadowOffset = CGSizeMake(0, 1);
-    self.actionButton.layer.shadowOpacity = 0.35f;
-    self.actionButton.layer.shadowRadius = 1.0f;
-
-    CAGradientLayer *btn = tgGloss(CGRectMake(0, 0, width - 30, 46),
-                                   tgRGB(92, 156, 210), tgRGB(38, 92, 148));
-    [self.actionButton.layer insertSublayer:btn atIndex:0];
-
-    UIView *shine = [[UIView alloc] initWithFrame:CGRectMake(0, 0, width - 30, 22)];
-    shine.backgroundColor = [UIColor colorWithWhite:1.0f alpha:0.18f];
-    shine.userInteractionEnabled = NO;
-    [self.actionButton addSubview:shine];
-
     [self.actionButton setTitle:@"Next" forState:UIControlStateNormal];
-    [self.actionButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
-    [self.actionButton setTitleColor:[UIColor colorWithWhite:1.0f alpha:0.5f] forState:UIControlStateDisabled];
-    self.actionButton.titleLabel.font = [UIFont boldSystemFontOfSize:17];
-    self.actionButton.titleLabel.shadowColor = [UIColor colorWithWhite:0.0f alpha:0.4f];
-    self.actionButton.titleLabel.shadowOffset = CGSizeMake(0, -1);
+    self.actionButton.titleLabel.font = [UIFont boldSystemFontOfSize:16];
     [self.actionButton addTarget:self action:@selector(actionButtonTapped) forControlEvents:UIControlEventTouchUpInside];
+
+    // Skeuomorphic button gloss layer
+    self.skeuoBtnLayer = tgGloss(CGRectMake(0, 0, width - 30, 42), tgRGB(92, 156, 210), tgRGB(38, 92, 148));
+    [self.actionButton.layer insertSublayer:self.skeuoBtnLayer atIndex:0];
+
+    self.skeuoShineView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, width - 30, 21)];
+    self.skeuoShineView.backgroundColor = [UIColor colorWithWhite:1.0f alpha:0.18f];
+    self.skeuoShineView.userInteractionEnabled = NO;
+    [self.actionButton addSubview:self.skeuoShineView];
+
     [self.scrollView addSubview:self.actionButton];
 
-    self.spinner = [[UIActivityIndicatorView alloc]
-                    initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleWhite];
-    self.spinner.center = CGPointMake((width - 30) / 2, 23);
+    // Activity spinner inside action button
+    self.spinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleWhite];
+    self.spinner.center = CGPointMake((width - 30) / 2.0f, 21.0f);
     self.spinner.hidesWhenStopped = YES;
     [self.actionButton addSubview:self.spinner];
 
+    // Log in with QR Code button
     self.qrCodeButton = [UIButton buttonWithType:UIButtonTypeCustom];
-    self.qrCodeButton.frame = CGRectMake(15, 230, width - 30, 36);
+    self.qrCodeButton.frame = CGRectMake(15, 154, width - 30, 30);
     [self.qrCodeButton setTitle:@"Log in with QR Code" forState:UIControlStateNormal];
-    [self.qrCodeButton setTitleColor:tgRGB(38, 92, 140) forState:UIControlStateNormal];
-    self.qrCodeButton.titleLabel.font = [UIFont boldSystemFontOfSize:15];
+    self.qrCodeButton.titleLabel.font = [UIFont systemFontOfSize:15];
     [self.qrCodeButton addTarget:self action:@selector(qrCodeButtonTapped) forControlEvents:UIControlEventTouchUpInside];
     [self.scrollView addSubview:self.qrCodeButton];
 
-    self.scrollView.contentSize = CGSizeMake(width, 280);
+    // Theme Switcher Section
+    self.themeSectionLabel = [[UILabel alloc] initWithFrame:CGRectMake(20, 190, width - 40, 16)];
+    self.themeSectionLabel.text = @"THEME";
+    self.themeSectionLabel.font = [UIFont boldSystemFontOfSize:11];
+    self.themeSectionLabel.textAlignment = NSTextAlignmentCenter;
+    self.themeSectionLabel.backgroundColor = [UIColor clearColor];
+    [self.scrollView addSubview:self.themeSectionLabel];
+
+    self.themeSegmentedControl = [[UISegmentedControl alloc] initWithItems:@[@"Classic", @"Day", @"Night", @"Night Blue"]];
+    self.themeSegmentedControl.frame = CGRectMake(15, 210, width - 30, 30);
+    [self.themeSegmentedControl addTarget:self action:@selector(themeSegmentChanged:) forControlEvents:UIControlEventValueChanged];
+    [self.scrollView addSubview:self.themeSegmentedControl];
+
+    self.scrollView.contentSize = CGSizeMake(width, 256);
     self.currentStep = TGLoginStepPhone;
 
     dispatch_async(dispatch_get_main_queue(), ^{
         [self.inputField becomeFirstResponder];
     });
+}
+
+- (void)applyTheme {
+    TGTheme *theme = [TGTheme shared];
+
+    // Navigation bar
+    if (self.navigationController) {
+        [theme styleNavigationBar:self.navigationController.navigationBar];
+    }
+    self.nextItem.tintColor = theme.isFlat ? [theme accentColour] : [UIColor whiteColor];
+    if (self.navigationItem.leftBarButtonItem) {
+        self.navigationItem.leftBarButtonItem.tintColor = theme.isFlat ? [theme accentColour] : [UIColor whiteColor];
+    }
+
+    // View background
+    if (!theme.isFlat) {
+        self.skeuoBgLayer.hidden = NO;
+        self.view.backgroundColor = tgRGB(203, 209, 216);
+    } else {
+        self.skeuoBgLayer.hidden = YES;
+        self.view.backgroundColor = [theme groupedBackgroundColour];
+    }
+
+    // Labels
+    self.subtitleLabel.textColor = [theme secondaryTextColour];
+    self.subtitleLabel.shadowColor = !theme.isFlat ? [UIColor colorWithWhite:1.0f alpha:0.7f] : [UIColor clearColor];
+    self.subtitleLabel.shadowOffset = CGSizeMake(0, 1);
+    self.themeSectionLabel.textColor = [theme secondaryTextColour];
+
+    // Input container & fields
+    self.inputContainer.backgroundColor = [theme cardBackgroundColour];
+    self.inputContainer.layer.borderColor = [theme separatorColour].CGColor;
+    self.prefixSeparator.backgroundColor = [theme separatorColour];
+
+    self.phonePrefixField.textColor = [theme primaryTextColour];
+    self.phonePrefixField.keyboardAppearance = theme.isDark ? UIKeyboardAppearanceDark : UIKeyboardAppearanceLight;
+
+    self.inputField.textColor = [theme primaryTextColour];
+    self.inputField.keyboardAppearance = theme.isDark ? UIKeyboardAppearanceDark : UIKeyboardAppearanceLight;
+
+    if (self.inputField.placeholder.length) {
+        self.inputField.attributedPlaceholder = [[NSAttributedString alloc]
+            initWithString:self.inputField.placeholder
+            attributes:@{ NSForegroundColorAttributeName : [theme placeholderColour] }];
+    }
+
+    // Action button
+    if (!theme.isFlat) {
+        self.skeuoBtnLayer.hidden = NO;
+        self.skeuoShineView.hidden = NO;
+        self.actionButton.backgroundColor = [UIColor clearColor];
+        self.actionButton.layer.borderWidth = 1.0f;
+        self.actionButton.layer.borderColor = tgRGB(26, 66, 102).CGColor;
+    } else {
+        self.skeuoBtnLayer.hidden = YES;
+        self.skeuoShineView.hidden = YES;
+        self.actionButton.backgroundColor = [theme accentColour];
+        self.actionButton.layer.borderWidth = 0.0f;
+    }
+    [self.actionButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+
+    // Secondary buttons
+    [self.qrCodeButton setTitleColor:[theme accentColour] forState:UIControlStateNormal];
+    if (self.resendButton) {
+        [self.resendButton setTitleColor:[theme accentColour] forState:UIControlStateNormal];
+    }
+    if (self.codeStepQrButton) {
+        [self.codeStepQrButton setTitleColor:[theme accentColour] forState:UIControlStateNormal];
+    }
+
+    // Theme Segmented Control
+    self.themeSegmentedControl.tintColor = [theme accentColour];
+    NSString *currentTheme = [theme currentThemeId];
+    if ([currentTheme isEqualToString:@"classic"]) {
+        self.themeSegmentedControl.selectedSegmentIndex = 0;
+    } else if ([currentTheme isEqualToString:@"day"]) {
+        self.themeSegmentedControl.selectedSegmentIndex = 1;
+    } else if ([currentTheme isEqualToString:@"night"]) {
+        self.themeSegmentedControl.selectedSegmentIndex = 2;
+    } else if ([currentTheme isEqualToString:@"nightblue"]) {
+        self.themeSegmentedControl.selectedSegmentIndex = 3;
+    } else {
+        self.themeSegmentedControl.selectedSegmentIndex = 1;
+    }
+
+    if ([self respondsToSelector:@selector(setNeedsStatusBarAppearanceUpdate)]) {
+        [self setNeedsStatusBarAppearanceUpdate];
+    }
+}
+
+- (void)themeSegmentChanged:(UISegmentedControl *)sender {
+    NSString *themeId = @"day";
+    switch (sender.selectedSegmentIndex) {
+        case 0: themeId = @"classic"; break;
+        case 1: themeId = @"day"; break;
+        case 2: themeId = @"night"; break;
+        case 3: themeId = @"nightblue"; break;
+        default: break;
+    }
+    [[TGTheme shared] selectThemeId:themeId];
 }
 
 - (void)inputFieldChanged:(UITextField *)sender {
@@ -281,7 +377,6 @@ static CAGradientLayer *tgGloss(CGRect frame, UIColor *top, UIColor *bottom) {
     }
 
     if ([cleaned hasPrefix:@"0"] && ![cleaned hasPrefix:@"00"] && cleaned.length == 10) {
-        // Local 10-digit number e.g. 0671234567, strip leading 0, keep country prefix
         self.inputField.text = [cleaned substringFromIndex:1];
         [self.inputField becomeFirstResponder];
         return;
@@ -346,8 +441,7 @@ static CAGradientLayer *tgGloss(CGRect frame, UIColor *top, UIColor *bottom) {
     [self setBusy:NO];
     self.currentStep = TGLoginStepPhone;
     self.title = @"Your Phone";
-    self.headerLabel.text = @"Telegram";
-    self.subtitleLabel.text = @"Please confirm your country code and enter your phone number.";
+    self.subtitleLabel.text = @"Please confirm your country code\nand enter your phone number.";
 
     if (self.onResetSession) {
         self.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc]
@@ -361,15 +455,18 @@ static CAGradientLayer *tgGloss(CGRect frame, UIColor *top, UIColor *bottom) {
 
     CGFloat width = self.view.bounds.size.width;
     self.inputContainer.hidden = NO;
+    self.inputContainer.frame = CGRectMake(15, 56, width - 30, 44);
     self.actionButton.hidden = NO;
+    self.actionButton.frame = CGRectMake(15, 108, width - 30, 42);
     self.inputField.hidden = NO;
     self.qrCodeButton.hidden = NO;
+    self.qrCodeButton.frame = CGRectMake(15, 154, width - 30, 30);
     if (self.qrImageView) {
         self.qrImageView.hidden = YES;
     }
     self.phonePrefixField.hidden = NO;
     self.prefixSeparator.hidden = NO;
-    self.inputField.frame = CGRectMake(90, 1, width - 132, 48);
+    self.inputField.frame = CGRectMake(78, 0, width - 108, 44);
     self.inputField.textAlignment = NSTextAlignmentLeft;
     self.inputField.font = [UIFont systemFontOfSize:17];
     self.inputField.placeholder = @"Phone number";
@@ -387,7 +484,14 @@ static CAGradientLayer *tgGloss(CGRect frame, UIColor *top, UIColor *bottom) {
         [self.codeStepQrButton removeFromSuperview];
         self.codeStepQrButton = nil;
     }
-    self.scrollView.contentSize = CGSizeMake(width, 280);
+
+    self.themeSectionLabel.frame = CGRectMake(20, 190, width - 40, 16);
+    self.themeSegmentedControl.frame = CGRectMake(15, 210, width - 30, 30);
+    self.themeSectionLabel.hidden = NO;
+    self.themeSegmentedControl.hidden = NO;
+
+    self.scrollView.contentSize = CGSizeMake(width, 256);
+    [self applyTheme];
     [self.inputField becomeFirstResponder];
 }
 
@@ -402,9 +506,9 @@ static CAGradientLayer *tgGloss(CGRect frame, UIColor *top, UIColor *bottom) {
     if (self.qrImageView) {
         self.qrImageView.hidden = YES;
     }
-    self.inputField.frame = CGRectMake(14, 1, width - 58, 48);
+    self.inputField.frame = CGRectMake(10, 0, width - 50, 44);
     self.inputField.textAlignment = NSTextAlignmentCenter;
-    self.inputField.font = [UIFont boldSystemFontOfSize:20];
+    self.inputField.font = [UIFont boldSystemFontOfSize:22];
     self.inputField.text = @"";
     self.inputField.returnKeyType = UIReturnKeyGo;
 }
@@ -419,8 +523,7 @@ static CAGradientLayer *tgGloss(CGRect frame, UIColor *top, UIColor *bottom) {
 - (void)showQRCodeStepWithLink:(NSString *)link {
     [self setBusy:NO];
     self.title = @"Scan QR Code";
-    self.headerLabel.text = @"Scan QR Code";
-    self.subtitleLabel.text = @"Open Telegram on your other device:\nSettings > Devices > Link Desktop Device";
+    self.subtitleLabel.text = @"Open Telegram on another device:\nSettings > Devices > Link Desktop Device";
 
     self.inputContainer.hidden = YES;
     self.actionButton.hidden = YES;
@@ -446,20 +549,29 @@ static CAGradientLayer *tgGloss(CGRect frame, UIColor *top, UIColor *bottom) {
         target:self
         action:@selector(showPhoneStep)];
 
+    CGFloat width = self.view.bounds.size.width;
+    CGFloat qrSize = MIN(width - 80, 180.0f);
     if (!self.qrImageView) {
-        CGFloat width = self.view.bounds.size.width;
-        CGFloat qrSize = MIN(width - 80, 200.0f);
-        self.qrImageView = [[UIImageView alloc] initWithFrame:CGRectMake((width - qrSize) / 2, 115, qrSize, qrSize)];
+        self.qrImageView = [[UIImageView alloc] initWithFrame:CGRectMake((width - qrSize) / 2.0f, 64, qrSize, qrSize)];
         self.qrImageView.backgroundColor = [UIColor whiteColor];
         self.qrImageView.layer.cornerRadius = 8.0f;
-        self.qrImageView.layer.borderWidth = 1.0f;
-        self.qrImageView.layer.borderColor = tgRGB(190, 196, 204).CGColor;
+        self.qrImageView.layer.borderWidth = 0.5f;
         self.qrImageView.clipsToBounds = YES;
         [self.scrollView addSubview:self.qrImageView];
+    } else {
+        self.qrImageView.frame = CGRectMake((width - qrSize) / 2.0f, 64, qrSize, qrSize);
     }
+    self.qrImageView.layer.borderColor = [[TGTheme shared] separatorColour].CGColor;
     self.qrImageView.hidden = NO;
-    self.qrImageView.image = [self generateQRCodeForString:link size:self.qrImageView.bounds.size.width];
-    self.scrollView.contentSize = CGSizeMake(self.view.bounds.size.width, 350);
+    self.qrImageView.image = [self generateQRCodeForString:link size:qrSize];
+
+    self.themeSectionLabel.frame = CGRectMake(20, 64 + qrSize + 16, width - 40, 16);
+    self.themeSegmentedControl.frame = CGRectMake(15, 64 + qrSize + 36, width - 30, 30);
+    self.themeSectionLabel.hidden = NO;
+    self.themeSegmentedControl.hidden = NO;
+
+    self.scrollView.contentSize = CGSizeMake(width, 64 + qrSize + 80);
+    [self applyTheme];
 }
 
 - (UIImage *)generateQRCodeForString:(NSString *)string size:(CGFloat)size {
@@ -468,6 +580,7 @@ static CAGradientLayer *tgGloss(CGRect frame, UIColor *top, UIColor *bottom) {
     CIFilter *qrFilter = [CIFilter filterWithName:@"CIQRCodeGenerator"];
     [qrFilter setValue:stringData forKey:@"inputMessage"];
     [qrFilter setValue:@"M" forKey:@"inputCorrectionLevel"];
+
     CIImage *ciImage = qrFilter.outputImage;
     if (!ciImage) return nil;
 
@@ -544,7 +657,6 @@ static CAGradientLayer *tgGloss(CGRect frame, UIColor *top, UIColor *bottom) {
     [self setBusy:NO];
     self.currentStep = TGLoginStepCode;
     self.title = @"Enter Code";
-    self.headerLabel.text = @"Enter Code";
     if (phoneNumber.length > 0) {
         self.savedPhoneNumber = phoneNumber;
     }
@@ -560,9 +672,12 @@ static CAGradientLayer *tgGloss(CGRect frame, UIColor *top, UIColor *bottom) {
         self.subtitleLabel.text = [NSString stringWithFormat:@"We've sent a code to your other Telegram device or via SMS to\n%@", displayNumber];
     }
 
+    CGFloat width = self.view.bounds.size.width;
     [self useSingleFieldLayout];
+    self.inputContainer.frame = CGRectMake(15, 64, width - 30, 44);
     self.inputField.placeholder = @"Code";
     self.inputField.keyboardType = UIKeyboardTypeNumberPad;
+    self.actionButton.frame = CGRectMake(15, 116, width - 30, 42);
     [self.actionButton setTitle:@"Submit Code" forState:UIControlStateNormal];
     self.nextItem.title = @"Done";
 
@@ -572,29 +687,36 @@ static CAGradientLayer *tgGloss(CGRect frame, UIColor *top, UIColor *bottom) {
         target:self
         action:@selector(showPhoneStep)];
 
-    CGFloat width = self.view.bounds.size.width;
-
     if (!self.resendButton) {
         self.resendButton = [UIButton buttonWithType:UIButtonTypeCustom];
-        self.resendButton.frame = CGRectMake(15, 230, width - 30, 36);
-        [self.resendButton setTitleColor:tgRGB(38, 92, 140) forState:UIControlStateNormal];
+        self.resendButton.frame = CGRectMake(15, 162, width - 30, 30);
+        [self.resendButton setTitleColor:[[TGTheme shared] accentColour] forState:UIControlStateNormal];
         [self.resendButton setTitleColor:[UIColor lightGrayColor] forState:UIControlStateDisabled];
         self.resendButton.titleLabel.font = [UIFont systemFontOfSize:14];
         [self.resendButton addTarget:self action:@selector(resendButtonTapped) forControlEvents:UIControlEventTouchUpInside];
         [self.scrollView addSubview:self.resendButton];
+    } else {
+        self.resendButton.frame = CGRectMake(15, 162, width - 30, 30);
     }
 
     if (!self.codeStepQrButton) {
         self.codeStepQrButton = [UIButton buttonWithType:UIButtonTypeCustom];
-        self.codeStepQrButton.frame = CGRectMake(15, 268, width - 30, 32);
+        self.codeStepQrButton.frame = CGRectMake(15, 196, width - 30, 28);
         [self.codeStepQrButton setTitle:@"Log in with QR Code instead" forState:UIControlStateNormal];
-        [self.codeStepQrButton setTitleColor:tgRGB(38, 92, 140) forState:UIControlStateNormal];
+        [self.codeStepQrButton setTitleColor:[[TGTheme shared] accentColour] forState:UIControlStateNormal];
         self.codeStepQrButton.titleLabel.font = [UIFont boldSystemFontOfSize:14];
         [self.codeStepQrButton addTarget:self action:@selector(qrCodeButtonTapped) forControlEvents:UIControlEventTouchUpInside];
         [self.scrollView addSubview:self.codeStepQrButton];
+    } else {
+        self.codeStepQrButton.frame = CGRectMake(15, 196, width - 30, 28);
     }
 
-    self.scrollView.contentSize = CGSizeMake(width, 320);
+    self.themeSectionLabel.frame = CGRectMake(20, 230, width - 40, 16);
+    self.themeSegmentedControl.frame = CGRectMake(15, 250, width - 30, 30);
+    self.themeSectionLabel.hidden = NO;
+    self.themeSegmentedControl.hidden = NO;
+
+    self.scrollView.contentSize = CGSizeMake(width, 296);
 
     [self.resendTimer invalidate];
     self.resendTimer = nil;
@@ -610,6 +732,7 @@ static CAGradientLayer *tgGloss(CGRect frame, UIColor *top, UIColor *bottom) {
         [self.resendButton setTitle:@"Send code via SMS / Resend" forState:UIControlStateNormal];
     }
 
+    [self applyTheme];
     [self.inputField becomeFirstResponder];
 }
 
@@ -648,9 +771,13 @@ static CAGradientLayer *tgGloss(CGRect frame, UIColor *top, UIColor *bottom) {
     [self setBusy:NO];
     self.currentStep = TGLoginStepPassword;
     self.title = @"Password";
-    self.headerLabel.text = @"Two-Step Verification";
     self.subtitleLabel.text = @"Your account is protected with a password.\nEnter your password below.";
-    self.navigationItem.leftBarButtonItem = nil;
+
+    self.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc]
+        initWithTitle:@"Cancel"
+        style:UIBarButtonItemStylePlain
+        target:self
+        action:@selector(showPhoneStep)];
 
     if (self.resendButton) {
         [self.resendButton removeFromSuperview];
@@ -663,12 +790,24 @@ static CAGradientLayer *tgGloss(CGRect frame, UIColor *top, UIColor *bottom) {
     [self.resendTimer invalidate];
     self.resendTimer = nil;
 
+    CGFloat width = self.view.bounds.size.width;
     [self useSingleFieldLayout];
+    self.inputContainer.frame = CGRectMake(15, 56, width - 30, 44);
     self.inputField.placeholder = @"Password";
     self.inputField.secureTextEntry = YES;
     self.inputField.keyboardType = UIKeyboardTypeDefault;
+    self.actionButton.frame = CGRectMake(15, 108, width - 30, 42);
     [self.actionButton setTitle:@"Submit Password" forState:UIControlStateNormal];
     self.nextItem.title = @"Done";
+
+    self.themeSectionLabel.frame = CGRectMake(20, 160, width - 40, 16);
+    self.themeSegmentedControl.frame = CGRectMake(15, 180, width - 30, 30);
+    self.themeSectionLabel.hidden = NO;
+    self.themeSegmentedControl.hidden = NO;
+
+    self.scrollView.contentSize = CGSizeMake(width, 226);
+
+    [self applyTheme];
     [self.inputField becomeFirstResponder];
 }
 
@@ -696,7 +835,7 @@ static CAGradientLayer *tgGloss(CGRect frame, UIColor *top, UIColor *bottom) {
     CGRect kbFrame = [[info objectForKey:UIKeyboardFrameEndUserInfoKey] CGRectValue];
     CGFloat kbHeight = kbFrame.size.height;
 
-    UIEdgeInsets contentInsets = UIEdgeInsetsMake(0, 0, kbHeight + 20, 0);
+    UIEdgeInsets contentInsets = UIEdgeInsetsMake(0, 0, kbHeight + 10, 0);
     self.scrollView.contentInset = contentInsets;
     self.scrollView.scrollIndicatorInsets = contentInsets;
 }

@@ -18,9 +18,31 @@
 	self.title = @"Devices";
 	if ([self respondsToSelector:@selector(setEdgesForExtendedLayout:)])
 		self.edgesForExtendedLayout = UIRectEdgeNone;
-	self.tableView.backgroundColor = [[TGTheme shared] listBackgroundColour];
-	self.tableView.separatorColor = [[TGTheme shared] bubbleBorderColour];
+	[self applyTheme];
 	[self refresh];
+
+	__weak typeof(self) weakSelf = self;
+	[[NSNotificationCenter defaultCenter] addObserverForName:TGThemeChangedNotification
+			object:nil queue:[NSOperationQueue mainQueue]
+		 usingBlock:^(NSNotification *note) {
+		[weakSelf applyTheme];
+		[weakSelf.tableView reloadData];
+	}];
+}
+
+- (void)dealloc {
+	[[NSNotificationCenter defaultCenter] removeObserver:self];
+}
+
+- (void)applyTheme {
+	self.tableView.backgroundColor = [[TGTheme shared] groupedBackgroundColour];
+	self.tableView.separatorColor = [[TGTheme shared] separatorColour];
+	[[TGTheme shared] styleNavigationBar:self.navigationController.navigationBar];
+}
+
+- (void)viewWillAppear:(BOOL)animated {
+	[super viewWillAppear:animated];
+	[self applyTheme];
 }
 
 - (void)refresh {
@@ -47,11 +69,18 @@
 	return nil;
 }
 
-/// Settings has its own navigation controller, and nothing was styling
-/// its bar - an imported theme stopped at the top of the screen.
-- (void)viewWillAppear:(BOOL)animated {
-	[super viewWillAppear:animated];
-	[[TGTheme shared] styleNavigationBar:self.navigationController.navigationBar];
+- (void)tableView:(UITableView *)tableView willDisplayHeaderView:(UIView *)view forSection:(NSInteger)section {
+	if ([view isKindOfClass:[UITableViewHeaderFooterView class]]) {
+		UITableViewHeaderFooterView *header = (UITableViewHeaderFooterView *)view;
+		header.textLabel.textColor = [[TGTheme shared] sectionHeaderColour];
+	}
+}
+
+- (void)tableView:(UITableView *)tableView willDisplayFooterView:(UIView *)view forSection:(NSInteger)section {
+	if ([view isKindOfClass:[UITableViewHeaderFooterView class]]) {
+		UITableViewHeaderFooterView *footer = (UITableViewHeaderFooterView *)view;
+		footer.textLabel.textColor = [[TGTheme shared] sectionHeaderColour];
+	}
 }
 
 #pragma mark - table
@@ -87,6 +116,7 @@
 	cell.detailTextLabel.text = [NSString stringWithFormat:@"%@ - %@",
 			session[@"platform"], session[@"ip"]];
 	cell.textLabel.textColor = [[TGTheme shared] primaryTextColour];
+	cell.detailTextLabel.textColor = [[TGTheme shared] secondaryTextColour];
 	cell.selectionStyle = indexPath.section == 0
 			? UITableViewCellSelectionStyleNone : UITableViewCellSelectionStyleBlue;
 	return cell;

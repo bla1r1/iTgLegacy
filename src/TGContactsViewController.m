@@ -55,6 +55,11 @@ static const CGFloat kContactAvatar = 40.0f;
 	}];
 }
 
+- (void)viewWillAppear:(BOOL)animated {
+	[super viewWillAppear:animated];
+	[[TGTheme shared] styleNavigationBar:self.navigationController.navigationBar];
+}
+
 - (void)reloadTableDebounced {
 	[NSObject cancelPreviousPerformRequestsWithTarget:self.tableView selector:@selector(reloadData) object:nil];
 	[self.tableView performSelector:@selector(reloadData) withObject:nil afterDelay:0.05];

@@ -52,12 +52,36 @@ static const CGFloat kActionTile = 52.0f;
 	self.title = @"Info";
 	if ([self respondsToSelector:@selector(setEdgesForExtendedLayout:)])
 		self.edgesForExtendedLayout = UIRectEdgeNone;
-	self.tableView.backgroundColor = [[TGTheme shared] listBackgroundColour];
-	self.tableView.separatorColor = [[TGTheme shared] bubbleBorderColour];
+	[self applyTheme];
 
 	[self buildHeader];
 	[self loadDetails];
 	[self loadMedia];
+
+	__weak typeof(self) weakSelf = self;
+	[[NSNotificationCenter defaultCenter] addObserverForName:TGThemeChangedNotification
+			object:nil queue:[NSOperationQueue mainQueue]
+		 usingBlock:^(NSNotification *note) {
+		[weakSelf applyTheme];
+		[weakSelf buildHeader];
+		[weakSelf.tableView reloadData];
+	}];
+}
+
+- (void)dealloc {
+	[[NSNotificationCenter defaultCenter] removeObserver:self];
+}
+
+- (void)viewWillAppear:(BOOL)animated {
+	[super viewWillAppear:animated];
+	[self applyTheme];
+}
+
+- (void)applyTheme {
+	TGTheme *theme = [TGTheme shared];
+	self.tableView.backgroundColor = [theme groupedBackgroundColour];
+	self.tableView.separatorColor = [theme separatorColour];
+	[theme styleNavigationBar:self.navigationController.navigationBar];
 }
 
 /// The profile as the current client draws it: a large picture centred, the
@@ -69,7 +93,7 @@ static const CGFloat kActionTile = 52.0f;
 	CGFloat height = 16 + side + 8 + 26 + 18 + 10 + kActionTile + 12;
 
 	UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0, 0, width, height)];
-	header.backgroundColor = [[TGTheme shared] listBackgroundColour];
+	header.backgroundColor = [[TGTheme shared] groupedBackgroundColour];
 
 	self.avatarView = [[UIImageView alloc] initWithFrame:
 			CGRectMake((width - side) / 2, 16, side, side)];
@@ -122,7 +146,7 @@ static const CGFloat kActionTile = 52.0f;
 	}
 
 	self.tableView.tableHeaderView = header;
-	self.tableView.backgroundColor = [[TGTheme shared] listBackgroundColour];
+	self.tableView.backgroundColor = [[TGTheme shared] groupedBackgroundColour];
 
 	NSNumber *fileId = self.userId
 			? [[TGClient shared] photoFileIdForUserId:self.userId]
@@ -409,13 +433,6 @@ static const CGFloat kActionTile = 52.0f;
 	}];
 }
 
-/// Settings has its own navigation controller, and nothing was styling
-/// its bar - an imported theme stopped at the top of the screen.
-- (void)viewWillAppear:(BOOL)animated {
-	[super viewWillAppear:animated];
-	[[TGTheme shared] styleNavigationBar:self.navigationController.navigationBar];
-}
-
 #pragma mark - table
 
 // details, stories, gifts, members, media
@@ -469,11 +486,26 @@ static const NSInteger kSectionMedia   = 4;
 		UISegmentedControl *segments = [[UISegmentedControl alloc] initWithItems:@[@"Media", @"Files", @"Voice", @"Links"]];
 		segments.frame = CGRectMake(10, 6, tableView.bounds.size.width - 20, 32);
 		segments.selectedSegmentIndex = self.selectedMediaTab;
+		segments.tintColor = [[TGTheme shared] accentColour];
 		[segments addTarget:self action:@selector(mediaTabChanged:) forControlEvents:UIControlEventValueChanged];
 		[header addSubview:segments];
 		return header;
 	}
 	return nil;
+}
+
+- (void)tableView:(UITableView *)tableView willDisplayHeaderView:(UIView *)view forSection:(NSInteger)section {
+	if ([view isKindOfClass:[UITableViewHeaderFooterView class]]) {
+		UITableViewHeaderFooterView *header = (UITableViewHeaderFooterView *)view;
+		header.textLabel.textColor = [[TGTheme shared] sectionHeaderColour];
+	}
+}
+
+- (void)tableView:(UITableView *)tableView willDisplayFooterView:(UIView *)view forSection:(NSInteger)section {
+	if ([view isKindOfClass:[UITableViewHeaderFooterView class]]) {
+		UITableViewHeaderFooterView *footer = (UITableViewHeaderFooterView *)view;
+		footer.textLabel.textColor = [[TGTheme shared] sectionHeaderColour];
+	}
 }
 
 - (CGFloat)tableView:(UITableView *)tableView heightForHeaderInSection:(NSInteger)section {
@@ -725,7 +757,7 @@ static const NSInteger kSectionMedia   = 4;
 		if (!fileId) continue;
 
 		UIImageView *thumb = [[UIImageView alloc] initWithFrame:CGRectMake(x, 2, side, side)];
-		thumb.backgroundColor = [UIColor colorWithWhite:0.9f alpha:1];
+		thumb.backgroundColor = [[TGTheme shared] fileTileColour];
 		thumb.contentMode = UIViewContentModeScaleAspectFill;
 		thumb.clipsToBounds = YES;
 		// The id rides on the view so the scroll handler can ask for it later

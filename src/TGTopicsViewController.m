@@ -1,6 +1,7 @@
 #import "TGTopicsViewController.h"
 #import "TGChatViewController.h"
 #import "TGClient.h"
+#import "TGTheme.h"
 
 @interface TGTopicsViewController ()
 @property (nonatomic, strong) NSArray *topics;
@@ -19,6 +20,7 @@
 	self.title = self.chatTitle ?: @"Topics";
 	self.topics = @[];
 	self.tableView.rowHeight = 56;
+	[self applyTheme];
 
 	__weak typeof(self) weakSelf = self;
 	[[TGClient shared] forumTopicsForChat:self.chatId completion:^(NSArray *topics){
@@ -29,6 +31,29 @@
 		[me.tableView reloadData];
 		NSLog(@"TDLIB TOPICS: %lu", (unsigned long)topics.count);
 	}];
+
+	[[NSNotificationCenter defaultCenter] addObserverForName:TGThemeChangedNotification
+			object:nil queue:[NSOperationQueue mainQueue]
+		 usingBlock:^(NSNotification *note) {
+		[weakSelf applyTheme];
+		[weakSelf.tableView reloadData];
+	}];
+}
+
+- (void)dealloc {
+	[[NSNotificationCenter defaultCenter] removeObserver:self];
+}
+
+- (void)viewWillAppear:(BOOL)animated {
+	[super viewWillAppear:animated];
+	[self applyTheme];
+}
+
+- (void)applyTheme {
+	TGTheme *theme = [TGTheme shared];
+	self.tableView.backgroundColor = [theme listBackgroundColour];
+	self.tableView.separatorColor = [theme separatorColour];
+	[theme styleNavigationBar:self.navigationController.navigationBar];
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
@@ -42,6 +67,10 @@
 		cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle
 									  reuseIdentifier:reuse];
 
+	TGTheme *theme = [TGTheme shared];
+	cell.backgroundColor = [theme listBackgroundColour];
+	cell.contentView.backgroundColor = [theme listBackgroundColour];
+
 	NSDictionary *t = self.topics[indexPath.row];
 	NSInteger unread = [t[@"unread"] integerValue];
 
@@ -49,7 +78,13 @@
 		? [NSString stringWithFormat:@"%@  (%ld)", t[@"name"], (long)unread]
 		: t[@"name"];
 	cell.textLabel.font = [UIFont boldSystemFontOfSize:16];
+	cell.textLabel.textColor = [theme primaryTextColour];
+	cell.textLabel.backgroundColor = [theme listBackgroundColour];
+
 	cell.detailTextLabel.text = t[@"text"];
+	cell.detailTextLabel.textColor = [theme secondaryTextColour];
+	cell.detailTextLabel.backgroundColor = [theme listBackgroundColour];
+
 	cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
 	return cell;
 }

@@ -15,6 +15,7 @@
 #import "TGCallViewController.h"
 #import "TGChatViewController.h"
 #import "TGTopicsViewController.h"
+#import "TGLoginViewController.h"
 #import <QuartzCore/QuartzCore.h>
 #include <stdio.h>
 
@@ -161,10 +162,13 @@ static void TGWatchForIncomingCalls(void) {
 
 - (void)showLoadingUI {
 	UIViewController *vc = [[UIViewController alloc] init];
-	vc.view.backgroundColor = [UIColor colorWithRed:0.87f green:0.89f blue:0.92f alpha:1.0f];
+	TGTheme *theme = [TGTheme shared];
+	vc.view.backgroundColor = [theme listBackgroundColour];
 
 	UIActivityIndicatorView *spinner = [[UIActivityIndicatorView alloc]
-			initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleGray];
+			initWithActivityIndicatorStyle:theme.isDark
+					? UIActivityIndicatorViewStyleWhite
+					: UIActivityIndicatorViewStyleGray];
 	spinner.center = CGPointMake(vc.view.bounds.size.width / 2,
 								 vc.view.bounds.size.height / 2);
 	spinner.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin |
@@ -217,6 +221,7 @@ static void TGWatchForIncomingCalls(void) {
 
 	UINavigationController *nav =
 		[[UINavigationController alloc] initWithRootViewController:loginVC];
+	[[TGTheme shared] styleNavigationBar:nav.navigationBar];
 	[self.window setRootViewController:nav];
 	self.rootViewController = nil;
 }

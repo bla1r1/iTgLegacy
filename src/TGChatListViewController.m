@@ -41,26 +41,26 @@ static const CGFloat kAvatar    = 52.0f;
 	self.avatar.clipsToBounds = YES;
 	self.avatar.layer.shouldRasterize = YES;
 	self.avatar.layer.rasterizationScale = scale;
-	self.avatar.backgroundColor = [UIColor colorWithWhite:0.85f alpha:1.0f];
+	self.avatar.backgroundColor = [[TGTheme shared] fileTileColour];
 	self.avatar.contentMode = UIViewContentModeScaleAspectFill;
 	[self.contentView addSubview:self.avatar];
 
 	self.titleLabel = [[UILabel alloc] init];
 	self.titleLabel.font = [UIFont boldSystemFontOfSize:16];
-	self.titleLabel.textColor = [UIColor colorWithWhite:0.1f alpha:1.0f];
+	self.titleLabel.textColor = [[TGTheme shared] primaryTextColour];
 	self.titleLabel.lineBreakMode = NSLineBreakByTruncatingTail;
 	[self.contentView addSubview:self.titleLabel];
 
 	self.previewLabel = [[UILabel alloc] init];
 	self.previewLabel.font = [UIFont systemFontOfSize:14];
-	self.previewLabel.textColor = [UIColor colorWithWhite:0.45f alpha:1.0f];
+	self.previewLabel.textColor = [[TGTheme shared] secondaryTextColour];
 	self.previewLabel.numberOfLines = 2;
 	self.previewLabel.lineBreakMode = NSLineBreakByTruncatingTail;
 	[self.contentView addSubview:self.previewLabel];
 
 	self.dateLabel = [[UILabel alloc] init];
 	self.dateLabel.font = [UIFont systemFontOfSize:12];
-	self.dateLabel.textColor = [UIColor colorWithWhite:0.55f alpha:1.0f];
+	self.dateLabel.textColor = [[TGTheme shared] timeColour];
 	self.dateLabel.textAlignment = NSTextAlignmentRight;
 	[self.contentView addSubview:self.dateLabel];
 

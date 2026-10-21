@@ -242,8 +242,22 @@ static NSString *TGBytes(long long bytes) {
 }
 
 - (void)applyTheme {
-	self.tableView.backgroundColor = [[TGTheme shared] listBackgroundColour];
+	self.tableView.backgroundColor = [[TGTheme shared] groupedBackgroundColour];
 	self.tableView.separatorColor = [[TGTheme shared] separatorColour];
+}
+
+- (void)tableView:(UITableView *)tableView willDisplayHeaderView:(UIView *)view forSection:(NSInteger)section {
+	if ([view isKindOfClass:[UITableViewHeaderFooterView class]]) {
+		UITableViewHeaderFooterView *header = (UITableViewHeaderFooterView *)view;
+		header.textLabel.textColor = [[TGTheme shared] sectionHeaderColour];
+	}
+}
+
+- (void)tableView:(UITableView *)tableView willDisplayFooterView:(UIView *)view forSection:(NSInteger)section {
+	if ([view isKindOfClass:[UITableViewHeaderFooterView class]]) {
+		UITableViewHeaderFooterView *footer = (UITableViewHeaderFooterView *)view;
+		footer.textLabel.textColor = [[TGTheme shared] sectionHeaderColour];
+	}
 }
 
 - (void)viewWillAppear:(BOOL)animated {

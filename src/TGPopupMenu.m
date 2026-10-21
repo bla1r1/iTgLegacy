@@ -64,7 +64,7 @@ static TGPopupMenu *sOpenMenu = nil;
 		y = MAX(8, point.y - height - 8);
 
 	_card = [[UIView alloc] initWithFrame:CGRectMake(x, y, kMenuWidth, height)];
-	_card.backgroundColor = [theme listBackgroundColour];
+	_card.backgroundColor = [theme cardBackgroundColour];
 	_card.layer.cornerRadius = 7;
 	_card.layer.shadowColor = [UIColor blackColor].CGColor;
 	_card.layer.shadowOpacity = 0.22f;
