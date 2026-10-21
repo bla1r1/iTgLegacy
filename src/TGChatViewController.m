@@ -47,6 +47,8 @@ static const CGFloat kPollRow     = 30.0f;
 /// are kept: the text of a message never changes, only which rows exist.
 /// ponytail: flat dictionary with a size cap, an LRU would not buy anything
 /// at these counts.
+static NSAttributedString *TGEmojiAttributedText(NSString *text, UIFont *base);
+
 static CGSize TGTextSize(NSString *text, UIFont *font, CGFloat width) {
 	if (!text.length)
 		return CGSizeZero;
@@ -60,13 +62,41 @@ static CGSize TGTextSize(NSString *text, UIFont *font, CGFloat width) {
 	if (hit)
 		return [hit CGSizeValue];
 
-	CGSize size = (width > 0)
-			? [text sizeWithFont:font
-			   constrainedToSize:CGSizeMake(width, 10000)
-				   lineBreakMode:NSLineBreakByWordWrapping]
-			: [text sizeWithFont:font];
+	CGSize size = CGSizeZero;
+	NSAttributedString *rich = TGEmojiAttributedText(text, font);
 
-	if (cache.count > 500)
+	if (width > 0) {
+		if (rich) {
+			CGRect rect = [rich boundingRectWithSize:CGSizeMake(width, 10000)
+											 options:NSStringDrawingUsesLineFragmentOrigin | NSStringDrawingUsesFontLeading
+											 context:nil];
+			size = CGSizeMake(ceilf(rect.size.width), ceilf(rect.size.height));
+		} else if ([text respondsToSelector:@selector(boundingRectWithSize:options:attributes:context:)]) {
+			CGRect rect = [text boundingRectWithSize:CGSizeMake(width, 10000)
+											 options:NSStringDrawingUsesLineFragmentOrigin | NSStringDrawingUsesFontLeading
+										  attributes:@{ NSFontAttributeName : font }
+											 context:nil];
+			size = CGSizeMake(ceilf(rect.size.width), ceilf(rect.size.height));
+		} else {
+			size = [text sizeWithFont:font
+					constrainedToSize:CGSizeMake(width, 10000)
+						lineBreakMode:NSLineBreakByWordWrapping];
+			size = CGSizeMake(ceilf(size.width), ceilf(size.height));
+		}
+	} else {
+		if (rich) {
+			size = [rich size];
+			size = CGSizeMake(ceilf(size.width), ceilf(size.height));
+		} else if ([text respondsToSelector:@selector(sizeWithAttributes:)]) {
+			size = [text sizeWithAttributes:@{ NSFontAttributeName : font }];
+			size = CGSizeMake(ceilf(size.width), ceilf(size.height));
+		} else {
+			size = [text sizeWithFont:font];
+			size = CGSizeMake(ceilf(size.width), ceilf(size.height));
+		}
+	}
+
+	if (cache.count > 1000)
 		[cache removeAllObjects];
 	cache[key] = [NSValue valueWithCGSize:size];
 	return size;
@@ -247,12 +277,14 @@ static void TGSetBodyText(UILabel *label, NSString *text, UIColor *colour) {
 
 	self.body = [[UILabel alloc] init];
 	self.body.numberOfLines = 0;
+	self.body.lineBreakMode = NSLineBreakByWordWrapping;
 	self.body.font = [UIFont systemFontOfSize:[TGTheme shared].messageFontSize];
 	self.body.backgroundColor = [UIColor clearColor];
 	[self.bubble addSubview:self.body];
 
 	self.sender = [[UILabel alloc] init];
 	self.sender.font = [UIFont boldSystemFontOfSize:12];
+	self.sender.lineBreakMode = NSLineBreakByTruncatingTail;
 	self.sender.backgroundColor = [UIColor clearColor];
 	self.sender.hidden = YES;
 	[self.contentView addSubview:self.sender];
@@ -2798,6 +2830,9 @@ static const NSInteger kMessageSheetTag = 42;
 		return layout;
 	}
 
+	int64_t senderId = [m[@"senderId"] longLongValue];
+	NSString *senderName = (self.isGroup && !mine) ? [[TGClient shared] nameForUserId:senderId] : nil;
+
 	BOOL inlineStamp = [self stampFitsInlineFor:m];
 	CGFloat timeW = [self timeWidthFor:m];
 	CGFloat contentW = MAX(body.width, pic.width);
@@ -2808,6 +2843,10 @@ static const NSInteger kMessageSheetTag = 42;
 		contentW = MAX(contentW, body.width + 6 + timeW);
 	if (isVoice)
 		contentW = 190;
+	if (senderName.length) {
+		CGFloat senderW = TGTextSize(senderName, [UIFont boldSystemFontOfSize:12], 0).width;
+		contentW = MAX(contentW, senderW);
+	}
 
 	CGFloat bubbleW = MAX(contentW + 2 * kPadH, timeW + 2 * kPadH + 8);
 	bubbleW = MIN(bubbleW, kBubbleMaxW + 2 * kPadH);
@@ -2821,14 +2860,13 @@ static const NSInteger kMessageSheetTag = 42;
 	CGFloat x = mine ? (tableW - bubbleW - 8) : 8;
 	CGFloat top = [self continuesAlbumAtRow:row] ? 0 : 3;
 
-	int64_t senderId = [m[@"senderId"] longLongValue];
-	NSString *senderName = (self.isGroup && !mine) ? [[TGClient shared] nameForUserId:senderId] : nil;
 	if (senderName.length) {
 		x += kAvatarSide + 4;
 		top = 18;
 		layout.senderName = senderName;
-		layout.senderFrame = CGRectMake(x + kPadH, 2, tableW - x - 20, 14);
-		layout.senderAvatarFrame = CGRectMake(8, top + bubbleH - kAvatarSide, kAvatarSide, kAvatarSide);
+		layout.senderFrame = CGRectMake(x + kPadH, 2, bubbleW - 2 * kPadH, 14);
+		CGFloat avatarY = MAX(2.0f, top + bubbleH - kAvatarSide);
+		layout.senderAvatarFrame = CGRectMake(8, avatarY, kAvatarSide, kAvatarSide);
 	}
 
 	layout.bubbleFrame = CGRectMake(x, top, bubbleW, bubbleH);
@@ -2854,12 +2892,12 @@ static const NSInteger kMessageSheetTag = 42;
 	if (pic.height > 0) {
 		layout.pictureFrame = CGRectMake(kPadH, y, pic.width, pic.height);
 		if (!body.height) {
-			CGFloat plateW = timeW + (mine ? 30 : 14);
-			layout.mediaStampFrame = CGRectMake(kPadH + pic.width - plateW - 5, y + pic.height - 21, plateW, 16);
+			CGFloat plateW = timeW + (mine ? 28 : 14);
+			layout.mediaStampFrame = CGRectMake(kPadH + pic.width - plateW - 6, y + pic.height - 22, plateW, 16);
 		}
 		y += pic.height + 4;
 	}
-	layout.bodyFrame = CGRectMake(kPadH, y, body.width, body.height);
+	layout.bodyFrame = CGRectMake(kPadH, y, bubbleW - 2 * kPadH, body.height);
 	CGFloat stampY = inlineStamp ? (y + body.height - 14) : (bubbleH - kPadV - 13);
 	CGFloat tickW = mine ? 18 : 0;
 	layout.timeFrame = CGRectMake(bubbleW - timeW - kPadH, stampY, timeW - tickW, 12);
@@ -3326,9 +3364,10 @@ static UIColor *TGSenderColour(int64_t userId) {
 		if (!layout.bodySize.height) {
 			cell.mediaStamp.hidden = NO;
 			cell.mediaStamp.backgroundColor = [theme mediaStampColour];
-			cell.mediaStamp.text = layout.stamp;
+			cell.mediaStamp.text = mine ? [NSString stringWithFormat:@"  %@", layout.stamp] : layout.stamp;
+			cell.mediaStamp.textAlignment = mine ? NSTextAlignmentLeft : NSTextAlignmentCenter;
 			cell.mediaStamp.frame = layout.mediaStampFrame;
-			[cell.bubble bringSubviewToFront:cell.ticks];
+			[cell.bubble bringSubviewToFront:cell.mediaStamp];
 		}
 	} else {
 		cell.picture.hidden = YES;
@@ -3396,6 +3435,7 @@ static UIColor *TGSenderColour(int64_t userId) {
 
 	cell.body.hidden = (layout.bodySize.height == 0);
 	cell.body.numberOfLines = 0;
+	cell.body.lineBreakMode = NSLineBreakByWordWrapping;
 	cell.body.font = [UIFont systemFontOfSize:[TGTheme shared].messageFontSize];
 	TGSetBodyText(cell.body, m[@"text"], [theme primaryTextColour]);
 	cell.body.frame = layout.bodyFrame;
@@ -3427,8 +3467,9 @@ static UIColor *TGSenderColour(int64_t userId) {
 	cell.ticks.hidden = !mine;
 	if (mine && onPicture) {
 		cell.ticks.image = [TGIcons ticksWhite:YES];
-		cell.ticks.frame = CGRectMake(CGRectGetMaxX(cell.mediaStamp.frame) - 20,
-									  CGRectGetMidY(cell.mediaStamp.frame) - 4, 15, 9);
+		cell.ticks.frame = CGRectMake(CGRectGetMaxX(cell.mediaStamp.frame) - 17,
+									  CGRectGetMidY(cell.mediaStamp.frame) - 4.5f, 15, 9);
+		[cell.bubble bringSubviewToFront:cell.ticks];
 	} else if (mine) {
 		cell.ticks.image = [TGIcons ticksWhite:NO];
 		cell.ticks.frame = CGRectMake(layout.bubbleFrame.size.width - kPadH - 15, layout.timeFrame.origin.y + 2, 15, 9);
