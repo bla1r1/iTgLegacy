@@ -88,11 +88,13 @@ Or run the wrapper script:
 - `make tdlib` - Compile TDLib for iOS.
 - `make clean` - Remove all intermediate build artifacts from `build/`.
 
-## Credits & Maintainers
+## Author, History & License
 
-- **Original Author & Creator**: Igor V. Sementsov ([@igkuzm](https://github.com/igkuzm))
-- **Current Maintainer**: [bla1r1](https://github.com/bla1r1)
-- **Repository**: https://github.com/bla1r1/iTgLegacy
+- **Author & Maintainer**: [bla1r1](https://github.com/bla1r1)
+- **License**: GNU General Public License v3.0 ([LICENSE](LICENSE))
+
+### Project History & Acknowledgements
+The project originally started based on an early prototype by Igor V. Sementsov ([@igkuzm](https://github.com/igkuzm)). During active development, that initial codebase was soon completely rewritten from scratch due to being technically obsolete (replacing the legacy unmaintained `libtg` engine with official `tdlib`, introducing an entirely new UIKit architecture, multimedia pipeline, and E2EE voice calls under GPLv3).
 
 ## Disclaimer
 

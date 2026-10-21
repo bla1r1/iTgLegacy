@@ -49,7 +49,7 @@
 		</dict>
 	</dict>
 	<key>CFBundleIdentifier</key>
-	<string>kuzm.ig.telegram</string>
+	<string>org.legacy.itg</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
@@ -90,7 +90,7 @@
 			<key>CFBundleTypeRole</key>
 			<string>Editor</string>
 			<key>CFBundleURLName</key>
-			<string>kuzm.ig.telegram.devrun</string>
+			<string>org.legacy.itg.devrun</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>itglegacy</string>

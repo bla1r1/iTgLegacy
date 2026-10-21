@@ -1,34 +1,27 @@
-/**
- * AppDelegate - TDLib only. libtg is gone, along with its C structs, its
- * queue/socket transport and everything that depended on them.
- */
+//
+// iTgLegacy - Telegram client for legacy iOS
+// Copyright (C) 2026 Blair <dimazzzzz342@gmail.com>
+// Licensed under GNU General Public License v3.0
+//
+
 #import <UIKit/UIKit.h>
-#import "TGLoginViewController.h"
+
+@class TGLoginViewController;
 
 @interface AppDelegate : UIResponder <UIApplicationDelegate, UIAlertViewDelegate>
 
-@property (strong, nonatomic) UIWindow *window;
-@property (strong, nonatomic) UIViewController *rootViewController;
-@property (strong, nonatomic) TGLoginViewController *loginVC;
+@property (nonatomic, strong) UIWindow *window;
+@property (nonatomic, strong) UIViewController *rootViewController;
+@property (nonatomic, strong) TGLoginViewController *loginVC;
 
-@property (strong) NSOperationQueue *syncData;
+@property (nonatomic, copy) NSString *currentPhoneNumber;
+@property (nonatomic, assign) BOOL showNotifications;
+@property (nonatomic, assign) FILE *log;
 
-/// Caches used by the image loaders.
-@property (strong) NSString *smallPhotoCache;
-@property (strong) NSString *peerPhotoCache;
-@property (strong) NSString *imagesCache;
-@property (strong) NSString *filesCache;
-@property (strong) NSString *thumbDocCache;
++ (AppDelegate *)sharedDelegate;
 
-@property (copy) NSString *currentPhoneNumber;
-@property (strong) NSString *token;
-@property Boolean showNotifications;
-@property FILE *log;
-
--(void)showMessage:(NSString *)msg;
--(void)showMainUI;
--(void)showLoginUI;
+- (void)showMainUI;
+- (void)showLoginUI;
+- (void)showMessage:(NSString *)message;
 
 @end
-
-// vim:ft=objc

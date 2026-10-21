@@ -17,7 +17,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SSH_HOST=itgphone
 SSH_PORT=2222
 SSH_OPTS="-o ConnectTimeout=6 -o BatchMode=yes"
-BUNDLE_ID="kuzm.ig.telegram"
+BUNDLE_ID="org.legacy.itg"
 IPA="$ROOT/build/ipa/iTgLegacy-armv7.ipa"
 
 DO_BUILD=1

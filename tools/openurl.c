@@ -19,7 +19,7 @@ int main(int argc, char *argv[]) {
         printf("Failed to find SBSLaunchApplicationWithIdentifierAndURL\n");
         return 3;
     }
-    CFStringRef bid = CFSTR("kuzm.ig.telegram");
+    CFStringRef bid = CFSTR("org.legacy.itg");
     CFStringRef urlStr = CFStringCreateWithCString(kCFAllocatorDefault, argv[1], kCFStringEncodingUTF8);
     CFURLRef url = CFURLCreateWithString(kCFAllocatorDefault, urlStr, NULL);
     int res = launch(bid, url);

@@ -18,7 +18,7 @@
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BUNDLE_ID="kuzm.ig.telegram"
+BUNDLE_ID="org.legacy.itg"
 IPA="$ROOT/build/ipa/iTgLegacy-armv7.ipa"
 LOGDIR="$ROOT/build/devlogs"
 STAMP="$(date +%Y%m%d-%H%M%S)"

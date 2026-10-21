@@ -1,6 +1,8 @@
-/**
- * RootViewController - the tab bar. Three screens, all on TDLib.
- */
+//
+// iTgLegacy - Telegram client for legacy iOS
+// Copyright (C) 2026 Blair <dimazzzzz342@gmail.com>
+// Licensed under GNU General Public License v3.0
+//
 #import "RootViewController.h"
 #import "TGChatListViewController.h"
 #import "TGContactsViewController.h"
@@ -30,6 +32,21 @@ static const CGFloat kCompactBarHeight = 32.0f;
 @end
 
 @implementation RootViewController
+
++ (instancetype)standardTabBarController {
+	return [[self alloc] init];
+}
+
+- (void)switchToTab:(NSUInteger)tabIndex popToRoot:(BOOL)popToRoot {
+	if (tabIndex >= self.viewControllers.count) return;
+	self.selectedIndex = tabIndex;
+	if (popToRoot) {
+		UIViewController *vc = self.viewControllers[tabIndex];
+		if ([vc isKindOfClass:[UINavigationController class]]) {
+			[(UINavigationController *)vc popToRootViewControllerAnimated:NO];
+		}
+	}
+}
 
 - (void)viewDidLoad {
 	[super viewDidLoad];

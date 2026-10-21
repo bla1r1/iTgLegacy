@@ -1,16 +1,14 @@
-/**
- * File              : RootViewController.h
- * Author            : Igor V. Sementsov <ig.kuzm@gmail.com>
- * Date              : 22.08.2023
- * Last Modified Date: 22.08.2023
- * Last Modified By  : Igor V. Sementsov <ig.kuzm@gmail.com>
- */
+//
+// iTgLegacy - Telegram client for legacy iOS
+// Copyright (C) 2026 Blair <dimazzzzz342@gmail.com>
+// Licensed under GNU General Public License v3.0
+//
 
-#include <UIKit/UIKit.h>
-#include "UIKit/UIKit.h"
+#import <UIKit/UIKit.h>
+
 @interface RootViewController : UITabBarController
 
++ (instancetype)standardTabBarController;
+- (void)switchToTab:(NSUInteger)tabIndex popToRoot:(BOOL)popToRoot;
+
 @end
-
-
-// vim:ft=objc

@@ -1,10 +1,8 @@
-/**
- * AppDelegate - TDLib only.
- *
- * Everything libtg used to own (session, dialogs, history, media, contacts)
- * now goes through TGClient. The old C library, its 60-second queue transport
- * and the view controllers built on its structs are gone.
- */
+//
+// iTgLegacy - Telegram client for legacy iOS
+// Copyright (C) 2026 Blair <dimazzzzz342@gmail.com>
+// Licensed under GNU General Public License v3.0
+//
 #import "AppDelegate.h"
 #import "RootViewController.h"
 #import "TGClient.h"
@@ -22,6 +20,10 @@
 
 @implementation AppDelegate
 
++ (AppDelegate *)sharedDelegate {
+	return (AppDelegate *)[UIApplication sharedApplication].delegate;
+}
+
 /// An incoming call is the one thing that takes over the screen on its own.
 static void TGWatchForIncomingCalls(void) {
 	[TGCall shared].onIncomingCall = ^(int64_t userId, int32_t callId){
@@ -36,47 +38,28 @@ static void TGWatchForIncomingCalls(void) {
 - (BOOL)application:(UIApplication *)application
 		didFinishLaunchingWithOptions:(NSDictionary *)launchOptions
 {
-	NSString *cache = [NSSearchPathForDirectoriesInDomains(
-			NSCachesDirectory, NSUserDomainMask, YES) objectAtIndex:0];
+	NSArray *paths = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES);
+	NSString *cacheDir = paths.firstObject;
 
-	// stderr into a file so TDLib's own diagnostics survive a crash and can be
-	// read off the device; scripts/devrun.sh pulls it.
-	NSString *log = [cache stringByAppendingPathComponent:@"log.txt"];
-	// Keep the previous run: an uncaught exception prints its reason to stderr
-	// and the process dies, so without this copy the one message that explains
-	// a crash is deleted by the next launch.
-	NSString *lastlog = [cache stringByAppendingPathComponent:@"lastlog.txt"];
-	[[NSFileManager defaultManager] removeItemAtPath:lastlog error:nil];
-	[[NSFileManager defaultManager] copyItemAtPath:log toPath:lastlog error:nil];
-	[[NSFileManager defaultManager] removeItemAtPath:log error:nil];
-	self.log = freopen(log.UTF8String, "a+", stderr);
+	// Direct diagnostics log to file so crashes persist for analysis
+	NSString *logPath = [cacheDir stringByAppendingPathComponent:@"log.txt"];
+	NSString *prevLogPath = [cacheDir stringByAppendingPathComponent:@"lastlog.txt"];
+	NSFileManager *fm = [NSFileManager defaultManager];
+	[fm removeItemAtPath:prevLogPath error:nil];
+	[fm copyItemAtPath:logPath toPath:prevLogPath error:nil];
+	[fm removeItemAtPath:logPath error:nil];
+	self.log = freopen(logPath.UTF8String, "a+", stderr);
 
-	NSLog(@"start...");
+	NSLog(@"[iTgLegacy] Starting application...");
 	TGWatchForIncomingCalls();
 
-	self.syncData = [[NSOperationQueue alloc] init];
-	self.syncData.maxConcurrentOperationCount = 2;
 	application.applicationIconBadgeNumber = 0;
+	self.showNotifications = [[NSUserDefaults standardUserDefaults] boolForKey:@"showNotifications"];
 
-	for (NSString *name in @[@"s", @"peer", @"images", @"files", @"docThumbs"]){
-		NSString *path = [cache stringByAppendingPathComponent:name];
-		[NSFileManager.defaultManager createDirectoryAtPath:path attributes:nil];
-		if ([name isEqualToString:@"s"])           self.smallPhotoCache = path;
-		else if ([name isEqualToString:@"peer"])   self.peerPhotoCache = path;
-		else if ([name isEqualToString:@"images"]) self.imagesCache = path;
-		else if ([name isEqualToString:@"files"])  self.filesCache = path;
-		else                                       self.thumbDocCache = path;
-	}
-
-	self.showNotifications = [NSUserDefaults.standardUserDefaults
-			boolForKey:@"showNotifications"];
-
-	[[NSFileManager defaultManager] changeCurrentDirectoryPath:
-			[[NSBundle mainBundle] bundlePath]];
+	[fm changeCurrentDirectoryPath:[[NSBundle mainBundle] bundlePath]];
 
 	self.window = [[UIWindow alloc] initWithFrame:[[UIScreen mainScreen] bounds]];
-	BOOL hasSession = [[NSUserDefaults standardUserDefaults] boolForKey:@"hasAuthorizedSession"];
-	if (hasSession) {
+	if ([[NSUserDefaults standardUserDefaults] boolForKey:@"hasAuthorizedSession"]) {
 		[self showMainUI];
 	} else {
 		[self showLoadingUI];
@@ -87,6 +70,8 @@ static void TGWatchForIncomingCalls(void) {
 
 	return YES;
 }
+
+
 
 #pragma mark - TDLib
 
@@ -237,12 +222,15 @@ static void TGWatchForIncomingCalls(void) {
 }
 
 - (void)showMessage:(NSString *)msg {
-	UIAlertView *alert = [[UIAlertView alloc] initWithTitle:@""
-													message:msg
-												   delegate:nil
-										  cancelButtonTitle:@"OK"
-										  otherButtonTitles:nil];
-	[alert show];
+	if (!msg.length) return;
+	dispatch_async(dispatch_get_main_queue(), ^{
+		UIAlertView *alert = [[UIAlertView alloc] initWithTitle:@"iTgLegacy"
+														message:msg
+													   delegate:nil
+											  cancelButtonTitle:@"OK"
+											  otherButtonTitles:nil];
+		[alert show];
+	});
 }
 
 #pragma mark - remote control by URL
@@ -312,16 +300,9 @@ static void TGWatchForIncomingCalls(void) {
 		dispatch_async(dispatch_get_main_queue(), ^{
 			UITabBarController *tabs = (UITabBarController *)self.rootViewController;
 			NSInteger idx = [arg integerValue];
-			if (![tabs isKindOfClass:UITabBarController.class] ||
-				idx < 0 || idx >= (NSInteger)tabs.viewControllers.count)
-				return;
-			tabs.selectedIndex = idx;
-			// Back to the top of that tab as well: picking a tab that stayed
-			// three screens deep looks like the URL did nothing, and every
-			// tap/ and holdrow/ after it lands on the wrong screen.
-			UIViewController *chosen = tabs.viewControllers[idx];
-			if ([chosen isKindOfClass:UINavigationController.class])
-				[(UINavigationController *)chosen popToRootViewControllerAnimated:NO];
+			if ([self.rootViewController isKindOfClass:[RootViewController class]]) {
+				[(RootViewController *)self.rootViewController switchToTab:(NSUInteger)idx popToRoot:YES];
+			}
 		});
 		return YES;
 	}

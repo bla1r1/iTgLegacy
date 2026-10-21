@@ -1,19 +1,13 @@
-/**
- * main.m - entry point.
- *
- * LC_MAIN's entryoff must carry the Thumb bit or iOS 7.1.2 dyld enters this
- * function in ARM mode and executes the prologue as garbage. The linker does
- * not set it; tools/machofix.c does, after every link.
- */
+//
+// iTgLegacy - Telegram client for legacy iOS
+// Copyright (C) 2026 Blair <dimazzzzz342@gmail.com>
+// Licensed under GNU General Public License v3.0
+//
 #import <UIKit/UIKit.h>
 #import "AppDelegate.h"
 
-int main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
 	@autoreleasepool {
-		return UIApplicationMain(argc, argv, nil,
-				NSStringFromClass([AppDelegate class]));
+		return UIApplicationMain(argc, argv, nil, NSStringFromClass([AppDelegate class]));
 	}
 }
-
-// vim:ft=objc
