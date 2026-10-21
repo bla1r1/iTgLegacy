@@ -259,7 +259,7 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V5";
 		// raddr or rport. A line their parser rejects takes the whole message
 		// with it, and then they never learn our credentials at all.
 		[candidates addObject:[NSString stringWithFormat:
-				@"candidate:%u 0 udp 41878272 %@ %u typ relay generation 0 "
+				@"candidate:%u 1 udp 41878272 %@ %u typ relay generation 0 "
 				@"ufrag %@ network-id 9 network-cost 50",
 				reflector.localTag, hostname, reflector.port, self.localUfrag]];
 	}
