@@ -48,6 +48,28 @@
 + (UIImage *)ticksWhite:(BOOL)white;
 + (UIImage *)selectionCheckboxSelected:(BOOL)selected;
 
+/// The arrow beside a call in a chat: down-left for one that came in, up-right
+/// for one that went out, red when it was never answered.
++ (UIImage *)callArrowOutgoing:(BOOL)outgoing missed:(BOOL)missed;
+
+/// Drop the cache after a theme change.
++ (void)flush;
+
+@end
+
+@interface TGIcons (Menu)
+
+/// A line glyph for a row of the pop-up menu, by name: "reply", "forward",
+/// "copy", "edit", "delete", "pin", "unpin", "mute", "unmute", "archive",
+/// "react". Nil for a name it does not draw, which leaves the row plain.
++ (UIImage *)menuGlyphNamed:(NSString *)name;
+
++ (UIImage *)settingsIconNamed:(NSString *)name color:(UIColor *)color;
+
+@end
+
+@interface TGIcons (Avatars)
+
 /// The two rows that stand above the chat list draw a glyph, not a letter:
 /// a filled archive box, and the bookmark Telegram uses for Saved Messages.
 + (UIImage *)archiveAvatarOfSide:(CGFloat)side;
@@ -61,17 +83,6 @@
 + (UIImage *)mapPinBadge;
 + (UIImage *)mapPlaceholderSize:(CGSize)size;
 
-/// The arrow beside a call in a chat: down-left for one that came in, up-right
-/// for one that went out, red when it was never answered.
-+ (UIImage *)callArrowOutgoing:(BOOL)outgoing missed:(BOOL)missed;
-
-/// A line glyph for a row of the pop-up menu, by name: "reply", "forward",
-/// "copy", "edit", "delete", "pin", "unpin", "mute", "unmute", "archive",
-/// "react". Nil for a name it does not draw, which leaves the row plain.
-+ (UIImage *)menuGlyphNamed:(NSString *)name;
-
-+ (UIImage *)settingsIconNamed:(NSString *)name color:(UIColor *)color;
-
 /// Read and decode a downloaded picture off the main thread, then hand it to
 /// the view. UIImage's own decode is lazy and lands on the main thread at draw
 /// time, which is what made a profile stutter as its pictures arrived.
@@ -83,8 +94,5 @@
 			  fittingSize:(CGSize)target
 					 fill:(BOOL)fill
 					scale:(CGFloat)scale;
-
-/// Drop the cache after a theme change.
-+ (void)flush;
 
 @end

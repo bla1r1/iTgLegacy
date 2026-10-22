@@ -96,6 +96,19 @@ extern NSString *const TGThemeChangedNotification;
 /// Adopt a picture as the wallpaper; nil clears it. Persisted.
 - (void)setWallpaperImage:(UIImage *)image;
 
+/// Style a table cell so an imported theme reaches the settings screens too;
+/// grouped tables draw white cells otherwise.
+- (void)styleCell:(UITableViewCell *)cell;
+
+/// Apply the bar styling to a navigation bar.
+- (void)styleNavigationBar:(UINavigationBar *)bar;
+/// Same for the tab bar, which an imported theme should not leave behind.
+- (void)styleTabBar:(UITabBar *)bar;
+
+@end
+
+@interface TGTheme (Palette)
+
 #pragma mark - palette
 
 - (UIColor *)barColour;             ///< navigation bar background
@@ -151,14 +164,5 @@ extern NSString *const TGThemeChangedNotification;
 
 - (CGFloat)bubbleCornerRadius;
 - (CGFloat)bubbleBorderWidth;       ///< 0 when flat
-
-/// Style a table cell so an imported theme reaches the settings screens too;
-/// grouped tables draw white cells otherwise.
-- (void)styleCell:(UITableViewCell *)cell;
-
-/// Apply the bar styling to a navigation bar.
-- (void)styleNavigationBar:(UINavigationBar *)bar;
-/// Same for the tab bar, which an imported theme should not leave behind.
-- (void)styleTabBar:(UITabBar *)bar;
 
 @end

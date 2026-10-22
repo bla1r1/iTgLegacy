@@ -1,0 +1,361 @@
+#import "TGIconsInternal.h"
+
+static NSMutableDictionary *sSettingsIconCache = nil;
+
+void TGIconsClearSettingsIconCache(void) {
+	[sSettingsIconCache removeAllObjects];
+}
+
+@implementation TGIcons (Menu)
+
+/// The line art beside each row of their pop-up menu. Drawn as strokes at a
+/// single weight so the set reads as one family, which is what their 27x27
+/// outline icons do.
++ (UIImage *)menuGlyphNamed:(NSString *)name {
+	static NSSet *known = nil;
+	if (!known)
+		known = [NSSet setWithObjects:@"reply", @"undo", @"forward", @"copy",
+				@"edit", @"delete", @"pin", @"unpin", @"mute", @"unmute",
+				@"archive", @"unarchive", @"react", @"select",
+				// the settings list
+				@"notifications", @"privacy", @"data", @"chat", @"folder",
+				@"devices", @"language", @"faq", @"policy",
+				// the profile's action tiles
+				@"call", @"video", @"search", @"more", nil];
+	// An unknown name has to answer nil, not a blank square: a row with no
+	// glyph is better than a row with a hole where one should be.
+	if (![known containsObject:name])
+		return nil;
+
+	NSString *key = [@"menu-" stringByAppendingString:name];
+	return [self iconNamed:key draw:^(CGContextRef ctx, CGFloat s){
+		CGContextSetLineWidth(ctx, 1.8f);
+		CGContextSetLineCap(ctx, kCGLineCapRound);
+		CGContextSetLineJoin(ctx, kCGLineJoinRound);
+		CGFloat m = s * 0.18f;              // margin, so every glyph shares a box
+
+		if ([name isEqualToString:@"reply"] || [name isEqualToString:@"undo"]){
+			// an arrow turning back on itself
+			CGContextMoveToPoint(ctx, m + 5, s * 0.30f);
+			CGContextAddLineToPoint(ctx, m, s * 0.45f);
+			CGContextAddLineToPoint(ctx, m + 5, s * 0.60f);
+			CGContextStrokePath(ctx);
+			CGContextMoveToPoint(ctx, m, s * 0.45f);
+			CGContextAddLineToPoint(ctx, s - m - 5, s * 0.45f);
+			CGContextAddArc(ctx, s - m - 5, s * 0.62f, s * 0.17f, -M_PI_2, 0, 0);
+			CGContextStrokePath(ctx);
+
+		} else if ([name isEqualToString:@"forward"]){
+			// the same arrow mirrored
+			CGContextMoveToPoint(ctx, s - m - 5, s * 0.30f);
+			CGContextAddLineToPoint(ctx, s - m, s * 0.45f);
+			CGContextAddLineToPoint(ctx, s - m - 5, s * 0.60f);
+			CGContextStrokePath(ctx);
+			CGContextMoveToPoint(ctx, s - m, s * 0.45f);
+			CGContextAddLineToPoint(ctx, m + 5, s * 0.45f);
+			CGContextAddArc(ctx, m + 5, s * 0.62f, s * 0.17f, -M_PI_2, M_PI, 1);
+			CGContextStrokePath(ctx);
+
+		} else if ([name isEqualToString:@"copy"]){
+			// two sheets, one behind the other
+			CGContextStrokeRect(ctx, CGRectMake(m, m, s * 0.46f, s * 0.46f));
+			CGContextStrokeRect(ctx, CGRectMake(s * 0.34f, s * 0.34f, s * 0.46f, s * 0.46f));
+
+		} else if ([name isEqualToString:@"edit"]){
+			// a pencil on its diagonal
+			CGContextMoveToPoint(ctx, m, s - m);
+			CGContextAddLineToPoint(ctx, m + s * 0.10f, s - m - s * 0.16f);
+			CGContextAddLineToPoint(ctx, s - m - s * 0.06f, m + s * 0.06f);
+			CGContextAddLineToPoint(ctx, s - m, m + s * 0.16f);
+			CGContextAddLineToPoint(ctx, m + s * 0.20f, s - m - s * 0.06f);
+			CGContextClosePath(ctx);
+			CGContextStrokePath(ctx);
+
+		} else if ([name isEqualToString:@"delete"]){
+			// a bin: lid, body, two ribs
+			CGContextMoveToPoint(ctx, m, s * 0.30f);
+			CGContextAddLineToPoint(ctx, s - m, s * 0.30f);
+			CGContextStrokePath(ctx);
+			CGContextMoveToPoint(ctx, s * 0.40f, s * 0.30f);
+			CGContextAddLineToPoint(ctx, s * 0.40f, s * 0.22f);
+			CGContextAddLineToPoint(ctx, s * 0.60f, s * 0.22f);
+			CGContextAddLineToPoint(ctx, s * 0.60f, s * 0.30f);
+			CGContextStrokePath(ctx);
+			CGContextMoveToPoint(ctx, m + 2, s * 0.30f);
+			CGContextAddLineToPoint(ctx, m + 4, s - m);
+			CGContextAddLineToPoint(ctx, s - m - 4, s - m);
+			CGContextAddLineToPoint(ctx, s - m - 2, s * 0.30f);
+			CGContextStrokePath(ctx);
+
+		} else if ([name isEqualToString:@"pin"] || [name isEqualToString:@"unpin"]){
+			// a drawing pin seen from the side
+			CGContextMoveToPoint(ctx, s * 0.34f, m);
+			CGContextAddLineToPoint(ctx, s * 0.66f, m);
+			CGContextAddLineToPoint(ctx, s * 0.58f, s * 0.46f);
+			CGContextAddLineToPoint(ctx, s * 0.76f, s * 0.60f);
+			CGContextAddLineToPoint(ctx, s * 0.24f, s * 0.60f);
+			CGContextAddLineToPoint(ctx, s * 0.42f, s * 0.46f);
+			CGContextClosePath(ctx);
+			CGContextStrokePath(ctx);
+			CGContextMoveToPoint(ctx, s / 2, s * 0.60f);
+			CGContextAddLineToPoint(ctx, s / 2, s - m);
+			CGContextStrokePath(ctx);
+
+		} else if ([name isEqualToString:@"mute"] || [name isEqualToString:@"unmute"]){
+			// a speaker cone
+			CGContextMoveToPoint(ctx, m, s * 0.38f);
+			CGContextAddLineToPoint(ctx, s * 0.34f, s * 0.38f);
+			CGContextAddLineToPoint(ctx, s * 0.54f, s * 0.20f);
+			CGContextAddLineToPoint(ctx, s * 0.54f, s * 0.80f);
+			CGContextAddLineToPoint(ctx, s * 0.34f, s * 0.62f);
+			CGContextAddLineToPoint(ctx, m, s * 0.62f);
+			CGContextClosePath(ctx);
+			CGContextStrokePath(ctx);
+			if ([name isEqualToString:@"mute"]){
+				CGContextMoveToPoint(ctx, s * 0.66f, s * 0.38f);
+				CGContextAddLineToPoint(ctx, s * 0.86f, s * 0.62f);
+				CGContextMoveToPoint(ctx, s * 0.86f, s * 0.38f);
+				CGContextAddLineToPoint(ctx, s * 0.66f, s * 0.62f);
+				CGContextStrokePath(ctx);
+			}
+
+		} else if ([name isEqualToString:@"archive"] || [name isEqualToString:@"unarchive"]){
+			// a box with a lid and a handle slot
+			CGContextStrokeRect(ctx, CGRectMake(m, m, s - 2 * m, s * 0.18f));
+			CGContextMoveToPoint(ctx, m + 2, m + s * 0.18f);
+			CGContextAddLineToPoint(ctx, m + 2, s - m);
+			CGContextAddLineToPoint(ctx, s - m - 2, s - m);
+			CGContextAddLineToPoint(ctx, s - m - 2, m + s * 0.18f);
+			CGContextStrokePath(ctx);
+			CGContextMoveToPoint(ctx, s * 0.40f, s * 0.58f);
+			CGContextAddLineToPoint(ctx, s * 0.60f, s * 0.58f);
+			CGContextStrokePath(ctx);
+
+		} else if ([name isEqualToString:@"react"]){
+			// a heart
+			CGContextMoveToPoint(ctx, s / 2, s - m - 2);
+			CGContextAddCurveToPoint(ctx, m, s * 0.60f, m, s * 0.22f, s / 2, s * 0.38f);
+			CGContextAddCurveToPoint(ctx, s - m, s * 0.22f, s - m, s * 0.60f, s / 2, s - m - 2);
+			CGContextStrokePath(ctx);
+
+		} else if ([name isEqualToString:@"select"]){
+			// a circular checkbox with a checkmark
+			CGContextStrokeEllipseInRect(ctx, CGRectMake(m, m, s - 2 * m, s - 2 * m));
+			CGContextMoveToPoint(ctx, s * 0.30f, s * 0.52f);
+			CGContextAddLineToPoint(ctx, s * 0.46f, s * 0.68f);
+			CGContextAddLineToPoint(ctx, s * 0.72f, s * 0.36f);
+			CGContextStrokePath(ctx);
+
+		} else if ([name isEqualToString:@"call"]){
+			// a handset on its diagonal
+			CGContextSetLineWidth(ctx, 2.0f);
+			CGContextMoveToPoint(ctx, m + 1, m + 4);
+			CGContextAddCurveToPoint(ctx, m + 1, s * 0.70f, s * 0.70f, s - m - 1,
+									 s - m - 4, s - m - 1);
+			CGContextAddLineToPoint(ctx, s - m, s * 0.68f);
+			CGContextAddLineToPoint(ctx, s * 0.62f, s * 0.58f);
+			CGContextAddLineToPoint(ctx, s * 0.50f, s * 0.68f);
+			CGContextAddCurveToPoint(ctx, s * 0.40f, s * 0.60f, s * 0.40f, s * 0.60f,
+									 s * 0.32f, s * 0.50f);
+			CGContextAddLineToPoint(ctx, s * 0.42f, s * 0.38f);
+			CGContextAddLineToPoint(ctx, s * 0.32f, m);
+			CGContextClosePath(ctx);
+			CGContextStrokePath(ctx);
+
+		} else if ([name isEqualToString:@"video"]){
+			// a camera: body and the lens sticking out of it
+			CGContextAddPath(ctx, [UIBezierPath bezierPathWithRoundedRect:
+					CGRectMake(m, s * 0.32f, s * 0.44f, s * 0.36f)
+															 cornerRadius:3].CGPath);
+			CGContextStrokePath(ctx);
+			CGContextMoveToPoint(ctx, m + s * 0.46f, s * 0.44f);
+			CGContextAddLineToPoint(ctx, s - m, s * 0.34f);
+			CGContextAddLineToPoint(ctx, s - m, s * 0.66f);
+			CGContextAddLineToPoint(ctx, m + s * 0.46f, s * 0.56f);
+			CGContextClosePath(ctx);
+			CGContextStrokePath(ctx);
+
+		} else if ([name isEqualToString:@"search"]){
+			// a magnifier
+			CGContextStrokeEllipseInRect(ctx, CGRectMake(m, m, s * 0.50f, s * 0.50f));
+			CGContextMoveToPoint(ctx, m + s * 0.46f, m + s * 0.46f);
+			CGContextAddLineToPoint(ctx, s - m, s - m);
+			CGContextStrokePath(ctx);
+
+		} else if ([name isEqualToString:@"more"]){
+			// three dots across
+			for (int i = 0; i < 3; i++)
+				CGContextFillEllipseInRect(ctx, CGRectMake(
+						s * 0.24f + i * s * 0.20f - 1.5f, s / 2 - 1.5f, 3, 3));
+
+		} else if ([name isEqualToString:@"notifications"]){
+			// a bell
+			CGContextAddArc(ctx, s / 2, s * 0.46f, s * 0.26f, M_PI, 0, 0);
+			CGContextStrokePath(ctx);
+			CGContextMoveToPoint(ctx, s * 0.24f, s * 0.46f);
+			CGContextAddLineToPoint(ctx, s * 0.24f, s * 0.66f);
+			CGContextAddLineToPoint(ctx, s * 0.76f, s * 0.66f);
+			CGContextAddLineToPoint(ctx, s * 0.76f, s * 0.46f);
+			CGContextStrokePath(ctx);
+			CGContextMoveToPoint(ctx, s * 0.42f, s * 0.74f);
+			CGContextAddLineToPoint(ctx, s * 0.58f, s * 0.74f);
+			CGContextStrokePath(ctx);
+
+		} else if ([name isEqualToString:@"privacy"]){
+			// a padlock: shackle over a body
+			CGContextAddArc(ctx, s / 2, s * 0.42f, s * 0.16f, M_PI, 0, 0);
+			CGContextStrokePath(ctx);
+			CGContextStrokeRect(ctx, CGRectMake(s * 0.26f, s * 0.44f,
+												s * 0.48f, s * 0.34f));
+
+		} else if ([name isEqualToString:@"data"]){
+			// a pie with one slice drawn in
+			CGContextStrokeEllipseInRect(ctx, CGRectInset(
+					CGRectMake(0, 0, s, s), m, m));
+			CGContextMoveToPoint(ctx, s / 2, s / 2);
+			CGContextAddLineToPoint(ctx, s / 2, m);
+			CGContextMoveToPoint(ctx, s / 2, s / 2);
+			CGContextAddLineToPoint(ctx, s - m, s / 2);
+			CGContextStrokePath(ctx);
+
+		} else if ([name isEqualToString:@"chat"]){
+			// a speech bubble with a tail
+			CGRect body = CGRectMake(m, m, s - 2 * m, s * 0.50f);
+			CGContextAddPath(ctx, [UIBezierPath bezierPathWithRoundedRect:body
+															 cornerRadius:s * 0.14f].CGPath);
+			CGContextStrokePath(ctx);
+			CGContextMoveToPoint(ctx, s * 0.30f, CGRectGetMaxY(body));
+			CGContextAddLineToPoint(ctx, s * 0.30f, s - m);
+			CGContextAddLineToPoint(ctx, s * 0.48f, CGRectGetMaxY(body));
+			CGContextStrokePath(ctx);
+
+		} else if ([name isEqualToString:@"folder"]){
+			// a tab along the top left, then the body
+			CGContextMoveToPoint(ctx, m, s * 0.74f);
+			CGContextAddLineToPoint(ctx, m, s * 0.28f);
+			CGContextAddLineToPoint(ctx, s * 0.42f, s * 0.28f);
+			CGContextAddLineToPoint(ctx, s * 0.50f, s * 0.38f);
+			CGContextAddLineToPoint(ctx, s - m, s * 0.38f);
+			CGContextAddLineToPoint(ctx, s - m, s * 0.74f);
+			CGContextClosePath(ctx);
+			CGContextStrokePath(ctx);
+
+		} else if ([name isEqualToString:@"devices"]){
+			// a laptop: screen and the bar it stands on
+			CGContextStrokeRect(ctx, CGRectMake(s * 0.20f, s * 0.28f,
+												s * 0.60f, s * 0.36f));
+			CGContextMoveToPoint(ctx, m, s * 0.72f);
+			CGContextAddLineToPoint(ctx, s - m, s * 0.72f);
+			CGContextStrokePath(ctx);
+
+		} else if ([name isEqualToString:@"language"]){
+			// a globe: circle, equator, meridian
+			CGRect ball = CGRectInset(CGRectMake(0, 0, s, s), m, m);
+			CGContextStrokeEllipseInRect(ctx, ball);
+			CGContextMoveToPoint(ctx, m, s / 2);
+			CGContextAddLineToPoint(ctx, s - m, s / 2);
+			CGContextStrokePath(ctx);
+			CGContextSaveGState(ctx);
+			CGContextTranslateCTM(ctx, s / 2, s / 2);
+			CGContextScaleCTM(ctx, 0.5f, 1.0f);
+			CGContextTranslateCTM(ctx, -s / 2, -s / 2);
+			CGContextStrokeEllipseInRect(ctx, ball);
+			CGContextRestoreGState(ctx);
+
+		} else if ([name isEqualToString:@"faq"]){
+			// a question mark in a circle
+			CGContextStrokeEllipseInRect(ctx, CGRectInset(
+					CGRectMake(0, 0, s, s), m, m));
+			CGContextAddArc(ctx, s / 2, s * 0.40f, s * 0.11f, M_PI, M_PI_2, 1);
+			CGContextStrokePath(ctx);
+			CGContextMoveToPoint(ctx, s / 2, s * 0.51f);
+			CGContextAddLineToPoint(ctx, s / 2, s * 0.60f);
+			CGContextStrokePath(ctx);
+			CGContextFillEllipseInRect(ctx, CGRectMake(s / 2 - 1, s * 0.68f, 2, 2));
+
+		} else if ([name isEqualToString:@"policy"]){
+			// a shield with a tick in it
+			CGContextMoveToPoint(ctx, s / 2, m);
+			CGContextAddLineToPoint(ctx, s - m, s * 0.30f);
+			CGContextAddLineToPoint(ctx, s - m, s * 0.56f);
+			CGContextAddCurveToPoint(ctx, s - m, s * 0.76f, s * 0.70f, s - m,
+									 s / 2, s - m);
+			CGContextAddCurveToPoint(ctx, s * 0.30f, s - m, m, s * 0.76f,
+									 m, s * 0.56f);
+			CGContextAddLineToPoint(ctx, m, s * 0.30f);
+			CGContextClosePath(ctx);
+			CGContextStrokePath(ctx);
+			CGContextMoveToPoint(ctx, s * 0.36f, s * 0.50f);
+			CGContextAddLineToPoint(ctx, s * 0.46f, s * 0.60f);
+			CGContextAddLineToPoint(ctx, s * 0.66f, s * 0.38f);
+			CGContextStrokePath(ctx);
+
+		} else {
+			return;   // an unknown name draws nothing rather than a wrong glyph
+		}
+	}];
+}
+
++ (UIImage *)settingsIconNamed:(NSString *)name color:(UIColor *)color {
+	// Every settings row asks for its icon in cellForRow, and the list reloads
+	// on every appearance - redrawing sixteen of these each time is what made
+	// the screen crawl on a 4S.
+	if (!sSettingsIconCache) sSettingsIconCache = [NSMutableDictionary dictionary];
+	NSString *cacheKey = [NSString stringWithFormat:@"%@|%@", name, color];
+	UIImage *hit = sSettingsIconCache[cacheKey];
+	if (hit) return hit;
+
+	CGFloat side = 29.0;
+	UIGraphicsBeginImageContextWithOptions(CGSizeMake(side, side), NO, 0);
+	CGContextRef ctx = UIGraphicsGetCurrentContext();
+	(void)ctx;
+
+	// Draw rounded square background
+	UIBezierPath *path = [UIBezierPath bezierPathWithRoundedRect:CGRectMake(0, 0, side, side) cornerRadius:6.0];
+	[color setFill];
+	[path fill];
+
+	// Get line glyph and draw it centered in white
+	UIImage *glyph = [self menuGlyphNamed:name];
+	if (!glyph) {
+		// Fallback for missing glyphs: use a generic dot or similar if needed,
+		// but we'll map them carefully.
+		if ([name isEqualToString:@"star"]) glyph = [self menuGlyphNamed:@"folder"]; // Placeholder
+		if ([name isEqualToString:@"battery"]) glyph = [self menuGlyphNamed:@"call"]; // Placeholder
+		if ([name isEqualToString:@"devices"]) glyph = [self menuGlyphNamed:@"chat"]; // Placeholder
+		if ([name isEqualToString:@"gift"]) glyph = [self menuGlyphNamed:@"policy"]; // Placeholder
+		if ([name isEqualToString:@"briefcase"]) glyph = [self menuGlyphNamed:@"archive"]; // Placeholder
+		// The sticker glyph is drawn as a top-level icon rather than a menu one,
+		// so it never matched here and the row got a plain coloured square.
+		if ([name isEqualToString:@"sticker"]) glyph = [self sticker];
+	}
+
+	if (glyph) {
+		// The glyph goes on top of the plate. It used to be composited with
+		// kCGBlendModeDestinationIn, which cut the coloured square down to the
+		// glyph instead of drawing a white glyph on it.
+		CGFloat w = glyph.size.width;
+		CGFloat h = glyph.size.height;
+		CGRect rect = CGRectMake((side - w) / 2.0, (side - h) / 2.0, w, h);
+		
+		// To tint the template image white
+		UIGraphicsBeginImageContextWithOptions(glyph.size, NO, 0);
+		CGContextRef tintCtx = UIGraphicsGetCurrentContext();
+		CGContextTranslateCTM(tintCtx, 0, h);
+		CGContextScaleCTM(tintCtx, 1.0, -1.0);
+		CGContextClipToMask(tintCtx, CGRectMake(0, 0, w, h), glyph.CGImage);
+		[[UIColor whiteColor] setFill];
+		CGContextFillRect(tintCtx, CGRectMake(0, 0, w, h));
+		UIImage *tintedGlyph = UIGraphicsGetImageFromCurrentImageContext();
+		UIGraphicsEndImageContext();
+		
+		[tintedGlyph drawInRect:rect];
+	}
+
+	UIImage *image = UIGraphicsGetImageFromCurrentImageContext();
+	UIGraphicsEndImageContext();
+	if (image) sSettingsIconCache[cacheKey] = image;
+	return image;
+}
+
+@end
