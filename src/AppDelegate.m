@@ -625,6 +625,47 @@ static void TGWatchForIncomingCalls(void) {
 		return YES;
 	}
 
+	// itglegacy://dump - dump chat messages summary to /tmp/chat_messages.json.
+	if ([host isEqualToString:@"dump"]){
+		dispatch_async(dispatch_get_main_queue(), ^{
+			UITabBarController *tabs = (UITabBarController *)self.rootViewController;
+			if (![tabs isKindOfClass:UITabBarController.class]) return;
+			UINavigationController *nc = tabs.viewControllers[tabs.selectedIndex];
+			UIViewController *top = nc.topViewController;
+			if ([top isKindOfClass:[TGChatViewController class]]){
+				TGChatViewController *chatVC = (TGChatViewController *)top;
+				NSArray *msgs = [chatVC valueForKey:@"messages"];
+				NSMutableArray *summary = [NSMutableArray array];
+				for (NSDictionary *m in msgs) {
+					[summary addObject:@{
+						@"id" : m[@"id"] ?: @0,
+						@"kind" : m[@"kind"] ?: @"",
+						@"text" : m[@"text"] ?: @"",
+						@"outgoing" : m[@"outgoing"] ?: @NO,
+						@"photoId" : m[@"photoId"] ?: @0,
+						@"isAlbum" : m[@"isAlbum"] ?: @NO,
+					}];
+				}
+				NSData *json = [NSJSONSerialization dataWithJSONObject:summary options:NSJSONWritingPrettyPrinted error:nil];
+				[json writeToFile:@"/tmp/chat_messages.json" atomically:YES];
+			}
+
+			NSArray *chats = [TGClient shared].chats;
+			NSMutableArray *chatsSummary = [NSMutableArray array];
+			for (NSDictionary *c in chats) {
+				[chatsSummary addObject:@{
+					@"id" : c[@"id"] ?: @0,
+					@"title" : c[@"title"] ?: @"",
+					@"unread" : c[@"unreadCount"] ?: @0,
+					@"lastMessage" : c[@"lastMessage"] ?: @"",
+				}];
+			}
+			NSData *cjson = [NSJSONSerialization dataWithJSONObject:chatsSummary options:NSJSONWritingPrettyPrinted error:nil];
+			[cjson writeToFile:@"/tmp/all_chats.json" atomically:YES];
+		});
+		return YES;
+	}
+
 	// itglegacy://stickers - open the sticker strip, which needs a real tap.
 	if ([host isEqualToString:@"stickers"]){
 		dispatch_async(dispatch_get_main_queue(), ^{
@@ -634,6 +675,83 @@ static void TGWatchForIncomingCalls(void) {
 			UIViewController *top = [tabs.viewControllers[tabs.selectedIndex] topViewController];
 			if ([top respondsToSelector:@selector(toggleStickerPanel)])
 				[top performSelector:@selector(toggleStickerPanel)];
+		});
+		return YES;
+	}
+
+	// itglegacy://edit - enter message multi-select edit mode.
+	if ([host isEqualToString:@"edit"]){
+		dispatch_async(dispatch_get_main_queue(), ^{
+			UITabBarController *tabs = (UITabBarController *)self.rootViewController;
+			if (![tabs isKindOfClass:UITabBarController.class]) return;
+			UINavigationController *nc = tabs.viewControllers[tabs.selectedIndex];
+			UIViewController *top = nc.topViewController;
+			if ([top isKindOfClass:[TGChatViewController class]]){
+				[(TGChatViewController *)top enterEditMode];
+			}
+		});
+		return YES;
+	}
+
+	// itglegacy://select/N - toggle selection of Nth message.
+	if ([host isEqualToString:@"select"]){
+		dispatch_async(dispatch_get_main_queue(), ^{
+			UITabBarController *tabs = (UITabBarController *)self.rootViewController;
+			if (![tabs isKindOfClass:UITabBarController.class]) return;
+			UINavigationController *nc = tabs.viewControllers[tabs.selectedIndex];
+			UIViewController *top = nc.topViewController;
+			if ([top isKindOfClass:[TGChatViewController class]]){
+				[(TGChatViewController *)top selectMessageAtIndex:[arg integerValue]];
+			}
+		});
+		return YES;
+	}
+
+	// itglegacy://cancel - exit message edit mode.
+	if ([host isEqualToString:@"cancel"]){
+		dispatch_async(dispatch_get_main_queue(), ^{
+			UITabBarController *tabs = (UITabBarController *)self.rootViewController;
+			if (![tabs isKindOfClass:UITabBarController.class]) return;
+			UINavigationController *nc = tabs.viewControllers[tabs.selectedIndex];
+			UIViewController *top = nc.topViewController;
+			if ([top isKindOfClass:[TGChatViewController class]]){
+				[(TGChatViewController *)top exitEditMode];
+			}
+		});
+		return YES;
+	}
+
+	// itglegacy://delete_selected - delete selected messages.
+	if ([host isEqualToString:@"delete_selected"]){
+		dispatch_async(dispatch_get_main_queue(), ^{
+			UITabBarController *tabs = (UITabBarController *)self.rootViewController;
+			if (![tabs isKindOfClass:UITabBarController.class]) return;
+			UINavigationController *nc = tabs.viewControllers[tabs.selectedIndex];
+			UIViewController *top = nc.topViewController;
+			if ([top isKindOfClass:[TGChatViewController class]]){
+				TGChatViewController *chatVC = (TGChatViewController *)top;
+				if ([arg isEqualToString:@"me"]){
+					[chatVC executeDeleteMessages:[chatVC.selectedMessageIds allObjects] revoke:NO];
+				} else if ([arg isEqualToString:@"both"] || [arg isEqualToString:@"everyone"]){
+					[chatVC executeDeleteMessages:[chatVC.selectedMessageIds allObjects] revoke:YES];
+				} else {
+					[chatVC deleteSelectedMessages];
+				}
+			}
+		});
+		return YES;
+	}
+
+	// itglegacy://forward_selected - forward selected messages.
+	if ([host isEqualToString:@"forward_selected"]){
+		dispatch_async(dispatch_get_main_queue(), ^{
+			UITabBarController *tabs = (UITabBarController *)self.rootViewController;
+			if (![tabs isKindOfClass:UITabBarController.class]) return;
+			UINavigationController *nc = tabs.viewControllers[tabs.selectedIndex];
+			UIViewController *top = nc.topViewController;
+			if ([top isKindOfClass:[TGChatViewController class]]){
+				[(TGChatViewController *)top forwardSelectedMessages];
+			}
 		});
 		return YES;
 	}

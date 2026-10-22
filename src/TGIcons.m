@@ -275,7 +275,7 @@ static inline void sSetCached(NSString *key, UIImage *img) {
 	if (!known)
 		known = [NSSet setWithObjects:@"reply", @"undo", @"forward", @"copy",
 				@"edit", @"delete", @"pin", @"unpin", @"mute", @"unmute",
-				@"archive", @"unarchive", @"react",
+				@"archive", @"unarchive", @"react", @"select",
 				// the settings list
 				@"notifications", @"privacy", @"data", @"chat", @"folder",
 				@"devices", @"language", @"faq", @"policy",
@@ -395,6 +395,14 @@ static inline void sSetCached(NSString *key, UIImage *img) {
 			CGContextMoveToPoint(ctx, s / 2, s - m - 2);
 			CGContextAddCurveToPoint(ctx, m, s * 0.60f, m, s * 0.22f, s / 2, s * 0.38f);
 			CGContextAddCurveToPoint(ctx, s - m, s * 0.22f, s - m, s * 0.60f, s / 2, s - m - 2);
+			CGContextStrokePath(ctx);
+
+		} else if ([name isEqualToString:@"select"]){
+			// a circular checkbox with a checkmark
+			CGContextStrokeEllipseInRect(ctx, CGRectMake(m, m, s - 2 * m, s - 2 * m));
+			CGContextMoveToPoint(ctx, s * 0.30f, s * 0.52f);
+			CGContextAddLineToPoint(ctx, s * 0.46f, s * 0.68f);
+			CGContextAddLineToPoint(ctx, s * 0.72f, s * 0.36f);
 			CGContextStrokePath(ctx);
 
 		} else if ([name isEqualToString:@"call"]){
@@ -759,6 +767,44 @@ static inline void sSetCached(NSString *key, UIImage *img) {
 	UIGraphicsEndImageContext();
 	sSetCached(key, image);
 	return image;
+}
+
++ (UIImage *)selectionCheckboxSelected:(BOOL)selected {
+	NSString *key = selected ? @"checkbox_selected" : @"checkbox_unselected";
+	UIImage *cached = sGetCached(key);
+	if (cached) return cached;
+
+	CGFloat side = 22.0f;
+	CGFloat scale = [UIScreen mainScreen].scale;
+	UIGraphicsBeginImageContextWithOptions(CGSizeMake(side, side), NO, scale);
+	CGContextRef ctx = UIGraphicsGetCurrentContext();
+
+	CGRect circleRect = CGRectMake(1.0f, 1.0f, 20.0f, 20.0f);
+	if (selected) {
+		UIColor *fill = [[TGTheme shared] accentColour];
+		CGContextSetFillColorWithColor(ctx, fill.CGColor);
+		CGContextFillEllipseInRect(ctx, circleRect);
+
+		CGContextSetStrokeColorWithColor(ctx, [UIColor whiteColor].CGColor);
+		CGContextSetLineWidth(ctx, 2.0f);
+		CGContextSetLineCap(ctx, kCGLineCapRound);
+		CGContextSetLineJoin(ctx, kCGLineJoinRound);
+
+		CGContextMoveToPoint(ctx, 6.0f, 11.0f);
+		CGContextAddLineToPoint(ctx, 9.5f, 14.5f);
+		CGContextAddLineToPoint(ctx, 15.5f, 7.5f);
+		CGContextStrokePath(ctx);
+	} else {
+		UIColor *border = [UIColor colorWithWhite:0.75f alpha:1.0f];
+		CGContextSetStrokeColorWithColor(ctx, border.CGColor);
+		CGContextSetLineWidth(ctx, 1.5f);
+		CGContextStrokeEllipseInRect(ctx, circleRect);
+	}
+
+	UIImage *img = UIGraphicsGetImageFromCurrentImageContext();
+	UIGraphicsEndImageContext();
+	sSetCached(key, img);
+	return img;
 }
 
 #pragma mark - avatars

@@ -19,6 +19,7 @@
 @property (nonatomic, strong) UILabel *quote;
 @property (nonatomic, strong) UILabel *quoteAuthor;
 @property (nonatomic, strong) UIImageView *ticks;
+@property (nonatomic, strong) UIImageView *checkbox;
 @property (nonatomic, strong) UIImageView *senderAvatar;
 @property (nonatomic, strong) UIImageView *tail;
 @property (nonatomic, strong) UIImageView *disc;

@@ -89,6 +89,14 @@ static const CGFloat kInputHeight = 48.0f;
 @property (nonatomic, strong) UILabel *titleSubtitleLabel;
 @property (nonatomic, strong) UIView *pinnedBannerView;
 @property (nonatomic, strong) UIView *pinnedBannerHair;
+@property (nonatomic, assign) BOOL isEditingMessages;
+@property (nonatomic, strong) NSMutableSet *selectedMessageIds;
+@property (nonatomic, strong) UIView *editToolbar;
+@property (nonatomic, strong) UIButton *editDeleteButton;
+@property (nonatomic, strong) UIButton *editForwardButton;
+@property (nonatomic, strong) UIView *savedTitleView;
+@property (nonatomic, strong) UIBarButtonItem *savedRightBarButtonItem;
+@property (nonatomic, strong) NSArray *pendingDeleteMessageIds;
 
 - (void)clearComposeState;
 - (void)showComposeBanner:(NSString *)text;
@@ -117,6 +125,7 @@ static const CGFloat kInputHeight = 48.0f;
 	self.mapsRequested = [NSMutableSet set];
 	self.quotes = [NSMutableDictionary dictionary];
 	self.quotesRequested = [NSMutableSet set];
+	self.selectedMessageIds = [NSMutableSet set];
 	self.view.backgroundColor = [[TGTheme shared] chatBackgroundColour];
 
 	CGRect b = self.view.bounds;
@@ -248,6 +257,11 @@ static const CGFloat kInputHeight = 48.0f;
 		}
 		if (me.recordPanel) {
 			me.recordPanel.backgroundColor = [theme inputBarColour];
+		}
+		if (me.editToolbar) {
+			me.editToolbar.backgroundColor = [theme inputBarColour];
+			[me.editDeleteButton setTitleColor:[theme destructiveColour] forState:UIControlStateNormal];
+			[me.editForwardButton setTitleColor:[theme accentColour] forState:UIControlStateNormal];
 		}
 		[theme styleNavigationBar:me.navigationController.navigationBar];
 		[me.table reloadData];
@@ -1824,6 +1838,29 @@ static const NSInteger kMessageSheetTag = 42;
 	if (index == sheet.cancelButtonIndex)
 		return;
 
+	if (sheet.tag == 0xDE1E) {
+		NSArray *ids = self.pendingDeleteMessageIds;
+		self.pendingDeleteMessageIds = nil;
+		if (index == sheet.cancelButtonIndex || !ids.count)
+			return;
+
+		BOOL isSaved = (self.chatId == [[TGClient shared] savedMessagesChatId]);
+		if (isSaved) {
+			if (index == 0) {
+				[self executeDeleteMessages:ids revoke:YES];
+			}
+		} else {
+			if (index == 0) {
+				// Delete for both / Delete for everyone
+				[self executeDeleteMessages:ids revoke:YES];
+			} else if (index == 1) {
+				// Delete for me
+				[self executeDeleteMessages:ids revoke:NO];
+			}
+		}
+		return;
+	}
+
 	if (sheet.tag == kMessageSheetTag){
 		[self runMessageAction:[sheet buttonTitleAtIndex:index]];
 		return;
@@ -1858,6 +1895,8 @@ static const NSInteger kMessageSheetTag = 42;
 #pragma mark - message actions
 
 - (void)messageHeld:(UILongPressGestureRecognizer *)hold {
+	if (self.isEditingMessages)
+		return;
 	if (hold.state != UIGestureRecognizerStateBegan)
 		return;
 
@@ -1881,7 +1920,8 @@ static const NSInteger kMessageSheetTag = 42;
 	NSMutableArray *items = [NSMutableArray arrayWithObjects:
 			@{@"title" : @"Reply",   @"icon" : @"reply"},
 			@{@"title" : @"Forward", @"icon" : @"forward"},
-			@{@"title" : @"React",   @"icon" : @"react"}, nil];
+			@{@"title" : @"React",   @"icon" : @"react"},
+			@{@"title" : @"Select",  @"icon" : @"select"}, nil];
 	if ([m[@"text"] length])
 		[items addObject:@{@"title" : @"Copy", @"icon" : @"copy"}];
 	if (mine && [m[@"text"] length])
@@ -1928,6 +1968,10 @@ static const NSInteger kMessageSheetTag = 42;
 		};
 		[self.navigationController pushViewController:picker animated:YES];
 
+	} else if ([action isEqualToString:@"Select"]){
+		[self enterEditMode];
+		[self toggleMessageSelection:messageId];
+
 	} else if ([action hasPrefix:@"React"]){
 		[[TGClient shared] reactTo:messageId inChat:self.chatId emoji:@"\U0001F44D"];
 
@@ -1942,23 +1986,7 @@ static const NSInteger kMessageSheetTag = 42;
 		[self.input becomeFirstResponder];
 
 	} else if ([action isEqualToString:@"Delete"]){
-		// The message goes off the screen at once and off the server when the
-		// count runs out, so taking it back costs one tap and no dialog.
-		int64_t chatId = self.chatId;
-		NSMutableArray *without = [self.messages mutableCopy];
-		[without removeObject:m];
-		self.messages = without;
-		[self.table reloadData];
-
-		__weak typeof(self) weakSelf = self;
-		[TGSnackbar showInView:self.view text:@"Message deleted" seconds:5
-					  onCommit:^{
-			[[TGClient shared] deleteMessage:messageId inChat:chatId];
-		}];
-		// Undo has no callback of its own: whatever the answer, re-reading the
-		// history afterwards puts the row back or leaves it gone, correctly.
-		dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(6.0 * NSEC_PER_SEC)),
-				dispatch_get_main_queue(), ^{ [weakSelf reload]; });
+		[self promptDeleteMessages:@[@(messageId)]];
 	}
 	self.actionMessage = nil;
 }
@@ -2175,7 +2203,18 @@ static const NSInteger kMessageSheetTag = 42;
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
 	[tableView deselectRowAtIndexPath:indexPath animated:NO];
+	if (indexPath.row < 0 || indexPath.row >= (NSInteger)self.messages.count)
+		return;
 	NSDictionary *m = self.messages[indexPath.row];
+	if (self.isEditingMessages) {
+		if ([m[@"service"] boolValue])
+			return;
+		int64_t msgId = [m[@"id"] longLongValue];
+		if (msgId) {
+			[self toggleMessageSelection:msgId];
+		}
+		return;
+	}
 	NSString *kind = m[@"kind"];
 
 	// Contact card tap
@@ -2578,12 +2617,12 @@ static const NSInteger kMessageSheetTag = 42;
 	if ([m[@"isAlbum"] boolValue] && [self bodySizeFor:m].height == 0)
 		return YES;
 	return [self imageSizeFor:m].height > 0 && [self bodySizeFor:m].height == 0 &&
-		   ![m[@"kind"] isEqualToString:@"messageVideoNote"] &&
-		   ![m[@"kind"] isEqualToString:@"messageSticker"] &&
-		   ![m[@"kind"] isEqualToString:@"messageAnimatedEmoji"];
+		   ![m[@"kind"] isEqualToString:@"messageVideoNote"];
 }
 
 - (CGSize)bodySizeFor:(NSDictionary *)m {
+	if ([m[@"kind"] isEqualToString:@"messageSticker"] || [m[@"kind"] isEqualToString:@"messageAnimatedEmoji"])
+		return CGSizeZero;
 	NSString *text = m[@"text"] ?: @"";
 	if (!text.length)
 		return CGSizeZero;
@@ -2846,15 +2885,18 @@ static const NSInteger kMessageSheetTag = 42;
 		layout.quoteFrame = CGRectMake(kPadH + 8, y + 17, bubbleW - 2 * kPadH - 10, 17);
 		y += 38;
 	}
+	CGFloat innerW = bubbleW - 2 * kPadH;
 	if (isAlbum) {
-		layout.collageFrame = CGRectMake(kPadH, y, collageW, collageH);
+		CGFloat cW = (body.height > 0) ? innerW : collageW;
+		layout.collageFrame = CGRectMake(kPadH, y, cW, collageH);
 		if (!body.height) {
 			CGFloat plateW = timeW + (mine ? 28 : 14);
 			layout.mediaStampFrame = CGRectMake(kPadH + collageW - plateW - 6, y + collageH - 22, plateW, 16);
 		}
 		y += collageH + 4;
 	} else if (pic.height > 0) {
-		layout.pictureFrame = CGRectMake(kPadH, y, pic.width, pic.height);
+		CGFloat picW = (body.height > 0) ? innerW : pic.width;
+		layout.pictureFrame = CGRectMake(kPadH, y, picW, pic.height);
 		if (!body.height) {
 			CGFloat plateW = timeW + (mine ? 28 : 14);
 			layout.mediaStampFrame = CGRectMake(kPadH + pic.width - plateW - 6, y + pic.height - 22, plateW, 16);
@@ -2950,6 +2992,256 @@ static UIColor *TGSenderColour(int64_t userId) {
     }
 }
 
+#pragma mark - multi-select edit mode
+
+- (void)enterEditMode {
+	if (self.isEditingMessages) return;
+	_isEditingMessages = YES;
+	if (!self.selectedMessageIds) {
+		self.selectedMessageIds = [NSMutableSet set];
+	} else {
+		[self.selectedMessageIds removeAllObjects];
+	}
+
+	[self.input resignFirstResponder];
+	self.inputBar.hidden = YES;
+
+	if (!self.editToolbar) {
+		CGRect b = self.view.bounds;
+		self.editToolbar = [[UIView alloc] initWithFrame:CGRectMake(0, b.size.height - kInputHeight, b.size.width, kInputHeight)];
+		self.editToolbar.backgroundColor = [[TGTheme shared] inputBarColour];
+		self.editToolbar.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleTopMargin;
+
+		UIView *hair = [[UIView alloc] initWithFrame:CGRectMake(0, 0, b.size.width, 0.5f)];
+		hair.backgroundColor = [[TGTheme shared] separatorColour];
+		hair.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+		[self.editToolbar addSubview:hair];
+
+		self.editDeleteButton = [UIButton buttonWithType:UIButtonTypeCustom];
+		self.editDeleteButton.frame = CGRectMake(14, 6, 140, 36);
+		self.editDeleteButton.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeft;
+		self.editDeleteButton.titleLabel.font = [UIFont systemFontOfSize:16];
+		[self.editDeleteButton setTitleColor:[[TGTheme shared] destructiveColour] forState:UIControlStateNormal];
+		[self.editDeleteButton setTitle:@"Delete" forState:UIControlStateNormal];
+		[self.editDeleteButton addTarget:self action:@selector(deleteSelectedMessages) forControlEvents:UIControlEventTouchUpInside];
+		[self.editToolbar addSubview:self.editDeleteButton];
+
+		self.editForwardButton = [UIButton buttonWithType:UIButtonTypeCustom];
+		self.editForwardButton.frame = CGRectMake(b.size.width - 154, 6, 140, 36);
+		self.editForwardButton.contentHorizontalAlignment = UIControlContentHorizontalAlignmentRight;
+		self.editForwardButton.titleLabel.font = [UIFont boldSystemFontOfSize:16];
+		[self.editForwardButton setTitleColor:[[TGTheme shared] accentColour] forState:UIControlStateNormal];
+		[self.editForwardButton setTitle:@"Forward" forState:UIControlStateNormal];
+		[self.editForwardButton addTarget:self action:@selector(forwardSelectedMessages) forControlEvents:UIControlEventTouchUpInside];
+		[self.editToolbar addSubview:self.editForwardButton];
+
+		[self.view addSubview:self.editToolbar];
+	}
+	self.editToolbar.hidden = NO;
+	[self.view bringSubviewToFront:self.editToolbar];
+
+	self.savedTitleView = self.navigationItem.titleView;
+	self.savedRightBarButtonItem = self.navigationItem.rightBarButtonItem;
+
+	self.navigationItem.titleView = nil;
+	self.navigationItem.rightBarButtonItem = nil;
+	self.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:@"Cancel"
+																			 style:UIBarButtonItemStylePlain
+																			target:self
+																			action:@selector(exitEditMode)];
+
+	[self updateEditToolbar];
+	[self.table reloadData];
+}
+
+- (void)exitEditMode {
+	if (!self.isEditingMessages) return;
+	_isEditingMessages = NO;
+	[self.selectedMessageIds removeAllObjects];
+
+	self.editToolbar.hidden = YES;
+	self.inputBar.hidden = NO;
+
+	self.navigationItem.leftBarButtonItem = nil;
+	self.navigationItem.titleView = self.savedTitleView;
+	self.navigationItem.rightBarButtonItem = self.savedRightBarButtonItem;
+	self.title = nil;
+
+	[self.table reloadData];
+}
+
+- (void)updateEditToolbar {
+	NSUInteger count = self.selectedMessageIds.count;
+	BOOL enabled = (count > 0);
+
+	self.editDeleteButton.enabled = enabled;
+	self.editDeleteButton.alpha = enabled ? 1.0f : 0.4f;
+	if (count > 0) {
+		[self.editDeleteButton setTitle:[NSString stringWithFormat:@"Delete (%lu)", (unsigned long)count] forState:UIControlStateNormal];
+	} else {
+		[self.editDeleteButton setTitle:@"Delete" forState:UIControlStateNormal];
+	}
+
+	self.editForwardButton.enabled = enabled;
+	self.editForwardButton.alpha = enabled ? 1.0f : 0.4f;
+	if (count > 0) {
+		[self.editForwardButton setTitle:[NSString stringWithFormat:@"Forward (%lu)", (unsigned long)count] forState:UIControlStateNormal];
+	} else {
+		[self.editForwardButton setTitle:@"Forward" forState:UIControlStateNormal];
+	}
+
+	if (count == 0) {
+		self.title = @"Select Messages";
+	} else if (count == 1) {
+		self.title = @"1 selected";
+	} else {
+		self.title = [NSString stringWithFormat:@"%lu selected", (unsigned long)count];
+	}
+}
+
+- (void)toggleMessageSelection:(int64_t)messageId {
+	if (!messageId) return;
+	NSNumber *num = @(messageId);
+	if ([self.selectedMessageIds containsObject:num]) {
+		[self.selectedMessageIds removeObject:num];
+	} else {
+		[self.selectedMessageIds addObject:num];
+	}
+	[self updateEditToolbar];
+	[self.table reloadData];
+}
+
+- (void)selectMessageAtIndex:(NSInteger)index {
+	if (index < 0 || index >= (NSInteger)self.messages.count) return;
+	if (!self.isEditingMessages) {
+		[self enterEditMode];
+	}
+	NSDictionary *m = self.messages[index];
+	if ([m[@"service"] boolValue])
+		return;
+	int64_t msgId = [m[@"id"] longLongValue];
+	if (msgId) {
+		[self toggleMessageSelection:msgId];
+	}
+}
+
+- (void)promptDeleteMessages:(NSArray *)ids {
+	if (!ids.count) return;
+	self.pendingDeleteMessageIds = ids;
+
+	BOOL isSaved = (self.chatId == [[TGClient shared] savedMessagesChatId]);
+	UIActionSheet *sheet = nil;
+	if (isSaved) {
+		sheet = [[UIActionSheet alloc] initWithTitle:nil
+											delegate:self
+								   cancelButtonTitle:@"Cancel"
+							  destructiveButtonTitle:@"Delete"
+								   otherButtonTitles:nil];
+	} else {
+		NSString *forBothTitle = self.isGroup
+				? @"Delete for Everyone"
+				: [NSString stringWithFormat:@"Delete for me and %@", self.chatTitle.length ? self.chatTitle : @"them"];
+		sheet = [[UIActionSheet alloc] initWithTitle:nil
+											delegate:self
+								   cancelButtonTitle:@"Cancel"
+							  destructiveButtonTitle:forBothTitle
+								   otherButtonTitles:@"Delete for Me", nil];
+	}
+	sheet.tag = 0xDE1E;
+	[sheet showInView:self.view];
+}
+
+- (void)deleteSelectedMessages {
+	if (!self.selectedMessageIds.count) return;
+	[self promptDeleteMessages:[self.selectedMessageIds allObjects]];
+}
+
+- (void)executeDeleteMessages:(NSArray *)ids revoke:(BOOL)revoke {
+	if (!ids.count) return;
+	NSUInteger count = ids.count;
+	int64_t chatId = self.chatId;
+	NSSet *idSet = [NSSet setWithArray:ids];
+
+	NSMutableArray *without = [NSMutableArray arrayWithCapacity:self.messages.count];
+	for (NSDictionary *m in self.messages) {
+		if (![idSet containsObject:m[@"id"]]) {
+			[without addObject:m];
+		}
+	}
+	self.messages = without;
+
+	if (self.isEditingMessages) {
+		[self exitEditMode];
+	} else {
+		[self.table reloadData];
+	}
+
+	[[TGClient shared] deleteMessages:ids inChat:chatId revoke:revoke];
+
+	NSString *text = (count == 1) ? @"Message deleted" : [NSString stringWithFormat:@"%lu messages deleted", (unsigned long)count];
+	[TGSnackbar showInView:self.view text:text seconds:3 onCommit:^{}];
+
+	__weak typeof(self) weakSelf = self;
+	dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(4.0 * NSEC_PER_SEC)),
+			dispatch_get_main_queue(), ^{ [weakSelf reload]; });
+}
+
+- (void)forwardSelectedMessages {
+	if (!self.selectedMessageIds.count) return;
+	NSArray *ids = [self.selectedMessageIds allObjects];
+	int64_t chatId = self.chatId;
+
+	TGForwardPicker *picker = [[TGForwardPicker alloc] init];
+	__weak typeof(self) weakSelf = self;
+	picker.onPicked = ^(int64_t targetChatId){
+		[[TGClient shared] forwardMessages:ids
+								  fromChat:chatId
+									toChat:targetChatId];
+		[weakSelf exitEditMode];
+		[TGSnackbar showInView:weakSelf.view
+						  text:[NSString stringWithFormat:@"%lu forwarded", (unsigned long)ids.count]
+					   seconds:3
+					  onCommit:^{}];
+	};
+	[self.navigationController pushViewController:picker animated:YES];
+}
+
+- (TGBubbleCell *)finalizeCell:(TGBubbleCell *)cell message:(NSDictionary *)m layout:(TGMessageLayout *)layout isMine:(BOOL)mine {
+	if (!self.isEditingMessages || layout.isService) {
+		cell.checkbox.hidden = YES;
+		cell.bubble.userInteractionEnabled = YES;
+		return cell;
+	}
+
+	cell.checkbox.hidden = NO;
+	cell.bubble.userInteractionEnabled = NO;
+
+	int64_t msgId = [m[@"id"] longLongValue];
+	BOOL isSelected = [self.selectedMessageIds containsObject:@(msgId)];
+	cell.checkbox.image = [TGIcons selectionCheckboxSelected:isSelected];
+
+	if (!mine) {
+		CGRect bf = cell.bubble.frame;
+		bf.origin.x += 34.0f;
+		cell.bubble.frame = bf;
+
+		if (!cell.senderAvatar.hidden) {
+			CGRect af = cell.senderAvatar.frame;
+			af.origin.x += 34.0f;
+			cell.senderAvatar.frame = af;
+		}
+		if (!cell.sender.hidden) {
+			CGRect sf = cell.sender.frame;
+			sf.origin.x += 34.0f;
+			cell.sender.frame = sf;
+		}
+	}
+
+	CGFloat cy = CGRectGetMidY(cell.bubble.frame);
+	cell.checkbox.frame = CGRectMake(10, cy - 11, 22, 22);
+	return cell;
+}
+
 #pragma mark - table
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
@@ -2988,7 +3280,7 @@ static UIColor *TGSenderColour(int64_t userId) {
 		cell.body.textColor = [serviceTheme serviceTextColour];
 		cell.body.text = line;
 		cell.body.frame = layout.bodyFrame;
-		return cell;
+		return [self finalizeCell:cell message:m layout:layout isMine:mine];
 	}
 
 	cell.body.textAlignment = NSTextAlignmentLeft;
@@ -3089,7 +3381,7 @@ static UIColor *TGSenderColour(int64_t userId) {
 			cell.ticks.image = [TGIcons ticksWhite:NO];
 			cell.ticks.frame = CGRectMake(layout.bubbleFrame.size.width - kPadH - 15, layout.bubbleFrame.size.height - 15, 15, 9);
 		}
-		return cell;
+		return [self finalizeCell:cell message:m layout:layout isMine:mine];
 	}
 
 	// Calls
@@ -3136,7 +3428,7 @@ static UIColor *TGSenderColour(int64_t userId) {
 		cell.picture.hidden = YES;
 		cell.time.text = @"";
 		cell.ticks.hidden = YES;
-		return cell;
+		return [self finalizeCell:cell message:m layout:layout isMine:mine];
 	}
 
 	// Documents
@@ -3193,7 +3485,7 @@ static UIColor *TGSenderColour(int64_t userId) {
 			cell.ticks.frame = CGRectMake(layout.bubbleFrame.size.width - kPadH - 15, layout.bubbleFrame.size.height - 15, 15, 9);
 		}
 		cell.picture.hidden = YES;
-		return cell;
+		return [self finalizeCell:cell message:m layout:layout isMine:mine];
 	}
 
 	// Contacts
@@ -3282,7 +3574,7 @@ static UIColor *TGSenderColour(int64_t userId) {
 			cell.ticks.frame = CGRectMake(layout.bubbleFrame.size.width - kPadH - 15, fwd + 32, 15, 9);
 		}
 		cell.picture.hidden = YES;
-		return cell;
+		return [self finalizeCell:cell message:m layout:layout isMine:mine];
 	}
 
 	// Locations
@@ -3369,7 +3661,7 @@ static UIColor *TGSenderColour(int64_t userId) {
 										  layout.bubbleFrame.size.height - 15, 15, 9);
 			[cell.bubble bringSubviewToFront:cell.ticks];
 		}
-		return cell;
+		return [self finalizeCell:cell message:m layout:layout isMine:mine];
 	}
 
 	// General bubble messages
@@ -3445,7 +3737,7 @@ static UIColor *TGSenderColour(int64_t userId) {
 		}
 
 		cell.time.hidden = YES;
-		return cell;
+		return [self finalizeCell:cell message:m layout:layout isMine:mine];
 	}
 
 	// Animated sticker
@@ -3467,7 +3759,7 @@ static UIColor *TGSenderColour(int64_t userId) {
 		cell.time.text = [hmt stringFromDate:[NSDate dateWithTimeIntervalSince1970:[m[@"date"] doubleValue]]];
 		cell.time.textColor = [theme timeColour];
 		cell.time.frame = CGRectMake(side - 44, side, 44, 12);
-		return cell;
+		return [self finalizeCell:cell message:m layout:layout isMine:mine];
 	}
 
 	cell.quoteBar.hidden = YES;
@@ -3559,9 +3851,9 @@ static UIColor *TGSenderColour(int64_t userId) {
 		cell.picture.hidden = NO;
 		UIImage *img = [self imageFor:m];
 		cell.picture.image = img;
-		cell.picture.backgroundColor = img ? [UIColor clearColor] : [theme fileTileColour];
+		cell.picture.backgroundColor = (img || layout.isSticker) ? [UIColor clearColor] : [theme fileTileColour];
 		cell.picture.frame = layout.pictureFrame;
-		cell.picture.layer.cornerRadius = kMediaRadius;
+		cell.picture.layer.cornerRadius = layout.isSticker ? 0.0f : kMediaRadius;
 		cell.picture.clipsToBounds = YES;
 
 		cell.disc.hidden = ![kind isEqualToString:@"messageVideo"] && ![kind isEqualToString:@"messageAnimation"];
@@ -3642,10 +3934,10 @@ static UIColor *TGSenderColour(int64_t userId) {
 			cell.ticks.image = [TGIcons ticksWhite:NO];
 			cell.ticks.frame = CGRectMake(layout.bubbleFrame.size.width - kPadH - 15, layout.bubbleFrame.size.height - 18, 15, 9);
 		}
-		return cell;
+		return [self finalizeCell:cell message:m layout:layout isMine:mine];
 	}
 
-	cell.body.hidden = (layout.bodySize.height == 0);
+	cell.body.hidden = (layout.bodySize.height == 0 || layout.isSticker);
 	cell.body.numberOfLines = 0;
 	cell.body.lineBreakMode = NSLineBreakByWordWrapping;
 	cell.body.font = [UIFont systemFontOfSize:[TGTheme shared].messageFontSize];
@@ -3698,9 +3990,11 @@ static UIColor *TGSenderColour(int64_t userId) {
 	} else if (mine) {
 		cell.ticks.image = [TGIcons ticksWhite:NO];
 		cell.ticks.frame = CGRectMake(layout.bubbleFrame.size.width - kPadH - 15, layout.timeFrame.origin.y + 2, 15, 9);
+		[cell.bubble bringSubviewToFront:cell.ticks];
 	}
+	[cell.bubble bringSubviewToFront:cell.time];
 
-	return cell;
+	return [self finalizeCell:cell message:m layout:layout isMine:mine];
 }
 
 #pragma mark - keyboard

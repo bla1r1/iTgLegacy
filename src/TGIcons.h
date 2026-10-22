@@ -46,6 +46,7 @@
 /// Delivery ticks, drawn the way Telegram draws them: two checks overlapping
 /// into one mark, not two separate glyphs side by side.
 + (UIImage *)ticksWhite:(BOOL)white;
++ (UIImage *)selectionCheckboxSelected:(BOOL)selected;
 
 /// The two rows that stand above the chat list draw a glyph, not a letter:
 /// a filled archive box, and the bookmark Telegram uses for Saved Messages.

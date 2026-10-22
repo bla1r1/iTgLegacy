@@ -71,6 +71,11 @@
 	self.ticks.hidden = YES;
 	[self.bubble addSubview:self.ticks];
 
+	self.checkbox = [[UIImageView alloc] init];
+	self.checkbox.hidden = YES;
+	self.checkbox.contentMode = UIViewContentModeCenter;
+	[self.contentView addSubview:self.checkbox];
+
 	self.quoteBar = [[UIView alloc] init];
 	self.quoteBar.hidden = YES;
 	[self.bubble addSubview:self.quoteBar];
@@ -250,6 +255,7 @@
 	self.sender.hidden = YES;
 	self.senderAvatar.hidden = YES;
 	self.tail.hidden = YES;
+	self.checkbox.hidden = YES;
 	self.disc.hidden = YES;
 	self.wave.hidden = YES;
 	self.contactCallButton.hidden = YES;

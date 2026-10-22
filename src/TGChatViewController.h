@@ -23,4 +23,14 @@
 /// itglegacy://tap/N so playback and viewers can be exercised remotely.
 - (void)simulateTapOnRow:(NSInteger)row;
 
+@property (nonatomic, assign, readonly) BOOL isEditingMessages;
+@property (nonatomic, strong, readonly) NSMutableSet *selectedMessageIds;
+- (void)enterEditMode;
+- (void)exitEditMode;
+- (void)toggleMessageSelection:(int64_t)messageId;
+- (void)selectMessageAtIndex:(NSInteger)index;
+- (void)deleteSelectedMessages;
+- (void)executeDeleteMessages:(NSArray *)ids revoke:(BOOL)revoke;
+- (void)forwardSelectedMessages;
+
 @end

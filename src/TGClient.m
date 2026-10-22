@@ -1440,11 +1440,21 @@ static NSDictionary *TGFlattenMessage(NSDictionary *m) {
 }
 
 - (void)deleteMessage:(int64_t)messageId inChat:(int64_t)chatId {
+	[self deleteMessages:@[@(messageId)] inChat:chatId revoke:YES];
+}
+
+- (void)deleteMessages:(NSArray *)messageIds inChat:(int64_t)chatId {
+	[self deleteMessages:messageIds inChat:chatId revoke:YES];
+}
+
+- (void)deleteMessages:(NSArray *)messageIds inChat:(int64_t)chatId revoke:(BOOL)revoke {
+	if (!messageIds.count)
+		return;
 	[self send:@{
 		@"@type"        : @"deleteMessages",
 		@"chat_id"      : @(chatId),
-		@"message_ids"  : @[@(messageId)],
-		@"revoke"       : @YES,
+		@"message_ids"  : messageIds,
+		@"revoke"       : @(revoke),
 	}];
 }
 

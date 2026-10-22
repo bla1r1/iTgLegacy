@@ -331,6 +331,8 @@ typedef NS_ENUM(NSInteger, TGConnectionState) {
 - (void)reactTo:(int64_t)messageId inChat:(int64_t)chatId emoji:(NSString *)emoji;
 
 - (void)deleteMessage:(int64_t)messageId inChat:(int64_t)chatId;
+- (void)deleteMessages:(NSArray *)messageIds inChat:(int64_t)chatId;
+- (void)deleteMessages:(NSArray *)messageIds inChat:(int64_t)chatId revoke:(BOOL)revoke;
 - (void)markRead:(NSArray *)messageIds inChat:(int64_t)chatId;
 
 /// Search messages across every chat. Each result is a flattened message with
