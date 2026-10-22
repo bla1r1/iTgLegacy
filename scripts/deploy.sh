@@ -32,7 +32,7 @@ if ! nc -z localhost 2222 2>/dev/null; then
 fi
 
 SSH_CMD="sshpass -p alpine ssh -p 2222 -o UserKnownHostsFile=/dev/null -o HostKeyAlgorithms=+ssh-rsa -o StrictHostKeyChecking=no mobile@localhost"
-SCP_CMD="sshpass -p alpine scp -P 2222 -o UserKnownHostsFile=/dev/null -o HostKeyAlgorithms=+ssh-rsa -o StrictHostKeyChecking=no"
+SCP_CMD="sshpass -p alpine scp -O -P 2222 -o UserKnownHostsFile=/dev/null -o HostKeyAlgorithms=+ssh-rsa -o StrictHostKeyChecking=no"
 
 if [ "$DO_FULL" -eq 1 ]; then
     echo "[+] Performing full IPA install via ideviceinstaller..."
@@ -55,14 +55,12 @@ echo "[+] Target app directory: $REMOTE_APP_DIR"
 if [ "$DO_SYNC" -eq 1 ]; then
     echo "[+] Syncing full iTgLegacy.app bundle (binary, images, plists)..."
     $SCP_CMD -r "$ROOT/build/armv7/app/iTgLegacy.app/"* "mobile@localhost:$REMOTE_APP_DIR/"
-    echo "[+] Refreshing LaunchServices icon cache (without SpringBoard respring)..."
-    $SSH_CMD "su -c uicache mobile 2>/dev/null || uicache 2>/dev/null || true"
 else
     echo "[+] Copying fresh iTgLegacy executable over SSH..."
     $SCP_CMD "$ROOT/build/armv7/app/iTgLegacy.app/iTgLegacy" "mobile@localhost:$REMOTE_APP_DIR/iTgLegacy"
 fi
 
-echo "[+] Restarting iTgLegacy process..."
-$SSH_CMD "killall -9 iTgLegacy 2>/dev/null || true; /usr/bin/uiopen itglegacy:// 2>/dev/null || openURL itglegacy:// 2>/dev/null || true" 2>/dev/null || true
+echo "[+] Restarting iTgLegacy process & waking screen..."
+$SSH_CMD "killall -9 iTgLegacy 2>/dev/null || true; sbunlock --launch 2>/dev/null || openURL itglegacy:// 2>/dev/null || true" 2>/dev/null || true
 
 echo "[+] Fast deploy complete in seconds! App updated on device."
