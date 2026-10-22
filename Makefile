@@ -168,6 +168,7 @@ LIBTG_SRC_CXX :=
 
 APP_SRC_M := \
 	src/Core/AppDelegate.m \
+	src/Core/AppDelegate+URL.m \
 	src/Controllers/RootViewController.m \
 	src/main.m \
 	src/Core/TGClient.m \
@@ -202,6 +203,8 @@ APP_SRC_M := \
 	src/Controllers/TGChatViewController+Actions.m \
 	src/Controllers/TGChatViewController+Layout.m \
 	src/Controllers/TGChatViewController+Cells.m \
+	src/Controllers/TGChatViewController+Input.m \
+	src/Controllers/TGChatViewController+Media.m \
 	src/Controllers/TGContactsViewController.m \
 	src/Controllers/TGTopicsViewController.m \
 	src/Controllers/TGForwardPicker.m \

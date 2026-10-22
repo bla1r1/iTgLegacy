@@ -18,7 +18,6 @@
 #import <MobileCoreServices/MobileCoreServices.h>
 
 static const CGFloat kInputHeight = 48.0f;
-static const CGFloat kAvatarSide  = 34.0f;
 
 @interface TGChatViewController () <UISearchBarDelegate, CLLocationManagerDelegate,
 		UIScrollViewDelegate, AVAudioPlayerDelegate,
@@ -86,13 +85,13 @@ static const CGFloat kAvatarSide  = 34.0f;
 @property (nonatomic, strong) UIBarButtonItem *savedRightBarButtonItem;
 @property (nonatomic, strong) NSArray *pendingDeleteMessageIds;
 
-- (void)clearComposeState;
-- (void)showComposeBanner:(NSString *)text;
 - (void)reload;
 - (void)showPlaybackFailure;
 - (void)applyTheme;
+- (void)inputChanged;
 - (void)stopPlayback;
 - (void)stopVideoNote;
+- (void)playVideoNoteAtPath:(NSString *)path row:(NSInteger)row;
 - (void)togglePlayback;
 - (void)showMusicBar;
 - (void)playVoiceNoteForMessage:(NSDictionary *)m atRow:(NSInteger)row;
@@ -106,8 +105,9 @@ static const CGFloat kAvatarSide  = 34.0f;
 - (void)downloadFileId:(NSInteger)fileId;
 - (void)openFileWithViewer:(NSString *)filePath;
 - (void)handleMessageTap:(NSDictionary *)m;
-- (void)beginDownloadHUDForFile:(NSInteger)fileId;
-- (void)endDownloadHUD;
+- (void)recordStart;
+- (void)recordFinish;
+- (void)recordCancel;
 - (void)toggleChatSearch;
 - (void)endChatSearch;
 - (void)showActionsForRow:(NSInteger)row;
@@ -117,9 +117,41 @@ static const CGFloat kAvatarSide  = 34.0f;
 - (void)sendCurrentLocation;
 - (void)pickContact;
 - (void)presentAddContactForMessage:(NSDictionary *)m;
-- (void)showFullScreenImage:(UIImage *)image;
-- (void)inputChanged;
+- (void)reloadTableDebounced;
+
+@end
+
+@interface TGChatViewController (Input)
+
 - (void)sendTapped;
+- (void)buildInputBar:(CGRect)b;
+- (void)clearComposeState;
+- (void)showComposeBanner:(NSString *)text;
+- (void)toggleStickerPanel;
+- (void)fillStickerPanel:(UIScrollView *)panel with:(NSArray *)stickers;
+- (void)stickerTapped:(UIButton *)button;
+- (void)attachTapped;
+- (void)shiftForKeyboardHeight:(CGFloat)height;
+- (void)keyboardWillShow:(NSNotification *)note;
+- (void)keyboardWillHide:(NSNotification *)note;
+
+@end
+
+@interface TGChatViewController (Media)
+
+- (void)fetchMissingMaps;
+- (void)resolveUnknownSenders;
+- (void)fetchMissingQuotes;
+- (void)fetchMissingImages;
+- (void)applyThemeFromMessage:(NSDictionary *)m;
+- (UIImage *)avatarForUser:(int64_t)userId name:(NSString *)name;
+- (UIImage *)mapCardForLatitude:(double)lat longitude:(double)lon;
+- (void)beginDownloadHUDForFile:(NSInteger)fileId;
+- (void)endDownloadHUD;
+
+@end
+
+@interface TGChatViewController ()
 
 // Layout and cell helpers
 - (NSString *)quoteTextFor:(NSDictionary *)m;
@@ -137,13 +169,11 @@ static const CGFloat kAvatarSide  = 34.0f;
 - (TGMessageLayout *)layoutForMessage:(NSDictionary *)m atRow:(NSInteger)row;
 - (BOOL)continuesAlbumAtRow:(NSInteger)row;
 - (BOOL)albumContinuesAfterRow:(NSInteger)row;
-- (UIImage *)avatarForUser:(int64_t)userId name:(NSString *)name;
 - (void)pollOptionTapped:(UIButton *)option;
 - (void)callCellButtonTapped:(UIButton *)btn;
 - (void)contactCallButtonTapped:(UIButton *)btn;
 - (void)contactAddButtonTapped:(UIButton *)btn;
 - (void)videoNoteDiscTapped:(UITapGestureRecognizer *)tap;
-- (UIImage *)mapCardForLatitude:(double)lat longitude:(double)lon;
 - (float)playedFraction;
 - (void)voiceDiscTapped:(UITapGestureRecognizer *)tap;
 - (void)waveformScrubbed:(UIGestureRecognizer *)gesture;
