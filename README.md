@@ -56,7 +56,6 @@ iTgLegacy/
 ├── tools/         # Host and device utilities & tweaks
 ├── scripts/       # Build automation and deployment scripts
 ├── tests/         # Unit and integration test suite
-├── legacy/        # Historical/prototype code (libtg MTProto engine)
 └── build/         # Build outputs (git-ignored)
     ├── iTgLegacy-armv7.ipa # 32-bit IPA for iOS 6.0+ (8.8 MB)
     ├── iTgLegacy-arm64.ipa # 64-bit IPA for iOS 7.0-12.5.7 (8.8 MB)
