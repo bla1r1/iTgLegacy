@@ -48,12 +48,6 @@
 	CGContextSetRGBFillColor(ctx, 1, 1, 1, 1);
 	CGContextFillEllipseInRect(ctx, CGRectMake(p.x - 3, p.y - 11, 6, 6));
 
-	// coordinates, so the card still carries the real information
-	NSString *coords = [NSString stringWithFormat:@"%.4f, %.4f", lat, lon];
-	CGContextSetRGBFillColor(ctx, 0.25f, 0.27f, 0.24f, 1.0f);
-	[coords drawAtPoint:CGPointMake(8, size.height - 18)
-			   withFont:[UIFont systemFontOfSize:12]];
-
 	UIImage *card = UIGraphicsGetImageFromCurrentImageContext();
 	UIGraphicsEndImageContext();
 	return card;

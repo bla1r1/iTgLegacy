@@ -77,7 +77,7 @@ static NSArray *TGPacksFrom(NSDictionary *target) {
 						@"first_name"  : u[@"first_name"] ?: @"",
 						@"last_name"   : u[@"last_name"] ?: @"",
 						@"phone"       : u[@"phone_number"] ?: @"",
-						@"username"    : u[@"usernames"][@"active_usernames"][0] ?: @"",
+						@"username"    : ([u[@"usernames"][@"active_usernames"] isKindOfClass:[NSArray class]] && [u[@"usernames"][@"active_usernames"] count] > 0) ? u[@"usernames"][@"active_usernames"][0] : (u[@"username"] ?: @""),
 						@"photoFileId" : u[@"profile_photo"][@"small"][@"id"] ?: [NSNull null],
 					}];
 				}

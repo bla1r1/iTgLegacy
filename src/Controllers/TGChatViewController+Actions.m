@@ -227,6 +227,33 @@
 		CFRelease(phoneMulti);
 	}
 
+	NSString *fullName = [NSString stringWithFormat:@"%@%@",
+			first.length ? first : @"",
+			(first.length && last.length) ? [NSString stringWithFormat:@" %@", last] : (last ?: @"")];
+	if (!fullName.length) fullName = @"Contact";
+
+	int64_t uid = [contact[@"userId"] longLongValue];
+	UIImage *avatarImg = nil;
+	if (uid != 0) {
+		avatarImg = self.senderAvatars[@(uid)] ?: self.images[@(uid)];
+	}
+	if (!avatarImg) {
+		int64_t senderId = [m[@"senderId"] longLongValue];
+		if (senderId != 0) {
+			avatarImg = self.senderAvatars[@(senderId)];
+		}
+	}
+	if (!avatarImg) {
+		NSString *initials = fullName.length ? [fullName substringToIndex:1] : @"?";
+		avatarImg = [TGIcons avatarWithInitials:initials.uppercaseString size:120 colourId:uid ?: (int64_t)[fullName hash]];
+	}
+	if (avatarImg) {
+		NSData *imgData = UIImagePNGRepresentation(avatarImg);
+		if (imgData.length) {
+			ABPersonSetImageData(person, (__bridge CFDataRef)imgData, NULL);
+		}
+	}
+
 	ABUnknownPersonViewController *ctrl = [[ABUnknownPersonViewController alloc] init];
 	ctrl.displayedPerson = person;
 	ctrl.allowsAddingToAddressBook = YES;
@@ -307,6 +334,113 @@
 	UIView *backdrop = tap.view;
 	[UIView animateWithDuration:0.2 animations:^{ backdrop.alpha = 0; }
 					 completion:^(BOOL done){ [backdrop removeFromSuperview]; }];
+}
+
+- (void)openChatWithUsername:(NSString *)username {
+	if (!username.length) return;
+	__weak typeof(self) weakSelf = self;
+	[[TGClient shared] chatWithUsername:username completion:^(int64_t chatId, NSString *title){
+		TGChatViewController *me = weakSelf;
+		if (!me) return;
+		if (!chatId) {
+			[TGSnackbar showInView:me.navigationController.view
+							  text:[NSString stringWithFormat:@"No such account: @%@", username]
+						   seconds:2 onCommit:nil];
+			return;
+		}
+		TGChatViewController *chatVC = [[TGChatViewController alloc] init];
+		chatVC.chatId = chatId;
+		chatVC.chatTitle = title.length ? title : username;
+		chatVC.hidesBottomBarWhenPushed = YES;
+		[me.navigationController pushViewController:chatVC animated:YES];
+	}];
+}
+
+- (void)handleOpenLink:(NSString *)urlStr {
+	if (!urlStr.length) return;
+
+	NSString *clean = [urlStr stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+
+	// @mention directly
+	if ([clean hasPrefix:@"@"]) {
+		[self openChatWithUsername:[clean substringFromIndex:1]];
+		return;
+	}
+
+	NSURL *u = [NSURL URLWithString:clean];
+	if (!u.scheme.length) {
+		u = [NSURL URLWithString:[NSString stringWithFormat:@"http://%@", clean]];
+	}
+
+	NSString *host = u.host.lowercaseString;
+	NSString *scheme = u.scheme.lowercaseString;
+
+	BOOL isTelegramHost = [host isEqualToString:@"t.me"] || [host isEqualToString:@"telegram.me"] || [host isEqualToString:@"telegram.dog"];
+	BOOL isTelegramScheme = [scheme isEqualToString:@"tg"];
+
+	if (isTelegramHost || isTelegramScheme) {
+		NSString *inviteHash = nil;
+		if (isTelegramHost) {
+			NSString *path = u.path;
+			if ([path hasPrefix:@"/+"]) {
+				inviteHash = [path substringFromIndex:2];
+			} else if ([path hasPrefix:@"/joinchat/"]) {
+				inviteHash = [path substringFromIndex:10];
+			}
+		} else if (isTelegramScheme && [host isEqualToString:@"join"]) {
+			for (NSString *param in [u.query componentsSeparatedByString:@"&"]) {
+				NSArray *kv = [param componentsSeparatedByString:@"="];
+				if (kv.count == 2 && [kv[0] isEqualToString:@"invite"]) {
+					inviteHash = kv[1];
+					break;
+				}
+			}
+		}
+
+		if (inviteHash.length) {
+			__weak typeof(self) weakSelf = self;
+			[[TGClient shared] joinChatByInviteLink:clean completion:^(int64_t chatId, NSString *title) {
+				TGChatViewController *me = weakSelf;
+				if (!me) return;
+				if (chatId != 0) {
+					TGChatViewController *chatVC = [[TGChatViewController alloc] init];
+					chatVC.chatId = chatId;
+					chatVC.chatTitle = title.length ? title : @"Chat";
+					chatVC.hidesBottomBarWhenPushed = YES;
+					[me.navigationController pushViewController:chatVC animated:YES];
+				} else {
+					[TGSnackbar showInView:me.navigationController.view
+									  text:@"Could not join chat" seconds:2 onCommit:nil];
+				}
+			}];
+			return;
+		}
+
+		NSString *username = nil;
+		if (isTelegramHost) {
+			NSString *path = u.path;
+			if ([path hasPrefix:@"/"]) path = [path substringFromIndex:1];
+			NSRange slash = [path rangeOfString:@"/"];
+			username = (slash.location != NSNotFound) ? [path substringToIndex:slash.location] : path;
+		} else if (isTelegramScheme) {
+			for (NSString *param in [u.query componentsSeparatedByString:@"&"]) {
+				NSArray *kv = [param componentsSeparatedByString:@"="];
+				if (kv.count == 2 && [kv[0] isEqualToString:@"domain"]) {
+					username = kv[1];
+					break;
+				}
+			}
+		}
+
+		if (username.length && ![username isEqualToString:@"joinchat"] && ![username hasPrefix:@"+"]) {
+			[self openChatWithUsername:username];
+			return;
+		}
+	}
+
+	if (u) {
+		[[UIApplication sharedApplication] openURL:u];
+	}
 }
 
 @end

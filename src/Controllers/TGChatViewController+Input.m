@@ -59,7 +59,7 @@
 	self.sendButton.layer.rasterizationScale = scale;
 	[self.sendButton setImage:[TGIcons send] forState:UIControlStateNormal];
 	self.sendButton.tintColor = [UIColor whiteColor];
-	self.sendButton.imageEdgeInsets = UIEdgeInsetsMake(0, 2, 0, 0);
+	self.sendButton.imageEdgeInsets = UIEdgeInsetsZero;
 	self.sendButton.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
 	[self.sendButton addTarget:self action:@selector(sendTapped)
 			forControlEvents:UIControlEventTouchUpInside];
@@ -83,12 +83,14 @@
 	[self.micButton setImage:[TGIcons microphone] forState:UIControlStateNormal];
 	self.micButton.tintColor = [[TGTheme shared] secondaryTextColour];
 	self.micButton.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
-	[self.micButton addTarget:self action:@selector(recordStart)
+	[self.micButton addTarget:self action:@selector(recordTouchDown:withEvent:)
 			 forControlEvents:UIControlEventTouchDown];
-	[self.micButton addTarget:self action:@selector(recordFinish)
-			 forControlEvents:UIControlEventTouchUpInside];
-	[self.micButton addTarget:self action:@selector(recordCancel)
-			 forControlEvents:UIControlEventTouchUpOutside | UIControlEventTouchCancel];
+	[self.micButton addTarget:self action:@selector(recordTouchUp:withEvent:)
+			 forControlEvents:UIControlEventTouchUpInside | UIControlEventTouchUpOutside];
+	[self.micButton addTarget:self action:@selector(recordTouchCancel)
+			 forControlEvents:UIControlEventTouchCancel];
+	[self.micButton addTarget:self action:@selector(recordDrag:withEvent:)
+			 forControlEvents:UIControlEventTouchDragInside | UIControlEventTouchDragOutside];
 	[self.inputBar addSubview:self.micButton];
 
 	[self.input addTarget:self action:@selector(inputChanged)
@@ -177,72 +179,237 @@
 	return NO;
 }
 
+static NSMutableDictionary *sStickerImageCache = nil;
+
 #pragma mark - stickers
 
-/// A strip of the stickers used lately. A full sticker-set browser is a screen
-/// of its own; the recents are what a chat reaches for.
-- (void)toggleStickerPanel {
-	if (self.stickerPanel){
-		[self.stickerPanel removeFromSuperview];
-		self.stickerPanel = nil;
+- (void)hideStickerPanel {
+	if (!self.stickerPanel || self.stickerPanel.hidden)
 		return;
+	[UIView animateWithDuration:0.2 animations:^{
+		CGRect f = self.stickerPanel.frame;
+		f.origin.y = CGRectGetMinY(self.inputBar.frame);
+		self.stickerPanel.frame = f;
+		self.stickerPanel.alpha = 0.0f;
+	} completion:^(BOOL finished) {
+		self.stickerPanel.hidden = YES;
+	}];
+}
+
+- (void)toggleStickerPanel {
+	if (self.stickerPanel && !self.stickerPanel.hidden) {
+		[self hideStickerPanel];
+		return;
+	}
+
+	BOOL wasKb = [self.input isFirstResponder];
+	if (wasKb) {
+		[self.input resignFirstResponder];
 	}
 
 	CGRect b = self.view.bounds;
 	CGFloat height = 96;
-	UIScrollView *panel = [[UIScrollView alloc] initWithFrame:
-			CGRectMake(0, CGRectGetMinY(self.inputBar.frame) - height, b.size.width, height)];
-	panel.backgroundColor = [[TGTheme shared] inputBarColour];
-	panel.autoresizingMask = UIViewAutoresizingFlexibleWidth |
-							 UIViewAutoresizingFlexibleTopMargin;
-	[self.view addSubview:panel];
-	self.stickerPanel = panel;
+	CGFloat panelY = b.size.height - kInputHeight - height;
 
-	__weak typeof(self) weakSelf = self;
-	[[TGClient shared] recentStickersWithCompletion:^(NSArray *stickers){
-		TGChatViewController *me = weakSelf;
-		if (!me || me.stickerPanel != panel)
-			return;
-		[me fillStickerPanel:panel with:stickers];
+	if (!self.stickerPanel) {
+		UIScrollView *panel = [[UIScrollView alloc] initWithFrame:
+				CGRectMake(0, b.size.height - kInputHeight, b.size.width, height)];
+		panel.backgroundColor = [[TGTheme shared] inputBarColour];
+		panel.autoresizingMask = UIViewAutoresizingFlexibleWidth |
+								 UIViewAutoresizingFlexibleTopMargin;
+		panel.showsHorizontalScrollIndicator = NO;
+		panel.alwaysBounceHorizontal = YES;
+
+		// Fast swipe down to dismiss
+		UISwipeGestureRecognizer *swipeDown = [[UISwipeGestureRecognizer alloc]
+				initWithTarget:self action:@selector(hideStickerPanel)];
+		swipeDown.direction = UISwipeGestureRecognizerDirectionDown;
+		[panel addGestureRecognizer:swipeDown];
+
+		// Smooth interactive pan down to dismiss
+		UIPanGestureRecognizer *panDown = [[UIPanGestureRecognizer alloc]
+				initWithTarget:self action:@selector(handleStickerPan:)];
+		panDown.delegate = self;
+		[panel addGestureRecognizer:panDown];
+
+		[self.view addSubview:panel];
+		self.stickerPanel = panel;
+
+		// Populate emojis instantly!
+		[self fillStickerPanel:panel with:nil];
+
+		__weak typeof(self) weakSelf = self;
+		[[TGClient shared] recentStickersWithCompletion:^(NSArray *stickers){
+			TGChatViewController *me = weakSelf;
+			if (!me || me.stickerPanel != panel || !stickers.count)
+				return;
+			[me appendRecentStickers:stickers toPanel:panel];
+		}];
+	}
+
+	self.stickerPanel.frame = CGRectMake(0, b.size.height - kInputHeight, b.size.width, height);
+	self.stickerPanel.alpha = 0.0f;
+	self.stickerPanel.hidden = NO;
+	[self.view bringSubviewToFront:self.stickerPanel];
+
+	NSTimeInterval dur = wasKb ? 0.25 : 0.2;
+	[UIView animateWithDuration:dur animations:^{
+		self.stickerPanel.frame = CGRectMake(0, panelY, b.size.width, height);
+		self.stickerPanel.alpha = 1.0f;
 	}];
 }
 
+- (void)handleStickerPan:(UIPanGestureRecognizer *)pan {
+	CGPoint trans = [pan translationInView:self.stickerPanel];
+	CGPoint vel = [pan velocityInView:self.stickerPanel];
+	CGFloat height = 96;
+	CGFloat panelY = self.view.bounds.size.height - kInputHeight - height;
+
+	if (pan.state == UIGestureRecognizerStateChanged) {
+		if (trans.y > 0) {
+			self.stickerPanel.frame = CGRectMake(0, panelY + trans.y, self.stickerPanel.bounds.size.width, height);
+			self.stickerPanel.alpha = MAX(0.0f, 1.0f - (trans.y / height));
+		}
+	} else if (pan.state == UIGestureRecognizerStateEnded || pan.state == UIGestureRecognizerStateCancelled) {
+		if (trans.y > 25.0f || vel.y > 150.0f) {
+			[self hideStickerPanel];
+		} else {
+			[UIView animateWithDuration:0.15 animations:^{
+				self.stickerPanel.frame = CGRectMake(0, panelY, self.stickerPanel.bounds.size.width, height);
+				self.stickerPanel.alpha = 1.0f;
+			}];
+		}
+	}
+}
+
+- (BOOL)gestureRecognizerShouldBegin:(UIGestureRecognizer *)gestureRecognizer {
+	if ([gestureRecognizer isKindOfClass:[UIPanGestureRecognizer class]]) {
+		UIPanGestureRecognizer *pan = (UIPanGestureRecognizer *)gestureRecognizer;
+		if (pan.view == self.stickerPanel) {
+			CGPoint vel = [pan velocityInView:self.stickerPanel];
+			return (vel.y > 0 && fabs(vel.y) > fabs(vel.x));
+		}
+	}
+	return YES;
+}
+
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherGestureRecognizer {
+	if (gestureRecognizer.view == self.stickerPanel || otherGestureRecognizer.view == self.stickerPanel) {
+		return YES;
+	}
+	return NO;
+}
+
 - (void)fillStickerPanel:(UIScrollView *)panel with:(NSArray *)stickers {
-	CGFloat side = 72, gap = 6, x = gap;
-	for (NSDictionary *sticker in stickers){
+	CGFloat side = 38.0f, gap = 4.0f;
+	UIFont *emojiFont = [UIFont systemFontOfSize:24.0f];
+
+	// Top 36 most used emojis in 2 compact rows for instant rendering and 60 FPS scrolling
+	NSArray *quickEmojis = @[
+		@"😂", @"❤️", @"👍", @"😍", @"🙏", @"🔥", @"😊", @"😭", @"🤣", @"😘",
+		@"🤔", @"🥺", @"👏", @"🥳", @"😎", @"🙄", @"💔", @"💯",
+		@"✨", @"😡", @"😱", @"😴", @"🤩", @"😅", @"😬", @"🤝", @"✌️", @"👋",
+		@"🙈", @"🎉", @"🎂", @"🍻", @"🎁", @"☀️", @"💪", @"🚀"
+	];
+
+	NSUInteger cols = 18;
+	for (NSUInteger i = 0; i < quickEmojis.count; i++) {
+		NSUInteger row = i / cols;
+		NSUInteger col = i % cols;
+		CGFloat x = 6.0f + col * (side + gap);
+		CGFloat y = (row == 0) ? 6.0f : 48.0f;
+
+		UIButton *btn = [UIButton buttonWithType:UIButtonTypeCustom];
+		btn.frame = CGRectMake(x, y, side, side);
+		btn.tag = 0;
+		[btn setTitle:quickEmojis[i] forState:UIControlStateNormal];
+		btn.titleLabel.font = emojiFont;
+		[btn addTarget:self action:@selector(stickerTapped:)
+		 forControlEvents:UIControlEventTouchUpInside];
+		[panel addSubview:btn];
+	}
+
+	CGFloat totalEmojiWidth = 6.0f + cols * (side + gap) + 6.0f;
+	panel.contentSize = CGSizeMake(totalEmojiWidth, panel.bounds.size.height);
+
+	if (stickers.count > 0) {
+		[self appendRecentStickers:stickers toPanel:panel];
+	}
+}
+
+- (void)appendRecentStickers:(NSArray *)stickers toPanel:(UIScrollView *)panel {
+	if (!stickers.count) return;
+	static dispatch_once_t onceToken;
+	dispatch_once(&onceToken, ^{
+		sStickerImageCache = [[NSMutableDictionary alloc] init];
+	});
+
+	CGFloat x = panel.contentSize.width;
+	CGFloat gap = 6.0f;
+
+	// Separator between emojis and recent stickers
+	UIView *sep = [[UIView alloc] initWithFrame:CGRectMake(x, 14, 1, 68)];
+	sep.backgroundColor = [[TGTheme shared] separatorColour];
+	[panel addSubview:sep];
+	x += 12.0f;
+
+	NSUInteger stickerLimit = MIN((NSUInteger)6, stickers.count);
+	for (NSUInteger i = 0; i < stickerLimit; i++){
+		NSDictionary *sticker = stickers[i];
+		NSInteger fileId = [sticker[@"fileId"] integerValue];
 		UIButton *button = [UIButton buttonWithType:UIButtonTypeCustom];
-		button.frame = CGRectMake(x, 12, side, side);
-		button.tag = [sticker[@"fileId"] integerValue];
+		button.frame = CGRectMake(x, 12, 72, 72);
+		button.tag = fileId;
 		[button addTarget:self action:@selector(stickerTapped:)
 		 forControlEvents:UIControlEventTouchUpInside];
-		// Until the picture is decoded the emoji stands in, so the strip is
-		// usable immediately rather than a row of blanks.
 		[button setTitle:sticker[@"emoji"] forState:UIControlStateNormal];
-		button.titleLabel.font = TGEmojiFontOfSize(34) ?: [UIFont systemFontOfSize:34];
+		button.titleLabel.font = [UIFont systemFontOfSize:28];
 		[panel addSubview:button];
-		x += side + gap;
+		x += 72 + gap;
 
-		if ([sticker[@"isAnimated"] boolValue])
-			continue;
-		[[TGClient shared] downloadFile:[sticker[@"fileId"] integerValue]
-							 completion:^(NSString *path){
-			UIImage *image = path ? [UIImage convertFromWebP:path
-											  compressedData:nil error:nil] : nil;
-			if (!image)
-				return;
+		UIImage *cached = sStickerImageCache[@(fileId)];
+		if (cached) {
 			[button setTitle:@"" forState:UIControlStateNormal];
-			[button setImage:image forState:UIControlStateNormal];
+			[button setImage:cached forState:UIControlStateNormal];
 			button.imageView.contentMode = UIViewContentModeScaleAspectFit;
+			continue;
+		}
+
+		NSInteger downloadId = [sticker[@"thumbId"] integerValue] ?: fileId;
+		if (downloadId <= 0) continue;
+
+		__weak UIButton *weakButton = button;
+		[[TGClient shared] downloadFile:downloadId completion:^(NSString *path){
+			if (!path.length) return;
+			dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_LOW, 0), ^{
+				UIImage *image = [UIImage convertFromWebP:path compressedData:nil error:nil];
+				if (!image) return;
+				dispatch_async(dispatch_get_main_queue(), ^{
+					sStickerImageCache[@(fileId)] = image;
+					UIButton *btn = weakButton;
+					if (!btn) return;
+					[btn setTitle:@"" forState:UIControlStateNormal];
+					[btn setImage:image forState:UIControlStateNormal];
+					btn.imageView.contentMode = UIViewContentModeScaleAspectFit;
+				});
+			});
 		}];
 	}
-	panel.contentSize = CGSizeMake(x, panel.bounds.size.height);
+	panel.contentSize = CGSizeMake(x + 10, panel.bounds.size.height);
 }
 
 - (void)stickerTapped:(UIButton *)button {
-	[[TGClient shared] sendStickerWithFileId:button.tag
-									  toChat:self.chatId
-									  thread:self.threadId];
-	[self toggleStickerPanel];
+	if (button.tag != 0) {
+		[[TGClient shared] sendStickerWithFileId:button.tag
+										  toChat:self.chatId
+										  thread:self.threadId];
+		[self toggleStickerPanel];
+	} else if (button.currentTitle.length) {
+		NSString *emoji = button.currentTitle;
+		NSString *curr = self.input.text ?: @"";
+		self.input.text = [curr stringByAppendingString:emoji];
+		[self inputChanged];
+	}
 }
 
 #pragma mark - attachments
@@ -324,6 +491,9 @@ static const NSInteger kMessageSheetTag = 42;
 #pragma mark - keyboard
 
 - (void)keyboardWillShow:(NSNotification *)note {
+	if (self.stickerPanel) {
+		self.stickerPanel.hidden = YES;
+	}
 	CGRect kb = [[note.userInfo objectForKey:UIKeyboardFrameEndUserInfoKey] CGRectValue];
 	[self shiftForKeyboardHeight:kb.size.height];
 }

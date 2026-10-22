@@ -184,19 +184,42 @@ static UIImage *TGGlyphAvatar(CGFloat side, void (^draw)(CGContextRef ctx, CGFlo
 	NSString *key = @"mapPinBadge";
 	UIImage *cached = TGIconsGetCached(key);
 	if (cached) return cached;
-	CGFloat w = 28, h = 36;
-	UIGraphicsBeginImageContextWithOptions(CGSizeMake(w, h), NO, 0);
+	CGFloat w = 28.0f, h = 36.0f;
+	CGFloat scale = [UIScreen mainScreen].scale;
+	UIGraphicsBeginImageContextWithOptions(CGSizeMake(w, h), NO, scale);
 	CGContextRef ctx = UIGraphicsGetCurrentContext();
-	// Draw red teardrop pin
+
+	CGFloat cx = w / 2.0f;
+	CGFloat cy = 12.0f;
+	CGFloat r = 10.0f;
+	CGFloat tipX = cx;
+	CGFloat tipY = 32.0f;
+	CGFloat d = tipY - cy;
+
+	CGFloat sinA = r / d;
+	CGFloat cosA = sqrtf(1.0f - sinA * sinA);
+	CGFloat ptR_x = cx + r * cosA;
+	CGFloat ptR_y = cy + r * sinA;
+
+	CGFloat angleR = asinf(sinA);
+	CGFloat angleL = (CGFloat)M_PI - angleR;
+
+	// Red teardrop pin body
 	CGContextSetRGBFillColor(ctx, 0.95f, 0.26f, 0.21f, 1.0f);
 	CGContextBeginPath(ctx);
-	CGContextAddArc(ctx, w/2, 12, 11, -M_PI * 0.75, -M_PI * 0.25, 1);
-	CGContextAddLineToPoint(ctx, w/2, h - 3);
+	// Start at right tangent, arc over the top to left tangent
+	CGContextAddArc(ctx, cx, cy, r, angleR, angleL, 1);
+	// Line to bottom tip
+	CGContextAddLineToPoint(ctx, tipX, tipY);
+	// Line back to right tangent
+	CGContextAddLineToPoint(ctx, ptR_x, ptR_y);
 	CGContextClosePath(ctx);
 	CGContextFillPath(ctx);
+
 	// Inner white dot
 	CGContextSetRGBFillColor(ctx, 1.0f, 1.0f, 1.0f, 1.0f);
-	CGContextFillEllipseInRect(ctx, CGRectMake(w/2 - 4.5f, 12 - 4.5f, 9, 9));
+	CGContextFillEllipseInRect(ctx, CGRectMake(cx - 3.8f, cy - 3.8f, 7.6f, 7.6f));
+
 	UIImage *img = UIGraphicsGetImageFromCurrentImageContext();
 	UIGraphicsEndImageContext();
 	TGIconsSetCached(key, img);

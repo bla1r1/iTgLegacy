@@ -655,13 +655,17 @@ NSDictionary *TGFlattenMessage(NSDictionary *m) {
 			if (!fileId)
 				continue;
 			NSString *format = sticker[@"format"][@"@type"] ?: @"";
+			NSNumber *thumbId = sticker[@"thumbnail"][@"file"][@"id"];
+			if (!thumbId || [thumbId integerValue] == 0) {
+				if ([format isEqualToString:@"stickerFormatWebp"]) {
+					thumbId = fileId;
+				}
+			}
 			[out addObject:@{
 				@"fileId"     : fileId,
 				@"emoji"      : sticker[@"emoji"] ?: @"",
-				// .tgs and .webm cannot be drawn as a thumbnail cheaply, so the
-				// panel falls back to the emoji for those.
 				@"isAnimated" : @(![format isEqualToString:@"stickerFormatWebp"]),
-				@"thumbId"    : sticker[@"thumbnail"][@"file"][@"id"] ?: @0,
+				@"thumbId"    : thumbId ?: @0,
 			}];
 		}
 		if (completion) completion(out);
@@ -675,10 +679,9 @@ NSDictionary *TGFlattenMessage(NSDictionary *m) {
 		@"message_thread_id"    : @(threadId),
 		@"input_message_content": @{
 			@"@type"   : @"inputMessageSticker",
-			@"sticker" : @{
-				@"@type"   : @"inputSticker",
-				@"sticker" : @{@"@type" : @"inputFileId", @"id" : @(fileId)},
-			},
+			@"sticker" : @{@"@type" : @"inputFileId", @"id" : @(fileId)},
+			@"width"   : @512,
+			@"height"  : @512,
 		},
 	}];
 }

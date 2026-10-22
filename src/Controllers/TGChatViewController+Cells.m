@@ -387,8 +387,30 @@
 				vTitle = lines[0];
 			}
 		}
+
+		// Prevent coordinates from appearing both in the title and in the subtitle
+		BOOL titleIsCoords = NO;
+		if (vTitle.length) {
+			NSCharacterSet *coordChars = [NSCharacterSet characterSetWithCharactersInString:@"0123456789., -+°NSEWnsew"];
+			if ([[vTitle stringByTrimmingCharactersInSet:coordChars] length] == 0 &&
+				[vTitle rangeOfCharacterFromSet:[NSCharacterSet decimalDigitCharacterSet]].location != NSNotFound) {
+				titleIsCoords = YES;
+			}
+		}
+		if (titleIsCoords) {
+			if (!vAddr.length) {
+				vAddr = vTitle;
+			}
+			vTitle = @"Location";
+		}
+
 		if (!vTitle.length) vTitle = @"Location";
-		if (!vAddr.length)  vAddr = [NSString stringWithFormat:@"%.4f, %.4f", lat, lon];
+		if (!vAddr.length && !titleIsCoords) {
+			vAddr = [NSString stringWithFormat:@"%.4f, %.4f", lat, lon];
+		}
+		if ([vTitle isEqualToString:vAddr]) {
+			vAddr = @"";
+		}
 
 		CGFloat locTimeW = layout.timeWidth;
 		CGFloat locTicks = mine ? 18 : 0;
@@ -398,14 +420,20 @@
 		cell.body.font = [UIFont boldSystemFontOfSize:14];
 		cell.body.textColor = [locTheme primaryTextColour];
 		cell.body.text = vTitle;
-		cell.body.frame = CGRectMake(kPadH, fwd + mapH + 4, mapW - 2 * kPadH, 18);
 
-		cell.subtitle.hidden = NO;
-		cell.subtitle.numberOfLines = 1;
-		cell.subtitle.font = [UIFont systemFontOfSize:12];
-		cell.subtitle.textColor = [locTheme fileMetaColour];
-		cell.subtitle.text = vAddr;
-		cell.subtitle.frame = CGRectMake(kPadH, fwd + mapH + 24, mapW - 2 * kPadH - locTimeW - locTicks - 4, 16);
+		if (vAddr.length > 0) {
+			cell.subtitle.hidden = NO;
+			cell.subtitle.numberOfLines = 1;
+			cell.subtitle.font = [UIFont systemFontOfSize:12];
+			cell.subtitle.textColor = [locTheme fileMetaColour];
+			cell.subtitle.text = vAddr;
+			cell.body.frame = CGRectMake(kPadH, fwd + mapH + 4, mapW - 2 * kPadH, 18);
+			cell.subtitle.frame = CGRectMake(kPadH, fwd + mapH + 24, mapW - 2 * kPadH - locTimeW - locTicks - 4, 16);
+		} else {
+			cell.subtitle.hidden = YES;
+			cell.subtitle.text = @"";
+			cell.body.frame = CGRectMake(kPadH, fwd + mapH + 12, mapW - 2 * kPadH - locTimeW - locTicks - 4, 18);
+		}
 
 		cell.time.hidden = NO;
 		cell.time.text = layout.stamp;
@@ -709,12 +737,9 @@
 	}
 	cell.body.frame = layout.bodyFrame;
 
+	__weak typeof(self) weakSelf = self;
 	cell.onLinkTapped = ^(NSString *url) {
-		if (url.length) {
-			NSURL *u = [NSURL URLWithString:url];
-			if (!u.scheme.length) u = [NSURL URLWithString:[NSString stringWithFormat:@"http://%@", url]];
-			if (u) [[UIApplication sharedApplication] openURL:u];
-		}
+		[weakSelf handleOpenLink:url];
 	};
 
 	// Reactions

@@ -163,7 +163,6 @@ static inline NSString *TGBytes(long long bytes) {
 @property (nonatomic, assign) NSInteger versionTaps;
 @property (nonatomic, strong) NSString *tdlibVersion;
 @property (nonatomic, assign) BOOL pickingProfilePhoto;
-@property (nonatomic, assign) BOOL searchHidden;
 @property (nonatomic, assign) CGFloat lastScrollY;
 
 + (NSArray *)privacySettings;
@@ -172,8 +171,10 @@ static inline NSString *TGBytes(long long bytes) {
 - (void)rebuild;
 - (void)repaint;
 - (void)applyTheme;
-- (void)buildHeader;
 - (void)loadForPage;
+- (void)openPage:(TGSettingsPage)page;
+- (void)openMyProfile;
+- (void)explainAddAccount;
 - (void)toast:(NSString *)text;
 - (void)pushPlaceholder:(NSString *)featureName;
 - (void)openURL:(NSString *)url;

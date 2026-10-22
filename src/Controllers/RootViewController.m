@@ -115,17 +115,6 @@ static const CGFloat kCompactBarHeight = 32.0f;
 	}
 }
 
-/// Automatically hides navigation bar for root settings page, restoring it for child pages.
-- (void)navigationController:(UINavigationController *)nc
-	  willShowViewController:(UIViewController *)controller
-					animated:(BOOL)animated
-{
-	BOOL isSettingsRoot = [controller isKindOfClass:[TGSettingsViewController class]] &&
-			((TGSettingsViewController *)controller).page == TGSettingsPageRoot;
-	if (nc.navigationBarHidden != isSettingsRoot)
-		[nc setNavigationBarHidden:isSettingsRoot animated:animated];
-}
-
 @end
 
 // vim:ft=objc

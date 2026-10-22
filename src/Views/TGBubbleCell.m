@@ -18,9 +18,11 @@
 	self.contentView.backgroundColor = [UIColor clearColor];
 	self.selectionStyle = UITableViewCellSelectionStyleNone;
 
+	TGTheme *theme = [TGTheme shared];
 	self.bubble = [[UIView alloc] init];
-	self.bubble.layer.cornerRadius = 14;
-	self.bubble.layer.borderWidth = 1.0f;
+	self.bubble.layer.cornerRadius = [theme bubbleCornerRadius];
+	self.bubble.layer.borderWidth = [theme bubbleBorderWidth];
+	self.bubble.layer.borderColor = [theme bubbleBorderColour].CGColor;
 	self.bubble.clipsToBounds = YES;
 	self.bubble.layer.shouldRasterize = YES;
 	self.bubble.layer.rasterizationScale = scale;
@@ -36,7 +38,7 @@
 	self.body = [[UILabel alloc] init];
 	self.body.numberOfLines = 0;
 	self.body.lineBreakMode = NSLineBreakByWordWrapping;
-	self.body.font = [UIFont systemFontOfSize:[TGTheme shared].messageFontSize];
+	self.body.font = [UIFont systemFontOfSize:theme.messageFontSize];
 	self.body.backgroundColor = [UIColor clearColor];
 	[self.bubble addSubview:self.body];
 
@@ -45,7 +47,7 @@
 	self.sender.lineBreakMode = NSLineBreakByTruncatingTail;
 	self.sender.backgroundColor = [UIColor clearColor];
 	self.sender.hidden = YES;
-	[self.contentView addSubview:self.sender];
+	[self.bubble addSubview:self.sender];
 
 	self.disc = [[UIImageView alloc] init];
 	self.disc.hidden = YES;
@@ -147,12 +149,14 @@
 	self.contactCallButton.titleLabel.font = [UIFont systemFontOfSize:14];
 	self.contactCallButton.hidden = YES;
 	[self.contactCallButton setTitle:@"Call" forState:UIControlStateNormal];
+	[self.contactCallButton setTitleColor:[theme accentColour] forState:UIControlStateNormal];
 	[self.bubble addSubview:self.contactCallButton];
 
 	self.contactAddButton = [UIButton buttonWithType:UIButtonTypeCustom];
 	self.contactAddButton.titleLabel.font = [UIFont systemFontOfSize:14];
 	self.contactAddButton.hidden = YES;
 	[self.contactAddButton setTitle:@"Add" forState:UIControlStateNormal];
+	[self.contactAddButton setTitleColor:[theme accentColour] forState:UIControlStateNormal];
 	[self.bubble addSubview:self.contactAddButton];
 
 	// Album collage container
@@ -278,6 +282,17 @@
 	}
 	self.onCollageItemTapped = nil;
 	self.onLinkTapped = nil;
+}
+
+- (void)applyTheme {
+	TGTheme *theme = [TGTheme shared];
+	self.bubble.layer.cornerRadius = [theme bubbleCornerRadius];
+	self.bubble.layer.borderWidth = [theme bubbleBorderWidth];
+	self.bubble.layer.borderColor = [theme bubbleBorderColour].CGColor;
+	self.body.font = [UIFont systemFontOfSize:theme.messageFontSize];
+	self.body.textColor = [theme primaryTextColour];
+	[self.contactCallButton setTitleColor:[theme accentColour] forState:UIControlStateNormal];
+	[self.contactAddButton setTitleColor:[theme accentColour] forState:UIControlStateNormal];
 }
 
 @end

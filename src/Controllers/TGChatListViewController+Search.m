@@ -6,8 +6,14 @@
 	TGTheme *theme = [TGTheme shared];
 	self.searchBar.barStyle = theme.isDark ? UIBarStyleBlack : UIBarStyleDefault;
 	if ([self.searchBar respondsToSelector:@selector(setBarTintColor:)])
-		self.searchBar.barTintColor = [theme listBackgroundColour];
+		self.searchBar.barTintColor = [theme searchBarBackgroundColour];
 	self.searchBar.tintColor = [theme accentColour];
+	self.searchBar.backgroundColor = [theme searchBarBackgroundColour];
+	if ([self.searchBar respondsToSelector:@selector(setImage:forSearchBarIcon:state:)]) {
+		[self.searchBar setImage:[TGIcons searchLensOfSize:15.0f colour:[theme secondaryTextColour]]
+				forSearchBarIcon:UISearchBarIconSearch
+						   state:UIControlStateNormal];
+	}
 }
 
 - (BOOL)searchBarShouldBeginEditing:(UISearchBar *)searchBar {

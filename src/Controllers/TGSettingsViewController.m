@@ -37,9 +37,6 @@
 
 	self.title = [self pageTitle];
 
-	if (self.page == TGSettingsPageRoot)
-		[self buildHeader];
-
 	[self rebuild];
 	[self loadForPage];
 
@@ -120,48 +117,6 @@
 - (void)rebuild {
 	self.sections = [self buildSections];
 	[self.tableView reloadData];
-}
-
-#pragma mark - header
-
-/// Custom header for root settings page with pull-down search bar.
-- (void)buildHeader {
-	self.navigationItem.titleView = [[UIView alloc] initWithFrame:CGRectZero];
-
-	CGFloat width = self.view.bounds.size.width ?: 320;
-	UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0, 0, width, 44)];
-	header.backgroundColor = [UIColor clearColor];
-
-	UISearchBar *search = [[UISearchBar alloc] initWithFrame:header.bounds];
-	search.placeholder = @"Search Settings";
-	search.searchBarStyle = UISearchBarStyleMinimal;
-	[header addSubview:search];
-
-	self.tableView.tableHeaderView = header;
-}
-
-- (void)viewDidLayoutSubviews {
-	[super viewDidLayoutSubviews];
-	if (self.page != TGSettingsPageRoot)
-		return;
-
-	// With no navigation bar the table starts at the top of the screen, and
-	// the status bar would sit on the first row.
-	CGFloat statusBar = 20;
-	if (self.tableView.contentInset.top != statusBar){
-		self.tableView.contentInset = UIEdgeInsetsMake(statusBar, 0, 0, 0);
-		self.tableView.scrollIndicatorInsets = self.tableView.contentInset;
-	}
-
-	// Once, and only while the list is still at the top: doing it on every
-	// layout would yank the table back up under the user mid-scroll.
-	if (self.searchHidden)
-		return;
-	CGFloat height = self.tableView.tableHeaderView.frame.size.height;
-	if (height <= 0)
-		return;
-	self.searchHidden = YES;
-	self.tableView.contentOffset = CGPointMake(0, height - statusBar);
 }
 
 /// The version, the way their page ends with one - and, as in their client,
@@ -340,8 +295,26 @@
 	return [self.sections[section][@"rows"] count];
 }
 
-- (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
-	return self.sections[section][@"header"];
+- (CGFloat)tableView:(UITableView *)tableView heightForHeaderInSection:(NSInteger)section {
+	NSString *text = self.sections[section][@"header"];
+	if (text.length)
+		return 32.0f;
+	return 12.0f;
+}
+
+- (UIView *)tableView:(UITableView *)tableView viewForHeaderInSection:(NSInteger)section {
+	NSString *text = self.sections[section][@"header"];
+	if (!text.length)
+		return [[UIView alloc] initWithFrame:CGRectMake(0, 0, tableView.bounds.size.width, 12.0f)];
+	UIView *holder = [[UIView alloc] initWithFrame:CGRectMake(0, 0, tableView.bounds.size.width, 32)];
+	holder.backgroundColor = [UIColor clearColor];
+	UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(kFooterInset, 10, tableView.bounds.size.width - 2 * kFooterInset, 18)];
+	label.text = text.uppercaseString;
+	label.font = [UIFont systemFontOfSize:12];
+	label.textColor = [[TGTheme shared] sectionHeaderColour];
+	label.backgroundColor = [UIColor clearColor];
+	[holder addSubview:label];
+	return holder;
 }
 
 /// The footers explain things, so there are a lot of words in them; at UIKit's
@@ -359,11 +332,11 @@ static const CGFloat kFooterInset  = 15.0f;
 
 - (CGFloat)tableView:(UITableView *)tableView heightForFooterInSection:(NSInteger)section {
 	if (self.page == TGSettingsPageRoot && section == (NSInteger)self.sections.count - 1)
-		return 44;
+		return 38.0f;
 	NSString *text = self.sections[section][@"footer"];
 	if (!text.length)
-		return 14;
-	return [self footerTextSize:text].height + 16;
+		return 0.001f;
+	return [self footerTextSize:text].height + 14.0f;
 }
 
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)path {

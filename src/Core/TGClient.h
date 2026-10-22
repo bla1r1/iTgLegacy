@@ -266,8 +266,15 @@ typedef NS_ENUM(NSInteger, TGConnectionState) {
 - (void)chatWithUsername:(NSString *)username
               completion:(void (^)(int64_t chatId, NSString *title))completion;
 
+- (void)joinChatByInviteLink:(NSString *)inviteLink
+                  completion:(void (^)(int64_t chatId, NSString *title))completion;
+
 /// Move a chat into the archive, or back out of it.
 - (void)setChat:(int64_t)chatId archived:(BOOL)archived;
+
+/// Informs TDLib that chat is opened or closed, freeing background resources.
+- (void)openChat:(int64_t)chatId;
+- (void)closeChat:(int64_t)chatId;
 
 /// Fired on the main queue when a message arrives, is edited or deleted in
 /// any chat. `message` is the flattened form; nil means it was deleted.

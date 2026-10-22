@@ -11,6 +11,7 @@
 #import "TGSnackbar.h"
 #import "TGMessageLayout.h"
 #import "TGBubbleCell.h"
+#import "TGMediaViewer.h"
 #import <MediaPlayer/MediaPlayer.h>
 #import <AVFoundation/AVFoundation.h>
 #import <CoreLocation/CoreLocation.h>
@@ -50,6 +51,10 @@ static const CGFloat kInputHeight = 48.0f;
 @property (nonatomic, strong) UIView *recordPanel;      // shown while holding
 @property (nonatomic, strong) UILabel *recordClock;
 @property (nonatomic, strong) UIView *recordDot;
+@property (nonatomic, strong) UIView *recordLockView;
+@property (nonatomic, strong) UIButton *recordCancelButton;
+@property (nonatomic, strong) UIButton *recordSendButton;
+@property (nonatomic, strong) UILabel *recordCancelSlideLabel;
 @property (nonatomic, assign) int64_t playingMessageId;
 @property (nonatomic, assign) BOOL isLoadingMoreHistory;
 @property (nonatomic, strong) NSTimer *playbackTimer;
@@ -105,11 +110,25 @@ static const CGFloat kInputHeight = 48.0f;
 - (void)downloadFileId:(NSInteger)fileId;
 - (void)openFileWithViewer:(NSString *)filePath;
 - (void)handleMessageTap:(NSDictionary *)m;
+- (void)reloadTableDebounced;
+
+@end
+
+@interface TGChatViewController (Audio)
+
 - (void)recordStart;
 - (void)recordFinish;
 - (void)recordCancel;
-- (void)toggleChatSearch;
-- (void)endChatSearch;
+- (void)recordTouchDown:(UIButton *)btn withEvent:(UIEvent *)event;
+- (void)recordTouchUp:(UIButton *)btn withEvent:(UIEvent *)event;
+- (void)recordTouchCancel;
+- (void)recordDrag:(UIButton *)btn withEvent:(UIEvent *)event;
+- (void)lockRecording;
+
+@end
+
+@interface TGChatViewController (Actions)
+
 - (void)showActionsForRow:(NSInteger)row;
 - (void)messageHeld:(UILongPressGestureRecognizer *)hold;
 - (void)runMessageAction:(NSString *)action;
@@ -117,7 +136,14 @@ static const CGFloat kInputHeight = 48.0f;
 - (void)sendCurrentLocation;
 - (void)pickContact;
 - (void)presentAddContactForMessage:(NSDictionary *)m;
-- (void)reloadTableDebounced;
+- (void)handleOpenLink:(NSString *)urlStr;
+
+@end
+
+@interface TGChatViewController (Search)
+
+- (void)toggleChatSearch;
+- (void)endChatSearch;
 
 @end
 
@@ -128,7 +154,9 @@ static const CGFloat kInputHeight = 48.0f;
 - (void)clearComposeState;
 - (void)showComposeBanner:(NSString *)text;
 - (void)toggleStickerPanel;
+- (void)hideStickerPanel;
 - (void)fillStickerPanel:(UIScrollView *)panel with:(NSArray *)stickers;
+- (void)appendRecentStickers:(NSArray *)stickers toPanel:(UIScrollView *)panel;
 - (void)stickerTapped:(UIButton *)button;
 - (void)attachTapped;
 - (void)shiftForKeyboardHeight:(CGFloat)height;

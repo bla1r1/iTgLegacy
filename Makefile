@@ -86,7 +86,9 @@ INCLUDES  := -I$(ROOT_DIR)/include \
              -I$(ROOT_DIR)/tdlib/td \
              -I$(ROOT_DIR)/tdlib/include \
              -I$(BUILD_DIR)/armv7/tdlib/include \
-             -I$(BUILD_DIR)/arm64/tdlib/include
+             -I$(BUILD_DIR)/arm64/tdlib/include \
+             -I$(ROOT_DIR)/libs \
+             -F$(ROOT_DIR)/libs
 
 DEFINES   :=
 

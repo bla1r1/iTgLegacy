@@ -44,5 +44,6 @@
 @property (nonatomic, copy) void (^onLinkTapped)(NSString *url);
 
 - (void)resetForReuse;
+- (void)applyTheme;
 
 @end

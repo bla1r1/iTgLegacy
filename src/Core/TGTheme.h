@@ -126,6 +126,7 @@ extern NSString *const TGThemeChangedNotification;
 - (UIColor *)primaryTextColour;
 - (UIColor *)secondaryTextColour;
 - (UIColor *)inputBarColour;
+- (UIColor *)searchBarBackgroundColour;
 - (UIColor *)timeColour;            ///< the stamp in the corner of a bubble
 - (UIColor *)cellDetailColour;      ///< the value on the right of a settings row
 - (UIColor *)sectionHeaderColour;   ///< the caption above a group of rows
@@ -146,6 +147,7 @@ extern NSString *const TGThemeChangedNotification;
 - (UIColor *)mutedBadgeColour;      ///< the same count in a muted chat
 - (UIColor *)typingColour;          ///< "typing..." in place of the preview
 - (UIColor *)onlineColour;          ///< the dot on an avatar
+- (UIColor *)ticksColour;           ///< delivery checkmarks in outgoing bubble
 - (UIColor *)separatorColour;       ///< hairlines between rows and around bars
 
 #pragma mark - service messages

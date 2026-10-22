@@ -377,6 +377,7 @@ UIColor *TGSenderColour(int64_t userId) {
 		contentW = MAX(contentW, body.width + 6 + timeW);
 	if (isVoice)
 		contentW = 190;
+	CGFloat senderH = senderName.length ? 16.0f : 0.0f;
 	if (senderName.length) {
 		CGFloat senderW = TGTextSize(senderName, [UIFont boldSystemFontOfSize:12], 0).width;
 		contentW = MAX(contentW, senderW);
@@ -385,20 +386,19 @@ UIColor *TGSenderColour(int64_t userId) {
 	CGFloat bubbleW = MAX(contentW + 2 * kPadH, timeW + 2 * kPadH + 8);
 	bubbleW = MIN(bubbleW, kBubbleMaxW + 2 * kPadH);
 	BOOL stampOnPicture = [self stampSitsOnPictureFor:m];
-	CGFloat bubbleH = kPadV * 2 + (inlineStamp || stampOnPicture ? 0 : 14) +
+	CGFloat bubbleH = kPadV * 2 + senderH + (inlineStamp || stampOnPicture ? 0 : 14) +
 			[self decorationHeightFor:m] +
 			(isAlbum ? (collageH + (body.height ? 4 : 0)) : (pic.height ? pic.height + 4 : 0)) + body.height;
 	if (isVoice)
-		bubbleH = 56 + ([m[@"forward"] length] ? 18 : 0);
+		bubbleH = 56 + senderH + ([m[@"forward"] length] ? 18 : 0);
 
 	CGFloat x = mine ? (tableW - bubbleW - 8) : 8;
 	CGFloat top = [self continuesAlbumAtRow:row] ? 0 : 3;
 
 	if (senderName.length) {
 		x += kAvatarSide + 4;
-		top = 18;
 		layout.senderName = senderName;
-		layout.senderFrame = CGRectMake(x + kPadH, 2, bubbleW - 2 * kPadH, 14);
+		layout.senderFrame = CGRectMake(kPadH, kPadV, bubbleW - 2 * kPadH, 14);
 		CGFloat avatarY = MAX(2.0f, top + bubbleH - kAvatarSide);
 		layout.senderAvatarFrame = CGRectMake(8, avatarY, kAvatarSide, kAvatarSide);
 	}
@@ -413,7 +413,7 @@ UIColor *TGSenderColour(int64_t userId) {
 
 	layout.tailFrame = CGRectZero;
 
-	CGFloat y = kPadV + forwarded;
+	CGFloat y = kPadV + senderH + forwarded;
 	if (quoted) {
 		layout.quoteBarFrame = CGRectMake(kPadH, y, 2, 34);
 		layout.quoteAuthorFrame = CGRectMake(kPadH + 8, y, bubbleW - 2 * kPadH - 10, 16);

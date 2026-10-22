@@ -41,8 +41,8 @@ if [ "$DO_FULL" -eq 1 ]; then
     exit 0
 fi
 
-echo "[+] Locating installed LegacyTG.app on device..."
-REMOTE_APP_DIR="$($SSH_CMD "find /var/mobile/Applications -name 'LegacyTG.app' 2>/dev/null | head -1" 2>/dev/null | tr -d '\r')"
+echo "[+] Locating installed app bundle on device..."
+REMOTE_APP_DIR="$($SSH_CMD "find /var/mobile/Applications \( -name 'LegacyTG.app' -o -name 'iTgLegacy.app' \) 2>/dev/null | head -1" 2>/dev/null | tr -d '\r')"
 
 if [ -z "$REMOTE_APP_DIR" ]; then
     echo "[!] App not found on device. Performing first-time full install..."
@@ -51,16 +51,22 @@ if [ -z "$REMOTE_APP_DIR" ]; then
     exit 0
 fi
 
-echo "[+] Target app directory: $REMOTE_APP_DIR"
+REMOTE_APP_NAME="$(basename "$REMOTE_APP_DIR")"
+REMOTE_EXE_NAME="${REMOTE_APP_NAME%.app}"
+
+echo "[+] Target app directory: $REMOTE_APP_DIR (executable: $REMOTE_EXE_NAME)"
 if [ "$DO_SYNC" -eq 1 ]; then
-    echo "[+] Syncing full LegacyTG.app bundle (binary, images, plists)..."
+    echo "[+] Syncing full app bundle (binary, images, plists)..."
     $SCP_CMD -r "$ROOT/build/armv7/app/LegacyTG.app/"* "mobile@localhost:$REMOTE_APP_DIR/"
+    if [ "$REMOTE_EXE_NAME" != "LegacyTG" ]; then
+        $SSH_CMD "cp '$REMOTE_APP_DIR/LegacyTG' '$REMOTE_APP_DIR/$REMOTE_EXE_NAME'" 2>/dev/null || true
+    fi
 else
-    echo "[+] Copying fresh LegacyTG executable over SSH..."
-    $SCP_CMD "$ROOT/build/armv7/app/LegacyTG.app/LegacyTG" "mobile@localhost:$REMOTE_APP_DIR/LegacyTG"
+    echo "[+] Copying fresh executable over SSH..."
+    $SCP_CMD "$ROOT/build/armv7/app/LegacyTG.app/LegacyTG" "mobile@localhost:$REMOTE_APP_DIR/$REMOTE_EXE_NAME"
 fi
 
-echo "[+] Restarting LegacyTG process & waking screen..."
-$SSH_CMD "killall -9 LegacyTG 2>/dev/null || true; sbunlock --launch 2>/dev/null || openURL legacytg:// 2>/dev/null || openURL itglegacy:// 2>/dev/null || true" 2>/dev/null || true
+echo "[+] Restarting app process & waking screen..."
+$SSH_CMD "killall -9 LegacyTG iTgLegacy 2>/dev/null || true; sbunlock --launch 2>/dev/null || openURL legacytg:// 2>/dev/null || openURL itglegacy:// 2>/dev/null || true" 2>/dev/null || true
 
 echo "[+] Fast deploy complete in seconds! App updated on device."

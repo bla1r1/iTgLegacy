@@ -53,7 +53,7 @@ static const NSInteger kZoomTag = 0x7001;
 		NSDictionary *m = items[i];
 		NSString *kind = m[@"kind"];
 		BOOL isPhoto = [kind isEqualToString:@"messagePhoto"];
-		BOOL isVideo = [kind isEqualToString:@"messageVideo"];
+		BOOL isVideo = [kind isEqualToString:@"messageVideo"] || [kind isEqualToString:@"messageAnimation"];
 		if (!isPhoto && !isVideo)
 			continue;
 		if ((NSInteger)i <= index)
@@ -243,11 +243,12 @@ static const NSInteger kZoomTag = 0x7001;
 	self.captionLabel.text = item[@"text"] ?: @"";
 
 	BOOL isVideo = [item[@"kind"] isEqualToString:@"messageVideo"];
-	self.playButton.hidden = !isVideo;
+	BOOL isAnim = [item[@"kind"] isEqualToString:@"messageAnimation"];
+	self.playButton.hidden = !isVideo && !isAnim;
 	self.scrubber.hidden = !isVideo;
 	self.timeLabel.hidden = !isVideo;
 	self.captionLabel.frame = CGRectMake(12, 4,
-			self.backdrop.bounds.size.width - 88, isVideo ? 30 : 34);
+			self.backdrop.bounds.size.width - 88, (isVideo || isAnim) ? 30 : 34);
 }
 
 #pragma mark - pages
@@ -256,7 +257,7 @@ static const NSInteger kZoomTag = 0x7001;
 /// - "docId" is the video and "photoId" is its poster frame - so preferring
 /// photoId handed the movie player a JPEG and it sat there doing nothing.
 - (NSNumber *)fileIdForItem:(NSDictionary *)item {
-	BOOL isVideo = [item[@"kind"] isEqualToString:@"messageVideo"];
+	BOOL isVideo = [item[@"kind"] isEqualToString:@"messageVideo"] || [item[@"kind"] isEqualToString:@"messageAnimation"];
 	NSNumber *fileId = isVideo ? item[@"docId"] : (item[@"bigPhotoId"] ?: item[@"photoId"]);
 	if ([fileId isKindOfClass:NSNumber.class])
 		return fileId;
@@ -318,25 +319,27 @@ static const NSInteger kZoomTag = 0x7001;
 	CGFloat scale = [UIScreen mainScreen].scale;
 
 	BOOL isVideo = [item[@"kind"] isEqualToString:@"messageVideo"];
-	if (isVideo){
-		// A video's poster frame is its thumbnail; the file itself is only
-		// fetched when the play button is pressed. Fitted, not filled: the
-		// shared loader crops to the view, and cropping a poster to a 3:2
-		// screen cuts the middle out of a portrait video.
+	BOOL isAnim = [item[@"kind"] isEqualToString:@"messageAnimation"];
+	if (isVideo || isAnim){
+		// A video/GIF poster frame is its thumbnail; the file itself is only
+		// fetched when the play button is pressed (or auto-started for GIFs).
 		NSNumber *thumb = item[@"photoId"];
-		if (![thumb isKindOfClass:NSNumber.class])
-			return;
-		[[TGClient shared] downloadFile:thumb.integerValue completion:^(NSString *path){
-			if (!path.length)
-				return;
-			dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-				UIImage *poster = [TGIcons decodedImage:[UIImage imageWithContentsOfFile:path]
-											fittingSize:screen fill:NO scale:scale];
-				if (!poster)
+		if ([thumb isKindOfClass:NSNumber.class]){
+			[[TGClient shared] downloadFile:thumb.integerValue completion:^(NSString *path){
+				if (!path.length)
 					return;
-				dispatch_async(dispatch_get_main_queue(), ^{ picture.image = poster; });
-			});
-		}];
+				dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+					UIImage *poster = [TGIcons decodedImage:[UIImage imageWithContentsOfFile:path]
+												fittingSize:screen fill:NO scale:scale];
+					if (!poster)
+						return;
+					dispatch_async(dispatch_get_main_queue(), ^{ picture.image = poster; });
+				});
+			}];
+		}
+		if (isAnim && page == self.index){
+			[self toggleMovie];
+		}
 		return;
 	}
 
@@ -429,6 +432,13 @@ static const NSInteger kZoomTag = 0x7001;
 	movie.controlStyle = MPMovieControlStyleNone;
 	movie.scalingMode = MPMovieScalingModeAspectFit;
 	movie.view.frame = page.bounds;
+
+	NSDictionary *item = self.items[self.index];
+	BOOL isAnim = [item[@"kind"] isEqualToString:@"messageAnimation"];
+	if (isAnim) {
+		movie.repeatMode = MPMovieRepeatModeOne;
+	}
+
 	[[AVAudioSession sharedInstance] setCategory:AVAudioSessionCategoryPlayback error:nil];
 	[[AVAudioSession sharedInstance] setActive:YES error:nil];
 	movie.view.backgroundColor = [UIColor clearColor];
@@ -466,6 +476,13 @@ static const NSInteger kZoomTag = 0x7001;
 }
 
 - (void)movieFinished {
+	if (self.index < (NSInteger)self.items.count) {
+		NSDictionary *item = self.items[self.index];
+		if ([item[@"kind"] isEqualToString:@"messageAnimation"] && self.movie) {
+			[self.movie play];
+			return;
+		}
+	}
 	[self.playButton setImage:[TGIcons play] forState:UIControlStateNormal];
 	self.scrubber.value = 0;
 	if (self.movie)

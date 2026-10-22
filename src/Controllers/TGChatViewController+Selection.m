@@ -241,7 +241,7 @@
 			af.origin.x += 34.0f;
 			cell.senderAvatar.frame = af;
 		}
-		if (!cell.sender.hidden) {
+		if (!cell.sender.hidden && cell.sender.superview != cell.bubble) {
 			CGRect sf = cell.sender.frame;
 			sf.origin.x += 34.0f;
 			cell.sender.frame = sf;

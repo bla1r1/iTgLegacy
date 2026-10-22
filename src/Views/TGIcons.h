@@ -48,6 +48,21 @@
 /// for one that went out, red when it was never answered.
 + (UIImage *)callArrowOutgoing:(BOOL)outgoing missed:(BOOL)missed;
 
+/// Vector search magnifying lens
++ (UIImage *)searchLensOfSize:(CGFloat)size colour:(UIColor *)colour;
+
+/// Custom back chevron for navigation bars
++ (UIImage *)backChevronWithColour:(UIColor *)colour;
+
+/// Phone call handset icon
++ (UIImage *)phoneCall;
+
+/// Official Telegram paper airplane icon
++ (UIImage *)telegramAirplaneOfSide:(CGFloat)size;
+
+/// Verification checkmark badge for channels/bots
++ (UIImage *)verifiedBadge;
+
 /// Drop the cache after a theme change.
 + (void)flush;
 

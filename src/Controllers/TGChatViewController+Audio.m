@@ -3,6 +3,11 @@
 #import "TGVoiceDecoder.h"
 #import "TGMusicPlayer.h"
 
+static CGPoint sTouchStart;
+static CGFloat sDragDeltaX;
+static BOOL sIsLocked;
+static BOOL sIsCancelled;
+
 @implementation TGChatViewController (Audio)
 
 #pragma mark - voice
@@ -16,12 +21,11 @@
 }
 
 /// Their recording panel: a red dot, the running time, "Slide to cancel", and
-/// the microphone grown into a disc with a halo around it. It takes over the
-/// composer for as long as the finger is down.
+/// the microphone grown into a disc with a halo around it.
 - (void)showRecordPanel {
 	CGRect bar = self.inputBar.frame;
+	TGTheme *theme = [TGTheme shared];
 	if (!self.recordPanel){
-		TGTheme *theme = [TGTheme shared];
 		self.recordPanel = [[UIView alloc] initWithFrame:bar];
 		self.recordPanel.backgroundColor = [theme inputBarColour];
 		self.recordPanel.autoresizingMask = UIViewAutoresizingFlexibleWidth |
@@ -32,7 +36,6 @@
 		hair.autoresizingMask = UIViewAutoresizingFlexibleWidth;
 		[self.recordPanel addSubview:hair];
 
-		// 10dp in their panel, and it blinks the way a recorder's does.
 		self.recordDot = [[UIView alloc] initWithFrame:
 				CGRectMake(14, (kInputHeight - 9) / 2, 9, 9)];
 		self.recordDot.backgroundColor = [theme destructiveColour];
@@ -46,22 +49,47 @@
 		self.recordClock.backgroundColor = [UIColor clearColor];
 		[self.recordPanel addSubview:self.recordClock];
 
-		UILabel *cancel = [[UILabel alloc] initWithFrame:
+		self.recordCancelSlideLabel = [[UILabel alloc] initWithFrame:
 				CGRectMake(100, (kInputHeight - 20) / 2, bar.size.width - 180, 20)];
-		cancel.text = @"‹ Slide to cancel";
-		cancel.font = [UIFont systemFontOfSize:15];
-		cancel.textColor = [theme secondaryTextColour];
-		cancel.backgroundColor = [UIColor clearColor];
-		cancel.autoresizingMask = UIViewAutoresizingFlexibleWidth;
-		[self.recordPanel addSubview:cancel];
+		self.recordCancelSlideLabel.text = @"‹ Slide to cancel";
+		self.recordCancelSlideLabel.font = [UIFont systemFontOfSize:15];
+		self.recordCancelSlideLabel.textColor = [theme secondaryTextColour];
+		self.recordCancelSlideLabel.backgroundColor = [UIColor clearColor];
+		self.recordCancelSlideLabel.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+		[self.recordPanel addSubview:self.recordCancelSlideLabel];
 
-		// 89dp with the button itself at 63 inside it; scaled to fit the strip.
+		// Cancel text button for locked mode (centered, like TG Desktop / Mobile)
+		self.recordCancelButton = [UIButton buttonWithType:UIButtonTypeCustom];
+		self.recordCancelButton.frame = CGRectMake((bar.size.width - 100) / 2, (kInputHeight - 32) / 2, 100, 32);
+		[self.recordCancelButton setTitle:@"Cancel" forState:UIControlStateNormal];
+		[self.recordCancelButton setTitleColor:[theme accentColour] forState:UIControlStateNormal];
+		self.recordCancelButton.titleLabel.font = [UIFont systemFontOfSize:16];
+		[self.recordCancelButton addTarget:self action:@selector(recordCancel) forControlEvents:UIControlEventTouchUpInside];
+		self.recordCancelButton.hidden = YES;
+		[self.recordPanel addSubview:self.recordCancelButton];
+
+		// Circular Send button for locked mode (right side, like TG Desktop / Mobile)
+		self.recordSendButton = [UIButton buttonWithType:UIButtonTypeCustom];
+		self.recordSendButton.frame = CGRectMake(bar.size.width - 44, (kInputHeight - 34) / 2, 34, 34);
+		self.recordSendButton.backgroundColor = [theme accentColour];
+		self.recordSendButton.layer.cornerRadius = 17.0f;
+		self.recordSendButton.layer.masksToBounds = YES;
+		[self.recordSendButton setImage:[TGIcons send] forState:UIControlStateNormal];
+		self.recordSendButton.tintColor = [UIColor whiteColor];
+		self.recordSendButton.imageEdgeInsets = UIEdgeInsetsZero;
+		self.recordSendButton.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
+		[self.recordSendButton addTarget:self action:@selector(recordFinish) forControlEvents:UIControlEventTouchUpInside];
+		self.recordSendButton.hidden = YES;
+		[self.recordPanel addSubview:self.recordSendButton];
+
+		// Classic halo and disc (original design)
 		CGFloat halo = kInputHeight + 12, disc = 44;
 		UIView *ring = [[UIView alloc] initWithFrame:
 				CGRectMake(bar.size.width - halo + 4, (kInputHeight - halo) / 2, halo, halo)];
 		ring.backgroundColor = [theme accentColour];
 		ring.alpha = 0.25f;
 		ring.layer.cornerRadius = halo / 2;
+		ring.tag = 0x81C1;
 		ring.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
 		[self.recordPanel addSubview:ring];
 
@@ -70,18 +98,168 @@
 		button.backgroundColor = [theme accentColour];
 		button.layer.cornerRadius = disc / 2;
 		button.image = [TGIcons microphoneOfSide:disc colour:[UIColor whiteColor]];
+		button.tag = 0x81C2;
 		button.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
 		[self.recordPanel addSubview:button];
 	}
 
+	sIsLocked = NO;
+	sIsCancelled = NO;
+	sDragDeltaX = 0;
+	self.recordCancelButton.hidden = YES;
+	self.recordSendButton.hidden = YES;
+	self.recordCancelSlideLabel.hidden = NO;
+	self.recordCancelSlideLabel.transform = CGAffineTransformIdentity;
+	self.recordCancelSlideLabel.alpha = 1.0f;
+	[self.recordPanel viewWithTag:0x81C1].hidden = NO;
+	[self.recordPanel viewWithTag:0x81C2].hidden = NO;
+	self.recordDot.frame = CGRectMake(14, (kInputHeight - 9) / 2, 9, 9);
+	self.recordClock.frame = CGRectMake(32, (kInputHeight - 20) / 2, 62, 20);
+
 	self.recordPanel.frame = bar;
 	self.recordClock.text = @"0:00,0";
 	self.recordDot.alpha = 1.0f;
+	self.recordPanel.userInteractionEnabled = NO;
 	[self.view addSubview:self.recordPanel];
+
+	// The "Rice Grain" lock capsule directly above mic button (Image 2)
+	if (!self.recordLockView) {
+		CGFloat pillW = 32.0f, pillH = 62.0f;
+		CGFloat pillX = bar.origin.x + bar.size.width - pillW - 12.0f;
+		CGFloat pillY = bar.origin.y - pillH - 10.0f;
+		UIView *pill = [[UIView alloc] initWithFrame:CGRectMake(pillX, pillY, pillW, pillH)];
+		pill.backgroundColor = [UIColor colorWithRed:0.12f green:0.14f blue:0.18f alpha:0.92f];
+		pill.layer.cornerRadius = pillW / 2.0f; // Rounded rice grain capsule
+		pill.clipsToBounds = YES;
+
+		UILabel *lockIcon = [[UILabel alloc] initWithFrame:CGRectMake(0, 8, pillW, 20)];
+		lockIcon.text = @"🔒";
+		lockIcon.font = [UIFont systemFontOfSize:14];
+		lockIcon.textAlignment = NSTextAlignmentCenter;
+		lockIcon.backgroundColor = [UIColor clearColor];
+		[pill addSubview:lockIcon];
+
+		UILabel *arrow = [[UILabel alloc] initWithFrame:CGRectMake(0, 34, pillW, 18)];
+		arrow.text = @"▲";
+		arrow.font = [UIFont boldSystemFontOfSize:11];
+		arrow.textColor = [UIColor colorWithWhite:0.75f alpha:1.0f];
+		arrow.textAlignment = NSTextAlignmentCenter;
+		arrow.backgroundColor = [UIColor clearColor];
+		[pill addSubview:arrow];
+
+		self.recordLockView = pill;
+	}
+	self.recordLockView.alpha = 0.0f;
+	self.recordLockView.transform = CGAffineTransformMakeTranslation(0, 10);
+	[self.view addSubview:self.recordLockView];
+	[UIView animateWithDuration:0.2 animations:^{
+		self.recordLockView.alpha = 1.0f;
+		self.recordLockView.transform = CGAffineTransformIdentity;
+	}];
 }
 
 - (void)hideRecordPanel {
+	self.table.scrollEnabled = YES;
 	[self.recordPanel removeFromSuperview];
+	[self.recordLockView removeFromSuperview];
+	self.recordLockView = nil;
+	sIsLocked = NO;
+	sIsCancelled = NO;
+	sDragDeltaX = 0;
+	self.recordCancelSlideLabel.transform = CGAffineTransformIdentity;
+	self.recordCancelSlideLabel.alpha = 1.0f;
+}
+
+- (void)lockRecording {
+	if (sIsLocked) return;
+	sIsLocked = YES;
+	self.table.scrollEnabled = YES;
+	self.recordPanel.userInteractionEnabled = YES;
+
+	[UIView animateWithDuration:0.2 animations:^{
+		self.recordLockView.alpha = 0.0f;
+		self.recordLockView.transform = CGAffineTransformMakeTranslation(0, -15);
+	} completion:^(BOOL finished) {
+		[self.recordLockView removeFromSuperview];
+		self.recordLockView = nil;
+	}];
+
+	self.recordCancelSlideLabel.hidden = YES;
+	[self.recordPanel viewWithTag:0x81C1].hidden = YES;
+	[self.recordPanel viewWithTag:0x81C2].hidden = YES;
+
+	self.recordCancelButton.hidden = NO;
+	self.recordSendButton.hidden = NO;
+}
+
+- (void)recordTouchDown:(UIButton *)btn withEvent:(UIEvent *)event {
+	sIsCancelled = NO;
+	sIsLocked = NO;
+	sDragDeltaX = 0;
+	UITouch *touch = [[event allTouches] anyObject];
+	if (touch) {
+		sTouchStart = [touch locationInView:self.view];
+	} else {
+		sTouchStart = CGPointMake(self.view.bounds.size.width - 25, CGRectGetMidY(self.inputBar.frame));
+	}
+	self.table.scrollEnabled = NO;
+	[self recordStart];
+}
+
+- (void)recordTouchUp:(UIButton *)btn withEvent:(UIEvent *)event {
+	self.table.scrollEnabled = YES;
+	if (sIsLocked || sIsCancelled)
+		return;
+
+	// Released while dragged towards cancel -> cancel
+	if (sDragDeltaX >= 25.0f) {
+		[self recordCancel];
+		return;
+	}
+
+	[self recordFinish];
+}
+
+- (void)recordTouchCancel {
+	self.table.scrollEnabled = YES;
+	if (sIsLocked) return;
+	[self recordCancel];
+}
+
+- (void)recordDrag:(UIButton *)btn withEvent:(UIEvent *)event {
+	if (sIsCancelled) return;
+	UITouch *touch = [[event allTouches] anyObject];
+	if (!touch) return;
+	CGPoint pt = [touch locationInView:self.view];
+
+	if (!sIsLocked) {
+		CGFloat deltaX = sTouchStart.x - pt.x;
+		CGFloat deltaY = sTouchStart.y - pt.y;
+		sDragDeltaX = deltaX;
+
+		// 1. Slide UP into the rice grain to lock
+		if (deltaY >= 35.0f || pt.y <= CGRectGetMinY(self.inputBar.frame) - 20.0f) {
+			[self lockRecording];
+			return;
+		} else if (deltaY > 0.0f && self.recordLockView) {
+			CGFloat shift = -MIN(deltaY * 0.4f, 12.0f);
+			self.recordLockView.transform = CGAffineTransformMakeTranslation(0, shift);
+		}
+
+		// 2. Slide LEFT to cancel
+		if (deltaX >= 45.0f) {
+			sIsCancelled = YES;
+			[self recordCancel];
+			return;
+		} else if (deltaX > 0.0f) {
+			CGFloat shift = MIN(deltaX * 0.7f, 40.0f);
+			self.recordCancelSlideLabel.transform = CGAffineTransformMakeTranslation(-shift, 0);
+			self.recordCancelSlideLabel.alpha = MAX(0.1f, 1.0f - (deltaX / 45.0f));
+		} else {
+			self.recordCancelSlideLabel.transform = CGAffineTransformIdentity;
+			self.recordCancelSlideLabel.alpha = 1.0f;
+		}
+	}
 }
 
 - (void)recordStart {
@@ -90,22 +268,32 @@
 		return;
 	}
 	[self showRecordPanel];
-	self.recordTimer = [NSTimer scheduledTimerWithTimeInterval:0.5
-													   target:self
-													 selector:@selector(recordTick)
-													 userInfo:nil
-													  repeats:YES];
+	self.recordTimer = [NSTimer timerWithTimeInterval:0.1
+											   target:self
+											 selector:@selector(recordTick)
+											 userInfo:nil
+											  repeats:YES];
+	[[NSRunLoop currentRunLoop] addTimer:self.recordTimer forMode:NSRunLoopCommonModes];
 }
 
 - (void)recordTick {
 	NSTimeInterval d = [TGVoiceRecorder shared].duration;
-	// Their panel shows tenths, which is what makes it read as running.
+	// Shows tenths of seconds smoothly updated every 100ms
 	self.recordClock.text = [NSString stringWithFormat:@"%ld:%02ld,%ld",
 			(long)(d / 60), (long)((NSInteger)d % 60), (long)((NSInteger)(d * 10) % 10)];
-	self.recordDot.alpha = (self.recordDot.alpha < 1.0f) ? 1.0f : 0.25f;
+	self.recordDot.alpha = ((NSInteger)(d * 2) % 2 == 0) ? 1.0f : 0.25f;
+
+	if (!sIsLocked) {
+		UIView *ring = [self.recordPanel viewWithTag:0x81C1];
+		if (ring) {
+			CGFloat pulse = 1.0f + 0.08f * fabsf(sinf((float)d * 3.14159f));
+			ring.transform = CGAffineTransformMakeScale(pulse, pulse);
+		}
+	}
 }
 
 - (void)recordFinish {
+	self.table.scrollEnabled = YES;
 	[self.recordTimer invalidate];
 	self.recordTimer = nil;
 	[self hideRecordPanel];
@@ -124,6 +312,8 @@
 }
 
 - (void)recordCancel {
+	self.table.scrollEnabled = YES;
+	sIsCancelled = YES;
 	[self.recordTimer invalidate];
 	self.recordTimer = nil;
 	[self hideRecordPanel];

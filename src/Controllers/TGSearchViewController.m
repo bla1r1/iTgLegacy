@@ -67,7 +67,15 @@ static const CGFloat kSearchAvatar = 40.0f;
 	self.tableView.backgroundColor = [theme listBackgroundColour];
 	self.tableView.separatorColor = [theme separatorColour];
 	self.bar.barStyle = theme.isDark ? UIBarStyleBlack : UIBarStyleDefault;
+	if ([self.bar respondsToSelector:@selector(setBarTintColor:)])
+		self.bar.barTintColor = [theme searchBarBackgroundColour];
 	self.bar.tintColor = [theme accentColour];
+	self.bar.backgroundColor = [theme searchBarBackgroundColour];
+	if ([self.bar respondsToSelector:@selector(setImage:forSearchBarIcon:state:)]) {
+		[self.bar setImage:[TGIcons searchLensOfSize:15.0f colour:[theme secondaryTextColour]]
+		  forSearchBarIcon:UISearchBarIconSearch
+					 state:UIControlStateNormal];
+	}
 	[theme styleNavigationBar:self.navigationController.navigationBar];
 }
 

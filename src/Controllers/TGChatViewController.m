@@ -83,6 +83,11 @@
 	[self.table addGestureRecognizer:[[UILongPressGestureRecognizer alloc]
 			initWithTarget:self action:@selector(messageHeld:)]];
 
+	UITapGestureRecognizer *tableTap = [[UITapGestureRecognizer alloc]
+			initWithTarget:self action:@selector(tableTapped:)];
+	tableTap.cancelsTouchesInView = NO;
+	[self.table addGestureRecognizer:tableTap];
+
 	[self.view addSubview:self.table];
 
 	[self buildInputBar:b];
@@ -118,6 +123,7 @@
 			selector:@selector(musicChanged)
 				name:TGMusicPlayerChangedNotification object:nil];
 
+	[[TGClient shared] openChat:self.chatId];
 	[self reload];
 }
 
@@ -164,40 +170,9 @@
 
 	// An imported theme can arrive while a chat is open - repaint rather than
 	// wait for the screen to be pushed again.
-	__weak typeof(self) weakChat = self;
-	[[NSNotificationCenter defaultCenter] addObserverForName:TGThemeChangedNotification
-			object:nil queue:[NSOperationQueue mainQueue]
-		 usingBlock:^(NSNotification *note){
-		[TGIcons flush];
-		TGChatViewController *me = weakChat;
-		TGTheme *theme = [TGTheme shared];
-		[me.layoutCache removeAllObjects];
-		me.view.backgroundColor = [theme chatBackgroundColour];
-		me.table.backgroundColor = [UIColor clearColor];
-		me.inputBar.backgroundColor = [theme inputBarColour];
-		me.input.backgroundColor = [theme listBackgroundColour];
-		me.input.textColor = [theme primaryTextColour];
-		me.input.layer.borderColor = [theme separatorColour].CGColor;
-		me.input.keyboardAppearance = theme.isDark ? UIKeyboardAppearanceDark : UIKeyboardAppearanceLight;
-		me.sendButton.backgroundColor = [theme accentColour];
-		me.wallpaperView.image = [theme wallpaper];
-		me.titleNameLabel.textColor = [theme barTitleColour];
-		me.titleSubtitleLabel.textColor = [theme barSubtitleColour];
-		if (me.pinnedBannerView) {
-			me.pinnedBannerView.backgroundColor = [theme inputBarColour];
-			me.pinnedBannerHair.backgroundColor = [theme separatorColour];
-		}
-		if (me.recordPanel) {
-			me.recordPanel.backgroundColor = [theme inputBarColour];
-		}
-		if (me.editToolbar) {
-			me.editToolbar.backgroundColor = [theme inputBarColour];
-			[me.editDeleteButton setTitleColor:[theme destructiveColour] forState:UIControlStateNormal];
-			[me.editForwardButton setTitleColor:[theme accentColour] forState:UIControlStateNormal];
-		}
-		[theme styleNavigationBar:me.navigationController.navigationBar];
-		[me.table reloadData];
-	}];
+	[[NSNotificationCenter defaultCenter] addObserver:self
+			selector:@selector(themeChanged:)
+				name:TGThemeChangedNotification object:nil];
 
 	[self loadPinnedMessage];
 	[self applyPostingRights];
@@ -226,23 +201,74 @@
 	}];
 }
 
+- (void)themeChanged:(NSNotification *)note {
+	[TGIcons flush];
+	TGTheme *theme = [TGTheme shared];
+	[self.layoutCache removeAllObjects];
+	self.view.backgroundColor = [theme chatBackgroundColour];
+	self.table.backgroundColor = [UIColor clearColor];
+	self.inputBar.backgroundColor = [theme inputBarColour];
+	self.input.backgroundColor = [theme listBackgroundColour];
+	self.input.textColor = [theme primaryTextColour];
+	self.input.layer.borderColor = [theme separatorColour].CGColor;
+	self.input.keyboardAppearance = theme.isDark ? UIKeyboardAppearanceDark : UIKeyboardAppearanceLight;
+	self.sendButton.backgroundColor = [theme accentColour];
+	self.wallpaperView.image = [theme wallpaper];
+	self.titleNameLabel.textColor = [theme barTitleColour];
+	self.titleSubtitleLabel.textColor = [theme barSubtitleColour];
+	if (self.pinnedBannerView) {
+		self.pinnedBannerView.backgroundColor = [theme inputBarColour];
+		self.pinnedBannerHair.backgroundColor = [theme separatorColour];
+	}
+	if (self.recordPanel) {
+		self.recordPanel.backgroundColor = [theme inputBarColour];
+	}
+	if (self.editToolbar) {
+		self.editToolbar.backgroundColor = [theme inputBarColour];
+		[self.editDeleteButton setTitleColor:[theme destructiveColour] forState:UIControlStateNormal];
+		[self.editForwardButton setTitleColor:[theme accentColour] forState:UIControlStateNormal];
+	}
+	[theme styleNavigationBar:self.navigationController.navigationBar];
+	[self.table reloadData];
+}
+
 /// A voice note going on playing after you have left the chat is the one thing
 /// nobody expects, and the timer would outlive the screen it repaints.
 - (void)viewWillDisappear:(BOOL)animated {
 	[super viewWillDisappear:animated];
-	// Music deliberately survives this: it goes on in the background, which is
-	// the whole reason it has a player of its own.
 	if (self.voicePlayer)
 		[self stopPlayback];
 	[self stopVideoNote];
-	// A pending delete must not be lost with the screen, and a menu must not
-	// outlive the messages it was opened over.
 	[TGSnackbar commitNow];
 	[TGPopupMenu dismiss];
+
+	[NSObject cancelPreviousPerformRequestsWithTarget:self.table];
+	[NSObject cancelPreviousPerformRequestsWithTarget:self];
+
+	if ([self isMovingFromParentViewController]) {
+		[[TGClient shared] closeChat:self.chatId];
+		[TGClient shared].onMessage = nil;
+		[TGClient shared].onChatAction = nil;
+		[TGClient shared].onFileProgress = nil;
+		[self.images removeAllObjects];
+		[self.imagesRequested removeAllObjects];
+		[self.senderAvatars removeAllObjects];
+		[self.senderAvatarsRequested removeAllObjects];
+		[self.maps removeAllObjects];
+		[self.mapsRequested removeAllObjects];
+		[self.quotes removeAllObjects];
+		[self.quotesRequested removeAllObjects];
+		[self.layoutCache removeAllObjects];
+	}
 }
 
 - (void)dealloc {
+	[NSObject cancelPreviousPerformRequestsWithTarget:self.table];
+	[NSObject cancelPreviousPerformRequestsWithTarget:self];
 	[self.playbackTimer invalidate];
+	self.playbackTimer = nil;
+	[self.recordTimer invalidate];
+	self.recordTimer = nil;
 	[[NSNotificationCenter defaultCenter] removeObserver:self];
 }
 
@@ -670,7 +696,7 @@
 		double lat = [m[@"lat"] doubleValue];
 		double lon = [m[@"lon"] doubleValue];
 		if (lat != 0 || lon != 0){
-			NSString *title = m[@"venue"][@"title"];
+			NSString *title = [m[@"venue"] isKindOfClass:[NSDictionary class]] ? m[@"venue"][@"title"] : nil;
 			NSString *urlStr = nil;
 			if (title.length){
 				NSString *esc = [title stringByAddingPercentEscapesUsingEncoding:NSUTF8StringEncoding];
@@ -739,6 +765,7 @@
 	// Video and photos share one viewer: it pages between them, which is how
 	// every current client shows a chat's media.
 	if ([kind isEqualToString:@"messageVideo"] ||
+		[kind isEqualToString:@"messageAnimation"] ||
 		[kind isEqualToString:@"messagePhoto"] ||
 		[m[@"isAlbum"] boolValue]){
 		NSArray *albumMsgs = [m[@"isAlbum"] boolValue] ? m[@"albumMessages"] : nil;
@@ -788,7 +815,19 @@
 	[alert show];
 }
 
-#pragma mark - pagination
+#pragma mark - pagination & scroll
+
+- (void)tableTapped:(UITapGestureRecognizer *)gesture {
+	[self hideStickerPanel];
+	[self.input resignFirstResponder];
+}
+
+- (void)scrollViewWillBeginDragging:(UIScrollView *)scrollView {
+	if (scrollView == self.table) {
+		[self hideStickerPanel];
+		[self.input resignFirstResponder];
+	}
+}
 
 - (void)scrollViewDidScroll:(UIScrollView *)scrollView {
     if (self.isLoadingMoreHistory || !self.messages.count)

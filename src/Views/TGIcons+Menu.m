@@ -34,8 +34,8 @@ void TGIconsClearSettingsIconCache(void) {
 		CGContextSetLineJoin(ctx, kCGLineJoinRound);
 		CGFloat m = s * 0.18f;              // margin, so every glyph shares a box
 
-		if ([name isEqualToString:@"reply"] || [name isEqualToString:@"undo"]){
-			// an arrow turning back on itself
+		if ([name isEqualToString:@"reply"]){
+			// an arrow turning back on itself (reply left)
 			CGContextMoveToPoint(ctx, m + 5, s * 0.30f);
 			CGContextAddLineToPoint(ctx, m, s * 0.45f);
 			CGContextAddLineToPoint(ctx, m + 5, s * 0.60f);
@@ -43,6 +43,19 @@ void TGIconsClearSettingsIconCache(void) {
 			CGContextMoveToPoint(ctx, m, s * 0.45f);
 			CGContextAddLineToPoint(ctx, s - m - 5, s * 0.45f);
 			CGContextAddArc(ctx, s - m - 5, s * 0.62f, s * 0.17f, -M_PI_2, 0, 0);
+			CGContextStrokePath(ctx);
+
+		} else if ([name isEqualToString:@"undo"]){
+			// counter-clockwise circular rewind arrow
+			CGFloat r = s * 0.28f;
+			CGFloat cx = s / 2.0f;
+			CGFloat cy = s / 2.0f;
+			CGContextAddArc(ctx, cx, cy, r, -M_PI * 0.70f, M_PI * 0.75f, 0);
+			CGContextStrokePath(ctx);
+			CGPoint tip = CGPointMake(cx + r * cosf(-M_PI * 0.70f), cy + r * sinf(-M_PI * 0.70f));
+			CGContextMoveToPoint(ctx, tip.x - 2.0f, tip.y + 5.0f);
+			CGContextAddLineToPoint(ctx, tip.x, tip.y);
+			CGContextAddLineToPoint(ctx, tip.x + 5.0f, tip.y + 1.0f);
 			CGContextStrokePath(ctx);
 
 		} else if ([name isEqualToString:@"forward"]){
@@ -87,7 +100,7 @@ void TGIconsClearSettingsIconCache(void) {
 			CGContextAddLineToPoint(ctx, s - m - 2, s * 0.30f);
 			CGContextStrokePath(ctx);
 
-		} else if ([name isEqualToString:@"pin"] || [name isEqualToString:@"unpin"]){
+		} else if ([name isEqualToString:@"pin"]){
 			// a drawing pin seen from the side
 			CGContextMoveToPoint(ctx, s * 0.34f, m);
 			CGContextAddLineToPoint(ctx, s * 0.66f, m);
@@ -99,6 +112,24 @@ void TGIconsClearSettingsIconCache(void) {
 			CGContextStrokePath(ctx);
 			CGContextMoveToPoint(ctx, s / 2, s * 0.60f);
 			CGContextAddLineToPoint(ctx, s / 2, s - m);
+			CGContextStrokePath(ctx);
+
+		} else if ([name isEqualToString:@"unpin"]){
+			// pin with a clean diagonal slash across it
+			CGContextMoveToPoint(ctx, s * 0.34f, m);
+			CGContextAddLineToPoint(ctx, s * 0.66f, m);
+			CGContextAddLineToPoint(ctx, s * 0.58f, s * 0.46f);
+			CGContextAddLineToPoint(ctx, s * 0.76f, s * 0.60f);
+			CGContextAddLineToPoint(ctx, s * 0.24f, s * 0.60f);
+			CGContextAddLineToPoint(ctx, s * 0.42f, s * 0.46f);
+			CGContextClosePath(ctx);
+			CGContextStrokePath(ctx);
+			CGContextMoveToPoint(ctx, s / 2, s * 0.60f);
+			CGContextAddLineToPoint(ctx, s / 2, s - m);
+			CGContextStrokePath(ctx);
+			// Diagonal strike-through line
+			CGContextMoveToPoint(ctx, m + 1.0f, s - m - 1.0f);
+			CGContextAddLineToPoint(ctx, s - m - 1.0f, m + 1.0f);
 			CGContextStrokePath(ctx);
 
 		} else if ([name isEqualToString:@"mute"] || [name isEqualToString:@"unmute"]){
@@ -132,10 +163,14 @@ void TGIconsClearSettingsIconCache(void) {
 			CGContextStrokePath(ctx);
 
 		} else if ([name isEqualToString:@"react"]){
-			// a heart
-			CGContextMoveToPoint(ctx, s / 2, s - m - 2);
-			CGContextAddCurveToPoint(ctx, m, s * 0.60f, m, s * 0.22f, s / 2, s * 0.38f);
-			CGContextAddCurveToPoint(ctx, s - m, s * 0.22f, s - m, s * 0.60f, s / 2, s - m - 2);
+			// Smiling face reaction outline
+			CGRect faceRect = CGRectInset(CGRectMake(0, 0, s, s), m, m);
+			CGContextStrokeEllipseInRect(ctx, faceRect);
+			// Eyes
+			CGContextFillEllipseInRect(ctx, CGRectMake(s * 0.36f - 1.0f, s * 0.38f - 1.5f, 2.5f, 3.0f));
+			CGContextFillEllipseInRect(ctx, CGRectMake(s * 0.64f - 1.5f, s * 0.38f - 1.5f, 2.5f, 3.0f));
+			// Smile
+			CGContextAddArc(ctx, s / 2.0f, s * 0.48f, s * 0.22f, 0.4f, M_PI - 0.4f, 0);
 			CGContextStrokePath(ctx);
 
 		} else if ([name isEqualToString:@"select"]){
@@ -147,20 +182,29 @@ void TGIconsClearSettingsIconCache(void) {
 			CGContextStrokePath(ctx);
 
 		} else if ([name isEqualToString:@"call"]){
-			// a handset on its diagonal
-			CGContextSetLineWidth(ctx, 2.0f);
-			CGContextMoveToPoint(ctx, m + 1, m + 4);
-			CGContextAddCurveToPoint(ctx, m + 1, s * 0.70f, s * 0.70f, s - m - 1,
-									 s - m - 4, s - m - 1);
-			CGContextAddLineToPoint(ctx, s - m, s * 0.68f);
-			CGContextAddLineToPoint(ctx, s * 0.62f, s * 0.58f);
-			CGContextAddLineToPoint(ctx, s * 0.50f, s * 0.68f);
-			CGContextAddCurveToPoint(ctx, s * 0.40f, s * 0.60f, s * 0.40f, s * 0.60f,
-									 s * 0.32f, s * 0.50f);
-			CGContextAddLineToPoint(ctx, s * 0.42f, s * 0.38f);
-			CGContextAddLineToPoint(ctx, s * 0.32f, m);
-			CGContextClosePath(ctx);
-			CGContextStrokePath(ctx);
+			// Sleek telephone receiver angled at 45 degrees
+			CGContextSaveGState(ctx);
+			CGContextTranslateCTM(ctx, s / 2.0f, s / 2.0f);
+			CGContextRotateCTM(ctx, -M_PI_4);
+
+			UIBezierPath *phone = [UIBezierPath bezierPath];
+			[phone moveToPoint:CGPointMake(9.0f, 3.8f)];
+			[phone addArcWithCenter:CGPointMake(7.0f, -0.5f) radius:2.2f startAngle:0 endAngle:M_PI clockwise:NO];
+			[phone addLineToPoint:CGPointMake(5.0f, 1.2f)];
+			[phone addCurveToPoint:CGPointMake(-5.0f, 1.2f)
+					controlPoint1:CGPointMake(2.5f, 3.0f)
+					controlPoint2:CGPointMake(-2.5f, 3.0f)];
+			[phone addLineToPoint:CGPointMake(-6.0f, -0.5f)];
+			[phone addArcWithCenter:CGPointMake(-7.0f, -0.5f) radius:2.2f startAngle:0 endAngle:M_PI clockwise:NO];
+			[phone addLineToPoint:CGPointMake(-9.0f, 3.8f)];
+			[phone addCurveToPoint:CGPointMake(9.0f, 3.8f)
+					controlPoint1:CGPointMake(-3.5f, 6.0f)
+					controlPoint2:CGPointMake(3.5f, 6.0f)];
+			[phone closePath];
+
+			CGContextAddPath(ctx, phone.CGPath);
+			CGContextFillPath(ctx);
+			CGContextRestoreGState(ctx);
 
 		} else if ([name isEqualToString:@"video"]){
 			// a camera: body and the lens sticking out of it
@@ -176,9 +220,13 @@ void TGIconsClearSettingsIconCache(void) {
 			CGContextStrokePath(ctx);
 
 		} else if ([name isEqualToString:@"search"]){
-			// a magnifier
-			CGContextStrokeEllipseInRect(ctx, CGRectMake(m, m, s * 0.50f, s * 0.50f));
-			CGContextMoveToPoint(ctx, m + s * 0.46f, m + s * 0.46f);
+			// a magnifier with clean 45-degree handle
+			CGFloat r = s * 0.26f;
+			CGFloat cx = s * 0.40f;
+			CGFloat cy = s * 0.40f;
+			CGContextStrokeEllipseInRect(ctx, CGRectMake(cx - r, cy - r, r * 2.0f, r * 2.0f));
+			CGFloat cos45 = 0.7071f;
+			CGContextMoveToPoint(ctx, cx + r * cos45, cy + r * cos45);
 			CGContextAddLineToPoint(ctx, s - m, s - m);
 			CGContextStrokePath(ctx);
 
@@ -263,15 +311,15 @@ void TGIconsClearSettingsIconCache(void) {
 			CGContextRestoreGState(ctx);
 
 		} else if ([name isEqualToString:@"faq"]){
-			// a question mark in a circle
-			CGContextStrokeEllipseInRect(ctx, CGRectInset(
-					CGRectMake(0, 0, s, s), m, m));
-			CGContextAddArc(ctx, s / 2, s * 0.40f, s * 0.11f, M_PI, M_PI_2, 1);
+			// Clean circular frame with centered, smoothly curved question mark
+			CGContextStrokeEllipseInRect(ctx, CGRectInset(CGRectMake(0, 0, s, s), m, m));
+			CGFloat cx = s / 2.0f;
+			CGFloat R = 3.4f;
+			CGFloat topY = s * 0.38f;
+			CGContextAddArc(ctx, cx, topY, R, M_PI, 0, 0);
+			CGContextAddCurveToPoint(ctx, cx + R, s * 0.46f, cx, s * 0.49f, cx, s * 0.57f);
 			CGContextStrokePath(ctx);
-			CGContextMoveToPoint(ctx, s / 2, s * 0.51f);
-			CGContextAddLineToPoint(ctx, s / 2, s * 0.60f);
-			CGContextStrokePath(ctx);
-			CGContextFillEllipseInRect(ctx, CGRectMake(s / 2 - 1, s * 0.68f, 2, 2));
+			CGContextFillEllipseInRect(ctx, CGRectMake(cx - 1.2f, s * 0.69f, 2.4f, 2.4f));
 
 		} else if ([name isEqualToString:@"policy"]){
 			// a shield with a tick in it

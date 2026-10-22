@@ -215,6 +215,22 @@
 	return self.isDarkStyle ? TG_GRAY_DARK16 : TG_GRAY_LIGHT3;
 }
 
+- (UIColor *)searchBarBackgroundColour {
+	UIColor *imported = [self importedColour:@"searchBarBackground"];
+	if (imported) return imported;
+	switch (self.style) {
+		case TGThemeStyleSkeuomorphic:
+			return rgb(0xCD, 0xD3, 0xDC);
+		case TGThemeStyleFlat:
+			return rgb(0xE9, 0xE9, 0xEB);
+		case TGThemeStyleDark:
+			return rgb(0x2E, 0x2E, 0x2E);
+		case TGThemeStyleNightBlue:
+			return rgb(0x18, 0x25, 0x33);
+	}
+	return rgb(0xE9, 0xE9, 0xEB);
+}
+
 #pragma mark - media and file blocks
 
 // File tile background color
@@ -258,6 +274,22 @@
 
 - (UIColor *)onlineColour {
 	return TG_GREEN_BRIGHT1;
+}
+
+- (UIColor *)ticksColour {
+	UIColor *imported = [self importedColour:@"ticks"];
+	if (imported) return imported;
+	switch (self.style) {
+		case TGThemeStyleSkeuomorphic:
+			return rgb(0x51, 0x7D, 0xA2);
+		case TGThemeStyleFlat:
+			return rgb(0x4C, 0xB3, 0xF5);
+		case TGThemeStyleDark:
+			return rgb(0x4C, 0xB3, 0xF5);
+		case TGThemeStyleNightBlue:
+			return rgb(0x2E, 0xA6, 0xFF);
+	}
+	return rgb(0x4C, 0xB3, 0xF5);
 }
 
 - (UIColor *)separatorColour {

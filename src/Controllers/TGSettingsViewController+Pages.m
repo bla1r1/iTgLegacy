@@ -26,33 +26,18 @@
 			[me[@"id"] longLongValue]] != nil;
 
 	return @[
-		// Profile header row
-		TGSection(nil, nil, @[TGRow(TGKindProfile, @"")]),
-
+		// Profile & Account card
 		TGSection(nil, nil, @[
+			TGRow(TGKindProfile, @""),
 			TGActionRow(hasPhoto ? @"Change Profile Photo" : @"Set Profile Photo", ^{
 				[weakSelf pickProfilePhoto];
-			}),
-		]),
-
-		// Their accounts card: the one you are in, and a way to add another.
-		TGSection(nil, nil, @[
-			TGSubtitleRow([me[@"first_name"] length] ? me[@"first_name"] : @"This account",
-					[me[@"phone"] length]
-							? [NSString stringWithFormat:@"+%@", me[@"phone"]] : @"signed in",
-					nil),
-			TGActionRow(@"Add Account", ^{ [weakSelf explainAddAccount]; }),
-		]),
-
-		TGSection(nil, nil, @[
-			TGIconRow(@"My Profile", @"privacy", TGRGB(1.00, 0.23, 0.18), ^{
-				[weakSelf openMyProfile];
 			}),
 			TGIconRow(@"Edit Profile", @"chat", TGRGB(0.35, 0.34, 0.84), ^{
 				UIViewController *edit = [[TGEditProfileViewController alloc] init];
 				edit.hidesBottomBarWhenPushed = YES;
 				[weakSelf.navigationController pushViewController:edit animated:YES];
 			}),
+			TGActionRow(@"Add Account", ^{ [weakSelf explainAddAccount]; }),
 		]),
 
 		TGSection(nil, nil, @[

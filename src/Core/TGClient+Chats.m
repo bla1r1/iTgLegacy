@@ -182,6 +182,9 @@ int64_t TGArchiveOrder(NSArray *positions) {
 }
 
 - (void)deleteChat:(int64_t)chatId {
+	[self.chatsById removeObjectForKey:@(chatId)];
+	[self rebuildChats];
+
 	// A group has to be left as well, or it comes straight back on the next
 	// message.
 	[self request:@{@"@type" : @"getChat", @"chat_id" : @(chatId)}
@@ -339,6 +342,31 @@ int64_t TGArchiveOrder(NSArray *positions) {
 	} completion:^(NSDictionary *chat){
 		if (completion)
 			completion([chat[@"id"] longLongValue], chat[@"title"]);
+	}];
+}
+
+- (void)joinChatByInviteLink:(NSString *)inviteLink
+                  completion:(void (^)(int64_t, NSString *))completion {
+	[self request:@{
+		@"@type"       : @"joinChatByInviteLink",
+		@"invite_link" : inviteLink ?: @"",
+	} completion:^(NSDictionary *chat){
+		if (completion)
+			completion([chat[@"id"] longLongValue], chat[@"title"]);
+	}];
+}
+
+- (void)openChat:(int64_t)chatId {
+	[self send:@{
+		@"@type"   : @"openChat",
+		@"chat_id" : @(chatId),
+	}];
+}
+
+- (void)closeChat:(int64_t)chatId {
+	[self send:@{
+		@"@type"   : @"closeChat",
+		@"chat_id" : @(chatId),
 	}];
 }
 
@@ -558,7 +586,16 @@ int64_t TGArchiveOrder(NSArray *positions) {
 	// A chat sits in exactly one of the two lists, told apart by which
 	// position carries a non-zero order.
 	NSMutableArray *main = [NSMutableArray array], *archived = [NSMutableArray array];
+	int64_t savedId = [self savedMessagesChatId];
 	for (NSDictionary *c in all){
+		BOOL isSaved = [c[@"isSaved"] boolValue] || ([c[@"id"] longLongValue] == savedId && savedId != 0);
+		BOOL isPinned = [c[@"isPinned"] boolValue];
+		BOOL hasDraft = [c[@"draft"] length] > 0;
+		BOOL hasMessage = [c[@"text"] length] > 0 || [c[@"date"] longLongValue] > 0;
+		// Do not show phantom empty chats (e.g. deleted/transferred groups without history)
+		if (!isSaved && !isPinned && !hasDraft && !hasMessage)
+			continue;
+
 		if ([c[@"archiveOrder"] longLongValue] > 0)
 			[archived addObject:c];
 		else if ([c[@"order"] longLongValue] > 0)

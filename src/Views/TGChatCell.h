@@ -14,4 +14,6 @@ static const CGFloat kAvatar    = 52.0f;
 @property (nonatomic, strong) UIImageView *tick;   // your own last message
 @property (nonatomic, strong) UIImageView *pin;   // pinned to the top
 
+- (void)applyTheme;
+
 @end

@@ -10,7 +10,18 @@
 #import "TGCallViewController.h"
 #import "TGChatViewController.h"
 #import "TGTopicsViewController.h"
+#import "TGIcons.h"
 #import <QuartzCore/QuartzCore.h>
+
+static NSString *TGBase64FromImage(UIImage *img) {
+	if (!img) return @"";
+	NSData *data = UIImagePNGRepresentation(img);
+	if (!data) return @"";
+	if ([data respondsToSelector:@selector(base64EncodedStringWithOptions:)]) {
+		return [data base64EncodedStringWithOptions:0] ?: @"";
+	}
+	return @"";
+}
 
 @implementation AppDelegate (URL)
 
@@ -417,6 +428,89 @@
 			}
 			NSData *cjson = [NSJSONSerialization dataWithJSONObject:chatsSummary options:NSJSONWritingPrettyPrinted error:nil];
 			[cjson writeToFile:@"/tmp/all_chats.json" atomically:YES];
+		});
+		return YES;
+	}
+
+	// itglegacy://dump_icons - render and dump all vector glyphs to /tmp/icons_dump.json
+	if ([host isEqualToString:@"dump_icons"]){
+		dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+			NSMutableArray *items = [NSMutableArray array];
+			void (^addIcon)(NSString *, NSString *, NSString *, UIImage *) = ^(NSString *name, NSString *cat, NSString *desc, UIImage *img){
+				if (!img) return;
+				[items addObject:@{
+					@"name" : name,
+					@"category" : cat,
+					@"description" : desc,
+					@"b64" : TGBase64FromImage(img),
+					@"width" : @(img.size.width),
+					@"height" : @(img.size.height)
+				}];
+			};
+
+			// Tab bar
+			addIcon(@"chats", @"Tab Bar", @"Main chats tab glyph", [TGIcons chats]);
+			addIcon(@"contacts", @"Tab Bar", @"Contacts tab glyph", [TGIcons contacts]);
+			addIcon(@"settings", @"Tab Bar", @"Settings sliders glyph", [TGIcons settings]);
+
+			// Actions & Inputs
+			addIcon(@"compose", @"Actions & Inputs", @"New message pencil on sheet", [TGIcons compose]);
+			addIcon(@"send", @"Actions & Inputs", @"Send message paper plane / arrow", [TGIcons send]);
+			addIcon(@"attach", @"Actions & Inputs", @"Paperclip attachment glyph", [TGIcons attach]);
+			addIcon(@"microphone", @"Actions & Inputs", @"Audio note microphone glyph", [TGIcons microphone]);
+			addIcon(@"sticker", @"Actions & Inputs", @"Sticker outline glyph", [TGIcons sticker]);
+			addIcon(@"document", @"Actions & Inputs", @"Document folded sheet", [TGIcons document]);
+			addIcon(@"pin", @"Actions & Inputs", @"Pushpin marker", [TGIcons pin]);
+			addIcon(@"play", @"Actions & Inputs", @"Media video play arrow", [TGIcons play]);
+			addIcon(@"pause", @"Actions & Inputs", @"Media video pause glyph", [TGIcons pause]);
+			addIcon(@"phoneCall", @"Actions & Inputs", @"Phone handset call icon", [TGIcons phoneCall]);
+			addIcon(@"searchLens", @"Actions & Inputs", @"Magnifying search lens", [TGIcons searchLensOfSize:22 colour:[UIColor colorWithWhite:0.25 alpha:1]]);
+			addIcon(@"backChevron", @"Actions & Inputs", @"Navigation back chevron", [TGIcons backChevronWithColour:[[TGTheme shared] accentColour]]);
+			addIcon(@"checkboxSelected", @"Actions & Inputs", @"Multi-select checked box", [TGIcons selectionCheckboxSelected:YES]);
+			addIcon(@"checkboxUnselected", @"Actions & Inputs", @"Multi-select unchecked circle", [TGIcons selectionCheckboxSelected:NO]);
+
+			// Delivery & Badges
+			addIcon(@"ticksOutgoing", @"Delivery & Status", @"Delivery checkmarks (bubble text)", [TGIcons ticksWhite:NO]);
+			addIcon(@"ticksMedia", @"Delivery & Status", @"Delivery checkmarks (media plate)", [TGIcons ticksWhite:YES]);
+			addIcon(@"callIncoming", @"Delivery & Status", @"Incoming call arrow (green)", [TGIcons callArrowOutgoing:NO missed:NO]);
+			addIcon(@"callOutgoing", @"Delivery & Status", @"Outgoing call arrow", [TGIcons callArrowOutgoing:YES missed:NO]);
+			addIcon(@"callMissed", @"Delivery & Status", @"Missed call arrow (red)", [TGIcons callArrowOutgoing:NO missed:YES]);
+			addIcon(@"telegramAirplane", @"Delivery & Status", @"Telegram paper airplane disc", [TGIcons telegramAirplaneOfSide:44]);
+			addIcon(@"verifiedBadge", @"Delivery & Status", @"Verified starburst checkmark badge", [TGIcons verifiedBadge]);
+
+			// Media discs
+			addIcon(@"mediaDiscPlay", @"Media & Files", @"Audio play circular button", [TGIcons mediaDiscOfSide:42 playing:NO]);
+			addIcon(@"mediaDiscPause", @"Media & Files", @"Audio pause circular button", [TGIcons mediaDiscOfSide:42 playing:YES]);
+			addIcon(@"fileDisc", @"Media & Files", @"File attachment circular plate", [TGIcons fileDiscOfSide:42]);
+			addIcon(@"recordMicDisc", @"Media & Files", @"Recording microphone disc", [TGIcons microphoneOfSide:42 colour:[[TGTheme shared] accentColour]]);
+
+			// Context Menu
+			NSArray *menuNames = @[@"reply", @"forward", @"copy", @"edit", @"delete", @"pin", @"unpin", @"mute", @"unmute", @"archive", @"unarchive", @"react", @"select", @"undo"];
+			for (NSString *mn in menuNames) {
+				addIcon(mn, @"Context Menu (27x27)", [NSString stringWithFormat:@"Menu action: %@", mn], [TGIcons menuGlyphNamed:mn]);
+			}
+
+			// Settings
+			NSArray *settingsNames = @[@"notifications", @"privacy", @"data", @"chat", @"folder", @"devices", @"language", @"faq", @"policy"];
+			for (NSString *sn in settingsNames) {
+				addIcon(sn, @"Settings Rows", [NSString stringWithFormat:@"Settings page icon: %@", sn], [TGIcons settingsIconNamed:sn color:[[TGTheme shared] accentColour]]);
+			}
+
+			// Profile Tiles
+			NSArray *tileNames = @[@"call", @"video", @"search", @"more"];
+			for (NSString *tn in tileNames) {
+				addIcon(tn, @"Profile Action Tiles", [NSString stringWithFormat:@"Action tile: %@", tn], [TGIcons menuGlyphNamed:tn]);
+			}
+
+			// Avatars & Maps
+			addIcon(@"archiveAvatar", @"Avatars & Badges", @"Archived chats row disc avatar", [TGIcons archiveAvatarOfSide:52]);
+			addIcon(@"savedMessagesAvatar", @"Avatars & Badges", @"Saved Messages ribbon disc avatar", [TGIcons savedMessagesAvatarOfSide:52]);
+			addIcon(@"avatarWithInitials", @"Avatars & Badges", @"Initials placeholder avatar", [TGIcons avatarWithInitials:@"TG" size:52 colourId:1]);
+			addIcon(@"mapPinBadge", @"Avatars & Badges", @"Location map pin marker badge", [TGIcons mapPinBadge]);
+
+			NSData *json = [NSJSONSerialization dataWithJSONObject:items options:NSJSONWritingPrettyPrinted error:nil];
+			[json writeToFile:@"/tmp/icons_dump.json" atomically:YES];
+			NSLog(@"[TGIcons] Dumped %lu icons to /tmp/icons_dump.json", (unsigned long)items.count);
 		});
 		return YES;
 	}
