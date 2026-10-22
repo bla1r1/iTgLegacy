@@ -190,6 +190,9 @@ APP_SRC_M := \
 	src/Controllers/TGLoginViewController+Phone.m \
 	src/Controllers/TGLoginViewController+Steps.m \
 	src/Controllers/TGChatListViewController.m \
+	src/Controllers/TGChatListViewController+Actions.m \
+	src/Controllers/TGChatListViewController+Search.m \
+	src/Views/TGChatCell.m \
 	src/Views/TGMessageLayout.m \
 	src/Views/TGBubbleCell.m \
 	src/Controllers/TGChatViewController.m \
@@ -204,6 +207,8 @@ APP_SRC_M := \
 	src/Controllers/TGForwardPicker.m \
 	src/Controllers/TGCallViewController.m \
 	src/Controllers/TGProfileViewController.m \
+	src/Controllers/TGProfileViewController+Actions.m \
+	src/Controllers/TGProfileViewController+Media.m \
 	src/Controllers/TGEditProfileViewController.m \
 	src/Controllers/TGDeviceViewController.m \
 	src/Controllers/TGStorageViewController.m \
