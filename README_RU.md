@@ -40,12 +40,23 @@ iTgLegacy/
 ├── README.md      # Документация (на английском)
 ├── README_RU.md   # Документация (на русском)
 ├── LICENSE        # Лицензия GPLv3
-├── src/           # Исходные файлы Objective-C
-├── libtg/         # Движок MTProto на C
-├── tdlib/         # Telegram Database Library (git submodule)
-├── include/       # Заголовочные файлы C и tg_config.h.example
+├── src/           # Исходные файлы приложения на Objective-C
+│   ├── Core/      # Базовая логика, клиент, устройство
+│   ├── Controllers/ # Контроллеры экранов (ViewControllers)
+│   ├── Views/     # Кастомные UI-компоненты, ячейки, иконки
+│   ├── Calls/     # Реализация VoIP и сквозного шифрования звонков
+│   └── Audio/     # Запись и воспроизведение голосовых сообщений
+├── resources/     # Ресурсы бандла (Info.plist, шрифты, entitlements)
 ├── images/        # Иконки и ресурсы приложения
-├── scripts/       # Скрипты автоматизации сборки
+├── third_party/   # Сторонние библиотеки (libtgvoip, opus, ogg и др.)
+├── tdlib/         # Telegram Database Library (git submodule)
+├── libs/          # Универсальные скомпилированные библиотеки и WebP.framework
+├── include/       # Заголовочные файлы C и tg_config.h.example
+├── compat/        # Полифиллы совместимости (dyld TLV, шимы iOS 7)
+├── tools/         # Утилиты для хоста/устройства и твики
+├── scripts/       # Скрипты автоматизации сборки и деплоя
+├── tests/         # Модульные и интеграционные тесты
+├── legacy/        # Исторический/прототипный код (движок libtg на C)
 └── build/         # Результаты сборки (git-ignored)
     ├── iTgLegacy-armv7.ipa # 32-битный IPA для iOS 6.0+ (8.8 МБ)
     ├── iTgLegacy-arm64.ipa # 64-битный IPA для iOS 7.0-12.5.7 (8.8 МБ)

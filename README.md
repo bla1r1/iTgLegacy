@@ -40,12 +40,23 @@ iTgLegacy/
 ├── README.md      # Documentation (English)
 ├── README_RU.md   # Documentation (Russian)
 ├── LICENSE        # GPLv3 License
-├── src/           # iOS Objective-C source files
-├── libtg/         # Native C MTProto Telegram engine
-├── tdlib/         # Telegram Database Library (git submodule)
-├── include/       # Third-party C header files and tg_config.h.example
+├── src/           # iOS Objective-C application source files
+│   ├── Core/      # Core logic, client & device definitions
+│   ├── Controllers/ # UI ViewControllers
+│   ├── Views/     # Custom UI components, cells, icons
+│   ├── Calls/     # VoIP & E2EE call implementation
+│   └── Audio/     # Voice note recording & playback
+├── resources/     # App bundle resources (Info.plist, fonts, entitlements)
 ├── images/        # Application assets and icons
-├── scripts/       # Build automation scripts
+├── third_party/   # Vendored libraries (libtgvoip, opus, ogg, etc.)
+├── tdlib/         # Telegram Database Library (git submodule)
+├── libs/          # Universal prebuilt libraries & WebP.framework
+├── include/       # Third-party C header files and tg_config.h.example
+├── compat/        # OS compatibility polyfills (dyld TLV, iOS 7 shims)
+├── tools/         # Host and device utilities & tweaks
+├── scripts/       # Build automation and deployment scripts
+├── tests/         # Unit and integration test suite
+├── legacy/        # Historical/prototype code (libtg MTProto engine)
 └── build/         # Build outputs (git-ignored)
     ├── iTgLegacy-armv7.ipa # 32-bit IPA for iOS 6.0+ (8.8 MB)
     ├── iTgLegacy-arm64.ipa # 64-bit IPA for iOS 7.0-12.5.7 (8.8 MB)

@@ -68,13 +68,20 @@ MIN_IOS   := -miphoneos-version-min=6.0
 
 # Include Flags
 INCLUDES  := -I$(ROOT_DIR)/include \
+             -I$(ROOT_DIR)/compat \
              -I$(ROOT_DIR)/src \
-             -I$(ROOT_DIR)/src/ogg \
-             -I$(ROOT_DIR)/src/ogg/ogg \
-             -I$(ROOT_DIR)/src/opus/include \
-             -I$(ROOT_DIR)/src/opus/include/opus \
-             -I$(ROOT_DIR)/src/opusenc \
-             -I$(ROOT_DIR)/src/opusfile \
+             -I$(ROOT_DIR)/src/Core \
+             -I$(ROOT_DIR)/src/Controllers \
+             -I$(ROOT_DIR)/src/Views \
+             -I$(ROOT_DIR)/src/Calls \
+             -I$(ROOT_DIR)/src/Audio \
+             -I$(ROOT_DIR)/third_party \
+             -I$(ROOT_DIR)/third_party/ogg \
+             -I$(ROOT_DIR)/third_party/ogg/ogg \
+             -I$(ROOT_DIR)/third_party/opus/include \
+             -I$(ROOT_DIR)/third_party/opus/include/opus \
+             -I$(ROOT_DIR)/third_party/opusenc \
+             -I$(ROOT_DIR)/third_party/opusfile \
              -I$(ROOT_DIR)/tdlib/td \
              -I$(ROOT_DIR)/tdlib/include \
              -I$(BUILD_DIR)/armv7/tdlib/include \
@@ -82,7 +89,7 @@ INCLUDES  := -I$(ROOT_DIR)/include \
 
 DEFINES   :=
 
-WEBP_ARMV7 := -F$(ROOT_DIR)/src -framework WebP
+WEBP_ARMV7 := -F$(ROOT_DIR)/libs -framework WebP
 WEBP_ARM64 := -lwebp
 
 FRAMEWORKS := -framework UIKit -framework Foundation -framework QuickLook \
@@ -123,98 +130,102 @@ DEPS_LIBS  := -lopus -lstdc++ -lz -lcrypto
 # drops echo cancellation and noise suppression, which an A5 cannot afford and
 # whose sources this fork does not fully carry anyway.
 VOIP_SRC_CXX := \
-	src/libtgvoip/VoIPController.cpp \
-	src/libtgvoip/VoIPServerConfig.cpp \
-	src/libtgvoip/logging.cpp \
-	src/libtgvoip/json11.cpp \
-	src/libtgvoip/video/ScreamCongestionController.cpp \
-	src/libtgvoip/JitterBuffer.cpp \
-	src/libtgvoip/OpusEncoder.cpp \
-	src/libtgvoip/OpusDecoder.cpp \
-	src/libtgvoip/NetworkSocket.cpp \
-	src/libtgvoip/CongestionControl.cpp \
-	src/libtgvoip/EchoCanceller.cpp \
-	src/libtgvoip/MessageThread.cpp \
-	src/libtgvoip/Buffers.cpp \
-	src/libtgvoip/BlockingQueue.cpp \
-	src/libtgvoip/MediaStreamItf.cpp \
-	src/libtgvoip/PacketReassembler.cpp \
-	src/libtgvoip/audio/AudioIO.cpp \
-	src/libtgvoip/audio/AudioInput.cpp \
-	src/libtgvoip/audio/AudioOutput.cpp \
-	src/libtgvoip/audio/Resampler.cpp \
-	src/libtgvoip/os/darwin/AudioUnitIO.cpp \
-	src/libtgvoip/os/darwin/AudioInputAudioUnit.cpp \
-	src/libtgvoip/os/darwin/AudioOutputAudioUnit.cpp \
-	src/libtgvoip/os/posix/NetworkSocketPosix.cpp
+	third_party/libtgvoip/VoIPController.cpp \
+	third_party/libtgvoip/VoIPServerConfig.cpp \
+	third_party/libtgvoip/logging.cpp \
+	third_party/libtgvoip/json11.cpp \
+	third_party/libtgvoip/video/ScreamCongestionController.cpp \
+	third_party/libtgvoip/JitterBuffer.cpp \
+	third_party/libtgvoip/OpusEncoder.cpp \
+	third_party/libtgvoip/OpusDecoder.cpp \
+	third_party/libtgvoip/NetworkSocket.cpp \
+	third_party/libtgvoip/CongestionControl.cpp \
+	third_party/libtgvoip/EchoCanceller.cpp \
+	third_party/libtgvoip/MessageThread.cpp \
+	third_party/libtgvoip/Buffers.cpp \
+	third_party/libtgvoip/BlockingQueue.cpp \
+	third_party/libtgvoip/MediaStreamItf.cpp \
+	third_party/libtgvoip/PacketReassembler.cpp \
+	third_party/libtgvoip/audio/AudioIO.cpp \
+	third_party/libtgvoip/audio/AudioInput.cpp \
+	third_party/libtgvoip/audio/AudioOutput.cpp \
+	third_party/libtgvoip/audio/Resampler.cpp \
+	third_party/libtgvoip/os/darwin/AudioUnitIO.cpp \
+	third_party/libtgvoip/os/darwin/AudioInputAudioUnit.cpp \
+	third_party/libtgvoip/os/darwin/AudioOutputAudioUnit.cpp \
+	third_party/libtgvoip/os/posix/NetworkSocketPosix.cpp
 
 VOIP_SRC_MM := \
-	src/libtgvoip/os/darwin/DarwinSpecific.mm \
-	src/TGCall.mm
+	third_party/libtgvoip/os/darwin/DarwinSpecific.mm \
+	src/Calls/TGCall.mm
 
 VOIP_FLAGS := -DTGVOIP_NO_DSP -DWEBRTC_POSIX -DTGVOIP_USE_CUSTOM_CRYPTO \
-              -I$(ROOT_DIR)/src/libtgvoip -Wno-everything
+              -I$(ROOT_DIR)/third_party/libtgvoip -Wno-everything
 
 LIBTG_SRC_C :=
 
 LIBTG_SRC_CXX :=
 
 APP_SRC_M := \
-	src/AppDelegate.m \
-	src/RootViewController.m \
+	src/Core/AppDelegate.m \
+	src/Controllers/RootViewController.m \
 	src/main.m \
-	src/TGClient.m \
-	src/TGDevice.m \
-	src/TGCapabilities.m \
-	src/TGTheme.m \
-	src/TGThemeFile.m \
-	src/TGIcons.m \
-	src/TGPopupMenu.m \
-	src/TGSnackbar.m \
-	src/TGSearchViewController.m \
-	src/TGPlaceholderViewController.m \
-	src/TGQRViewController.m \
-	src/TGLoginViewController.m \
-	src/TGChatListViewController.m \
-	src/TGMessageLayout.m \
-	src/TGBubbleCell.m \
-	src/TGChatViewController.m \
-	src/TGContactsViewController.m \
-	src/TGTopicsViewController.m \
-	src/TGForwardPicker.m \
-	src/TGCallViewController.m \
-	src/TGProfileViewController.m \
-	src/TGEditProfileViewController.m \
-	src/TGDeviceViewController.m \
-	src/TGStorageViewController.m \
-	src/TGSessionsViewController.m \
-	src/TGSettingsViewController.m \
-	src/TGVoiceDecoder.m \
-	src/TGCallIce.m \
-	src/TGCallStun.m \
-	src/TGCallMessages.m \
-	src/TGCallReflector.m \
-	src/TGVoiceRecorder.m \
-	src/opusenc/opusenc.m \
-	src/UIImage+WebP.m \
-	src/TGLottieView.m \
-	src/TGMediaViewer.m \
-	src/TGMusicPlayer.m \
-	src/TGCallAudioEngine.m
+	src/Core/TGClient.m \
+	src/Core/TGDevice.m \
+	src/Core/TGCapabilities.m \
+	src/Core/TGTheme.m \
+	src/Core/TGThemeFile.m \
+	src/Views/TGIcons.m \
+	src/Views/TGPopupMenu.m \
+	src/Views/TGSnackbar.m \
+	src/Controllers/TGSearchViewController.m \
+	src/Controllers/TGPlaceholderViewController.m \
+	src/Controllers/TGQRViewController.m \
+	src/Controllers/TGLoginViewController.m \
+	src/Controllers/TGChatListViewController.m \
+	src/Views/TGMessageLayout.m \
+	src/Views/TGBubbleCell.m \
+	src/Controllers/TGChatViewController.m \
+	src/Controllers/TGChatViewController+Selection.m \
+	src/Controllers/TGChatViewController+Audio.m \
+	src/Controllers/TGChatViewController+Search.m \
+	src/Controllers/TGChatViewController+Actions.m \
+	src/Controllers/TGContactsViewController.m \
+	src/Controllers/TGTopicsViewController.m \
+	src/Controllers/TGForwardPicker.m \
+	src/Controllers/TGCallViewController.m \
+	src/Controllers/TGProfileViewController.m \
+	src/Controllers/TGEditProfileViewController.m \
+	src/Controllers/TGDeviceViewController.m \
+	src/Controllers/TGStorageViewController.m \
+	src/Controllers/TGSessionsViewController.m \
+	src/Controllers/TGSettingsViewController.m \
+	src/Audio/TGVoiceDecoder.m \
+	src/Calls/TGCallIce.m \
+	src/Calls/TGCallStun.m \
+	src/Calls/TGCallMessages.m \
+	src/Calls/TGCallReflector.m \
+	src/Audio/TGVoiceRecorder.m \
+	third_party/opusenc/opusenc.m \
+	src/Views/UIImage+WebP.m \
+	src/Views/TGLottieView.m \
+	src/Views/TGMediaViewer.m \
+	src/Audio/TGMusicPlayer.m \
+	src/Calls/TGCallAudioEngine.m
 
 
 APP_SRC_C := \
-	src/tlv_polyfill.c \
-	src/TGCallCrypto.c \
-	src/opusfile/internal.c \
-	src/opusfile/opusfile.c \
-	src/opusfile/info.c \
-	src/opusfile/stream.c \
-	src/ogg/ogg/framing.c \
-	src/ogg/ogg/bitwise.c \
-	src/opusenc/opus_header.c \
-	src/opusenc/picture.c \
-	src/opusenc/diag_range.c
+	compat/tlv_polyfill.c \
+	src/Calls/TGCallCrypto.c \
+	third_party/opusfile/internal.c \
+	third_party/opusfile/opusfile.c \
+	third_party/opusfile/info.c \
+	third_party/opusfile/stream.c \
+	third_party/ogg/ogg/framing.c \
+	third_party/ogg/ogg/bitwise.c \
+	third_party/opusenc/opus_header.c \
+	third_party/opusenc/picture.c \
+	third_party/opusenc/diag_range.c
 
 # Object mapping for armv7
 ARMV7_OBJ_DIR := $(BUILD_DIR)/armv7/obj
@@ -299,10 +310,10 @@ ipa-armv7: $(MACHOFIX) $(ARMV7_ALL_OBJS)
 	@echo "[+] Building 32-bit armv7 app bundle..."
 	@mkdir -p "$(IPA_DIR)" "$(BUILD_DIR)/armv7/app/iTgLegacy.app"
 	$(CC) -arch armv7 -isysroot $(SDK_PATH) $(MIN_IOS) -Wl,-dead_strip -ObjC -Wl,-pagezero_size,0x1000 \
-		-L$(BUILD_DIR)/armv7/libs -L$(BUILD_DIR)/armv7/tdlib/lib -L$(ROOT_DIR)/src/opus/lib \
+		-L$(BUILD_DIR)/armv7/libs -L$(BUILD_DIR)/armv7/tdlib/lib -L$(ROOT_DIR)/third_party/opus/lib \
 		$(ARMV7_ALL_OBJS) $(FRAMEWORKS) $(WEBP_ARMV7) $(TDLIB_LIBS) $(DEPS_LIBS) -o "$(BUILD_DIR)/armv7/app/iTgLegacy.app/iTgLegacy"
-	@cp -f "$(ROOT_DIR)/src/Info.plist" "$(BUILD_DIR)/armv7/app/iTgLegacy.app/Info.plist" 2>/dev/null || true
-	@cp -f "$(ROOT_DIR)/src/"*.ttf "$(BUILD_DIR)/armv7/app/iTgLegacy.app/" 2>/dev/null || true
+	@cp -f "$(ROOT_DIR)/resources/Info.plist" "$(BUILD_DIR)/armv7/app/iTgLegacy.app/Info.plist" 2>/dev/null || true
+	@cp -f "$(ROOT_DIR)/resources/fonts/"*.ttf "$(BUILD_DIR)/armv7/app/iTgLegacy.app/" 2>/dev/null || true
 	@cp -rf "$(ROOT_DIR)/images/"* "$(BUILD_DIR)/armv7/app/iTgLegacy.app/" 2>/dev/null || true
 	@# TDLib rides along as its own image: statically linked it pushes __TEXT
 	@# past the 16MB armv7 thumb branch limit. Built by scripts/build_tdlib_dylib.sh.
@@ -320,10 +331,10 @@ ipa-arm64: $(ARM64_ALL_OBJS)
 	@echo "[+] Building 64-bit arm64 app bundle..."
 	@mkdir -p "$(IPA_DIR)" "$(BUILD_DIR)/arm64/app/iTgLegacy.app"
 	$(CC) -arch arm64 -isysroot $(SDK_PATH) $(MIN_IOS) -Wl,-dead_strip \
-		-L$(BUILD_DIR)/arm64/libs -L$(BUILD_DIR)/arm64/tdlib/lib -L$(ROOT_DIR)/src/opus/lib \
+		-L$(BUILD_DIR)/arm64/libs -L$(BUILD_DIR)/arm64/tdlib/lib -L$(ROOT_DIR)/third_party/opus/lib \
 		$(ARM64_ALL_OBJS) $(FRAMEWORKS) $(WEBP_ARM64) $(TDLIB_LIBS_ARM64) $(DEPS_LIBS) -o "$(BUILD_DIR)/arm64/app/iTgLegacy.app/iTgLegacy"
-	@cp -f "$(ROOT_DIR)/src/Info.plist" "$(BUILD_DIR)/arm64/app/iTgLegacy.app/Info.plist" 2>/dev/null || true
-	@cp -f "$(ROOT_DIR)/src/"*.ttf "$(BUILD_DIR)/arm64/app/iTgLegacy.app/" 2>/dev/null || true
+	@cp -f "$(ROOT_DIR)/resources/Info.plist" "$(BUILD_DIR)/arm64/app/iTgLegacy.app/Info.plist" 2>/dev/null || true
+	@cp -f "$(ROOT_DIR)/resources/fonts/"*.ttf "$(BUILD_DIR)/arm64/app/iTgLegacy.app/" 2>/dev/null || true
 	@cp -rf "$(ROOT_DIR)/images/"* "$(BUILD_DIR)/arm64/app/iTgLegacy.app/" 2>/dev/null || true
 	@codesign -s - --force "$(BUILD_DIR)/arm64/app/iTgLegacy.app" 2>/dev/null || true
 	@rm -rf "$(BUILD_DIR)/Payload" "$(IPA_ARM64)"
@@ -343,7 +354,7 @@ $(ARMV7_OBJ_DIR)/%.o: %.m
 	@mkdir -p $(dir $@)
 	$(CC) $(OBJCFLAGS_ARMV7) -c $< -o $@
 
-$(ARMV7_OBJ_DIR)/src/libtgvoip/%.o: src/libtgvoip/%.cpp
+$(ARMV7_OBJ_DIR)/third_party/libtgvoip/%.o: third_party/libtgvoip/%.cpp
 	@mkdir -p $(dir $@)
 	$(CXX) $(subst -std=c++11,-std=c++14,$(CXXFLAGS_ARMV7)) $(VOIP_FLAGS) -c $< -o $@
 
@@ -366,7 +377,7 @@ $(ARM64_OBJ_DIR)/%.o: %.m
 	@mkdir -p $(dir $@)
 	$(CC) $(OBJCFLAGS_ARM64) -c $< -o $@
 
-$(ARM64_OBJ_DIR)/src/libtgvoip/%.o: src/libtgvoip/%.cpp
+$(ARM64_OBJ_DIR)/third_party/libtgvoip/%.o: third_party/libtgvoip/%.cpp
 	@mkdir -p $(dir $@)
 	$(CXX) $(subst -std=c++11,-std=c++14,$(CXXFLAGS_ARM64)) $(VOIP_FLAGS) -c $< -o $@
 

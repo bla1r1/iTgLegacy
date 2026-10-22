@@ -1,0 +1,126 @@
+//
+// TGChatViewControllerInternal.h - Private class extension for TGChatViewController categories
+//
+#ifndef TGCHATVIEWCONTROLLERINTERNAL_H
+#define TGCHATVIEWCONTROLLERINTERNAL_H
+
+#import "TGChatViewController.h"
+#import "TGClient.h"
+#import "TGTheme.h"
+#import "TGIcons.h"
+#import "TGSnackbar.h"
+#import "TGMessageLayout.h"
+#import "TGBubbleCell.h"
+#import <MediaPlayer/MediaPlayer.h>
+#import <AVFoundation/AVFoundation.h>
+#import <CoreLocation/CoreLocation.h>
+#import <AddressBookUI/AddressBookUI.h>
+#import <MobileCoreServices/MobileCoreServices.h>
+
+static const CGFloat kInputHeight = 48.0f;
+static const CGFloat kAvatarSide  = 34.0f;
+
+@interface TGChatViewController () <UISearchBarDelegate, CLLocationManagerDelegate,
+		UIScrollViewDelegate, AVAudioPlayerDelegate,
+		ABPeoplePickerNavigationControllerDelegate>
+
+@property (nonatomic, strong) UITableView *table;
+@property (nonatomic, strong) UIView *inputBar;
+@property (nonatomic, strong) UITextField *input;
+@property (nonatomic, strong) UIButton *sendButton;
+@property (nonatomic, strong) NSArray *messages;          // flattened TDLib dicts (may contain grouped album composites)
+@property (nonatomic, strong) NSArray *rawMessages;       // raw flattened messages before grouping
+@property (nonatomic, strong) NSMutableDictionary *images; // fileId -> UIImage
+@property (nonatomic, strong) NSMutableSet *imagesRequested;
+@property (nonatomic, strong) AVAudioPlayer *voicePlayer;
+@property (nonatomic, assign) BOOL anchorToBottom;
+@property (nonatomic, strong) NSMutableDictionary *lottiePaths;   // fileId -> path
+@property (nonatomic, strong) NSMutableDictionary *maps;          // messageId -> UIImage
+@property (nonatomic, strong) NSMutableSet *mapsRequested;
+@property (nonatomic, strong) NSMutableDictionary *quotes;       // messageId -> flattened
+@property (nonatomic, strong) NSMutableSet *quotesRequested;
+@property (nonatomic, strong) NSDictionary *actionMessage;   // long-pressed
+@property (nonatomic, strong) NSDictionary *contactActionMessage;
+@property (nonatomic, assign) int64_t replyToId;             // composing a reply
+@property (nonatomic, assign) int64_t editingId;             // editing instead
+@property (nonatomic, strong) UIView *composeBanner;         // "Reply to ..."
+@property (nonatomic, strong) UIButton *micButton;
+@property (nonatomic, strong) UISearchBar *chatSearchBar;
+@property (nonatomic, strong) NSArray *messagesBeforeSearch;
+@property (nonatomic, strong) NSTimer *recordTimer;
+@property (nonatomic, strong) UIView *recordPanel;      // shown while holding
+@property (nonatomic, strong) UILabel *recordClock;
+@property (nonatomic, strong) UIView *recordDot;
+@property (nonatomic, assign) int64_t playingMessageId;
+@property (nonatomic, assign) BOOL isLoadingMoreHistory;
+@property (nonatomic, strong) NSTimer *playbackTimer;
+@property (nonatomic, strong) MPMoviePlayerController *videoNotePlayer;
+@property (nonatomic, strong) CAShapeLayer *videoNoteProgressLayer;
+@property (nonatomic, strong) UIView *playerBar;        // the strip under the header
+@property (nonatomic, strong) UIView *playerProgress;   // its line
+@property (nonatomic, strong) UIButton *playerToggle;
+@property (nonatomic, strong) UIButton *playerSpeed;
+@property (nonatomic, strong) UIButton *musicPrevious;
+@property (nonatomic, strong) UIButton *musicNext;
+@property (nonatomic, strong) UILabel *playerLabel;
+@property (nonatomic, strong) NSMutableDictionary *senderAvatars;   // userId -> UIImage
+@property (nonatomic, strong) NSMutableSet *senderAvatarsRequested;
+@property (nonatomic, strong) UILabel *downloadHUD;
+@property (nonatomic, assign) NSInteger downloadingFileId;
+@property (nonatomic, strong) CLLocationManager *locationManager;
+@property (nonatomic, strong) UIImage *fullScreenImage;
+@property (nonatomic, strong) UIImageView *wallpaperView;
+@property (nonatomic, strong) UIButton *stickerButton;
+@property (nonatomic, strong) UIScrollView *stickerPanel;
+@property (nonatomic, strong) NSMutableDictionary *layoutCache;
+@property (nonatomic, strong) UILabel *titleNameLabel;
+@property (nonatomic, strong) UILabel *titleSubtitleLabel;
+@property (nonatomic, strong) UIView *pinnedBannerView;
+@property (nonatomic, strong) UIView *pinnedBannerHair;
+@property (nonatomic, assign) BOOL isEditingMessages;
+@property (nonatomic, strong) NSMutableSet *selectedMessageIds;
+@property (nonatomic, strong) UIView *editToolbar;
+@property (nonatomic, strong) UIButton *editDeleteButton;
+@property (nonatomic, strong) UIButton *editForwardButton;
+@property (nonatomic, strong) UIView *savedTitleView;
+@property (nonatomic, strong) UIBarButtonItem *savedRightBarButtonItem;
+@property (nonatomic, strong) NSArray *pendingDeleteMessageIds;
+
+- (void)clearComposeState;
+- (void)showComposeBanner:(NSString *)text;
+- (void)reload;
+- (void)showPlaybackFailure;
+- (void)applyTheme;
+- (void)stopPlayback;
+- (void)stopVideoNote;
+- (void)togglePlayback;
+- (void)showMusicBar;
+- (void)playVoiceNoteForMessage:(NSDictionary *)m atRow:(NSInteger)row;
+- (void)updatePlayerBar;
+- (void)scrollToBottomAnimated:(BOOL)animated;
+- (TGBubbleCell *)finalizeCell:(TGBubbleCell *)cell message:(NSDictionary *)m layout:(TGMessageLayout *)layout isMine:(BOOL)mine;
+- (void)promptDeleteMessages:(NSArray *)ids;
+- (void)executeDeleteMessages:(NSArray *)ids revoke:(BOOL)revoke;
+- (void)updateEditToolbar;
+- (void)openAudioAtPath:(NSString *)path duration:(NSInteger)duration sender:(NSString *)sender title:(NSString *)title;
+- (void)downloadFileId:(NSInteger)fileId;
+- (void)openFileWithViewer:(NSString *)filePath;
+- (void)handleMessageTap:(NSDictionary *)m;
+- (void)beginDownloadHUDForFile:(NSInteger)fileId;
+- (void)endDownloadHUD;
+- (void)toggleChatSearch;
+- (void)endChatSearch;
+- (void)showActionsForRow:(NSInteger)row;
+- (void)messageHeld:(UILongPressGestureRecognizer *)hold;
+- (void)runMessageAction:(NSString *)action;
+- (void)pickMedia;
+- (void)sendCurrentLocation;
+- (void)pickContact;
+- (void)presentAddContactForMessage:(NSDictionary *)m;
+- (void)showFullScreenImage:(UIImage *)image;
+- (void)inputChanged;
+- (void)sendTapped;
+
+@end
+
+#endif // TGCHATVIEWCONTROLLERINTERNAL_H

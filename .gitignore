@@ -36,3 +36,10 @@ Makefile.in
 /tdlib/native-build
 .DS_Store
 /.zsign_cache
+compile_commands.json
+state/
+*.dirstamp
+.dirstamp
+stamp-h1
+libtool
+libs/libtgvoip

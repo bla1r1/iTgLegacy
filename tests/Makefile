@@ -28,8 +28,15 @@ CFLAGS  := \
     $(if $(SDK),-isysroot $(SDK),) \
     -I$(TESTS)/shim \
     -I$(ROOT)/include \
+    -I$(ROOT)/compat \
     -I$(SRC) \
-    -I$(SRC)/libtgvoip \
+    -I$(SRC)/Core \
+    -I$(SRC)/Controllers \
+    -I$(SRC)/Views \
+    -I$(SRC)/Calls \
+    -I$(SRC)/Audio \
+    -I$(ROOT)/third_party \
+    -I$(ROOT)/third_party/libtgvoip \
     -I$(TESTS) \
     -I$(OPENSSL)/include \
     -fobjc-arc \
@@ -48,15 +55,15 @@ LDFLAGS := \
 # ─── sources ──────────────────────────────────────────────────────────────────
 
 # Pure C (no ARC)
-C_SRCS := $(SRC)/TGCallCrypto.c
+C_SRCS := $(SRC)/Calls/TGCallCrypto.c
 
 # ObjC sources under test
 OBJC_SRCS := \
-    $(SRC)/TGCallStun.m \
-    $(SRC)/TGCallMessages.m \
-    $(SRC)/TGCallIce.m \
-    $(SRC)/TGCallReflector.m \
-    $(SRC)/TGCall.mm
+    $(SRC)/Calls/TGCallStun.m \
+    $(SRC)/Calls/TGCallMessages.m \
+    $(SRC)/Calls/TGCallIce.m \
+    $(SRC)/Calls/TGCallReflector.m \
+    $(SRC)/Calls/TGCall.mm
 
 # Test helper ObjC sources. TGClientStub and TGCallAudioEngineStub stand in
 # for the iOS-only production classes that TGCall.mm would otherwise need.
