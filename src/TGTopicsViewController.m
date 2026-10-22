@@ -86,6 +86,13 @@
 	cell.detailTextLabel.backgroundColor = [theme listBackgroundColour];
 
 	cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+	if (theme.isDark) {
+		UIView *selected = [[UIView alloc] init];
+		selected.backgroundColor = [theme bubbleTheirsColour];
+		cell.selectedBackgroundView = selected;
+	} else {
+		cell.selectedBackgroundView = nil;
+	}
 	return cell;
 }
 

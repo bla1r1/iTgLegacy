@@ -24,358 +24,12 @@
 #import "TGMediaViewer.h"
 #import "TGMusicPlayer.h"
 
+#import "TGMessageLayout.h"
+#import "TGBubbleCell.h"
+
 // Their design system is drawn for Android at 360dp; a 4S is 320pt, so
 // everything taken from it is scaled by 0.889 and rounded to a whole point.
 static const CGFloat kInputHeight = 48.0f;
-static const CGFloat kBubbleMaxW  = 240.0f;
-static const CGFloat kPadH        = 10.0f;
-static const CGFloat kAvatarSide  = 28.0f;   // sender avatar in groups
-static const CGFloat kPadV        = 7.0f;
-static const CGFloat kImageMax    = 200.0f;
-static const CGFloat kSendSide    = 36.0f;   // the round send button
-// Their file block: an 80dp tile carrying a 42dp disc, 71 and 37 here.
-static const CGFloat kFileTile    = 71.0f;
-static const CGFloat kFileDisc    = 37.0f;
-// A picture in a bubble is clipped to the same radius their media uses.
-static const CGFloat kMediaRadius = 6.0f;
-// One option of a poll: a 16 circle, the text, the share, and the bar under it.
-static const CGFloat kPollRow     = 30.0f;
-
-/// UITableView asks for the height of every row on every reloadData, and a
-/// chat reloads on each arriving message, avatar and thumbnail. Laying out the
-/// same strings again each time is where a 4S spent its frame, so measurements
-/// are kept: the text of a message never changes, only which rows exist.
-/// ponytail: flat dictionary with a size cap, an LRU would not buy anything
-/// at these counts.
-static NSAttributedString *TGEmojiAttributedText(NSString *text, UIFont *base);
-
-static CGSize TGTextSize(NSString *text, UIFont *font, CGFloat width) {
-	if (!text.length)
-		return CGSizeZero;
-
-	static NSMutableDictionary *cache = nil;
-	if (!cache)
-		cache = [NSMutableDictionary dictionary];
-
-	NSString *key = [NSString stringWithFormat:@"%.0f|%.0f|%@", width, font.pointSize, text];
-	NSValue *hit = cache[key];
-	if (hit)
-		return [hit CGSizeValue];
-
-	CGSize size = CGSizeZero;
-	NSAttributedString *rich = TGEmojiAttributedText(text, font);
-
-	if (width > 0) {
-		if (rich) {
-			CGRect rect = [rich boundingRectWithSize:CGSizeMake(width, 10000)
-											 options:NSStringDrawingUsesLineFragmentOrigin | NSStringDrawingUsesFontLeading
-											 context:nil];
-			size = CGSizeMake(ceilf(rect.size.width), ceilf(rect.size.height));
-		} else if ([text respondsToSelector:@selector(boundingRectWithSize:options:attributes:context:)]) {
-			CGRect rect = [text boundingRectWithSize:CGSizeMake(width, 10000)
-											 options:NSStringDrawingUsesLineFragmentOrigin | NSStringDrawingUsesFontLeading
-										  attributes:@{ NSFontAttributeName : font }
-											 context:nil];
-			size = CGSizeMake(ceilf(rect.size.width), ceilf(rect.size.height));
-		} else {
-			size = [text sizeWithFont:font
-					constrainedToSize:CGSizeMake(width, 10000)
-						lineBreakMode:NSLineBreakByWordWrapping];
-			size = CGSizeMake(ceilf(size.width), ceilf(size.height));
-		}
-	} else {
-		if (rich) {
-			size = [rich size];
-			size = CGSizeMake(ceilf(size.width), ceilf(size.height));
-		} else if ([text respondsToSelector:@selector(sizeWithAttributes:)]) {
-			size = [text sizeWithAttributes:@{ NSFontAttributeName : font }];
-			size = CGSizeMake(ceilf(size.width), ceilf(size.height));
-		} else {
-			size = [text sizeWithFont:font];
-			size = CGSizeMake(ceilf(size.width), ceilf(size.height));
-		}
-	}
-
-	if (cache.count > 1000)
-		[cache removeAllObjects];
-	cache[key] = [NSValue valueWithCGSize:size];
-	return size;
-}
-
-/// This OS shipped with Apple Color Emoji as it stood in 2013: everything
-/// standardised since - and that is most of what people send - comes out as a
-/// blank box. The bundled OpenMoji covers it. The system font still draws the
-/// words; only the emoji runs are handed over, which is what keeps the line
-/// metrics of ordinary text unchanged.
-static UIFont *TGEmojiFontOfSize(CGFloat size) {
-	static BOOL logged = NO;
-	// PostScript name first - that is what fontWithName: wants. "OpenMoji
-	// Color" is the full name and "OpenMoji" the family, either of which some
-	// builds of the font answer to instead.
-	UIFont *font = [UIFont fontWithName:@"OpenMojiColor" size:size];
-	if (!font) font = [UIFont fontWithName:@"OpenMoji Color" size:size];
-	if (!font) font = [UIFont fontWithName:@"OpenMoji" size:size];
-	if (!logged){
-		logged = YES;
-		NSLog(@"emoji font: %@", font ? font.fontName
-				: @"NOT REGISTERED - check UIAppFonts in Info.plist");
-	}
-	return font;
-}
-
-static BOOL TGIsEmojiScalar(UTF32Char c) {
-	return (c >= 0x1F000 && c <= 0x1FAFF) ||   // pictographs, faces, flags
-		   (c >= 0x2600  && c <= 0x27BF)  ||   // misc symbols and dingbats
-		   (c >= 0x2B00  && c <= 0x2BFF);      // arrows and stars
-}
-
-/// Nil when the text is plain, so the common message keeps the cheap path and
-/// only one carrying emoji pays for an attributed string.
-static NSAttributedString *TGEmojiAttributedText(NSString *text, UIFont *base) {
-	if (!text.length)
-		return nil;
-
-	static NSMutableDictionary *cache = nil;
-	if (!cache)
-		cache = [NSMutableDictionary dictionary];
-	NSString *key = [NSString stringWithFormat:@"%.0f|%@", base.pointSize, text];
-	id hit = cache[key];
-	if (hit)
-		return (hit == [NSNull null]) ? nil : hit;
-
-	UIFont *emojiFont = TGEmojiFontOfSize(base.pointSize);
-	__block NSMutableAttributedString *styled = nil;
-	if (emojiFont){
-		[text enumerateSubstringsInRange:NSMakeRange(0, text.length)
-								 options:NSStringEnumerationByComposedCharacterSequences
-							  usingBlock:^(NSString *piece, NSRange range,
-										   NSRange enclosing, BOOL *stop){
-			UTF32Char first = [piece characterAtIndex:0];
-			if (piece.length >= 2 && CFStringIsSurrogateHighCharacter(first))
-				first = (UTF32Char)CFStringGetLongCharacterForSurrogatePair(
-						first, [piece characterAtIndex:1]);
-			if (!TGIsEmojiScalar(first))
-				return;
-			if (!styled)
-				styled = [[NSMutableAttributedString alloc] initWithString:text
-						attributes:@{NSFontAttributeName : base}];
-			[styled addAttribute:NSFontAttributeName value:emojiFont range:range];
-		}];
-	}
-
-	if (cache.count > 300)
-		[cache removeAllObjects];
-	cache[key] = styled ?: (id)[NSNull null];
-	return styled;
-}
-
-/// attributedText ignores the label's textColor, so the colour goes on here.
-static void TGSetBodyText(UILabel *label, NSString *text, UIColor *colour) {
-	NSAttributedString *rich = TGEmojiAttributedText(text, label.font);
-	if (!rich){
-		label.textColor = colour;
-		label.text = text;
-		return;
-	}
-	NSMutableAttributedString *coloured = [rich mutableCopy];
-	[coloured addAttribute:NSForegroundColorAttributeName value:colour
-					 range:NSMakeRange(0, coloured.length)];
-	label.attributedText = coloured;
-}
-
-#pragma mark - message layout cache
-
-@interface TGMessageLayout : NSObject
-@property (nonatomic, assign) CGFloat rowHeight;
-@property (nonatomic, assign) CGRect bubbleFrame;
-@property (nonatomic, assign) CGRect bodyFrame;
-@property (nonatomic, assign) CGRect senderAvatarFrame;
-@property (nonatomic, assign) CGRect senderFrame;
-@property (nonatomic, assign) CGRect tailFrame;
-@property (nonatomic, assign) CGRect quoteBarFrame;
-@property (nonatomic, assign) CGRect quoteAuthorFrame;
-@property (nonatomic, assign) CGRect quoteFrame;
-@property (nonatomic, assign) CGRect pictureFrame;
-@property (nonatomic, assign) CGRect mediaStampFrame;
-@property (nonatomic, assign) CGRect timeFrame;
-@property (nonatomic, assign) CGSize bodySize;
-@property (nonatomic, assign) CGSize picSize;
-@property (nonatomic, assign) BOOL inlineStamp;
-@property (nonatomic, assign) BOOL stampOnPicture;
-@property (nonatomic, copy)   NSString *stamp;
-@property (nonatomic, assign) CGFloat timeWidth;
-@property (nonatomic, copy)   NSString *senderName;
-@property (nonatomic, copy)   NSString *quoteText;
-@property (nonatomic, copy)   NSString *quoteAuthor;
-@property (nonatomic, assign) BOOL isService;
-@property (nonatomic, assign) BOOL isSticker;
-@property (nonatomic, assign) BOOL isVoice;
-@property (nonatomic, assign) BOOL isPoll;
-@property (nonatomic, assign) BOOL isCall;
-@property (nonatomic, assign) BOOL isDoc;
-@property (nonatomic, assign) BOOL isContact;
-@property (nonatomic, assign) BOOL isRound;
-@property (nonatomic, assign) CGFloat fwdHeight;
-@end
-
-@implementation TGMessageLayout
-@end
-
-#pragma mark - bubble cell
-
-@interface TGBubbleCell : UITableViewCell
-@property (nonatomic, strong) UIView *bubble;
-@property (nonatomic, strong) UILabel *body;
-@property (nonatomic, strong) UIImageView *picture;
-@property (nonatomic, strong) UILabel *time;
-@property (nonatomic, strong) TGLottieView *lottie;
-@property (nonatomic, strong) UILabel *icon;
-@property (nonatomic, strong) UILabel *subtitle;
-@property (nonatomic, strong) UILabel *sender;
-@property (nonatomic, strong) UIView  *quoteBar;
-@property (nonatomic, strong) UILabel *quote;
-@property (nonatomic, strong) UILabel *quoteAuthor;
-@property (nonatomic, strong) UIImageView *ticks;
-@property (nonatomic, strong) UIImageView *senderAvatar;
-@property (nonatomic, strong) UIImageView *tail;
-@property (nonatomic, strong) UIImageView *disc;
-@property (nonatomic, strong) UIImageView *wave;
-@property (nonatomic, strong) UILabel *mediaStamp;
-@property (nonatomic, assign) int64_t voiceMessageId;
-@property (nonatomic, strong) NSData *waveformData;
-@property (nonatomic, assign) int64_t pollMessageId;
-@property (nonatomic, strong) UILabel *forwardLabel;
-@end
-
-@implementation TGBubbleCell
-
-- (id)initWithStyle:(UITableViewCellStyle)style reuseIdentifier:(NSString *)reuseIdentifier {
-	self = [super initWithStyle:style reuseIdentifier:reuseIdentifier];
-	if (!self)
-		return nil;
-
-	CGFloat scale = [UIScreen mainScreen].scale;
-
-	self.backgroundColor = [UIColor clearColor];
-	self.contentView.backgroundColor = [UIColor clearColor];
-	self.selectionStyle = UITableViewCellSelectionStyleNone;
-
-	self.bubble = [[UIView alloc] init];
-	self.bubble.layer.cornerRadius = 14;
-	self.bubble.layer.borderWidth = 1.0f;
-	self.bubble.clipsToBounds = YES;
-	self.bubble.layer.shouldRasterize = YES;
-	self.bubble.layer.rasterizationScale = scale;
-	[self.contentView addSubview:self.bubble];
-
-	self.picture = [[UIImageView alloc] init];
-	self.picture.contentMode = UIViewContentModeScaleAspectFill;
-	self.picture.clipsToBounds = YES;
-	self.picture.layer.shouldRasterize = YES;
-	self.picture.layer.rasterizationScale = scale;
-	[self.bubble addSubview:self.picture];
-
-	self.body = [[UILabel alloc] init];
-	self.body.numberOfLines = 0;
-	self.body.lineBreakMode = NSLineBreakByWordWrapping;
-	self.body.font = [UIFont systemFontOfSize:[TGTheme shared].messageFontSize];
-	self.body.backgroundColor = [UIColor clearColor];
-	[self.bubble addSubview:self.body];
-
-	self.sender = [[UILabel alloc] init];
-	self.sender.font = [UIFont boldSystemFontOfSize:12];
-	self.sender.lineBreakMode = NSLineBreakByTruncatingTail;
-	self.sender.backgroundColor = [UIColor clearColor];
-	self.sender.hidden = YES;
-	[self.contentView addSubview:self.sender];
-
-	self.disc = [[UIImageView alloc] init];
-	self.disc.hidden = YES;
-	[self.bubble addSubview:self.disc];
-
-	self.wave = [[UIImageView alloc] init];
-	self.wave.hidden = YES;
-	[self.bubble addSubview:self.wave];
-
-	self.tail = [[UIImageView alloc] init];
-	self.tail.hidden = YES;
-	[self.contentView addSubview:self.tail];
-
-	self.senderAvatar = [[UIImageView alloc] init];
-	self.senderAvatar.layer.cornerRadius = kAvatarSide / 2;
-	self.senderAvatar.clipsToBounds = YES;
-	self.senderAvatar.layer.shouldRasterize = YES;
-	self.senderAvatar.layer.rasterizationScale = scale;
-	self.senderAvatar.hidden = YES;
-	[self.contentView addSubview:self.senderAvatar];
-
-	self.ticks = [[UIImageView alloc] init];
-	self.ticks.hidden = YES;
-	[self.bubble addSubview:self.ticks];
-
-	self.quoteBar = [[UIView alloc] init];
-	self.quoteBar.hidden = YES;
-	[self.bubble addSubview:self.quoteBar];
-
-	self.quoteAuthor = [[UILabel alloc] init];
-	self.quoteAuthor.font = [UIFont boldSystemFontOfSize:13];
-	self.quoteAuthor.backgroundColor = [UIColor clearColor];
-	self.quoteAuthor.hidden = YES;
-	[self.bubble addSubview:self.quoteAuthor];
-
-	self.quote = [[UILabel alloc] init];
-	self.quote.font = [UIFont systemFontOfSize:13];
-	self.quote.numberOfLines = 2;
-	self.quote.backgroundColor = [UIColor clearColor];
-	self.quote.hidden = YES;
-	[self.bubble addSubview:self.quote];
-
-	self.icon = [[UILabel alloc] init];
-	self.icon.textAlignment = NSTextAlignmentCenter;
-	self.icon.textColor = [UIColor whiteColor];
-	self.icon.font = [UIFont boldSystemFontOfSize:17];
-	self.icon.clipsToBounds = YES;
-	self.icon.hidden = YES;
-	[self.bubble addSubview:self.icon];
-
-	self.subtitle = [[UILabel alloc] init];
-	self.subtitle.font = [UIFont systemFontOfSize:13];
-	self.subtitle.textColor = [[TGTheme shared] fileMetaColour];
-	self.subtitle.backgroundColor = [UIColor clearColor];
-	self.subtitle.hidden = YES;
-	[self.bubble addSubview:self.subtitle];
-
-	self.lottie = [[TGLottieView alloc] initWithFrame:CGRectZero];
-	self.lottie.hidden = YES;
-	[self.bubble addSubview:self.lottie];
-
-	self.forwardLabel = [[UILabel alloc] init];
-	self.forwardLabel.font = [UIFont systemFontOfSize:12];
-	self.forwardLabel.backgroundColor = [UIColor clearColor];
-	self.forwardLabel.hidden = YES;
-	[self.bubble addSubview:self.forwardLabel];
-
-	self.mediaStamp = [[UILabel alloc] init];
-	self.mediaStamp.font = [UIFont systemFontOfSize:11];
-	self.mediaStamp.textColor = [UIColor whiteColor];
-	self.mediaStamp.textAlignment = NSTextAlignmentCenter;
-	self.mediaStamp.layer.cornerRadius = 8;
-	self.mediaStamp.clipsToBounds = YES;
-	self.mediaStamp.layer.shouldRasterize = YES;
-	self.mediaStamp.layer.rasterizationScale = scale;
-	self.mediaStamp.hidden = YES;
-	[self.bubble addSubview:self.mediaStamp];
-
-	self.time = [[UILabel alloc] init];
-	self.time.font = [UIFont systemFontOfSize:11];
-	self.time.backgroundColor = [UIColor clearColor];
-	self.time.textAlignment = NSTextAlignmentRight;
-	[self.bubble addSubview:self.time];
-
-	return self;
-}
-
-@end
 
 #pragma mark - controller
 
@@ -397,6 +51,7 @@ static void TGSetBodyText(UILabel *label, NSString *text, UIColor *colour) {
 @property (nonatomic, strong) NSMutableDictionary *quotes;       // messageId -> flattened
 @property (nonatomic, strong) NSMutableSet *quotesRequested;
 @property (nonatomic, strong) NSDictionary *actionMessage;   // long-pressed
+@property (nonatomic, strong) NSDictionary *contactActionMessage;
 @property (nonatomic, assign) int64_t replyToId;             // composing a reply
 @property (nonatomic, assign) int64_t editingId;             // editing instead
 @property (nonatomic, strong) UIView *composeBanner;         // "Reply to ..."
@@ -543,9 +198,7 @@ static void TGSetBodyText(UILabel *label, NSString *text, UIColor *colour) {
 
 	UILabel *subtitle = [[UILabel alloc] initWithFrame:CGRectMake(0, 21, 200, 14)];
 	subtitle.font = [UIFont systemFontOfSize:12];
-	subtitle.textColor = [TGTheme shared].isFlat
-			? [[TGTheme shared] secondaryTextColour]
-			: [UIColor colorWithWhite:1.0f alpha:0.75f];
+	subtitle.textColor = [[TGTheme shared] barSubtitleColour];
 	subtitle.backgroundColor = [UIColor clearColor];
 	subtitle.textAlignment = NSTextAlignmentCenter;
 	[header addSubview:subtitle];
@@ -586,9 +239,7 @@ static void TGSetBodyText(UILabel *label, NSString *text, UIColor *colour) {
 		me.sendButton.backgroundColor = [theme accentColour];
 		me.wallpaperView.image = [theme wallpaper];
 		me.titleNameLabel.textColor = [theme barTitleColour];
-		me.titleSubtitleLabel.textColor = theme.isFlat
-				? [theme secondaryTextColour]
-				: [UIColor colorWithWhite:1.0f alpha:0.75f];
+		me.titleSubtitleLabel.textColor = [theme barSubtitleColour];
 		if (me.pinnedBannerView) {
 			me.pinnedBannerView.backgroundColor = [theme inputBarColour];
 			me.pinnedBannerHair.backgroundColor = [theme separatorColour];
@@ -1198,8 +849,8 @@ static void TGSetBodyText(UILabel *label, NSString *text, UIColor *colour) {
 											  self.view.bounds.size.height / 2);
 		self.downloadHUD.textAlignment = NSTextAlignmentCenter;
 		self.downloadHUD.font = [UIFont boldSystemFontOfSize:15];
-		self.downloadHUD.textColor = [UIColor whiteColor];
-		self.downloadHUD.backgroundColor = [UIColor colorWithWhite:0 alpha:0.7f];
+		self.downloadHUD.textColor = [[TGTheme shared] hudTextColour];
+		self.downloadHUD.backgroundColor = [[TGTheme shared] hudBackgroundColour];
 		self.downloadHUD.layer.cornerRadius = 8;
 		self.downloadHUD.clipsToBounds = YES;
 	}
@@ -1537,8 +1188,7 @@ static void TGSetBodyText(UILabel *label, NSString *text, UIColor *colour) {
 		// 10dp in their panel, and it blinks the way a recorder's does.
 		self.recordDot = [[UIView alloc] initWithFrame:
 				CGRectMake(14, (kInputHeight - 9) / 2, 9, 9)];
-		self.recordDot.backgroundColor = [UIColor colorWithRed:0.878f green:0.329f
-														 blue:0.341f alpha:1.0f];
+		self.recordDot.backgroundColor = [theme destructiveColour];
 		self.recordDot.layer.cornerRadius = 4.5f;
 		[self.recordPanel addSubview:self.recordDot];
 
@@ -2095,6 +1745,26 @@ static const NSInteger kMessageSheetTag = 42;
 		[self runMessageAction:[sheet buttonTitleAtIndex:index]];
 		return;
 	}
+	if (sheet.tag == 0xC047){
+		NSDictionary *m = self.contactActionMessage;
+		NSDictionary *contact = [m[@"contact"] isKindOfClass:NSDictionary.class] ? m[@"contact"] : nil;
+		NSString *phone = contact[@"phoneNumber"] ?: @"";
+		if (!phone.length) {
+			NSArray *parts = [m[@"text"] componentsSeparatedByString:@"\n"];
+			if (parts.count > 1) phone = parts[1];
+		}
+		if (index == 0) {
+			NSString *clean = [[phone componentsSeparatedByCharactersInSet:[[NSCharacterSet characterSetWithCharactersInString:@"+0123456789"] invertedSet]] componentsJoinedByString:@""];
+			if (clean.length)
+				[[UIApplication sharedApplication] openURL:[NSURL URLWithString:[NSString stringWithFormat:@"tel:%@", clean]]];
+		} else if (index == 1) {
+			[self presentAddContactForMessage:m];
+		} else if (index == 2) {
+			[UIPasteboard generalPasteboard].string = phone ?: @"";
+			[TGSnackbar showInView:self.view text:@"Phone number copied" seconds:2 onCommit:^{}];
+		}
+		return;
+	}
 	if (sheet.tag != kAttachSheetTag)
 		return;
 	if (index == 0)      [self pickMedia];
@@ -2319,10 +1989,127 @@ static const NSInteger kMessageSheetTag = 42;
 }
 
 
+- (void)contactCallButtonTapped:(UIButton *)btn {
+	NSInteger row = btn.tag;
+	if (row >= 0 && row < (NSInteger)self.messages.count) {
+		NSDictionary *m = self.messages[row];
+		NSDictionary *contact = [m[@"contact"] isKindOfClass:NSDictionary.class] ? m[@"contact"] : nil;
+		NSString *phone = contact[@"phoneNumber"];
+		if (!phone.length) {
+			NSArray *parts = [m[@"text"] componentsSeparatedByString:@"\n"];
+			if (parts.count > 1) phone = parts[1];
+		}
+		if (phone.length) {
+			NSString *clean = [[phone componentsSeparatedByCharactersInSet:[[NSCharacterSet characterSetWithCharactersInString:@"+0123456789"] invertedSet]] componentsJoinedByString:@""];
+			if (clean.length)
+				[[UIApplication sharedApplication] openURL:[NSURL URLWithString:[NSString stringWithFormat:@"tel:%@", clean]]];
+		}
+	}
+}
+
+- (void)contactAddButtonTapped:(UIButton *)btn {
+	NSInteger row = btn.tag;
+	if (row >= 0 && row < (NSInteger)self.messages.count) {
+		[self presentAddContactForMessage:self.messages[row]];
+	}
+}
+
+- (void)presentAddContactForMessage:(NSDictionary *)m {
+	NSDictionary *contact = [m[@"contact"] isKindOfClass:NSDictionary.class] ? m[@"contact"] : nil;
+	NSString *first = contact[@"firstName"];
+	NSString *last = contact[@"lastName"];
+	NSString *phone = contact[@"phoneNumber"];
+	if (!first && !last && !phone) {
+		NSArray *parts = [m[@"text"] componentsSeparatedByString:@"\n"];
+		if (parts.count) {
+			NSArray *names = [parts[0] componentsSeparatedByString:@" "];
+			first = names[0];
+			if (names.count > 1) last = names[1];
+		}
+		if (parts.count > 1) phone = parts[1];
+	}
+
+	ABRecordRef person = ABPersonCreate();
+	if (first.length)
+		ABRecordSetValue(person, kABPersonFirstNameProperty, (__bridge CFStringRef)first, NULL);
+	if (last.length)
+		ABRecordSetValue(person, kABPersonLastNameProperty, (__bridge CFStringRef)last, NULL);
+	if (phone.length) {
+		ABMutableMultiValueRef phoneMulti = ABMultiValueCreateMutable(kABMultiStringPropertyType);
+		ABMultiValueAddValueAndLabel(phoneMulti, (__bridge CFStringRef)phone, kABPersonPhoneMainLabel, NULL);
+		ABRecordSetValue(person, kABPersonPhoneProperty, phoneMulti, NULL);
+		CFRelease(phoneMulti);
+	}
+
+	ABUnknownPersonViewController *ctrl = [[ABUnknownPersonViewController alloc] init];
+	ctrl.displayedPerson = person;
+	ctrl.allowsAddingToAddressBook = YES;
+	ctrl.allowsActions = YES;
+	ctrl.unknownPersonViewDelegate = (id<ABUnknownPersonViewControllerDelegate>)self;
+	CFRelease(person);
+
+	[self.navigationController pushViewController:ctrl animated:YES];
+}
+
+- (void)unknownPersonViewController:(ABUnknownPersonViewController *)unknownCardViewController didResolveToPerson:(ABRecordRef)person {
+}
+
+- (void)handleContactTapForMessage:(NSDictionary *)m {
+	NSDictionary *contact = [m[@"contact"] isKindOfClass:NSDictionary.class] ? m[@"contact"] : nil;
+	NSString *phone = contact[@"phoneNumber"] ?: @"";
+	if (!phone.length) {
+		NSArray *parts = [m[@"text"] componentsSeparatedByString:@"\n"];
+		if (parts.count > 1) phone = parts[1];
+	}
+	NSString *name = contact[@"name"] ?: @"";
+	if (!name.length) {
+		NSArray *parts = [m[@"text"] componentsSeparatedByString:@"\n"];
+		if (parts.count) name = parts[0];
+	}
+
+	self.contactActionMessage = m;
+	UIActionSheet *sheet = [[UIActionSheet alloc]
+			initWithTitle:name.length ? name : @"Contact"
+				 delegate:self
+		cancelButtonTitle:@"Cancel"
+   destructiveButtonTitle:nil
+		otherButtonTitles:
+			phone.length ? [NSString stringWithFormat:@"Call %@", phone] : @"Call",
+			@"Add to Contacts",
+			@"Copy Phone Number",
+			nil];
+	sheet.tag = 0xC047;
+	[sheet showInView:self.view];
+}
+
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
 	[tableView deselectRowAtIndexPath:indexPath animated:NO];
 	NSDictionary *m = self.messages[indexPath.row];
 	NSString *kind = m[@"kind"];
+
+	// Contact card tap
+	if ([kind isEqualToString:@"messageContact"]){
+		[self handleContactTapForMessage:m];
+		return;
+	}
+
+	// Location card tap -> open in Apple Maps
+	if ([kind isEqualToString:@"messageLocation"] || [kind isEqualToString:@"messageVenue"] || [kind isEqualToString:@"messageLiveLocation"]){
+		double lat = [m[@"lat"] doubleValue];
+		double lon = [m[@"lon"] doubleValue];
+		if (lat != 0 || lon != 0){
+			NSString *title = m[@"venue"][@"title"];
+			NSString *urlStr = nil;
+			if (title.length){
+				NSString *esc = [title stringByAddingPercentEscapesUsingEncoding:NSUTF8StringEncoding];
+				urlStr = [NSString stringWithFormat:@"http://maps.apple.com/?q=%@&ll=%f,%f", esc, lat, lon];
+			} else {
+				urlStr = [NSString stringWithFormat:@"http://maps.apple.com/?ll=%f,%f", lat, lon];
+			}
+			[[UIApplication sharedApplication] openURL:[NSURL URLWithString:urlStr]];
+			return;
+		}
+	}
 
 	// A call log entry calls back, which is the only thing anyone wants from
 	// one - and a missed call is otherwise a dead end.
@@ -2751,6 +2538,10 @@ static const NSInteger kMessageSheetTag = 42;
 	BOOL isCall = [kind isEqualToString:@"messageCall"];
 	BOOL isDoc = [kind isEqualToString:@"messageDocument"];
 	BOOL isContact = [kind isEqualToString:@"messageContact"];
+	BOOL isLocation = [kind isEqualToString:@"messageLocation"] ||
+					  [kind isEqualToString:@"messageVenue"] ||
+					  [kind isEqualToString:@"messageLiveLocation"] ||
+					  (![m[@"lat"] isKindOfClass:NSNull.class] && [m[@"lat"] doubleValue] != 0);
 
 	layout.isService = isService;
 	layout.isSticker = isSticker;
@@ -2760,6 +2551,7 @@ static const NSInteger kMessageSheetTag = 42;
 	layout.isCall = isCall;
 	layout.isDoc = isDoc;
 	layout.isContact = isContact;
+	layout.isLocation = isLocation;
 
 	CGFloat forwarded = [m[@"forward"] length] ? 18.0f : 0.0f;
 	layout.fwdHeight = forwarded;
@@ -2798,12 +2590,36 @@ static const NSInteger kMessageSheetTag = 42;
 		return layout;
 	}
 
-	if (isDoc || isContact) {
+	if (isDoc) {
 		CGFloat width = 225;
 		CGFloat height = kFileTile + 2 * kPadV + forwarded;
 		CGFloat x = mine ? (tableW - width - 8) : 8;
 		layout.bubbleFrame = CGRectMake(x, 3, width, height);
 		layout.rowHeight = kFileTile + 2 * kPadV + 6 + forwarded;
+		if (msgId) self.layoutCache[msgId] = layout;
+		return layout;
+	}
+
+	if (isContact) {
+		CGFloat width = 230;
+		CGFloat height = 56 + 36 + forwarded;
+		CGFloat x = mine ? (tableW - width - 8) : 8;
+		layout.bubbleFrame = CGRectMake(x, 3, width, height);
+		layout.rowHeight = height + 6;
+		if (msgId) self.layoutCache[msgId] = layout;
+		return layout;
+	}
+
+	if (isLocation) {
+		NSNumber *lat = m[@"lat"], *lon = m[@"lon"];
+		if ([lat isKindOfClass:NSNumber.class] && [lon isKindOfClass:NSNumber.class] && !self.maps[m[@"id"]]) {
+			self.maps[m[@"id"]] = [self mapCardForLatitude:lat.doubleValue longitude:lon.doubleValue];
+		}
+		CGFloat width = 224;
+		CGFloat height = 130 + 44 + forwarded;
+		CGFloat x = mine ? (tableW - width - 8) : 8;
+		layout.bubbleFrame = CGRectMake(x, 3, width, height);
+		layout.rowHeight = height + 6;
 		if (msgId) self.layoutCache[msgId] = layout;
 		return layout;
 	}
@@ -2814,10 +2630,10 @@ static const NSInteger kMessageSheetTag = 42;
 	layout.picSize = pic;
 
 	if (isRound) {
-		CGFloat side = 178;
+		CGFloat side = 180;
 		layout.picSize = CGSizeMake(side, side);
-		layout.bubbleFrame = CGRectMake(mine ? (tableW - side - 8) : 8, 3, side, side + 14);
-		layout.rowHeight = side + 20;
+		layout.bubbleFrame = CGRectMake(mine ? (tableW - side - 8) : 8, 3, side, side);
+		layout.rowHeight = side + 10;
 		if (msgId) self.layoutCache[msgId] = layout;
 		return layout;
 	}
@@ -2924,15 +2740,24 @@ static const NSInteger kMessageSheetTag = 42;
 /// Clients colour each participant's name; the same person keeps the same
 /// colour because it is derived from their id.
 static UIColor *TGSenderColour(int64_t userId) {
-	static NSArray *palette = nil;
-	if (!palette)
-		palette = @[[UIColor colorWithRed:0.85f green:0.27f blue:0.27f alpha:1],
-					[UIColor colorWithRed:0.20f green:0.55f blue:0.85f alpha:1],
-					[UIColor colorWithRed:0.25f green:0.62f blue:0.35f alpha:1],
-					[UIColor colorWithRed:0.75f green:0.45f blue:0.15f alpha:1],
-					[UIColor colorWithRed:0.55f green:0.35f blue:0.75f alpha:1],
-					[UIColor colorWithRed:0.20f green:0.60f blue:0.62f alpha:1]];
-	return palette[(NSUInteger)llabs(userId) % palette.count];
+	static NSArray *lightPalette = nil;
+	static NSArray *darkPalette = nil;
+	if (!lightPalette) {
+		lightPalette = @[[UIColor colorWithRed:0.85f green:0.27f blue:0.27f alpha:1],
+						 [UIColor colorWithRed:0.20f green:0.55f blue:0.85f alpha:1],
+						 [UIColor colorWithRed:0.25f green:0.62f blue:0.35f alpha:1],
+						 [UIColor colorWithRed:0.75f green:0.45f blue:0.15f alpha:1],
+						 [UIColor colorWithRed:0.55f green:0.35f blue:0.75f alpha:1],
+						 [UIColor colorWithRed:0.20f green:0.60f blue:0.62f alpha:1]];
+		darkPalette = @[[UIColor colorWithRed:0.95f green:0.45f blue:0.45f alpha:1],
+						[UIColor colorWithRed:0.42f green:0.70f blue:0.98f alpha:1],
+						[UIColor colorWithRed:0.45f green:0.80f blue:0.55f alpha:1],
+						[UIColor colorWithRed:0.95f green:0.65f blue:0.35f alpha:1],
+						[UIColor colorWithRed:0.75f green:0.55f blue:0.95f alpha:1],
+						[UIColor colorWithRed:0.40f green:0.78f blue:0.80f alpha:1]];
+	}
+	NSArray *p = [TGTheme shared].isDark ? darkPalette : lightPalette;
+	return p[(NSUInteger)llabs(userId) % p.count];
 }
 
 #pragma mark - pagination
@@ -2994,13 +2819,7 @@ static UIColor *TGSenderColour(int64_t userId) {
 	NSString *kind = m[@"kind"];
 	TGMessageLayout *layout = [self layoutForMessage:m atRow:indexPath.row];
 
-	cell.icon.hidden = YES;
-	cell.subtitle.hidden = YES;
-	cell.sender.hidden = YES;
-	cell.senderAvatar.hidden = YES;
-	cell.tail.hidden = YES;
-	cell.disc.hidden = YES;
-	cell.wave.hidden = YES;
+	[cell resetForReuse];
 
 	// Service messages
 	if (layout.isService) {
@@ -3026,8 +2845,6 @@ static UIColor *TGSenderColour(int64_t userId) {
 
 	cell.body.textAlignment = NSTextAlignmentLeft;
 	cell.bubble.layer.cornerRadius = 14;
-	cell.lottie.hidden = YES;
-	[cell.lottie stop];
 
 	// Polls
 	if (layout.isPoll) {
@@ -3163,9 +2980,8 @@ static UIColor *TGSenderColour(int64_t userId) {
 		return cell;
 	}
 
-	// Documents / Contacts
-	if (layout.isDoc || layout.isContact) {
-		BOOL isDoc = layout.isDoc;
+	// Documents
+	if (layout.isDoc) {
 		NSArray *lines = [m[@"text"] componentsSeparatedByString:@"\n"];
 		NSString *first = lines.count ? lines[0] : @"";
 		NSString *second = lines.count > 1 ? lines[1] : @"";
@@ -3179,35 +2995,24 @@ static UIColor *TGSenderColour(int64_t userId) {
 		cell.bubble.layer.cornerRadius = [cardTheme bubbleCornerRadius];
 
 		cell.icon.hidden = NO;
-		CGFloat side = isDoc ? kFileTile : 48;
+		CGFloat side = kFileTile;
 		cell.icon.frame = CGRectMake(kPadH, fwd + kPadV + (kFileTile - side) / 2, side, side);
-		if (isDoc) {
-			cell.icon.text = @"";
-			cell.icon.layer.cornerRadius = 3;
-			cell.icon.backgroundColor = [cardTheme fileTileColour];
+		cell.icon.text = @"";
+		cell.icon.layer.cornerRadius = 3;
+		cell.icon.backgroundColor = [cardTheme fileTileColour];
 
-			cell.disc.hidden = NO;
-			cell.disc.image = [TGIcons fileDiscOfSide:kFileDisc];
-			cell.disc.frame = CGRectMake(kPadH + (kFileTile - kFileDisc) / 2,
-										 fwd + kPadV + (kFileTile - kFileDisc) / 2,
-										 kFileDisc, kFileDisc);
-			[cell.bubble bringSubviewToFront:cell.disc];
-		} else {
-			NSString *initials = first.length ? [first substringToIndex:1] : @"?";
-			NSArray *words = [first componentsSeparatedByString:@" "];
-			if (words.count > 1 && [words[1] length])
-				initials = [initials stringByAppendingString:[words[1] substringToIndex:1]];
-			cell.icon.text = initials.uppercaseString;
-			cell.icon.font = [UIFont boldSystemFontOfSize:18];
-			cell.icon.layer.cornerRadius = side / 2;
-			cell.icon.backgroundColor = [cardTheme mediaCircleColour];
-		}
+		cell.disc.hidden = NO;
+		cell.disc.image = [TGIcons fileDiscOfSide:kFileDisc];
+		cell.disc.frame = CGRectMake(kPadH + (kFileTile - kFileDisc) / 2,
+									 fwd + kPadV + (kFileTile - kFileDisc) / 2,
+									 kFileDisc, kFileDisc);
+		[cell.bubble bringSubviewToFront:cell.disc];
 
 		CGFloat textX = kPadH + side + 10;
 		cell.body.hidden = NO;
 		cell.body.numberOfLines = 2;
 		cell.body.font = [UIFont systemFontOfSize:15];
-		cell.body.textColor = isDoc ? [cardTheme fileNameColour] : [cardTheme primaryTextColour];
+		cell.body.textColor = [cardTheme fileNameColour];
 		cell.body.text = first;
 		cell.body.frame = CGRectMake(textX, fwd + kPadV + 8, layout.bubbleFrame.size.width - textX - kPadH, 38);
 
@@ -3229,6 +3034,180 @@ static UIColor *TGSenderColour(int64_t userId) {
 			cell.ticks.frame = CGRectMake(layout.bubbleFrame.size.width - kPadH - 15, layout.bubbleFrame.size.height - 15, 15, 9);
 		}
 		cell.picture.hidden = YES;
+		return cell;
+	}
+
+	// Contacts
+	if (layout.isContact) {
+		NSDictionary *contact = [m[@"contact"] isKindOfClass:NSDictionary.class] ? m[@"contact"] : nil;
+		NSString *name = contact[@"name"];
+		NSString *phone = contact[@"phoneNumber"];
+		if (!name.length || !phone.length) {
+			NSArray *lines = [m[@"text"] componentsSeparatedByString:@"\n"];
+			if (!name.length && lines.count) name = lines[0];
+			if (!phone.length && lines.count > 1) phone = lines[1];
+		}
+		if (!name.length) name = @"Contact";
+		if (!phone.length) phone = @"";
+
+		TGTheme *cardTheme = [TGTheme shared];
+		CGFloat fwd = [self layoutForwardIn:cell message:m width:layout.bubbleFrame.size.width];
+		cell.bubble.frame = layout.bubbleFrame;
+		cell.bubble.backgroundColor = mine ? [cardTheme bubbleMineColour] : [cardTheme bubbleTheirsColour];
+		cell.bubble.layer.borderWidth = [cardTheme bubbleBorderWidth];
+		cell.bubble.layer.borderColor = [cardTheme bubbleBorderColour].CGColor;
+		cell.bubble.layer.cornerRadius = [cardTheme bubbleCornerRadius];
+
+		cell.icon.hidden = NO;
+		CGFloat side = 42;
+		cell.icon.frame = CGRectMake(kPadH, fwd + 7, side, side);
+		NSString *initials = name.length ? [name substringToIndex:1] : @"?";
+		NSArray *words = [name componentsSeparatedByString:@" "];
+		if (words.count > 1 && [words[1] length])
+			initials = [initials stringByAppendingString:[words[1] substringToIndex:1]];
+		cell.icon.text = initials.uppercaseString;
+		cell.icon.font = [UIFont boldSystemFontOfSize:17];
+		cell.icon.layer.cornerRadius = side / 2;
+		cell.icon.backgroundColor = [cardTheme mediaCircleColour];
+
+		CGFloat textX = kPadH + side + 10;
+		CGFloat textW = layout.bubbleFrame.size.width - textX - kPadH;
+		cell.body.hidden = NO;
+		cell.body.numberOfLines = 1;
+		cell.body.font = [UIFont boldSystemFontOfSize:15];
+		cell.body.textColor = [cardTheme primaryTextColour];
+		cell.body.text = name;
+		cell.body.frame = CGRectMake(textX, fwd + 8, textW, 18);
+
+		cell.subtitle.hidden = NO;
+		cell.subtitle.font = [UIFont systemFontOfSize:13];
+		cell.subtitle.textColor = [cardTheme fileMetaColour];
+		cell.subtitle.text = phone;
+		cell.subtitle.frame = CGRectMake(textX, fwd + 28, textW, 16);
+
+		CGFloat sepY = fwd + 55;
+		cell.contactSeparatorH.hidden = NO;
+		cell.contactSeparatorH.backgroundColor = [cardTheme separatorColour];
+		cell.contactSeparatorH.frame = CGRectMake(0, sepY, layout.bubbleFrame.size.width, 0.5f);
+
+		CGFloat btnW = layout.bubbleFrame.size.width / 2.0f;
+		cell.contactSeparatorV.hidden = NO;
+		cell.contactSeparatorV.backgroundColor = [cardTheme separatorColour];
+		cell.contactSeparatorV.frame = CGRectMake(btnW, sepY, 0.5f, 36);
+
+		cell.contactCallButton.hidden = NO;
+		cell.contactCallButton.frame = CGRectMake(0, sepY, btnW, 36);
+		[cell.contactCallButton setTitleColor:[cardTheme accentColour] forState:UIControlStateNormal];
+		[cell.contactCallButton setTitleColor:[[cardTheme accentColour] colorWithAlphaComponent:0.4f] forState:UIControlStateHighlighted];
+		cell.contactCallButton.tag = indexPath.row;
+		[cell.contactCallButton removeTarget:nil action:NULL forControlEvents:UIControlEventAllEvents];
+		[cell.contactCallButton addTarget:self action:@selector(contactCallButtonTapped:) forControlEvents:UIControlEventTouchUpInside];
+
+		cell.contactAddButton.hidden = NO;
+		cell.contactAddButton.frame = CGRectMake(btnW, sepY, btnW, 36);
+		[cell.contactAddButton setTitleColor:[cardTheme accentColour] forState:UIControlStateNormal];
+		[cell.contactAddButton setTitleColor:[[cardTheme accentColour] colorWithAlphaComponent:0.4f] forState:UIControlStateHighlighted];
+		cell.contactAddButton.tag = indexPath.row;
+		[cell.contactAddButton removeTarget:nil action:NULL forControlEvents:UIControlEventAllEvents];
+		[cell.contactAddButton addTarget:self action:@selector(contactAddButtonTapped:) forControlEvents:UIControlEventTouchUpInside];
+
+		cell.time.text = layout.stamp;
+		cell.time.textColor = [cardTheme timeColour];
+		CGFloat fileTimeW = layout.timeWidth;
+		CGFloat fileTicks = mine ? 18 : 0;
+		cell.time.frame = CGRectMake(layout.bubbleFrame.size.width - fileTimeW - kPadH, fwd + 30,
+									 fileTimeW - fileTicks, 12);
+		cell.ticks.hidden = !mine;
+		if (mine) {
+			cell.ticks.image = [TGIcons ticksWhite:NO];
+			cell.ticks.frame = CGRectMake(layout.bubbleFrame.size.width - kPadH - 15, fwd + 32, 15, 9);
+		}
+		cell.picture.hidden = YES;
+		return cell;
+	}
+
+	// Locations
+	if (layout.isLocation) {
+		TGTheme *locTheme = [TGTheme shared];
+		CGFloat fwd = [self layoutForwardIn:cell message:m width:layout.bubbleFrame.size.width];
+		cell.bubble.frame = layout.bubbleFrame;
+		cell.bubble.backgroundColor = mine ? [locTheme bubbleMineColour] : [locTheme bubbleTheirsColour];
+		cell.bubble.layer.borderWidth = [locTheme bubbleBorderWidth];
+		cell.bubble.layer.borderColor = [locTheme bubbleBorderColour].CGColor;
+		cell.bubble.layer.cornerRadius = [locTheme bubbleCornerRadius];
+
+		CGFloat mapW = layout.bubbleFrame.size.width;
+		CGFloat mapH = 130.0f;
+
+		double lat = [m[@"lat"] doubleValue];
+		double lon = [m[@"lon"] doubleValue];
+
+		cell.picture.hidden = NO;
+		cell.picture.frame = CGRectMake(0, fwd, mapW, mapH);
+		cell.picture.clipsToBounds = YES;
+		cell.picture.image = [self imageFor:m];
+
+		cell.disc.hidden = NO;
+		cell.disc.userInteractionEnabled = NO;
+		cell.disc.image = [TGIcons mapPinBadge];
+		cell.disc.frame = CGRectMake((mapW - 28) / 2, fwd + (mapH - 36) / 2 - 4, 28, 36);
+		[cell.bubble bringSubviewToFront:cell.disc];
+
+		cell.icon.hidden = NO;
+		cell.icon.layer.cornerRadius = 3;
+		cell.icon.backgroundColor = [UIColor colorWithWhite:0.0f alpha:0.45f];
+		cell.icon.textColor = [UIColor whiteColor];
+		cell.icon.font = [UIFont boldSystemFontOfSize:10];
+		cell.icon.text = @" Apple Maps ";
+		cell.icon.frame = CGRectMake(6, fwd + mapH - 22, 68, 16);
+		[cell.bubble bringSubviewToFront:cell.icon];
+
+		CGFloat stampW = layout.timeWidth + (mine ? 28 : 14);
+		cell.mediaStamp.hidden = NO;
+		cell.mediaStamp.backgroundColor = [locTheme mediaStampColour];
+		cell.mediaStamp.text = mine ? [NSString stringWithFormat:@"  %@", layout.stamp] : layout.stamp;
+		cell.mediaStamp.textAlignment = mine ? NSTextAlignmentLeft : NSTextAlignmentCenter;
+		cell.mediaStamp.frame = CGRectMake(mapW - stampW - 6, fwd + mapH - 22, stampW, 16);
+		[cell.bubble bringSubviewToFront:cell.mediaStamp];
+
+		cell.ticks.hidden = !mine;
+		if (mine) {
+			cell.ticks.image = [TGIcons ticksWhite:YES];
+			cell.ticks.frame = CGRectMake(CGRectGetMaxX(cell.mediaStamp.frame) - 17,
+										  CGRectGetMidY(cell.mediaStamp.frame) - 4.5f, 15, 9);
+			[cell.bubble bringSubviewToFront:cell.ticks];
+		}
+
+		NSDictionary *venue = [m[@"venue"] isKindOfClass:NSDictionary.class] ? m[@"venue"] : nil;
+		NSString *vTitle = venue[@"title"];
+		NSString *vAddr = venue[@"address"];
+		if (!vTitle.length) {
+			NSArray *lines = [m[@"text"] componentsSeparatedByString:@"\n"];
+			if (lines.count > 1) {
+				vTitle = lines[0];
+				vAddr = lines[1];
+			} else if (lines.count == 1 && ![lines[0] isEqualToString:@"Location"]) {
+				vTitle = lines[0];
+			}
+		}
+		if (!vTitle.length) vTitle = @"Location";
+		if (!vAddr.length)  vAddr = [NSString stringWithFormat:@"%.4f, %.4f", lat, lon];
+
+		cell.body.hidden = NO;
+		cell.body.numberOfLines = 1;
+		cell.body.font = [UIFont boldSystemFontOfSize:14];
+		cell.body.textColor = [locTheme primaryTextColour];
+		cell.body.text = vTitle;
+		cell.body.frame = CGRectMake(kPadH, fwd + mapH + 4, mapW - 2 * kPadH, 18);
+
+		cell.subtitle.hidden = NO;
+		cell.subtitle.numberOfLines = 1;
+		cell.subtitle.font = [UIFont systemFontOfSize:12];
+		cell.subtitle.textColor = [locTheme fileMetaColour];
+		cell.subtitle.text = vAddr;
+		cell.subtitle.frame = CGRectMake(kPadH, fwd + mapH + 24, mapW - 2 * kPadH, 16);
+
+		cell.time.text = @"";
 		return cell;
 	}
 
@@ -3287,12 +3266,27 @@ static UIColor *TGSenderColour(int64_t userId) {
 			[cell.disc addGestureRecognizer:[[UITapGestureRecognizer alloc]
 					initWithTarget:self action:@selector(videoNoteDiscTapped:)]];
 		}
+		NSInteger dur = [m[@"duration"] integerValue];
+		NSString *durStr = (dur > 0) ? [NSString stringWithFormat:@"%ld:%02ld", (long)(dur / 60), (long)(dur % 60)] : @"";
+		NSString *stampText = durStr.length ? [NSString stringWithFormat:@"%@  %@", durStr, layout.stamp] : layout.stamp;
 
-		static NSDateFormatter *hmr = nil;
-		if (!hmr) { hmr = [[NSDateFormatter alloc] init]; [hmr setDateFormat:@"HH:mm"]; }
-		cell.time.text = [hmr stringFromDate:[NSDate dateWithTimeIntervalSince1970:[m[@"date"] doubleValue]]];
-		cell.time.textColor = [UIColor whiteColor];
-		cell.time.frame = CGRectMake(side - 44, side, 44, 12);
+		CGFloat stampW = TGTextSize(stampText, [UIFont systemFontOfSize:11], 0).width + (mine ? 26 : 14);
+		cell.mediaStamp.hidden = NO;
+		cell.mediaStamp.backgroundColor = [theme mediaStampColour];
+		cell.mediaStamp.text = mine ? [NSString stringWithFormat:@"  %@", stampText] : stampText;
+		cell.mediaStamp.textAlignment = mine ? NSTextAlignmentLeft : NSTextAlignmentCenter;
+		cell.mediaStamp.frame = CGRectMake((side - stampW) / 2, side - 24, stampW, 16);
+		[cell.bubble bringSubviewToFront:cell.mediaStamp];
+
+		cell.ticks.hidden = !mine;
+		if (mine) {
+			cell.ticks.image = [TGIcons ticksWhite:YES];
+			cell.ticks.frame = CGRectMake(CGRectGetMaxX(cell.mediaStamp.frame) - 16,
+										  CGRectGetMidY(cell.mediaStamp.frame) - 4.5f, 15, 9);
+			[cell.bubble bringSubviewToFront:cell.ticks];
+		}
+
+		cell.time.hidden = YES;
 		return cell;
 	}
 

@@ -185,9 +185,7 @@ static const CGFloat kActionTile = 52.0f;
 	for (NSUInteger i = 0; i < tiles.count; i++){
 		UIButton *tile = [UIButton buttonWithType:UIButtonTypeCustom];
 		tile.frame = CGRectMake(margin + i * (tileW + gap), y, tileW, kActionTile);
-		tile.backgroundColor = theme.isDark
-				? [UIColor colorWithWhite:1.0f alpha:0.08f]
-				: [UIColor colorWithWhite:0.0f alpha:0.05f];
+		tile.backgroundColor = [theme actionTileBackgroundColour];
 		tile.layer.cornerRadius = 8;
 		tile.tag = i;
 		[tile addTarget:self action:@selector(actionTileTapped:)
@@ -657,8 +655,8 @@ static const NSInteger kSectionMedia   = 4;
 	toast.text = @"Copied";
 	toast.textAlignment = NSTextAlignmentCenter;
 	toast.font = [UIFont systemFontOfSize:14];
-	toast.textColor = [UIColor whiteColor];
-	toast.backgroundColor = [UIColor colorWithWhite:0 alpha:0.75f];
+	toast.textColor = [[TGTheme shared] hudTextColour];
+	toast.backgroundColor = [[TGTheme shared] hudBackgroundColour];
 	toast.layer.cornerRadius = 6;
 	toast.clipsToBounds = YES;
 	[self.view addSubview:toast];

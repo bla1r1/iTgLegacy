@@ -152,6 +152,14 @@ static NSString *TGContactName(NSDictionary *u) {
 	cell.imageView.layer.shouldRasterize = YES;
 	cell.imageView.layer.rasterizationScale = [UIScreen mainScreen].scale;
 	cell.imageView.contentMode = UIViewContentModeScaleAspectFill;
+
+	if ([TGTheme shared].isDark) {
+		UIView *selected = [[UIView alloc] init];
+		selected.backgroundColor = [[TGTheme shared] bubbleTheirsColour];
+		cell.selectedBackgroundView = selected;
+	} else {
+		cell.selectedBackgroundView = nil;
+	}
 	return cell;
 }
 

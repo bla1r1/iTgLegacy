@@ -176,6 +176,8 @@ APP_SRC_M := \
 	src/TGQRViewController.m \
 	src/TGLoginViewController.m \
 	src/TGChatListViewController.m \
+	src/TGMessageLayout.m \
+	src/TGBubbleCell.m \
 	src/TGChatViewController.m \
 	src/TGContactsViewController.m \
 	src/TGTopicsViewController.m \
@@ -257,6 +259,14 @@ all: ipa
 deploy:
 	@chmod +x scripts/deploy.sh
 	@./scripts/deploy.sh
+
+deploy-sync:
+	@chmod +x scripts/deploy.sh
+	@./scripts/deploy.sh --sync
+
+deploy-full:
+	@chmod +x scripts/deploy.sh
+	@./scripts/deploy.sh --full
 
 ipa: ipa-armv7 ipa-arm64
 	@echo "[+] Packaging universal fat IPA $(IPA_FILE)..."

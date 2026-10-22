@@ -204,6 +204,14 @@ static const CGFloat kSearchAvatar = 40.0f;
 											fileId:nil];
 	}
 
+	if (theme.isDark) {
+		UIView *selected = [[UIView alloc] init];
+		selected.backgroundColor = [theme bubbleTheirsColour];
+		cell.selectedBackgroundView = selected;
+	} else {
+		cell.selectedBackgroundView = nil;
+	}
+
 	return cell;
 }
 

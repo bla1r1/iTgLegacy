@@ -90,8 +90,7 @@ static TGPopupMenu *sOpenMenu = nil;
 					kMenuInset, (kMenuRow - kMenuGlyph) / 2, kMenuGlyph, kMenuGlyph)];
 			icon.image = glyph;
 			icon.contentMode = UIViewContentModeScaleAspectFit;
-			icon.tintColor = destructive ? [UIColor colorWithRed:0.87f green:0.23f
-															blue:0.23f alpha:1.0f]
+			icon.tintColor = destructive ? [theme destructiveColour]
 										 : [theme secondaryTextColour];
 			[row addSubview:icon];
 		}
@@ -103,7 +102,7 @@ static TGPopupMenu *sOpenMenu = nil;
 		label.font = [UIFont systemFontOfSize:15];
 		label.backgroundColor = [UIColor clearColor];
 		label.textColor = destructive
-				? [UIColor colorWithRed:0.87f green:0.23f blue:0.23f alpha:1.0f]
+				? [theme destructiveColour]
 				: [theme primaryTextColour];
 		[row addSubview:label];
 

@@ -6,11 +6,12 @@
 // old media pipeline with it.
 //
 #import <UIKit/UIKit.h>
+#import <AddressBookUI/AddressBookUI.h>
 
 @interface TGChatViewController : UIViewController
     <UITableViewDataSource, UITableViewDelegate, UITextFieldDelegate,
      UIImagePickerControllerDelegate, UINavigationControllerDelegate,
-     UIActionSheetDelegate>
+     UIActionSheetDelegate, ABUnknownPersonViewControllerDelegate>
 
 @property (nonatomic, assign) int64_t chatId;
 @property (nonatomic, copy)   NSString *chatTitle;

@@ -57,6 +57,9 @@
                            size:(CGFloat)size
                        colourId:(int64_t)colourId;
 
++ (UIImage *)mapPinBadge;
++ (UIImage *)mapPlaceholderSize:(CGSize)size;
+
 /// The arrow beside a call in a chat: down-left for one that came in, up-right
 /// for one that went out, red when it was never answered.
 + (UIImage *)callArrowOutgoing:(BOOL)outgoing missed:(BOOL)missed;

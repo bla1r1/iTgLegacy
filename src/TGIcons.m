@@ -1004,6 +1004,66 @@ static UIImage *TGGlyphAvatar(CGFloat side, void (^draw)(CGContextRef ctx, CGFlo
 	});
 }
 
++ (UIImage *)mapPinBadge {
+	NSString *key = @"mapPinBadge";
+	UIImage *cached = sGetCached(key);
+	if (cached) return cached;
+	CGFloat w = 28, h = 36;
+	UIGraphicsBeginImageContextWithOptions(CGSizeMake(w, h), NO, 0);
+	CGContextRef ctx = UIGraphicsGetCurrentContext();
+	// Draw red teardrop pin
+	CGContextSetRGBFillColor(ctx, 0.95f, 0.26f, 0.21f, 1.0f);
+	CGContextBeginPath(ctx);
+	CGContextAddArc(ctx, w/2, 12, 11, -M_PI * 0.75, -M_PI * 0.25, 1);
+	CGContextAddLineToPoint(ctx, w/2, h - 3);
+	CGContextClosePath(ctx);
+	CGContextFillPath(ctx);
+	// Inner white dot
+	CGContextSetRGBFillColor(ctx, 1.0f, 1.0f, 1.0f, 1.0f);
+	CGContextFillEllipseInRect(ctx, CGRectMake(w/2 - 4.5f, 12 - 4.5f, 9, 9));
+	UIImage *img = UIGraphicsGetImageFromCurrentImageContext();
+	UIGraphicsEndImageContext();
+	sSetCached(key, img);
+	return img;
+}
+
++ (UIImage *)mapPlaceholderSize:(CGSize)size {
+	NSString *key = [NSString stringWithFormat:@"mapPlaceholder-%.0f-%.0f", size.width, size.height];
+	UIImage *cached = sGetCached(key);
+	if (cached) return cached;
+	UIGraphicsBeginImageContextWithOptions(size, YES, 0);
+	CGContextRef ctx = UIGraphicsGetCurrentContext();
+	// Background: soft map land color
+	CGContextSetRGBFillColor(ctx, 0.93f, 0.92f, 0.88f, 1.0f);
+	CGContextFillRect(ctx, CGRectMake(0, 0, size.width, size.height));
+	// Green park area
+	CGContextSetRGBFillColor(ctx, 0.82f, 0.88f, 0.82f, 1.0f);
+	CGContextFillRect(ctx, CGRectMake(0, size.height * 0.45f, size.width * 0.42f, size.height * 0.55f));
+	// White secondary streets
+	CGContextSetRGBStrokeColor(ctx, 1.0f, 1.0f, 1.0f, 1.0f);
+	CGContextSetLineWidth(ctx, 5.0f);
+	CGContextMoveToPoint(ctx, 0, size.height * 0.5f);
+	CGContextAddLineToPoint(ctx, size.width, size.height * 0.4f);
+	CGContextStrokePath(ctx);
+	CGContextSetLineWidth(ctx, 3.5f);
+	CGContextMoveToPoint(ctx, size.width * 0.35f, 0);
+	CGContextAddLineToPoint(ctx, size.width * 0.45f, size.height);
+	CGContextStrokePath(ctx);
+	CGContextMoveToPoint(ctx, size.width * 0.75f, 0);
+	CGContextAddLineToPoint(ctx, size.width * 0.65f, size.height);
+	CGContextStrokePath(ctx);
+	// Orange primary road
+	CGContextSetRGBStrokeColor(ctx, 0.98f, 0.80f, 0.55f, 1.0f);
+	CGContextSetLineWidth(ctx, 2.5f);
+	CGContextMoveToPoint(ctx, 0, size.height * 0.5f);
+	CGContextAddLineToPoint(ctx, size.width, size.height * 0.4f);
+	CGContextStrokePath(ctx);
+	UIImage *img = UIGraphicsGetImageFromCurrentImageContext();
+	UIGraphicsEndImageContext();
+	sSetCached(key, img);
+	return img;
+}
+
 @end
 
 // vim:ft=objc

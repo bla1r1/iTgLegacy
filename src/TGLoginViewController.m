@@ -215,9 +215,9 @@ static CAGradientLayer *tgGloss(CGRect frame, UIColor *top, UIColor *bottom) {
     if (self.navigationController) {
         [theme styleNavigationBar:self.navigationController.navigationBar];
     }
-    self.nextItem.tintColor = theme.isFlat ? [theme accentColour] : [UIColor whiteColor];
+    self.nextItem.tintColor = [theme barButtonColour];
     if (self.navigationItem.leftBarButtonItem) {
-        self.navigationItem.leftBarButtonItem.tintColor = theme.isFlat ? [theme accentColour] : [UIColor whiteColor];
+        self.navigationItem.leftBarButtonItem.tintColor = [theme barButtonColour];
     }
 
     // View background
@@ -691,7 +691,7 @@ static CAGradientLayer *tgGloss(CGRect frame, UIColor *top, UIColor *bottom) {
         self.resendButton = [UIButton buttonWithType:UIButtonTypeCustom];
         self.resendButton.frame = CGRectMake(15, 162, width - 30, 30);
         [self.resendButton setTitleColor:[[TGTheme shared] accentColour] forState:UIControlStateNormal];
-        [self.resendButton setTitleColor:[UIColor lightGrayColor] forState:UIControlStateDisabled];
+        [self.resendButton setTitleColor:[[TGTheme shared] secondaryTextColour] forState:UIControlStateDisabled];
         self.resendButton.titleLabel.font = [UIFont systemFontOfSize:14];
         [self.resendButton addTarget:self action:@selector(resendButtonTapped) forControlEvents:UIControlEventTouchUpInside];
         [self.scrollView addSubview:self.resendButton];

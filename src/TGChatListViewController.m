@@ -621,6 +621,14 @@ static const NSInteger kChatActionsTag = 77;
 	cell.tick.hidden = YES;
 	cell.onlineDot.layer.borderColor = bg.CGColor;
 
+	if (theme.isDark) {
+		UIView *selected = [[UIView alloc] init];
+		selected.backgroundColor = [theme bubbleTheirsColour];
+		cell.selectedBackgroundView = selected;
+	} else {
+		cell.selectedBackgroundView = nil;
+	}
+
 	NSArray *header = [self headerRows];
 	if (indexPath.row < (NSInteger)header.count){
 		BOOL isArchive = [header[indexPath.row] isEqualToString:@"archive"];

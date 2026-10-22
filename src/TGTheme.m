@@ -58,6 +58,8 @@ static NSString *const kBeforeNightKey   = @"themeStyleBeforeNight";
 		palette = @{
 			@"bar"            : rgb(0x21, 0x30, 0x40),
 			@"barTitle"       : [UIColor whiteColor],
+			@"barSubtitle"    : rgb(0x7B, 0x87, 0x90),
+			@"barButton"      : rgb(0x2E, 0xA6, 0xFF),
 			@"accent"         : rgb(0x2E, 0xA6, 0xFF),
 			@"chatBackground" : rgb(0x18, 0x22, 0x2D),
 			@"cardBackground" : rgb(0x24, 0x2F, 0x3D),
@@ -438,12 +440,49 @@ static UIColor *rgb(int r, int g, int b) {
 	return self.isFlat ? TG_TEXT_PRIMARY : [UIColor whiteColor];
 }
 
+- (UIColor *)barSubtitleColour {
+	UIColor *imported = [self importedColour:@"barSubtitle"];
+	if (imported) return imported;
+	if (self.isDarkStyle) return TG_GRAY_DARK6;
+	return self.isFlat ? TG_TEXT_SECONDARY : [UIColor colorWithWhite:1.0f alpha:0.75f];
+}
+
+- (UIColor *)barButtonColour {
+	UIColor *imported = [self importedColour:@"barButton"];
+	if (imported) return imported;
+	if (self.isDarkStyle) return [self accentColour];
+	return self.isFlat ? [self accentColour] : [UIColor whiteColor];
+}
 
 - (UIColor *)accentColour {
 	UIColor *imported = [self importedColour:@"accent"];
 	if (imported) return imported;
 	if (self.isDarkStyle) return TG_BLUE_LIGHT4;
 	return self.isFlat ? TG_BLUE_LIGHT4 : TG_BLUE_DARK4;
+}
+
+- (UIColor *)destructiveColour {
+	UIColor *imported = [self importedColour:@"destructive"];
+	if (imported) return imported;
+	return rgb(0xE5, 0x39, 0x35);
+}
+
+- (UIColor *)hudBackgroundColour {
+	return [UIColor colorWithWhite:0.0f alpha:0.75f];
+}
+
+- (UIColor *)hudTextColour {
+	return [UIColor whiteColor];
+}
+
+- (UIColor *)snackbarBackgroundColour {
+	if (self.isDarkStyle)
+		return [UIColor colorWithRed:0.18f green:0.22f blue:0.26f alpha:0.98f];
+	return [UIColor colorWithRed:0.24f green:0.28f blue:0.33f alpha:0.97f];
+}
+
+- (UIColor *)snackbarTextColour {
+	return [UIColor whiteColor];
 }
 
 
@@ -556,6 +595,13 @@ static UIColor *rgb(int r, int g, int b) {
 	return imported ?: TG_BLUE_DARK3;
 }
 
+- (UIColor *)actionTileBackgroundColour {
+	UIColor *imported = [self importedColour:@"actionTile"];
+	if (imported) return imported;
+	return self.isDark ? [UIColor colorWithWhite:1.0f alpha:0.08f]
+					   : [UIColor colorWithWhite:0.0f alpha:0.05f];
+}
+
 - (UIColor *)inputBarColour {
 	if ([self hasCustomPalette])
 		return [self barColour];
@@ -657,7 +703,7 @@ static UIColor *rgb(int r, int g, int b) {
 		// ever costing a blur nobody sees.
 		bar.translucent = NO;
 		bar.barTintColor = [self barColour];
-		bar.tintColor = self.isFlat ? [self accentColour] : [UIColor whiteColor];
+		bar.tintColor = [self barButtonColour];
 		// The settings bar is short, so the title has to be too or it sits with
 		// its descenders against the hairline.
 		bar.titleTextAttributes = @{

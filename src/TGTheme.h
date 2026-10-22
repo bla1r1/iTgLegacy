@@ -100,7 +100,14 @@ extern NSString *const TGThemeChangedNotification;
 
 - (UIColor *)barColour;             ///< navigation bar background
 - (UIColor *)barTitleColour;
+- (UIColor *)barSubtitleColour;     ///< subtitle in chat navigation header
+- (UIColor *)barButtonColour;       ///< buttons/items in navigation bar
 - (UIColor *)accentColour;          ///< buttons, links, unread badges
+- (UIColor *)destructiveColour;     ///< delete actions, red alerts
+- (UIColor *)hudBackgroundColour;   ///< background for HUD/toasts
+- (UIColor *)hudTextColour;         ///< text inside HUD/toasts
+- (UIColor *)snackbarBackgroundColour;
+- (UIColor *)snackbarTextColour;
 - (UIColor *)chatBackgroundColour;
 - (UIColor *)bubbleMineColour;
 - (UIColor *)bubbleTheirsColour;
@@ -119,6 +126,7 @@ extern NSString *const TGThemeChangedNotification;
 - (UIColor *)cellDetailColour;      ///< the value on the right of a settings row
 - (UIColor *)sectionHeaderColour;   ///< the caption above a group of rows
 - (UIColor *)profileHeaderColour;   ///< the block behind a profile picture
+- (UIColor *)actionTileBackgroundColour; ///< action tiles in profile header
 
 #pragma mark - media and file blocks
 

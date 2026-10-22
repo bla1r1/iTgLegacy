@@ -6,9 +6,11 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 DO_FULL=0
+DO_SYNC=0
 for arg in "$@"; do
     case "$arg" in
         --full) DO_FULL=1 ;;
+        --sync) DO_SYNC=1 ;;
     esac
 done
 
@@ -50,8 +52,15 @@ if [ -z "$REMOTE_APP_DIR" ]; then
 fi
 
 echo "[+] Target app directory: $REMOTE_APP_DIR"
-echo "[+] Copying fresh iTgLegacy executable over SSH..."
-$SCP_CMD "$ROOT/build/armv7/app/iTgLegacy.app/iTgLegacy" "mobile@localhost:$REMOTE_APP_DIR/iTgLegacy"
+if [ "$DO_SYNC" -eq 1 ]; then
+    echo "[+] Syncing full iTgLegacy.app bundle (binary, images, plists)..."
+    $SCP_CMD -r "$ROOT/build/armv7/app/iTgLegacy.app/"* "mobile@localhost:$REMOTE_APP_DIR/"
+    echo "[+] Refreshing LaunchServices icon cache (without SpringBoard respring)..."
+    $SSH_CMD "su -c uicache mobile 2>/dev/null || uicache 2>/dev/null || true"
+else
+    echo "[+] Copying fresh iTgLegacy executable over SSH..."
+    $SCP_CMD "$ROOT/build/armv7/app/iTgLegacy.app/iTgLegacy" "mobile@localhost:$REMOTE_APP_DIR/iTgLegacy"
+fi
 
 echo "[+] Restarting iTgLegacy process..."
 $SSH_CMD "killall -9 iTgLegacy 2>/dev/null || true; /usr/bin/uiopen itglegacy:// 2>/dev/null || openURL itglegacy:// 2>/dev/null || true" 2>/dev/null || true

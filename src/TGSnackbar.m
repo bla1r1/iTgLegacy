@@ -72,7 +72,7 @@ static TGSnackbar *sOpenBar = nil;
 - (void)buildWithText:(NSString *)text {
 	// steel-gray_dark, which is what their plate is - it has to read over both
 	// a light and a dark chat.
-	self.backgroundColor = [UIColor colorWithRed:0.24f green:0.28f blue:0.33f alpha:0.97f];
+	self.backgroundColor = [[TGTheme shared] snackbarBackgroundColour];
 	self.layer.cornerRadius = 5;
 
 	CGRect ring = CGRectMake(14, (kBarHeight - kRingSide) / 2, kRingSide, kRingSide);
@@ -81,7 +81,7 @@ static TGSnackbar *sOpenBar = nil;
 	_ring.path = [UIBezierPath bezierPathWithOvalInRect:
 			CGRectInset(CGRectMake(0, 0, kRingSide, kRingSide), 1, 1)].CGPath;
 	_ring.fillColor = [UIColor clearColor].CGColor;
-	_ring.strokeColor = [UIColor whiteColor].CGColor;
+	_ring.strokeColor = [[TGTheme shared] snackbarTextColour].CGColor;
 	_ring.lineWidth = 1.5f;
 	// Wound from the top and unwinding as the seconds go, so the plate says how
 	// long is left without anyone having to read the number.
@@ -92,7 +92,7 @@ static TGSnackbar *sOpenBar = nil;
 	_count = [[UILabel alloc] initWithFrame:ring];
 	_count.textAlignment = NSTextAlignmentCenter;
 	_count.font = [UIFont systemFontOfSize:12];
-	_count.textColor = [UIColor whiteColor];
+	_count.textColor = [[TGTheme shared] snackbarTextColour];
 	_count.backgroundColor = [UIColor clearColor];
 	_count.text = [NSString stringWithFormat:@"%ld", (long)_left];
 	[self addSubview:_count];
@@ -101,7 +101,7 @@ static TGSnackbar *sOpenBar = nil;
 			46, 0, self.bounds.size.width - 46 - 76, kBarHeight)];
 	label.text = text;
 	label.font = [UIFont systemFontOfSize:15];
-	label.textColor = [UIColor whiteColor];
+	label.textColor = [[TGTheme shared] snackbarTextColour];
 	label.backgroundColor = [UIColor clearColor];
 	label.autoresizingMask = UIViewAutoresizingFlexibleWidth;
 	[self addSubview:label];

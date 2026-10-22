@@ -685,6 +685,8 @@ static NSDictionary *TGFlattenMessage(NSDictionary *m) {
 	NSString *docName     = nil;
 	NSString *extra       = nil;   // text the content itself carries
 	NSNumber *latitude = nil, *longitude = nil;
+	NSDictionary *contactDict = nil;
+	NSDictionary *venueDict   = nil;
 	NSNumber *duration = nil;
 	NSData *waveform = nil;
 	NSString *audioTitle = nil, *audioPerformer = nil;
@@ -801,7 +803,17 @@ static NSDictionary *TGFlattenMessage(NSDictionary *m) {
 		NSString *name = [[NSString stringWithFormat:@"%@ %@",
 				c[@"first_name"] ?: @"", c[@"last_name"] ?: @""]
 				stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+		if (!name.length)
+			name = c[@"phone_number"] ?: @"Contact";
 		extra = [NSString stringWithFormat:@"%@\n%@", name, c[@"phone_number"] ?: @""];
+		contactDict = @{
+			@"name"        : name,
+			@"firstName"   : c[@"first_name"] ?: @"",
+			@"lastName"    : c[@"last_name"] ?: @"",
+			@"phoneNumber" : c[@"phone_number"] ?: @"",
+			@"userId"      : c[@"user_id"] ?: @(0),
+			@"vcard"       : c[@"vcard"] ?: @"",
+		};
 
 	} else if ([ctype isEqualToString:@"messageVenue"]){
 		NSDictionary *v = content[@"venue"];
@@ -809,6 +821,10 @@ static NSDictionary *TGFlattenMessage(NSDictionary *m) {
 				v[@"title"] ?: @"", v[@"address"] ?: @""];
 		latitude  = v[@"location"][@"latitude"];
 		longitude = v[@"location"][@"longitude"];
+		venueDict = @{
+			@"title"   : v[@"title"] ?: @"",
+			@"address" : v[@"address"] ?: @"",
+		};
 
 	} else if ([ctype isEqualToString:@"messageChatAddMembers"]){
 		NSMutableArray *names = [NSMutableArray array];
@@ -1044,6 +1060,8 @@ static NSDictionary *TGFlattenMessage(NSDictionary *m) {
 		@"lat"       : latitude    ?: [NSNull null],
 		@"lon"       : longitude   ?: [NSNull null],
 		@"callState" : callState   ?: @"",
+		@"contact"   : contactDict ?: [NSNull null],
+		@"venue"     : venueDict   ?: [NSNull null],
 	};
 }
 
