@@ -171,6 +171,11 @@ APP_SRC_M := \
 	src/Controllers/RootViewController.m \
 	src/main.m \
 	src/Core/TGClient.m \
+	src/Core/TGClient+Auth.m \
+	src/Core/TGClient+Messages.m \
+	src/Core/TGClient+Chats.m \
+	src/Core/TGClient+Files.m \
+	src/Core/TGClient+Account.m \
 	src/Core/TGDevice.m \
 	src/Core/TGCapabilities.m \
 	src/Core/TGTheme.m \
@@ -200,6 +205,8 @@ APP_SRC_M := \
 	src/Controllers/TGStorageViewController.m \
 	src/Controllers/TGSessionsViewController.m \
 	src/Controllers/TGSettingsViewController.m \
+	src/Controllers/TGSettingsViewController+Pages.m \
+	src/Controllers/TGSettingsViewController+Actions.m \
 	src/Audio/TGVoiceDecoder.m \
 	src/Calls/TGCallIce.m \
 	src/Calls/TGCallStun.m \
