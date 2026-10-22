@@ -121,6 +121,35 @@ static const CGFloat kAvatarSide  = 34.0f;
 - (void)inputChanged;
 - (void)sendTapped;
 
+// Layout and cell helpers
+- (NSString *)quoteTextFor:(NSDictionary *)m;
+- (NSString *)quoteAuthorFor:(NSDictionary *)m;
+- (CGFloat)decorationHeightFor:(NSDictionary *)m;
+- (NSString *)stampFor:(NSDictionary *)m;
+- (CGFloat)timeWidthFor:(NSDictionary *)m;
+- (BOOL)stampFitsInlineFor:(NSDictionary *)m;
+- (CGFloat)layoutForwardIn:(TGBubbleCell *)cell message:(NSDictionary *)m width:(CGFloat)width;
+- (CGFloat)pollHeightFor:(NSDictionary *)m;
+- (BOOL)stampSitsOnPictureFor:(NSDictionary *)m;
+- (CGSize)bodySizeFor:(NSDictionary *)m;
+- (UIImage *)imageFor:(NSDictionary *)m;
+- (CGSize)imageSizeFor:(NSDictionary *)m;
+- (TGMessageLayout *)layoutForMessage:(NSDictionary *)m atRow:(NSInteger)row;
+- (BOOL)continuesAlbumAtRow:(NSInteger)row;
+- (BOOL)albumContinuesAfterRow:(NSInteger)row;
+- (UIImage *)avatarForUser:(int64_t)userId name:(NSString *)name;
+- (void)pollOptionTapped:(UIButton *)option;
+- (void)callCellButtonTapped:(UIButton *)btn;
+- (void)contactCallButtonTapped:(UIButton *)btn;
+- (void)contactAddButtonTapped:(UIButton *)btn;
+- (void)videoNoteDiscTapped:(UITapGestureRecognizer *)tap;
+- (UIImage *)mapCardForLatitude:(double)lat longitude:(double)lon;
+- (float)playedFraction;
+- (void)voiceDiscTapped:(UITapGestureRecognizer *)tap;
+- (void)waveformScrubbed:(UIGestureRecognizer *)gesture;
+
 @end
+
+UIColor *TGSenderColour(int64_t userId);
 
 #endif // TGCHATVIEWCONTROLLERINTERNAL_H

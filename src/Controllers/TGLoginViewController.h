@@ -9,11 +9,15 @@
 @property (nonatomic, copy) void (^onRequestQRCode)(void);
 @property (nonatomic, copy) void (^onResetSession)(void);
 
+- (void)setBusy:(BOOL)busy;
+
+@end
+
+@interface TGLoginViewController (Steps)
+
 - (void)showPhoneStep;
 - (void)showCodeStepWithPhoneNumber:(NSString *)phoneNumber;
 - (void)showQRCodeStepWithLink:(NSString *)link;
 - (void)showPasswordStep;
-
-- (void)setBusy:(BOOL)busy;
 
 @end
