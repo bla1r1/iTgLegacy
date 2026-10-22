@@ -1,12 +1,6 @@
 //
-// TGClient - TDLib client for iOS 7.1.2 / armv7.
-//
-// TDLib is loaded with dlopen rather than linked: statically linked it pushes
-// the app's __TEXT past the 16MB armv7 thumb branch limit, which this linker
-// cannot bridge. See scripts/build_tdlib_dylib.sh.
-//
-// Everything is JSON over td_json_client_*. One background thread owns the
-// receive loop; handlers are always delivered on the main queue.
+// TGClient - TDLib client wrapper.
+// Dynamically loads libtdjson.dylib; background receive loop dispatches to main queue.
 //
 #import <Foundation/Foundation.h>
 
@@ -34,9 +28,7 @@ typedef NS_ENUM(NSInteger, TGAuthState) {
 @property (nonatomic, copy) void (^onAuthState)(TGAuthState state);
 /// Called on the main queue for TDLib errors that concern the user.
 @property (nonatomic, copy) void (^onError)(NSString *message);
-/// Connection to Telegram, as TDLib reports it. Replaces the old
-/// SCNetworkReachability check: what matters is whether the client is talking
-/// to Telegram, not whether the device has a route somewhere.
+/// Connection state to Telegram as reported by TDLib.
 typedef NS_ENUM(NSInteger, TGConnectionState) {
     TGConnectionStateUnknown = 0,
     TGConnectionStateWaitingForNetwork,
@@ -250,12 +242,9 @@ typedef NS_ENUM(NSInteger, TGConnectionState) {
 /// "missed", "date", "duration", "userId".
 - (void)recentCallsWithCompletion:(void (^)(NSArray *calls))completion;
 
-/// The privacy rules, by the name TDLib gives them without the prefix:
+/// Queries privacy rule value ("everybody", "contacts", "nobody") for setting:
 /// "ShowStatus", "ShowProfilePhoto", "AllowCalls", "AllowChatInvites",
-/// "ShowLinkInForwardedMessages", "ShowPhoneNumber". The answer and the new
-/// value are one of "everybody", "contacts" or "nobody" - the three choices
-/// every client offers, which is all the rule list can say without a screen
-/// for picking individual people.
+/// "ShowLinkInForwardedMessages", "ShowPhoneNumber".
 - (void)privacyRule:(NSString *)setting
          completion:(void (^)(NSString *value))completion;
 - (void)setPrivacyRule:(NSString *)setting to:(NSString *)value;

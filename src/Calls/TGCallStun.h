@@ -1,12 +1,5 @@
 //
-// TGCallStun - the ICE connectivity checks a call needs, and nothing else.
-//
-// Two agents that want to send each other media first prove they can, by
-// exchanging STUN binding requests signed with the credentials they swapped
-// over the signalling channel. WebRTC does this with a full ICE agent; a call
-// with one candidate pair needs the two messages below and no more.
-//
-// RFC 5389 for the framing, RFC 8445 for the ICE attributes.
+// TGCallStun - STUN binding requests and responses for VoIP ICE checks (RFC 5389 / RFC 8445).
 //
 #ifndef TG_CALL_STUN_H
 #define TG_CALL_STUN_H

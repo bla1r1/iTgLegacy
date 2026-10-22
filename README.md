@@ -1,4 +1,4 @@
-# iTgLegacy
+# LegacyTG
 
 Read this in other languages: [Русский](README_RU.md)
 
@@ -35,7 +35,7 @@ Before building for real use, configure your Telegram API credentials:
 ## Repository Layout
 
 ```
-iTgLegacy/
+LegacyTG/
 ├── Makefile       # Master build file
 ├── README.md      # Documentation (English)
 ├── README_RU.md   # Documentation (Russian)
@@ -57,14 +57,14 @@ iTgLegacy/
 ├── scripts/       # Build automation and deployment scripts
 ├── tests/         # Unit and integration test suite
 └── build/         # Build outputs (git-ignored)
-    ├── iTgLegacy-armv7.ipa # 32-bit IPA for iOS 6.0+ (8.8 MB)
-    ├── iTgLegacy-arm64.ipa # 64-bit IPA for iOS 7.0-12.5.7 (8.8 MB)
-    └── iTgLegacy.ipa       # Universal Fat IPA package (16 MB)
+    ├── LegacyTG-armv7.ipa # 32-bit IPA for iOS 6.0+ (8.8 MB)
+    ├── LegacyTG-arm64.ipa # 64-bit IPA for iOS 7.0-12.5.7 (8.8 MB)
+    └── LegacyTG.ipa       # Universal Fat IPA package (16 MB)
 ```
 
 ## Prerequisites
 
-To build iTgLegacy on macOS:
+To build LegacyTG on macOS:
 
 1. Xcode installed with iOS SDK support.
 2. Build dependencies:
@@ -90,7 +90,7 @@ Or run the wrapper script:
 
 ### Build Targets
 
-- `make ipa` - Build all packages (`iTgLegacy-armv7.ipa`, `iTgLegacy-arm64.ipa`, and universal `iTgLegacy.ipa`).
+- `make ipa` - Build all packages (`LegacyTG-armv7.ipa`, `LegacyTG-arm64.ipa`, and universal `LegacyTG.ipa`).
 - `make ipa-armv7` - Build lightweight 32-bit `.ipa` (8.8 MB for iOS 6.0+).
 - `make ipa-arm64` - Build lightweight 64-bit `.ipa` (8.8 MB for iOS 7.0 - 12.5.7).
 - `make app` - Build the `.app` bundle.

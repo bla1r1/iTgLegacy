@@ -18,7 +18,7 @@ SSH_HOST=itgphone
 SSH_PORT=2222
 SSH_OPTS="-o ConnectTimeout=6 -o BatchMode=yes"
 BUNDLE_ID="org.legacy.itg"
-IPA="$ROOT/build/ipa/iTgLegacy-armv7.ipa"
+IPA="$ROOT/build/ipa/LegacyTG-armv7.ipa"
 
 DO_BUILD=1
 THEMES="day night"
@@ -103,9 +103,9 @@ fi
 ssh_ready || { echo "no ssh to the device" >&2; exit 1; }
 
 say "launching"
-ssh $SSH_OPTS "$SSH_HOST" "killall iTgLegacy 2>/dev/null; true"
+ssh $SSH_OPTS "$SSH_HOST" "killall LegacyTG 2>/dev/null || killall iTgLegacy 2>/dev/null; true"
 sleep 2
-url "itglegacy://" || { echo "could not launch" >&2; exit 1; }
+url "legacytg://" || url "itglegacy://" || { echo "could not launch" >&2; exit 1; }
 sleep 12          # TDLib needs a moment before the account is loaded
 
 for theme in $THEMES; do

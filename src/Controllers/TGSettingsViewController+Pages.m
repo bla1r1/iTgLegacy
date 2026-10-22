@@ -26,8 +26,7 @@
 			[me[@"id"] longLongValue]] != nil;
 
 	return @[
-		// Their page opens with the picture centred, the name under it and the
-		// number under that - not a row with the picture off to one side.
+		// Profile header row
 		TGSection(nil, nil, @[TGRow(TGKindProfile, @"")]),
 
 		TGSection(nil, nil, @[

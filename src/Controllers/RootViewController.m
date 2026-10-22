@@ -1,5 +1,5 @@
 //
-// iTgLegacy - Telegram client for legacy iOS
+// LegacyTG - Telegram client for legacy iOS
 // Copyright (C) 2026 Blair <dimazzzzz342@gmail.com>
 // Licensed under GNU General Public License v3.0
 //
@@ -11,10 +11,7 @@
 #import "TGTheme.h"
 #import "TGMusicPlayer.h"
 
-/// A 3.5-inch screen is 480pt tall and the bars take 108 of it. The settings
-/// pages carry a short title and a back button and nothing else, so the bar
-/// gives back twelve of those points and hides itself on the way down the
-/// list; the root page, which has neither, drops it entirely.
+/// Compact 32pt navigation bar to maximize vertical space on 3.5" displays.
 static const CGFloat kCompactBarHeight = 32.0f;
 
 @interface TGCompactNavigationBar : UINavigationBar
@@ -118,10 +115,7 @@ static const CGFloat kCompactBarHeight = 32.0f;
 	}
 }
 
-/// The root settings page has no title and no back button - it is a tab root -
-/// so the bar there is forty-four points of nothing. Deciding it here rather
-/// than in each screen's viewWillAppear means a page pushed from settings does
-/// not have to remember to put the bar back.
+/// Automatically hides navigation bar for root settings page, restoring it for child pages.
 - (void)navigationController:(UINavigationController *)nc
 	  willShowViewController:(UIViewController *)controller
 					animated:(BOOL)animated

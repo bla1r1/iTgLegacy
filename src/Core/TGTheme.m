@@ -140,8 +140,7 @@ static NSString *TGIdForStyle(TGThemeStyle style) {
 	else if ([themeId isEqualToString:@"night"])     style = TGThemeStyleDark;
 	else if ([themeId isEqualToString:@"nightblue"]) style = TGThemeStyleNightBlue;
 
-	// A file and a style are one choice, so picking a style drops the file -
-	// and both used to post their own notification, which repainted twice.
+	// Switching style clears any active imported theme file.
 	_imported = nil;
 	_importedName = nil;
 	[NSUserDefaults.standardUserDefaults removeObjectForKey:kImportKey];

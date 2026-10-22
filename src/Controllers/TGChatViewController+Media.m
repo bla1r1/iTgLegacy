@@ -4,10 +4,7 @@
 
 @implementation TGChatViewController (Media)
 
-/// A location gets a drawn card, not a real map: MKMapSnapshotter fires no
-/// completion at all on iOS 7 because Apple's tile servers stopped answering
-/// clients this old. So this is a stylised plan view with a pin - honest about
-/// being a placeholder, and it works with no network.
+/// Renders an offline stylized map card with pin for location messages.
 - (UIImage *)mapCardForLatitude:(double)lat longitude:(double)lon {
 	CGSize size = CGSizeMake(220, 130);
 	UIGraphicsBeginImageContextWithOptions(size, YES, 0);

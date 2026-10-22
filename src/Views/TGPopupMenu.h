@@ -1,10 +1,5 @@
 //
-// TGPopupMenu - the rounded card of choices Telegram opens next to whatever
-// you held, in place of the system action sheet.
-//
-// A UIActionSheet slides the whole screen's worth of buttons up from the
-// bottom and looks like iOS, not like Telegram. Theirs is a small card beside
-// the thing it acts on, each row a line glyph and a word.
+// TGPopupMenu - contextual popup menu anchored to touch point.
 //
 #import <UIKit/UIKit.h>
 

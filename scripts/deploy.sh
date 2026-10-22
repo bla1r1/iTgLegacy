@@ -36,31 +36,31 @@ SCP_CMD="sshpass -p alpine scp -O -P 2222 -o UserKnownHostsFile=/dev/null -o Hos
 
 if [ "$DO_FULL" -eq 1 ]; then
     echo "[+] Performing full IPA install via ideviceinstaller..."
-    ideviceinstaller -u "$DEVICE_UDID" install "$ROOT/build/ipa/iTgLegacy-armv7.ipa"
+    ideviceinstaller -u "$DEVICE_UDID" install "$ROOT/build/ipa/LegacyTG-armv7.ipa"
     echo "[+] Full install complete!"
     exit 0
 fi
 
-echo "[+] Locating installed iTgLegacy.app on device..."
-REMOTE_APP_DIR="$($SSH_CMD "find /var/mobile/Applications -name 'iTgLegacy.app' 2>/dev/null | head -1" 2>/dev/null | tr -d '\r')"
+echo "[+] Locating installed LegacyTG.app on device..."
+REMOTE_APP_DIR="$($SSH_CMD "find /var/mobile/Applications -name 'LegacyTG.app' 2>/dev/null | head -1" 2>/dev/null | tr -d '\r')"
 
 if [ -z "$REMOTE_APP_DIR" ]; then
     echo "[!] App not found on device. Performing first-time full install..."
-    ideviceinstaller -u "$DEVICE_UDID" install "$ROOT/build/ipa/iTgLegacy-armv7.ipa"
+    ideviceinstaller -u "$DEVICE_UDID" install "$ROOT/build/ipa/LegacyTG-armv7.ipa"
     echo "[+] Installed!"
     exit 0
 fi
 
 echo "[+] Target app directory: $REMOTE_APP_DIR"
 if [ "$DO_SYNC" -eq 1 ]; then
-    echo "[+] Syncing full iTgLegacy.app bundle (binary, images, plists)..."
-    $SCP_CMD -r "$ROOT/build/armv7/app/iTgLegacy.app/"* "mobile@localhost:$REMOTE_APP_DIR/"
+    echo "[+] Syncing full LegacyTG.app bundle (binary, images, plists)..."
+    $SCP_CMD -r "$ROOT/build/armv7/app/LegacyTG.app/"* "mobile@localhost:$REMOTE_APP_DIR/"
 else
-    echo "[+] Copying fresh iTgLegacy executable over SSH..."
-    $SCP_CMD "$ROOT/build/armv7/app/iTgLegacy.app/iTgLegacy" "mobile@localhost:$REMOTE_APP_DIR/iTgLegacy"
+    echo "[+] Copying fresh LegacyTG executable over SSH..."
+    $SCP_CMD "$ROOT/build/armv7/app/LegacyTG.app/LegacyTG" "mobile@localhost:$REMOTE_APP_DIR/LegacyTG"
 fi
 
-echo "[+] Restarting iTgLegacy process & waking screen..."
-$SSH_CMD "killall -9 iTgLegacy 2>/dev/null || true; sbunlock --launch 2>/dev/null || openURL itglegacy:// 2>/dev/null || true" 2>/dev/null || true
+echo "[+] Restarting LegacyTG process & waking screen..."
+$SSH_CMD "killall -9 LegacyTG 2>/dev/null || true; sbunlock --launch 2>/dev/null || openURL legacytg:// 2>/dev/null || openURL itglegacy:// 2>/dev/null || true" 2>/dev/null || true
 
 echo "[+] Fast deploy complete in seconds! App updated on device."

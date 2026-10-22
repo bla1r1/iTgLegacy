@@ -1,10 +1,5 @@
 //
-// UIImage+WebP - decode WebP with libwebp.
-//
-// Telegram stickers are WebP and iOS 7 has no idea what that is. The file that
-// used to sit here contained only the @interface - a copy of the header, no
-// implementation - so every call was an unrecognized selector. WebP.framework
-// ships the libwebp C API, so the category is written against that.
+// UIImage+WebP - decode WebP images with libwebp.
 //
 #import "UIImage+WebP.h"
 #import "WebP.framework/Headers/decode.h"

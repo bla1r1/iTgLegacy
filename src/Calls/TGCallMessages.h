@@ -1,14 +1,5 @@
 //
-// TGCallMessages - the message framing tgcalls puts inside an encrypted packet.
-//
-// A decrypted packet is a sequence number followed by messages. The first byte
-// of each is its type; 0xFE is an empty message that only carries the sequence
-// number, 0xFF is an acknowledgement, and anything else is a real message whose
-// body follows. Between messages comes another four-byte sequence number.
-//
-// Types are from tgcalls/Message.h: 1 candidates, 2 video formats, 4 remote
-// media state, 5 audio data - and audio data is an RTP packet, which is what
-// makes speaking this protocol possible without WebRTC.
+// TGCallMessages - message framing and packet parsing for VoIP calls.
 //
 #import <Foundation/Foundation.h>
 

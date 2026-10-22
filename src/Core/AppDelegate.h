@@ -1,5 +1,5 @@
 //
-// iTgLegacy - Telegram client for legacy iOS
+// LegacyTG - Telegram client for legacy iOS
 // Copyright (C) 2026 Blair <dimazzzzz342@gmail.com>
 // Licensed under GNU General Public License v3.0
 //

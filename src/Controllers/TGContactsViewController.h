@@ -1,8 +1,5 @@
 //
-// TGContactsViewController - Telegram contacts from TDLib.
-//
-// Replaces ContactsListViewController, which resolved address-book numbers
-// through libtg's tg_peer_by_phone.
+// TGContactsViewController - contacts list controller backed by TDLib.
 //
 #import <UIKit/UIKit.h>
 

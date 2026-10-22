@@ -1,9 +1,5 @@
 //
-// TGSnackbar - the dark plate Telegram slides up after something destructive,
-// counting down while you still have the chance to take it back.
-//
-// It replaces "are you sure?": the action happens when the count runs out, so
-// the common case costs no taps at all, and the rare case costs one.
+// TGSnackbar - transient undo notification banner with countdown timer.
 //
 #import <UIKit/UIKit.h>
 

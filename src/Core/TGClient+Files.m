@@ -166,11 +166,7 @@
 	}];
 }
 
-/// What the cache is made of, which the fast statistics call cannot say - it
-/// only knows the total. This one walks the database, so it is asked for once
-/// when the storage page opens and not on a timer.
-///
-/// Each entry: "name", "bytes", "kinds" (the TDLib file types it covers).
+/// Computes storage breakdown by file category and returns total bytes.
 - (void)storageBreakdownWithCompletion:(void (^)(NSArray *, long long))completion {
 	// The categories their page shows, and the TDLib file types under each.
 	static NSArray *groups = nil;

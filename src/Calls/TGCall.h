@@ -1,14 +1,5 @@
 //
-// TGCall - one voice call.
-//
-// TDLib does the signalling: it negotiates the call, hands over the reflector
-// servers and a 256-byte encryption key, and reports the other side hanging
-// up. It carries no audio. The media is libtgvoip, vendored in src/libtgvoip -
-// the same library the official client used when it brought calls to an
-// iPhone 4S in 2017, which is why this works on this hardware at all.
-//
-// Built without the WebRTC DSP, so there is no echo cancellation: on speaker
-// the other side hears themselves. The earpiece is fine.
+// TGCall - voice call controller using TDLib for signalling and libtgvoip for audio.
 //
 #import <Foundation/Foundation.h>
 

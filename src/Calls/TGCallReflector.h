@@ -1,12 +1,5 @@
 //
-// TGCallReflector - the UDP link to a Telegram call reflector.
-//
-// The reflector is not a TURN server, whatever the surrounding WebRTC code in
-// tgcalls suggests: ReflectorPort.cpp writes plain UDP with a small header.
-// Every packet starts with a 16-byte peer tag - twelve bytes handed out by
-// TDLib, then four that identify one side of the call - and the two ends find
-// each other by that tag alone.
-//
+// TGCallReflector - UDP relay protocol for Telegram call reflectors:
 //   ping   tag(16) 0xFF*12 0xFE 0xFF*3 be64(123), padded to 4
 //   data   destinationTag(16) ourTag4(4) be32(size) payload, padded to 4
 //

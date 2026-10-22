@@ -1,4 +1,4 @@
-# iTgLegacy
+# LegacyTG
 
 Читать на других языках: [English](README.md)
 
@@ -12,7 +12,7 @@
 
 - **armv7 (32-бит, ~8.8 МБ)**: Для устройств с iOS 6.0+ (iPhone 3GS, iPhone 4, iPhone 4S, iPhone 5, iPad 2/3/4, iPod Touch 4/5).
 - **arm64 (64-бит, ~8.8 МБ)**: Для устройств с iOS 7.0 - 12.5.7 (iPhone 5s — iPhone X, iPad Air/Pro).
-- **Универсальный (~16 МБ)**: Единый файл `iTgLegacy.ipa`, содержащий обе архитектуры.
+- **Универсальный (~16 МБ)**: Единый файл `LegacyTG.ipa`, содержащий обе архитектуры.
 
 ## Настройка ключей Telegram API
 
@@ -35,7 +35,7 @@
 ## Структура репозитория
 
 ```
-iTgLegacy/
+LegacyTG/
 ├── Makefile       # Главный файл сборки
 ├── README.md      # Документация (на английском)
 ├── README_RU.md   # Документация (на русском)
@@ -57,14 +57,14 @@ iTgLegacy/
 ├── scripts/       # Скрипты автоматизации сборки и деплоя
 ├── tests/         # Модульные и интеграционные тесты
 └── build/         # Результаты сборки (git-ignored)
-    ├── iTgLegacy-armv7.ipa # 32-битный IPA для iOS 6.0+ (8.8 МБ)
-    ├── iTgLegacy-arm64.ipa # 64-битный IPA для iOS 7.0-12.5.7 (8.8 МБ)
-    └── iTgLegacy.ipa       # Универсальный IPA файл (16 МБ)
+    ├── LegacyTG-armv7.ipa # 32-битный IPA для iOS 6.0+ (8.8 МБ)
+    ├── LegacyTG-arm64.ipa # 64-битный IPA для iOS 7.0-12.5.7 (8.8 МБ)
+    └── LegacyTG.ipa       # Универсальный IPA файл (16 МБ)
 ```
 
 ## Требования для сборки
 
-Для сборки iTgLegacy на macOS необходимо:
+Для сборки LegacyTG на macOS необходимо:
 
 1. Установленный Xcode с поддержкой iOS SDK.
 2. Зависимости для сборки:
@@ -90,7 +90,7 @@ make
 
 ### Команды Makefile
 
-- `make ipa` - Собрать все пакеты (`iTgLegacy-armv7.ipa`, `iTgLegacy-arm64.ipa` и универсальный `iTgLegacy.ipa`).
+- `make ipa` - Собрать все пакеты (`LegacyTG-armv7.ipa`, `LegacyTG-arm64.ipa` и универсальный `LegacyTG.ipa`).
 - `make ipa-armv7` - Собрать облегченный 32-битный `.ipa` (8.8 МБ для iOS 6.0+).
 - `make ipa-arm64` - Собрать облегченный 64-битный `.ipa` (8.8 МБ для iOS 7.0 - 12.5.7).
 - `make app` - Собрать только пакет `.app`.

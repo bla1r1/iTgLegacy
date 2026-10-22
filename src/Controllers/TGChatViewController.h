@@ -1,9 +1,5 @@
 //
-// TGChatViewController - a chat, driven purely by TDLib.
-//
-// Written from scratch rather than reusing ChatViewController: that one is
-// built around libtg's tg_message_t and NSBubbleData, and carries the whole
-// old media pipeline with it.
+// TGChatViewController - chat message history and composer controller.
 //
 #import <UIKit/UIKit.h>
 #import <AddressBookUI/AddressBookUI.h>

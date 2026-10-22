@@ -1,8 +1,5 @@
 //
-// TGDeviceViewController - what this phone is, and what it may run.
-//
-// Every gated feature is listed with its state and what it waits for, so a
-// missing button is explained rather than mysterious.
+// TGDeviceViewController - device specifications and feature availability status.
 //
 #import <UIKit/UIKit.h>
 

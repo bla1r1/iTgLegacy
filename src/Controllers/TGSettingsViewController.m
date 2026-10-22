@@ -43,9 +43,7 @@
 	[self rebuild];
 	[self loadForPage];
 
-	// A theme change used to be handled by throwing the whole interface away.
-	// Every screen repaints itself now, and this one is where the theme is
-	// usually being changed from.
+	// Repaint on theme change notification.
 	__weak typeof(self) weakSelf = self;
 	[[NSNotificationCenter defaultCenter] addObserverForName:TGThemeChangedNotification
 			object:nil queue:[NSOperationQueue mainQueue]
@@ -126,13 +124,7 @@
 
 #pragma mark - header
 
-/// The root page carries no title: their settings open straight into your own
-/// account, and a bar spelling out "Settings" above a tab already labelled
-/// Settings says it twice. The title itself stays, because the back button of
-/// every page pushed from here is drawn from it.
-///
-/// The search bar sits above the first row and is scrolled out of sight, so it
-/// arrives on a pull down the way search does everywhere else on this OS.
+/// Custom header for root settings page with pull-down search bar.
 - (void)buildHeader {
 	self.navigationItem.titleView = [[UIView alloc] initWithFrame:CGRectZero];
 
@@ -180,7 +172,7 @@
 	NSDictionary *info = [NSBundle mainBundle].infoDictionary;
 	UILabel *label = [[UILabel alloc] initWithFrame:
 			CGRectMake(0, 0, self.view.bounds.size.width, 40)];
-	label.text = [NSString stringWithFormat:@"iTgLegacy %@ (%@) armv7",
+	label.text = [NSString stringWithFormat:@"LegacyTG %@ (%@) armv7",
 			info[@"CFBundleShortVersionString"] ?: @"", info[@"CFBundleVersion"] ?: @""];
 	label.font = [UIFont systemFontOfSize:12];
 	label.textAlignment = NSTextAlignmentCenter;
@@ -555,10 +547,7 @@ static const CGFloat kFooterInset  = 15.0f;
 	return cell;
 }
 
-/// iOS 8 has hidesBarsOnSwipe; this OS does not, and thirty-two points is a
-/// tenth of the list on a 3.5-inch screen. Going down the list takes the bar
-/// away, coming back up brings it back - the deadband keeps a rubber-band
-/// bounce at the ends from flickering it.
+/// Toggles navigation bar visibility on scroll down/up.
 - (void)scrollViewDidScroll:(UIScrollView *)scrollView {
 	if (scrollView != self.tableView || self.page == TGSettingsPageRoot)
 		return;
@@ -600,10 +589,7 @@ static const CGFloat kFooterInset  = 15.0f;
 		tap();
 }
 
-/// Their page opens with a large picture centred, the name in bold under it
-/// and "+number • @username" under that. This used to be a row with the
-/// picture off to the left, which is not how any current client shows your
-/// own account.
+/// Profile header cell with avatar, user display name, phone, and username.
 - (UITableViewCell *)profileCellFor:(UITableView *)tableView {
 	if (self.profileCell)
 		return self.profileCell;

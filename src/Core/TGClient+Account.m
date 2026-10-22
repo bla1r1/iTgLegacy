@@ -389,13 +389,7 @@ static NSArray *TGPacksFrom(NSDictionary *target) {
 	}];
 }
 
-/// Stories a profile shows. Telegram keeps two lists: the ones still up (24h)
-/// and the ones the account chose to keep on its page. A profile shows the
-/// kept ones, and falls back to the live ones when nothing is kept - which is
-/// what the "Posts" row on this screen was always standing in for.
-///
-/// Nothing here needs Premium: reading someone's stories is what the server
-/// allows any account to do, and it refuses on its own when it does not.
+/// Fetches profile stories (pinned profile stories falling back to active 24h stories).
 - (void)storiesForChat:(int64_t)chatId completion:(void (^)(NSArray *))completion {
 	__weak typeof(self) weakSelf = self;
 

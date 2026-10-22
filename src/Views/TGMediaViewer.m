@@ -307,10 +307,7 @@ static const NSInteger kZoomTag = 0x7001;
 	}
 }
 
-/// The bubble's copy is a thumbnail scaled down to fit a 200pt bubble, so it
-/// cannot be what a full screen shows. The original is fetched here and drawn
-/// once it lands; the thumbnail stands in until then rather than leaving the
-/// screen black.
+/// Downloads and displays full-resolution media, using thumbnail as placeholder.
 - (void)fetchOriginalForPage:(NSInteger)page into:(UIImageView *)picture {
 	NSDictionary *item = self.items[page];
 	NSNumber *fileId = [self fileIdForItem:item];
@@ -421,10 +418,7 @@ static const NSInteger kZoomTag = 0x7001;
 	}];
 }
 
-/// MPMoviePlayerController is the only decoder this OS offers, but its own
-/// controls take over the screen. Embedding it with the controls switched off
-/// and driving it from the strip below keeps the viewer's chrome consistent
-/// between a picture and a video.
+/// Embeds headless MPMoviePlayerController driven by custom viewer controls.
 - (void)startMovieAtPath:(NSString *)path {
 	UIView *page = self.pages[@(self.index)];
 	if (!page)

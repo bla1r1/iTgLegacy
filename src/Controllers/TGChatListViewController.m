@@ -162,10 +162,7 @@
 	[self fetchMissingAvatars];
 }
 
-/// Nothing sits above the chats any more. The archive lives in the table's
-/// header, hidden above the top of the list until you pull down for it - which
-/// is where Telegram keeps it - and Saved Messages is simply a chat, because
-/// pinning your own notes to the top of the list is not something it does.
+/// Chat list header rows (e.g. archived chats).
 - (NSArray *)headerRows {
 	return @[];
 }

@@ -6,7 +6,7 @@ ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 cd "${ROOT_DIR}"
 
-echo "[+] Building iTgLegacy IPA (iOS 6.0 - 12.0)..."
+echo "[+] Building LegacyTG IPA (iOS 6.0 - 12.0)..."
 
 # Ensure ccache exports are set for maximum speed
 if command -v ccache &>/dev/null; then

@@ -120,10 +120,7 @@ static UIImage *TGGlyphAvatar(CGFloat side, void (^draw)(CGContextRef ctx, CGFlo
 	return image;
 }
 
-/// imageWithContentsOfFile: does not decode; the first draw does, on whatever
-/// thread draws - the main one. Redrawing it here decodes it off the main
-/// thread and scales it down to the size it will be shown at, so a 1280px
-/// photo stops being resampled every frame it is on screen.
+/// Pre-decodes image onto offscreen bitmap context and scales to target size.
 + (UIImage *)decodedImage:(UIImage *)image
 			  fittingSize:(CGSize)target
 					 fill:(BOOL)fill

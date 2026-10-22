@@ -1,12 +1,5 @@
 //
-// TGDevice - which iPhone this is, and what may be asked of it.
-//
-// The app runs from an iPhone 3GS on iOS 6 to anything that still takes a
-// sideloaded build, and the difference between the ends of that range is a
-// factor of thirty in memory and more in CPU. Rather than scatter version
-// checks, every device falls into one of four tiers, and features ask for a
-// tier.
-//
+// TGDevice - hardware capability classification into device tiers:
 //   Vintage  armv7, 256-512MB, iOS 6-7      3GS, 4
 //   Legacy   armv7, 512MB-1GB, iOS 8-10     4S, 5, 5c, iPod touch 5
 //   Modern   arm64, 1GB,       iOS 11-12    5s, 6, 6 Plus, iPod touch 6

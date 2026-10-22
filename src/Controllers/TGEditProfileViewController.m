@@ -4,10 +4,7 @@
 #import "TGIcons.h"
 #import <QuartzCore/QuartzCore.h>
 
-// Their page: the picture with "Change Photo" under it, the two name fields,
-// the bio, then a card of rows carrying values - birthday, number, username.
-// This screen used to be three text fields and nothing else, so a birthday
-// could not be set from here and the number was not shown at all.
+// Profile editing: avatar photo, names, bio, birthday, and username.
 static const CGFloat kPhotoSide = 80.0f;
 
 @interface TGEditProfileViewController () <UITextFieldDelegate, UIActionSheetDelegate,

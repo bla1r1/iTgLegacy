@@ -1,10 +1,5 @@
 //
-// TGVoiceDecoder - Opus to WAV.
-//
-// Telegram voice notes are Opus in an Ogg container. iOS 7 cannot decode Opus
-// at all, so AVAudioPlayer is given a plain 16-bit PCM WAV produced here from
-// libopusfile. This is the only reason libopus and the ogg/opusfile sources
-// are still in the tree.
+// TGVoiceDecoder - decodes Ogg Opus voice notes to 16-bit PCM WAV for AVAudioPlayer.
 //
 #import "TGVoiceDecoder.h"
 #include "opusfile/opusfile.h"

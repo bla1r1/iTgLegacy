@@ -1,4 +1,4 @@
-# iTgLegacy Roadmap
+# LegacyTG Roadmap
 
 A Telegram client for iPhone 3GS/4/4S on iOS 6–7, built on TDLib.
 

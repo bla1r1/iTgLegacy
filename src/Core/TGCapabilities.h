@@ -1,11 +1,5 @@
 //
-// TGCapabilities - what this build may switch on, decided at runtime.
-//
-// The app targets iPhone 3GS through anything current, so a feature is not
-// "impossible" so much as "not available here". Each flag answers one question
-// about the machine the code is running on, and the screens ask rather than
-// assume. Anything the API cannot do at all - buying Stars, for one - is not a
-// capability and does not appear here.
+// TGCapabilities - runtime device and OS feature capability detection.
 //
 #import <Foundation/Foundation.h>
 #import "TGDevice.h"

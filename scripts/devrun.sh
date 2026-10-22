@@ -1,5 +1,5 @@
 #!/bin/bash
-# devrun.sh - build, install, launch and observe iTgLegacy on the iPhone 4S
+# devrun.sh - build, install, launch and observe LegacyTG on the iPhone 4S
 # without a human touching the device.
 #
 #   ./scripts/devrun.sh                 build + install + launch + 60s of log
@@ -19,12 +19,12 @@ set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUNDLE_ID="org.legacy.itg"
-IPA="$ROOT/build/ipa/iTgLegacy-armv7.ipa"
+IPA="$ROOT/build/ipa/LegacyTG-armv7.ipa"
 LOGDIR="$ROOT/build/devlogs"
 STAMP="$(date +%Y%m%d-%H%M%S)"
 
 SECONDS_TO_LOG=60
-FILTER="iTgLegacy"
+FILTER="LegacyTG"
 DO_BUILD=1
 CHECK_ONLY=0
 SHOT_ONLY=0
@@ -134,12 +134,12 @@ launch_via_ssh() {
 	say "launching over SSH"
 	# Kill first so every run starts cold - otherwise the app is merely brought
 	# to the foreground and none of the launch path is exercised.
-	ssh $SSH_OPTS "$SSH_HOST" "killall iTgLegacy 2>/dev/null; true"
+	ssh $SSH_OPTS "$SSH_HOST" "killall LegacyTG 2>/dev/null || killall iTgLegacy 2>/dev/null; true"
 	sleep 2
 	# uiopen (Cydia: UIKit Tools) takes a URL, and the app registers
-	# itglegacy:// for exactly this.
+	# legacytg:// and itglegacy:// for exactly this.
 	ssh $SSH_OPTS "$SSH_HOST" \
-		"uiopen itglegacy:// 2>/dev/null || uiopen telegram:// 2>/dev/null || \
+		"uiopen legacytg:// 2>/dev/null || uiopen itglegacy:// 2>/dev/null || uiopen telegram:// 2>/dev/null || \
 		 open $BUNDLE_ID 2>/dev/null || exit 7" && return 0
 	echo "SSH works but no launcher binary found on the device." >&2
 	echo "Install from Cydia: 'UIKit Tools' (com.saurik.uikittools) gives 'uiopen'." >&2
@@ -180,7 +180,7 @@ collect() {
 	mkdir -p "$cdir"
 	idevicecrashreport -e -k "$cdir" >/dev/null 2>&1
 	local newest
-	newest="$(ls -t "$cdir"/iTgLegacy_*.ips 2>/dev/null | head -1)"
+	newest="$(ls -t "$cdir"/LegacyTG_*.ips "$cdir"/iTgLegacy_*.ips 2>/dev/null | head -1)"
 	if [ -n "$newest" ]; then
 		echo "newest: $newest"
 		sed -n '/Exception Type/,/^$/p' "$newest" | head -8
@@ -192,7 +192,7 @@ collect() {
 # Ask the running app to photograph itself and pull the result.
 shot() {
 	ssh_ready || { echo "no ssh, cannot take a screenshot" >&2; return 1; }
-	ssh $SSH_OPTS "$SSH_HOST" "uiopen itglegacy://screenshot" || return 1
+	ssh $SSH_OPTS "$SSH_HOST" "uiopen legacytg://screenshot 2>/dev/null || uiopen itglegacy://screenshot" || return 1
 	sleep 3
 	local remote
 	remote="$(ssh $SSH_OPTS "$SSH_HOST" \

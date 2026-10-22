@@ -1,17 +1,5 @@
 //
-// TGThemeFile - read a theme file made for an official Telegram client.
-//
-// Two formats, because both are widely shared:
-//
-//   .tgios-theme  JSON, the format Telegram for iOS exports. Key paths are
-//                 taken from PresentationThemeCodable.swift in their repo:
-//                 root.navBar.background, chatList.bg, chat.message.outgoing.
-//                 bubble.withWp.bg, and so on.
-//   .attheme      plain "key=value" lines, the Android format. Values are
-//                 signed decimal ARGB.
-//
-// Both are reduced to the handful of colours this app actually paints with;
-// anything else in the file is ignored rather than approximated.
+// TGThemeFile - parser for Telegram theme files (.tgios-theme JSON, .attheme ARGB).
 //
 #import <UIKit/UIKit.h>
 

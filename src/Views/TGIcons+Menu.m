@@ -331,9 +331,7 @@ void TGIconsClearSettingsIconCache(void) {
 	}
 
 	if (glyph) {
-		// The glyph goes on top of the plate. It used to be composited with
-		// kCGBlendModeDestinationIn, which cut the coloured square down to the
-		// glyph instead of drawing a white glyph on it.
+		// Draw white glyph centered on the colored background plate.
 		CGFloat w = glyph.size.width;
 		CGFloat h = glyph.size.height;
 		CGRect rect = CGRectMake((side - w) / 2.0, (side - h) / 2.0, w, h);

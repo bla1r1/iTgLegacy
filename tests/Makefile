@@ -1,4 +1,4 @@
-# tests/Makefile — build and run the iTgLegacy call-stack test suite.
+# tests/Makefile — build and run the LegacyTG call-stack test suite.
 #
 # Works with only macOS Command Line Tools (no full Xcode required).
 #

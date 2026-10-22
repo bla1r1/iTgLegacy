@@ -17,10 +17,7 @@
 	[self.navigationController pushViewController:profile animated:YES];
 }
 
-/// A second account is a second TDLib client: another database, another
-/// connection, and the whole message cache twice over. On 504MB that is not a
-/// switch to flip, so the row says what it is waiting for rather than failing
-/// after the user has typed a phone number into it.
+/// Explains device memory constraints when attempting to add another account.
 - (void)explainAddAccount {
 	if ([TGCapabilities canHoldMultipleAccounts]){
 		[self toast:@"Multiple accounts are not wired up yet on this build."];

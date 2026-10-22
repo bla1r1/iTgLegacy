@@ -29,29 +29,8 @@
 }
 
 /**
- * Nobody can tap this device remotely, so the app is driven by its own URL
- * scheme instead. scripts/devrun.sh uses these.
- *
- *   itglegacy://                 just launch
- *   itglegacy://screenshot       write Caches/screen.png
- *   itglegacy://tab/N            select a tab
- *   itglegacy://chatindex/N      open the Nth chat in the list
- *   itglegacy://profile          open the profile of the chat on screen
- *   itglegacy://holdrow/N        hold the Nth row, for the menus behind it
- *   itglegacy://theme/NAME       apply a theme file from Documents ("none" clears,
- *                                "skeuomorphic"/"flat"/"dark" pick a built-in)
- *   itglegacy://stickers         open the sticker strip in the chat on screen
- *   itglegacy://tab/N            switch to tab N (0 chats, 1 contacts, 2 settings)
- *   itglegacy://device           open the Device screen
- *   itglegacy://call/USERID      place a call, for testing without a tap
- *   itglegacy://callindex/N      call the other side of the Nth chat
- *   itglegacy://scroll/N         scroll the visible table N points down
- *   itglegacy://phone/+NNN       hand a phone number to TDLib
- *   itglegacy://code/NNNNN       hand the login code to TDLib
- *   itglegacy://password/...     hand the 2FA password to TDLib
- *
- * The last two exist so the account owner can run them from their own
- * terminal; the values are never written to the log.
+ * Automation URL scheme handler for remote UI driving and testing.
+ * Supported schemes: legacytg:// and itglegacy://
  */
 - (BOOL)application:(UIApplication *)application
             openURL:(NSURL *)url

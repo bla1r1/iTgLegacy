@@ -85,10 +85,7 @@
 	return cell;
 }
 
-/// Twenty downloads at once saturate TDLib's single scheduler, and every one
-/// of its progress updates is handled on the main thread - which is what made
-/// the profile stutter for as long as the strip was loading. Only what is on
-/// screen, plus one screen ahead, is asked for.
+/// Lazily downloads thumbnails visible in the media strip viewport.
 - (void)fetchVisibleThumbnails {
 	UIScrollView *strip = self.mediaStrip;
 	if (!strip)
@@ -119,10 +116,7 @@
 		[self fetchVisibleThumbnails];
 }
 
-/// A story opens full screen over the profile: the picture, the caption under
-/// it, and a tap anywhere to close. A video story shows its poster frame -
-/// playing one needs the file itself, which is a download this screen does not
-/// start on a tap.
+/// Displays full-screen view for the selected story.
 - (void)openStoryAtIndex:(NSInteger)index {
 	if (index >= (NSInteger)self.stories.count)
 		return;

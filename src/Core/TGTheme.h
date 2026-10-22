@@ -1,10 +1,5 @@
 //
-// TGTheme - skeuomorphic or flat, chosen by the user.
-//
-// The default follows the system it runs on: iOS 6 shipped skeuomorphic, iOS 7
-// went flat, and an app that ignores that looks foreign on both. Either can be
-// picked explicitly in Settings, because the point of running a modern client
-// on old hardware is often that you prefer how the old one looked.
+// TGTheme - app appearance theme manager (Skeuomorphic, Flat, Dark, Night Blue).
 //
 #import <UIKit/UIKit.h>
 
@@ -57,12 +52,8 @@ extern NSString *const TGThemeChangedNotification;
 
 #pragma mark - one list of themes
 
-/// Every theme the user can pick, built-in and imported alike. Splitting them
-/// into "the app's styles" and "Telegram themes" was how this file happened to
-/// store them, not a distinction anyone choosing a look cares about.
-///
-/// Each entry: "id", "name", "dark" (NSNumber BOOL), and "path" for the ones
-/// that came from a file.
+/// All available themes (built-in styles and imported files).
+/// Entries contain: "id", "name", "dark" (BOOL), and optional "path".
 + (NSArray *)availableThemes;
 
 /// The id of the theme in use.

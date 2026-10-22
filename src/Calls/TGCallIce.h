@@ -1,12 +1,5 @@
 //
-// TGCallIce - one UDP socket, and the connectivity checks over it.
-//
-// A full ICE agent gathers candidates, forms pairs, and nominates one. This
-// needs less: the peer sends its addresses over the signalling channel, we
-// send a check to each and keep the one that answers. Our own address is never
-// advertised usefully - behind a carrier NAT it would be wrong - but that does
-// not matter, because a check arriving from an unknown address is exactly what
-// the other agent turns into a peer-reflexive candidate and replies to.
+// TGCallIce - UDP socket connectivity checks and peer-reflexive ICE candidate handling.
 //
 #import <Foundation/Foundation.h>
 

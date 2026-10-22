@@ -1,10 +1,5 @@
 //
-// TGVoiceRecorder - record a voice note.
-//
-// Records linear PCM with AVAudioRecorder, then encodes it to Ogg Opus with
-// libopusenc, which is the format Telegram expects. iOS has no Opus encoder of
-// its own, which is why libopus and the opusenc sources are in the tree - the
-// mirror image of TGVoiceDecoder.
+// TGVoiceRecorder - records linear PCM and encodes to Ogg Opus with libopusenc.
 //
 #import <Foundation/Foundation.h>
 

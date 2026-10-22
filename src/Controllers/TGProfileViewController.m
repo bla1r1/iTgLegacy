@@ -136,8 +136,7 @@
 			weakSelf.members = members;
 			[weakSelf reloadTableDebounced];
 		}];
-		// A group has a description, a size and a link, none of which this
-		// screen used to ask for.
+		// Group details: description, member count, invite link.
 		[[TGClient shared] chatProfile:self.chatId completion:^(NSDictionary *info){
 			NSMutableArray *rows = [NSMutableArray array];
 			if ([info[@"description"] length])

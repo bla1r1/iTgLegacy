@@ -1,9 +1,5 @@
 //
-// TGIcons - the icon set, drawn rather than shipped as artwork.
-//
-// Drawing them means they follow TGTheme: line art with flat, and shaded
-// glyphs with a highlight when skeuomorphic. It also means one source for
-// every scale instead of a folder of PNGs per size.
+// TGIcons - vector-drawn iconography adapting to TGTheme styling.
 //
 #import <UIKit/UIKit.h>
 

@@ -17,10 +17,7 @@ NSString *TGReactionSummary(NSDictionary *m) {
 	return [parts componentsJoinedByString:@"  "];
 }
 
-/// "messageVideoChatStarted" -> "Video chat started". TDLib's type names are
-/// already the sentence, written in camel case, and turning them back is a
-/// better answer for a content type nobody has written a branch for than
-/// either an empty bubble or the word "unsupported".
+/// Converts camelCase message type name to readable phrase (e.g. "messageVideoChatStarted" -> "Video chat started").
 NSString *TGPhraseFromTypeName(NSString *ctype) {
 	NSString *rest = [ctype hasPrefix:@"message"] ? [ctype substringFromIndex:7] : ctype;
 	if (!rest.length)

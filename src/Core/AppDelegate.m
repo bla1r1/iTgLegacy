@@ -1,5 +1,5 @@
 //
-// iTgLegacy - Telegram client for legacy iOS
+// LegacyTG - Telegram client for legacy iOS
 // Copyright (C) 2026 Blair <dimazzzzz342@gmail.com>
 // Licensed under GNU General Public License v3.0
 //
@@ -46,7 +46,7 @@ static void TGWatchForIncomingCalls(void) {
 	[fm removeItemAtPath:logPath error:nil];
 	self.log = freopen(logPath.UTF8String, "a+", stderr);
 
-	NSLog(@"[iTgLegacy] Starting application...");
+	NSLog(@"[LegacyTG] Starting application...");
 	TGWatchForIncomingCalls();
 
 	application.applicationIconBadgeNumber = 0;
@@ -222,7 +222,7 @@ static void TGWatchForIncomingCalls(void) {
 - (void)showMessage:(NSString *)msg {
 	if (!msg.length) return;
 	dispatch_async(dispatch_get_main_queue(), ^{
-		UIAlertView *alert = [[UIAlertView alloc] initWithTitle:@"iTgLegacy"
+		UIAlertView *alert = [[UIAlertView alloc] initWithTitle:@"LegacyTG"
 														message:msg
 													   delegate:nil
 											  cancelButtonTitle:@"OK"

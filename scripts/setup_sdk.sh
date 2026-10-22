@@ -1,5 +1,5 @@
 #!/bin/bash
-# Setup iOS SDKs for cross-compiling iTgLegacy
+# Setup iOS SDKs for cross-compiling LegacyTG
 
 set -e
 

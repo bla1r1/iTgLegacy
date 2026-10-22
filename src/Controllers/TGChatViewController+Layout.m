@@ -101,10 +101,7 @@ UIColor *TGSenderColour(int64_t userId) {
 	return (oneLine + 6 + [self timeWidthFor:m]) <= (kBubbleMaxW - 2 * kPadH);
 }
 
-/// Their forwarded line: "Forwarded from" in grey with the name after it in
-/// the accent colour. Returns the height it took, so every kind of bubble can
-/// carry it by shifting its own content down - a forwarded file used to look
-/// exactly like one you had been sent directly.
+/// Configures forwarded message attribution header and returns its height.
 - (CGFloat)layoutForwardIn:(TGBubbleCell *)cell
 				   message:(NSDictionary *)m
 					 width:(CGFloat)width

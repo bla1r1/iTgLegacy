@@ -1,17 +1,5 @@
 //
-// TGSettingsViewController - account and maintenance, on TDLib only.
-//
-// Replaces ConfigViewController, whose entries called into libtg's database
-// helpers directly.
-//
-// One flat table held everything, which is not how Telegram arranges it: the
-// root is a short list of doors, and the settings themselves live behind them.
-// The same class draws each page, because they differ only in their rows.
-//
-// A page is now a list of sections and a section a list of rows, each row
-// carrying what it says and what it does. Every page used to be spelled out
-// again in six switch statements keyed on section and row number, which is
-// where each new setting had to be threaded through by hand.
+// TGSettingsViewController - account, settings pages, and maintenance UI.
 //
 #import <UIKit/UIKit.h>
 
