@@ -1062,6 +1062,10 @@ static NSDictionary *TGFlattenMessage(NSDictionary *m) {
 		@"callState" : callState   ?: @"",
 		@"contact"   : contactDict ?: [NSNull null],
 		@"venue"     : venueDict   ?: [NSNull null],
+		@"entities"  : ([content[@"caption"] isKindOfClass:[NSDictionary class]] && content[@"caption"][@"entities"])
+							? content[@"caption"][@"entities"]
+							: (([content[@"text"] isKindOfClass:[NSDictionary class]] && content[@"text"][@"entities"])
+								? content[@"text"][@"entities"] : @[]),
 	};
 }
 

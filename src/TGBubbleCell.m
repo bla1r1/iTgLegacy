@@ -150,7 +150,98 @@
 	[self.contactAddButton setTitle:@"Add" forState:UIControlStateNormal];
 	[self.bubble addSubview:self.contactAddButton];
 
+	// Album collage container
+	self.collageView = [[UIView alloc] init];
+	self.collageView.hidden = YES;
+	self.collageView.clipsToBounds = YES;
+	self.collageViews = [NSMutableArray arrayWithCapacity:4];
+	for (NSInteger i = 0; i < 4; i++) {
+		UIImageView *cv = [[UIImageView alloc] init];
+		cv.contentMode = UIViewContentModeScaleAspectFill;
+		cv.clipsToBounds = YES;
+		cv.layer.cornerRadius = 4.0f;
+		cv.userInteractionEnabled = YES;
+		cv.tag = i;
+		cv.layer.shouldRasterize = YES;
+		cv.layer.rasterizationScale = scale;
+		UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(collageItemTapped:)];
+		[cv addGestureRecognizer:tap];
+		[self.collageViews addObject:cv];
+		[self.collageView addSubview:cv];
+	}
+	self.collageMoreLabel = [[UILabel alloc] init];
+	self.collageMoreLabel.textAlignment = NSTextAlignmentCenter;
+	self.collageMoreLabel.textColor = [UIColor whiteColor];
+	self.collageMoreLabel.font = [UIFont boldSystemFontOfSize:18];
+	self.collageMoreLabel.backgroundColor = [UIColor colorWithWhite:0.0f alpha:0.55f];
+	self.collageMoreLabel.layer.cornerRadius = 4.0f;
+	self.collageMoreLabel.clipsToBounds = YES;
+	self.collageMoreLabel.hidden = YES;
+	[self.collageView addSubview:self.collageMoreLabel];
+	[self.bubble addSubview:self.collageView];
+
+	// Link tap recognizer on body label
+	self.body.userInteractionEnabled = YES;
+	UITapGestureRecognizer *bodyTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(bodyTapped:)];
+	bodyTap.delegate = (id<UIGestureRecognizerDelegate>)self;
+	[self.body addGestureRecognizer:bodyTap];
+
 	return self;
+}
+
+- (NSUInteger)characterIndexAtPoint:(CGPoint)point inLabel:(UILabel *)label {
+	NSAttributedString *attr = label.attributedText;
+	if (!attr.length) return NSNotFound;
+
+	NSTextStorage *storage = [[NSTextStorage alloc] initWithAttributedString:attr];
+	NSLayoutManager *layout = [[NSLayoutManager alloc] init];
+	[storage addLayoutManager:layout];
+	NSTextContainer *container = [[NSTextContainer alloc] initWithSize:label.bounds.size];
+	container.lineFragmentPadding = 0.0f;
+	container.lineBreakMode = label.lineBreakMode;
+	container.maximumNumberOfLines = label.numberOfLines;
+	[layout addTextContainer:container];
+
+	NSUInteger glyph = [layout glyphIndexForPoint:point inTextContainer:container];
+	CGRect glyphRect = [layout boundingRectForGlyphRange:NSMakeRange(glyph, 1) inTextContainer:container];
+	if (!CGRectContainsPoint(glyphRect, point))
+		return NSNotFound;
+
+	return [layout characterIndexForGlyphAtIndex:glyph];
+}
+
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldReceiveTouch:(UITouch *)touch {
+	if (gestureRecognizer.view == self.body) {
+		CGPoint pt = [touch locationInView:self.body];
+		NSUInteger idx = [self characterIndexAtPoint:pt inLabel:self.body];
+		if (idx != NSNotFound && idx < self.body.attributedText.length) {
+			NSDictionary *attrs = [self.body.attributedText attributesAtIndex:idx effectiveRange:NULL];
+			return (attrs[@"TGLinkURL"] != nil);
+		}
+		return NO;
+	}
+	return YES;
+}
+
+- (void)bodyTapped:(UITapGestureRecognizer *)tap {
+	if (tap.state != UIGestureRecognizerStateEnded) return;
+	CGPoint pt = [tap locationInView:self.body];
+	NSUInteger idx = [self characterIndexAtPoint:pt inLabel:self.body];
+	if (idx != NSNotFound && idx < self.body.attributedText.length) {
+		NSDictionary *attrs = [self.body.attributedText attributesAtIndex:idx effectiveRange:NULL];
+		NSString *url = attrs[@"TGLinkURL"];
+		if (url.length && self.onLinkTapped) {
+			self.onLinkTapped(url);
+		}
+	}
+}
+
+- (void)collageItemTapped:(UITapGestureRecognizer *)tap {
+	if (tap.state != UIGestureRecognizerStateEnded) return;
+	NSInteger idx = tap.view.tag;
+	if (self.onCollageItemTapped) {
+		self.onCollageItemTapped(idx);
+	}
 }
 
 - (void)resetForReuse {
@@ -172,6 +263,15 @@
 	self.forwardLabel.hidden = YES;
 	self.lottie.hidden = YES;
 	[self.lottie stop];
+
+	self.collageView.hidden = YES;
+	self.collageMoreLabel.hidden = YES;
+	for (UIImageView *v in self.collageViews) {
+		v.hidden = YES;
+		v.image = nil;
+	}
+	self.onCollageItemTapped = nil;
+	self.onLinkTapped = nil;
 }
 
 @end

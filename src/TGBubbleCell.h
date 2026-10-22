@@ -35,6 +35,13 @@
 @property (nonatomic, strong) UIView   *contactSeparatorH;
 @property (nonatomic, strong) UIView   *contactSeparatorV;
 
+// Album collage components
+@property (nonatomic, strong) UIView *collageView;
+@property (nonatomic, strong) NSMutableArray *collageViews;
+@property (nonatomic, strong) UILabel *collageMoreLabel;
+@property (nonatomic, copy) void (^onCollageItemTapped)(NSInteger index);
+@property (nonatomic, copy) void (^onLinkTapped)(NSString *url);
+
 - (void)resetForReuse;
 
 @end

@@ -60,6 +60,87 @@ NSAttributedString *TGEmojiAttributedText(NSString *text, UIFont *base) {
 	return styled;
 }
 
+NSAttributedString *TGAttributedMessageText(NSString *text, NSArray *entities, UIFont *baseFont, UIColor *textColor) {
+	if (!text.length)
+		return nil;
+	if (!baseFont)
+		baseFont = [UIFont systemFontOfSize:15];
+	if (!textColor)
+		textColor = [UIColor blackColor];
+
+	// 1. Emoji font substitution on base text
+	NSMutableAttributedString *str = nil;
+	NSAttributedString *emojiStr = TGEmojiAttributedText(text, baseFont);
+	if (emojiStr) {
+		str = [emojiStr mutableCopy];
+	} else {
+		str = [[NSMutableAttributedString alloc] initWithString:text attributes:@{
+			NSFontAttributeName : baseFont,
+			NSForegroundColorAttributeName : textColor
+		}];
+	}
+	[str addAttribute:NSForegroundColorAttributeName value:textColor range:NSMakeRange(0, str.length)];
+
+	if (!entities.count)
+		return str;
+
+	CGFloat size = baseFont.pointSize;
+	UIColor *linkColour = [UIColor colorWithRed:0.18f green:0.54f blue:0.92f alpha:1.0f];
+
+	for (NSDictionary *ent in entities) {
+		if (![ent isKindOfClass:[NSDictionary class]])
+			continue;
+		NSInteger offset = [ent[@"offset"] integerValue];
+		NSInteger length = [ent[@"length"] integerValue];
+		if (offset < 0 || length <= 0 || (offset + length) > (NSInteger)str.length)
+			continue;
+
+		NSRange range = NSMakeRange(offset, length);
+		NSString *type = ent[@"type"][@"@type"] ?: ent[@"@type"];
+
+		if ([type isEqualToString:@"textEntityTypeBold"] || [type isEqualToString:@"messageEntityBold"]) {
+			[str addAttribute:NSFontAttributeName value:[UIFont boldSystemFontOfSize:size] range:range];
+		} else if ([type isEqualToString:@"textEntityTypeItalic"] || [type isEqualToString:@"messageEntityItalic"]) {
+			[str addAttribute:NSFontAttributeName value:[UIFont italicSystemFontOfSize:size] range:range];
+		} else if ([type isEqualToString:@"textEntityTypeUnderline"] || [type isEqualToString:@"messageEntityUnderline"]) {
+			[str addAttribute:NSUnderlineStyleAttributeName value:@(NSUnderlineStyleSingle) range:range];
+		} else if ([type isEqualToString:@"textEntityTypeStrikethrough"] || [type isEqualToString:@"messageEntityStrikethrough"]) {
+			[str addAttribute:NSStrikethroughStyleAttributeName value:@(NSUnderlineStyleSingle) range:range];
+		} else if ([type isEqualToString:@"textEntityTypeCode"] || [type isEqualToString:@"messageEntityCode"] ||
+				   [type isEqualToString:@"textEntityTypePre"]  || [type isEqualToString:@"messageEntityPre"] ||
+				   [type isEqualToString:@"textEntityTypePreCode"]) {
+			UIFont *mono = [UIFont fontWithName:@"Courier" size:MAX(11.0f, size - 1.0f)] ?:
+						   [UIFont fontWithName:@"CourierNewPSMT" size:MAX(11.0f, size - 1.0f)];
+			if (mono)
+				[str addAttribute:NSFontAttributeName value:mono range:range];
+			[str addAttribute:NSBackgroundColorAttributeName value:[UIColor colorWithWhite:0.5f alpha:0.15f] range:range];
+		} else if ([type isEqualToString:@"textEntityTypeTextUrl"] || [type isEqualToString:@"messageEntityTextUrl"]) {
+			NSString *urlStr = ent[@"type"][@"url"] ?: ent[@"url"];
+			if (urlStr.length) {
+				[str addAttribute:NSForegroundColorAttributeName value:linkColour range:range];
+				[str addAttribute:NSUnderlineStyleAttributeName value:@(NSUnderlineStyleSingle) range:range];
+				[str addAttribute:@"TGLinkURL" value:urlStr range:range];
+			}
+		} else if ([type isEqualToString:@"textEntityTypeUrl"] || [type isEqualToString:@"messageEntityUrl"]) {
+			NSString *urlStr = [text substringWithRange:range];
+			[str addAttribute:NSForegroundColorAttributeName value:linkColour range:range];
+			[str addAttribute:NSUnderlineStyleAttributeName value:@(NSUnderlineStyleSingle) range:range];
+			[str addAttribute:@"TGLinkURL" value:urlStr range:range];
+		} else if ([type isEqualToString:@"textEntityTypeEmailAddress"] || [type isEqualToString:@"textEntityTypePhoneNumber"]) {
+			NSString *link = [text substringWithRange:range];
+			[str addAttribute:NSForegroundColorAttributeName value:linkColour range:range];
+			[str addAttribute:@"TGLinkURL" value:link range:range];
+		} else if ([type isEqualToString:@"textEntityTypeMention"] || [type isEqualToString:@"textEntityTypeHashtag"] ||
+				   [type isEqualToString:@"textEntityTypeBotCommand"]) {
+			[str addAttribute:NSForegroundColorAttributeName value:linkColour range:range];
+		} else if ([type isEqualToString:@"textEntityTypeSpoiler"] || [type isEqualToString:@"messageEntitySpoiler"]) {
+			[str addAttribute:NSBackgroundColorAttributeName value:[UIColor colorWithWhite:0.5f alpha:0.25f] range:range];
+		}
+	}
+
+	return str;
+}
+
 void TGSetBodyText(UILabel *label, NSString *text, UIColor *colour) {
 	NSAttributedString *rich = TGEmojiAttributedText(text, label.font);
 	if (!rich){
@@ -73,7 +154,7 @@ void TGSetBodyText(UILabel *label, NSString *text, UIColor *colour) {
 	label.attributedText = coloured;
 }
 
-CGSize TGTextSize(NSString *text, UIFont *font, CGFloat width) {
+CGSize TGTextSizeWithEntities(NSString *text, NSArray *entities, UIFont *font, CGFloat width) {
 	if (!text.length)
 		return CGSizeZero;
 
@@ -81,42 +162,33 @@ CGSize TGTextSize(NSString *text, UIFont *font, CGFloat width) {
 	if (!cache)
 		cache = [NSMutableDictionary dictionary];
 
-	NSString *key = [NSString stringWithFormat:@"%.0f|%.0f|%@", width, font.pointSize, text];
+	NSString *key = [NSString stringWithFormat:@"%.0f|%.0f|%lu|%@", width, font.pointSize, (unsigned long)entities.count, text];
 	NSValue *hit = cache[key];
 	if (hit)
 		return [hit CGSizeValue];
 
 	CGSize size = CGSizeZero;
-	NSAttributedString *rich = TGEmojiAttributedText(text, font);
+	NSAttributedString *rich = TGAttributedMessageText(text, entities, font, [UIColor blackColor]);
 
 	if (width > 0) {
 		if (rich) {
 			CGRect rect = [rich boundingRectWithSize:CGSizeMake(width, 10000)
 											 options:NSStringDrawingUsesLineFragmentOrigin | NSStringDrawingUsesFontLeading
 											 context:nil];
-			size = CGSizeMake(ceilf(rect.size.width), ceilf(rect.size.height));
-		} else if ([text respondsToSelector:@selector(boundingRectWithSize:options:attributes:context:)]) {
-			CGRect rect = [text boundingRectWithSize:CGSizeMake(width, 10000)
-											 options:NSStringDrawingUsesLineFragmentOrigin | NSStringDrawingUsesFontLeading
-										  attributes:@{ NSFontAttributeName : font }
-											 context:nil];
-			size = CGSizeMake(ceilf(rect.size.width), ceilf(rect.size.height));
+			size = CGSizeMake(ceilf(rect.size.width) + 2.0f, ceilf(rect.size.height) + 1.0f);
 		} else {
 			size = [text sizeWithFont:font
 					constrainedToSize:CGSizeMake(width, 10000)
 						lineBreakMode:NSLineBreakByWordWrapping];
-			size = CGSizeMake(ceilf(size.width), ceilf(size.height));
+			size = CGSizeMake(ceilf(size.width) + 2.0f, ceilf(size.height) + 1.0f);
 		}
 	} else {
 		if (rich) {
 			size = [rich size];
-			size = CGSizeMake(ceilf(size.width), ceilf(size.height));
-		} else if ([text respondsToSelector:@selector(sizeWithAttributes:)]) {
-			size = [text sizeWithAttributes:@{ NSFontAttributeName : font }];
-			size = CGSizeMake(ceilf(size.width), ceilf(size.height));
+			size = CGSizeMake(ceilf(size.width) + 2.0f, ceilf(size.height) + 1.0f);
 		} else {
 			size = [text sizeWithFont:font];
-			size = CGSizeMake(ceilf(size.width), ceilf(size.height));
+			size = CGSizeMake(ceilf(size.width) + 2.0f, ceilf(size.height) + 1.0f);
 		}
 	}
 
@@ -124,6 +196,10 @@ CGSize TGTextSize(NSString *text, UIFont *font, CGFloat width) {
 		[cache removeAllObjects];
 	cache[key] = [NSValue valueWithCGSize:size];
 	return size;
+}
+
+CGSize TGTextSize(NSString *text, UIFont *font, CGFloat width) {
+	return TGTextSizeWithEntities(text, nil, font, width);
 }
 
 @implementation TGMessageLayout

@@ -4,8 +4,34 @@
 
 extern UIImage *_UICreateScreenUIImage(void) __attribute__((weak_import));
 
+static void dismiss_active_alerts(void) {
+    Class alertMgrClass = objc_getClass("SBAlertItemsController");
+    if (alertMgrClass) {
+        id mgr = [alertMgrClass performSelector:@selector(sharedInstance)];
+        if (mgr) {
+            if ([mgr respondsToSelector:@selector(visibleAlertItem)]) {
+                id vis = [mgr performSelector:@selector(visibleAlertItem)];
+                if (vis) {
+                    NSLog(@"[AutoUnlock] Found visible alert item: %@", vis);
+                    if ([mgr respondsToSelector:@selector(deactivateAlertItem:)]) {
+                        [mgr performSelector:@selector(deactivateAlertItem:) withObject:vis];
+                        NSLog(@"[AutoUnlock] Deactivated visible alert item");
+                    }
+                }
+            }
+            if ([mgr respondsToSelector:@selector(deactivateAlertForMenuClickOrSystemGestureWithAnimation:)]) {
+                typedef BOOL (*DeactFn)(id, SEL, BOOL);
+                DeactFn fn = (DeactFn)[mgr methodForSelector:@selector(deactivateAlertForMenuClickOrSystemGestureWithAnimation:)];
+                fn(mgr, @selector(deactivateAlertForMenuClickOrSystemGestureWithAnimation:), NO);
+            }
+        }
+    }
+}
+
 static void do_screenshot(void) {
     NSLog(@"[AutoUnlock] do_screenshot triggered!");
+    dismiss_active_alerts();
+    
     if (_UICreateScreenUIImage != NULL) {
         UIImage *img = _UICreateScreenUIImage();
         if (img) {
@@ -31,6 +57,9 @@ static void do_screenshot(void) {
 
 static void do_unlock(BOOL launchApp) {
     NSLog(@"[AutoUnlock] do_unlock triggered (launchApp=%d)!", launchApp);
+    
+    // 0. Dismiss any SIM / system alert
+    dismiss_active_alerts();
     
     // 1. Wake screen via SBBacklightController
     Class backClass = objc_getClass("SBBacklightController");
@@ -91,6 +120,7 @@ static void do_unlock(BOOL launchApp) {
     // 4. If requested, launch/activate app via [UIApplication openURL:]
     if (launchApp) {
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.3 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            dismiss_active_alerts();
             NSString *targetUrl = @"itglegacy://";
             NSString *customUrl = [NSString stringWithContentsOfFile:@"/tmp/itg_url.txt" encoding:NSUTF8StringEncoding error:nil];
             if (customUrl.length > 0) {
@@ -128,12 +158,39 @@ static void on_unlock_notify(CFNotificationCenterRef center, void *observer, CFS
     });
 }
 
+// Swizzle SBAlertItemsController activateAlertItem: to block SIM and Carrier alerts
+static void (*orig_activateAlertItem)(id, SEL, id) = NULL;
+static void my_activateAlertItem(id self, SEL _cmd, id item) {
+    if (item) {
+        NSString *cls = NSStringFromClass([item class]);
+        if ([cls rangeOfString:@"SIM" options:NSCaseInsensitiveSearch].location != NSNotFound ||
+            [cls rangeOfString:@"Carrier" options:NSCaseInsensitiveSearch].location != NSNotFound) {
+            NSLog(@"[AutoUnlock] Suppressed SIM/Carrier alert item: %@", cls);
+            return;
+        }
+    }
+    if (orig_activateAlertItem) {
+        orig_activateAlertItem(self, _cmd, item);
+    }
+}
+
 __attribute__((constructor))
 static void auto_unlock_init(void) {
     NSString *proc = [[NSProcessInfo processInfo] processName];
     NSLog(@"[AutoUnlock] Injected into process: %@", proc);
     if (![proc isEqualToString:@"SpringBoard"]) {
         return;
+    }
+    
+    // Swizzle activateAlertItem: to permanently block SIM popups
+    Class alertMgrClass = objc_getClass("SBAlertItemsController");
+    if (alertMgrClass) {
+        Method m = class_getInstanceMethod(alertMgrClass, @selector(activateAlertItem:));
+        if (m) {
+            orig_activateAlertItem = (void (*)(id, SEL, id))method_getImplementation(m);
+            method_setImplementation(m, (IMP)my_activateAlertItem);
+            NSLog(@"[AutoUnlock] Successfully swizzled SBAlertItemsController activateAlertItem:");
+        }
     }
     
     // Listen for custom triggers from SSH

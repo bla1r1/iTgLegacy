@@ -277,6 +277,14 @@ static void TGWatchForIncomingCalls(void) {
  * The last two exist so the account owner can run them from their own
  * terminal; the values are never written to the log.
  */
+- (BOOL)application:(UIApplication *)application
+            openURL:(NSURL *)url
+  sourceApplication:(NSString *)sourceApplication
+         annotation:(id)annotation
+{
+	return [self application:application handleOpenURL:url];
+}
+
 - (BOOL)application:(UIApplication *)application handleOpenURL:(NSURL *)url
 {
 	NSString *host = url.host;

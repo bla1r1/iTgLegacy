@@ -40,7 +40,8 @@ static const CGFloat kInputHeight = 48.0f;
 @property (nonatomic, strong) UIView *inputBar;
 @property (nonatomic, strong) UITextField *input;
 @property (nonatomic, strong) UIButton *sendButton;
-@property (nonatomic, strong) NSArray *messages;          // flattened TDLib dicts
+@property (nonatomic, strong) NSArray *messages;          // flattened TDLib dicts (may contain grouped album composites)
+@property (nonatomic, strong) NSArray *rawMessages;       // raw flattened messages before grouping
 @property (nonatomic, strong) NSMutableDictionary *images; // fileId -> UIImage
 @property (nonatomic, strong) NSMutableSet *imagesRequested;
 @property (nonatomic, strong) AVAudioPlayer *voicePlayer;
@@ -158,9 +159,10 @@ static const CGFloat kInputHeight = 48.0f;
 			return;
 
 		if (message){
-			NSMutableArray *next = [me.messages mutableCopy];
-			[next addObject:message];
-			me.messages = next;
+			NSMutableArray *nextRaw = [(me.rawMessages ?: me.messages) mutableCopy];
+			[nextRaw addObject:message];
+			me.rawMessages = nextRaw;
+			me.messages = [me groupedMessagesFromMessages:nextRaw];
 			[me.table reloadData];
 			[me scrollToBottomAnimated:YES];
 			[me fetchMissingImages];
@@ -398,13 +400,82 @@ static const CGFloat kInputHeight = 48.0f;
 	[self.table performSelector:@selector(reloadData) withObject:nil afterDelay:0.05];
 }
 
+- (NSDictionary *)compositeAlbumMessageFromMessages:(NSArray *)albumMsgs {
+	if (!albumMsgs.count) return @{};
+	NSDictionary *lead = albumMsgs.firstObject;
+	NSMutableDictionary *comp = [lead mutableCopy];
+	comp[@"isAlbum"] = @(YES);
+	comp[@"albumMessages"] = albumMsgs;
+	comp[@"albumCount"] = @(albumMsgs.count);
+
+	for (NSDictionary *sub in albumMsgs) {
+		if ([sub[@"text"] length]) {
+			comp[@"text"] = sub[@"text"];
+			comp[@"entities"] = sub[@"entities"] ?: @[];
+			break;
+		}
+	}
+	return comp;
+}
+
+- (NSArray *)groupedMessagesFromMessages:(NSArray *)rawMessages {
+	if (!rawMessages.count) return @[];
+	NSMutableArray *grouped = [NSMutableArray arrayWithCapacity:rawMessages.count];
+	NSMutableArray *currentAlbum = nil;
+	NSString *currentAlbumId = nil;
+
+	for (NSDictionary *m in rawMessages) {
+		NSString *albumId = m[@"albumId"];
+		BOOL hasAlbum = (albumId.length > 0 && ![albumId isEqualToString:@"0"]);
+
+		if (hasAlbum) {
+			if (currentAlbum && [currentAlbumId isEqualToString:albumId]) {
+				[currentAlbum addObject:m];
+				continue;
+			} else {
+				if (currentAlbum.count > 1) {
+					[grouped addObject:[self compositeAlbumMessageFromMessages:currentAlbum]];
+				} else if (currentAlbum.count == 1) {
+					[grouped addObject:currentAlbum.firstObject];
+				}
+				currentAlbum = [NSMutableArray arrayWithObject:m];
+				currentAlbumId = albumId;
+				continue;
+			}
+		}
+
+		if (currentAlbum) {
+			if (currentAlbum.count > 1) {
+				[grouped addObject:[self compositeAlbumMessageFromMessages:currentAlbum]];
+			} else if (currentAlbum.count == 1) {
+				[grouped addObject:currentAlbum.firstObject];
+			}
+			currentAlbum = nil;
+			currentAlbumId = nil;
+		}
+
+		[grouped addObject:m];
+	}
+
+	if (currentAlbum) {
+		if (currentAlbum.count > 1) {
+			[grouped addObject:[self compositeAlbumMessageFromMessages:currentAlbum]];
+		} else if (currentAlbum.count == 1) {
+			[grouped addObject:currentAlbum.firstObject];
+		}
+	}
+
+	return grouped;
+}
+
 - (void)reload {
 	__weak typeof(self) weakSelf = self;
 	[[TGClient shared] historyForChat:self.chatId thread:self.threadId limit:60 completion:^(NSArray *messages){
 		TGChatViewController *me = weakSelf;
 		if (!me)
 			return;
-		me.messages = messages;
+		me.rawMessages = messages;
+		me.messages = [me groupedMessagesFromMessages:messages];
 		// hold the bottom until the media has settled
 		me.anchorToBottom = YES;
 		dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(6.0 * NSEC_PER_SEC)),
@@ -545,10 +616,17 @@ static const CGFloat kInputHeight = 48.0f;
 - (void)fetchMissingImages {
 	__weak typeof(self) weakSelf = self;
 	CGFloat screenScale = [UIScreen mainScreen].scale;   // read here, used off-thread
-	[self fetchMissingMaps];
+	NSMutableArray *allMsgs = [NSMutableArray array];
+	for (NSDictionary *m in self.messages){
+		if ([m[@"isAlbum"] boolValue] && [m[@"albumMessages"] isKindOfClass:[NSArray class]]) {
+			[allMsgs addObjectsFromArray:m[@"albumMessages"]];
+		} else {
+			[allMsgs addObject:m];
+		}
+	}
 
 	// Animated stickers need the .tgs itself, not the still thumbnail.
-	for (NSDictionary *m in self.messages){
+	for (NSDictionary *m in allMsgs){
 		if (![m[@"docName"] isEqualToString:@"tgs"])
 			continue;
 		NSNumber *docId = m[@"docId"];
@@ -570,7 +648,7 @@ static const CGFloat kInputHeight = 48.0f;
 		}];
 	}
 
-	for (NSDictionary *m in self.messages){
+	for (NSDictionary *m in allMsgs){
 		NSNumber *fileId = m[@"photoId"];
 		if (![fileId isKindOfClass:NSNumber.class])
 			continue;
@@ -1355,10 +1433,7 @@ static const CGFloat kInputHeight = 48.0f;
 }
 
 - (void)videoNoteLoopNotification:(NSNotification *)note {
-	if (self.videoNotePlayer) {
-		self.videoNotePlayer.currentPlaybackTime = 0;
-		[self.videoNotePlayer play];
-	}
+	[self stopVideoNote];
 }
 
 - (void)stopVideoNote {
@@ -1495,6 +1570,12 @@ static const CGFloat kInputHeight = 48.0f;
 }
 
 - (void)playbackTick {
+	if (self.videoNotePlayer && self.videoNotePlayer.duration > 0) {
+		if (self.videoNotePlayer.currentPlaybackTime >= self.videoNotePlayer.duration - 0.05) {
+			[self stopVideoNote];
+			return;
+		}
+	}
 	CGFloat played = [self playedFraction];
 	self.playerProgress.frame = CGRectMake(0, 34,
 			self.playerBar.bounds.size.width * played, 2);
@@ -1708,6 +1789,8 @@ static const CGFloat kInputHeight = 48.0f;
 		[[TGMusicPlayer shared] stop];
 	[self.voicePlayer stop];
 	self.voicePlayer = nil;
+	if (self.videoNotePlayer)
+		[self stopVideoNote];
 	[self.playbackTimer invalidate];
 	self.playbackTimer = nil;
 	self.playingMessageId = 0;
@@ -1989,6 +2072,14 @@ static const NSInteger kMessageSheetTag = 42;
 }
 
 
+- (void)callCellButtonTapped:(UIButton *)btn {
+	if (!self.isGroup) {
+		[TGCallViewController presentForUserId:self.chatId
+										  name:self.chatTitle
+									  outgoing:YES];
+	}
+}
+
 - (void)contactCallButtonTapped:(UIButton *)btn {
 	NSInteger row = btn.tag;
 	if (row >= 0 && row < (NSInteger)self.messages.count) {
@@ -2167,9 +2258,19 @@ static const NSInteger kMessageSheetTag = 42;
 	// Video and photos share one viewer: it pages between them, which is how
 	// every current client shows a chat's media.
 	if ([kind isEqualToString:@"messageVideo"] ||
-		[kind isEqualToString:@"messagePhoto"]){
-		[TGMediaViewer presentItems:self.messages
-							startAt:indexPath.row
+		[kind isEqualToString:@"messagePhoto"] ||
+		[m[@"isAlbum"] boolValue]){
+		NSArray *albumMsgs = [m[@"isAlbum"] boolValue] ? m[@"albumMessages"] : nil;
+		NSDictionary *target = albumMsgs.count ? albumMsgs.firstObject : m;
+		NSArray *pool = self.rawMessages.count ? self.rawMessages : self.messages;
+		NSInteger targetIdx = [pool indexOfObject:target];
+		if (targetIdx == NSNotFound) {
+			pool = albumMsgs ?: self.messages;
+			targetIdx = [pool indexOfObject:target];
+			if (targetIdx == NSNotFound) targetIdx = 0;
+		}
+		[TGMediaViewer presentItems:pool
+							startAt:targetIdx
 							 inChat:self.chatId];
 		return;
 	}
@@ -2474,6 +2575,8 @@ static const NSInteger kMessageSheetTag = 42;
 /// A picture with no caption carries its own stamp on a plate, so the bubble
 /// does not need a strip of empty space under it for one.
 - (BOOL)stampSitsOnPictureFor:(NSDictionary *)m {
+	if ([m[@"isAlbum"] boolValue] && [self bodySizeFor:m].height == 0)
+		return YES;
 	return [self imageSizeFor:m].height > 0 && [self bodySizeFor:m].height == 0 &&
 		   ![m[@"kind"] isEqualToString:@"messageVideoNote"] &&
 		   ![m[@"kind"] isEqualToString:@"messageSticker"] &&
@@ -2484,7 +2587,7 @@ static const NSInteger kMessageSheetTag = 42;
 	NSString *text = m[@"text"] ?: @"";
 	if (!text.length)
 		return CGSizeZero;
-	return TGTextSize(text, [UIFont systemFontOfSize:[TGTheme shared].messageFontSize],
+	return TGTextSizeWithEntities(text, m[@"entities"], [UIFont systemFontOfSize:[TGTheme shared].messageFontSize],
 			kBubbleMaxW - 2 * kPadH);
 }
 
@@ -2542,6 +2645,7 @@ static const NSInteger kMessageSheetTag = 42;
 					  [kind isEqualToString:@"messageVenue"] ||
 					  [kind isEqualToString:@"messageLiveLocation"] ||
 					  (![m[@"lat"] isKindOfClass:NSNull.class] && [m[@"lat"] doubleValue] != 0);
+	BOOL isAlbum = [m[@"isAlbum"] boolValue];
 
 	layout.isService = isService;
 	layout.isSticker = isSticker;
@@ -2552,9 +2656,12 @@ static const NSInteger kMessageSheetTag = 42;
 	layout.isDoc = isDoc;
 	layout.isContact = isContact;
 	layout.isLocation = isLocation;
+	layout.isAlbum = isAlbum;
 
 	CGFloat forwarded = [m[@"forward"] length] ? 18.0f : 0.0f;
 	layout.fwdHeight = forwarded;
+	layout.stamp = [self stampFor:m];
+	layout.timeWidth = TGTextSize(layout.stamp, [UIFont systemFontOfSize:11], 0).width;
 
 	if (isService) {
 		NSString *who = [[TGClient shared] nameForUserId:[m[@"senderId"] longLongValue]];
@@ -2581,11 +2688,13 @@ static const NSInteger kMessageSheetTag = 42;
 
 	if (isCall) {
 		NSString *line = m[@"text"] ?: @"Call";
-		CGFloat width = MIN(kBubbleMaxW, TGTextSize(line, [UIFont systemFontOfSize:15], 0).width + 76);
-		CGFloat height = 44 + forwarded;
+		CGFloat textW = TGTextSize(line, [UIFont boldSystemFontOfSize:14], 0).width;
+		CGFloat width = MIN(kBubbleMaxW, textW + 80);
+		width = MAX(190.0f, width);
+		CGFloat height = 48 + forwarded;
 		CGFloat x = mine ? (tableW - width - 8) : 8;
 		layout.bubbleFrame = CGRectMake(x, 3, width, height);
-		layout.rowHeight = 50 + forwarded;
+		layout.rowHeight = 54 + forwarded;
 		if (msgId) self.layoutCache[msgId] = layout;
 		return layout;
 	}
@@ -2634,6 +2743,7 @@ static const NSInteger kMessageSheetTag = 42;
 		layout.picSize = CGSizeMake(side, side);
 		layout.bubbleFrame = CGRectMake(mine ? (tableW - side - 8) : 8, 3, side, side);
 		layout.rowHeight = side + 10;
+		layout.stamp = [self stampFor:m];
 		if (msgId) self.layoutCache[msgId] = layout;
 		return layout;
 	}
@@ -2646,12 +2756,46 @@ static const NSInteger kMessageSheetTag = 42;
 		return layout;
 	}
 
+	CGFloat collageW = 220.0f;
+	CGFloat collageH = 0.0f;
+	NSMutableArray *itemFrames = [NSMutableArray array];
+
+	if (isAlbum) {
+		NSArray *items = m[@"albumMessages"];
+		NSUInteger count = items.count;
+		CGFloat gap = 2.0f;
+		CGFloat halfW = (collageW - gap) / 2.0f;
+
+		if (count <= 2) {
+			collageH = 135.0f;
+			[itemFrames addObject:[NSValue valueWithCGRect:CGRectMake(0, 0, halfW, collageH)]];
+			[itemFrames addObject:[NSValue valueWithCGRect:CGRectMake(halfW + gap, 0, halfW, collageH)]];
+		} else if (count == 3) {
+			CGFloat topH = 120.0f;
+			CGFloat botH = 88.0f;
+			collageH = topH + gap + botH;
+			[itemFrames addObject:[NSValue valueWithCGRect:CGRectMake(0, 0, collageW, topH)]];
+			[itemFrames addObject:[NSValue valueWithCGRect:CGRectMake(0, topH + gap, halfW, botH)]];
+			[itemFrames addObject:[NSValue valueWithCGRect:CGRectMake(halfW + gap, topH + gap, halfW, botH)]];
+		} else {
+			CGFloat halfH = 104.0f;
+			collageH = halfH * 2.0f + gap;
+			[itemFrames addObject:[NSValue valueWithCGRect:CGRectMake(0, 0, halfW, halfH)]];
+			[itemFrames addObject:[NSValue valueWithCGRect:CGRectMake(halfW + gap, 0, halfW, halfH)]];
+			[itemFrames addObject:[NSValue valueWithCGRect:CGRectMake(0, halfH + gap, halfW, halfH)]];
+			[itemFrames addObject:[NSValue valueWithCGRect:CGRectMake(halfW + gap, halfH + gap, halfW, halfH)]];
+		}
+		layout.albumFrames = itemFrames;
+	}
+
 	int64_t senderId = [m[@"senderId"] longLongValue];
 	NSString *senderName = (self.isGroup && !mine) ? [[TGClient shared] nameForUserId:senderId] : nil;
 
 	BOOL inlineStamp = [self stampFitsInlineFor:m];
 	CGFloat timeW = [self timeWidthFor:m];
 	CGFloat contentW = MAX(body.width, pic.width);
+	if (isAlbum)
+		contentW = MAX(contentW, collageW);
 	NSString *quoted = [self quoteTextFor:m];
 	if (quoted || [m[@"forward"] length])
 		contentW = MAX(contentW, 170);
@@ -2669,7 +2813,7 @@ static const NSInteger kMessageSheetTag = 42;
 	BOOL stampOnPicture = [self stampSitsOnPictureFor:m];
 	CGFloat bubbleH = kPadV * 2 + (inlineStamp || stampOnPicture ? 0 : 14) +
 			[self decorationHeightFor:m] +
-			(pic.height ? pic.height + 4 : 0) + body.height;
+			(isAlbum ? (collageH + (body.height ? 4 : 0)) : (pic.height ? pic.height + 4 : 0)) + body.height;
 	if (isVoice)
 		bubbleH = 56 + ([m[@"forward"] length] ? 18 : 0);
 
@@ -2693,10 +2837,7 @@ static const NSInteger kMessageSheetTag = 42;
 	layout.quoteText = quoted;
 	layout.quoteAuthor = [self quoteAuthorFor:m];
 
-	if (!isSticker) {
-		layout.tailFrame = mine ? CGRectMake(x + bubbleW - 1, top + bubbleH - 10, 6, 10)
-								: CGRectMake(x - 5, top + bubbleH - 10, 6, 10);
-	}
+	layout.tailFrame = CGRectZero;
 
 	CGFloat y = kPadV + forwarded;
 	if (quoted) {
@@ -2705,7 +2846,14 @@ static const NSInteger kMessageSheetTag = 42;
 		layout.quoteFrame = CGRectMake(kPadH + 8, y + 17, bubbleW - 2 * kPadH - 10, 17);
 		y += 38;
 	}
-	if (pic.height > 0) {
+	if (isAlbum) {
+		layout.collageFrame = CGRectMake(kPadH, y, collageW, collageH);
+		if (!body.height) {
+			CGFloat plateW = timeW + (mine ? 28 : 14);
+			layout.mediaStampFrame = CGRectMake(kPadH + collageW - plateW - 6, y + collageH - 22, plateW, 16);
+		}
+		y += collageH + 4;
+	} else if (pic.height > 0) {
 		layout.pictureFrame = CGRectMake(kPadH, y, pic.width, pic.height);
 		if (!body.height) {
 			CGFloat plateW = timeW + (mine ? 28 : 14);
@@ -2722,7 +2870,8 @@ static const NSInteger kMessageSheetTag = 42;
 			(inlineStamp || stampOnPicture ? 0 : 14);
 	if (self.isGroup && !mine && senderName.length)
 		rowH += 15;
-	if (pic.height > 0) rowH += pic.height + 4;
+	if (isAlbum) rowH += collageH + (body.height > 0 ? 4 : 0);
+	else if (pic.height > 0) rowH += pic.height + 4;
 	if (body.height > 0) rowH += body.height;
 	if (isVoice) rowH = 62 + forwarded;
 
@@ -2785,17 +2934,16 @@ static UIColor *TGSenderColour(int64_t userId) {
                 
                 CGFloat oldHeight = self.table.contentSize.height;
                 CGFloat oldOffset = self.table.contentOffset.y;
-                
-                self.messages = [older arrayByAddingObjectsFromArray:self.messages];
-                
+
+                self.rawMessages = [older arrayByAddingObjectsFromArray:self.rawMessages ?: self.messages];
+                self.messages = [self groupedMessagesFromMessages:self.rawMessages];
+
                 [UIView setAnimationsEnabled:NO];
-                [self.table beginUpdates];
-                [self.table insertRowsAtIndexPaths:indexPaths withRowAnimation:UITableViewRowAnimationNone];
-                [self.table endUpdates];
-                
+                [self.table reloadData];
                 self.table.contentOffset = CGPointMake(0, oldOffset + (self.table.contentSize.height - oldHeight));
                 [UIView setAnimationsEnabled:YES];
-                
+                [self fetchMissingImages];
+
                 self.isLoadingMoreHistory = NO;
             });
         }];
@@ -2959,20 +3107,31 @@ static UIColor *TGSenderColour(int64_t userId) {
 
 		cell.disc.hidden = NO;
 		cell.disc.image = [TGIcons callArrowOutgoing:mine missed:missed];
-		cell.disc.frame = CGRectMake(kPadH, fwd + (layout.bubbleFrame.size.height - fwd - 14) / 2, 14, 14);
+		cell.disc.frame = CGRectMake(kPadH, fwd + (layout.bubbleFrame.size.height - fwd - 16) / 2, 16, 16);
+
+		CGFloat rightBtnW = 34.0f;
+		CGFloat textW = layout.bubbleFrame.size.width - kPadH - 26 - rightBtnW - 4;
 
 		cell.body.hidden = NO;
 		cell.body.numberOfLines = 1;
-		cell.body.font = [UIFont systemFontOfSize:15];
-		cell.body.textColor = [callTheme primaryTextColour];
+		cell.body.font = [UIFont boldSystemFontOfSize:14];
+		cell.body.textColor = missed ? [callTheme destructiveColour] : [callTheme primaryTextColour];
 		cell.body.text = line;
-		cell.body.frame = CGRectMake(kPadH + 20, fwd + 6, layout.bubbleFrame.size.width - kPadH - 26, 20);
+		cell.body.frame = CGRectMake(kPadH + 24, fwd + 6, textW, 18);
 
 		cell.subtitle.hidden = NO;
 		cell.subtitle.font = [UIFont systemFontOfSize:12];
-		cell.subtitle.textColor = [callTheme timeColour];
+		cell.subtitle.textColor = [callTheme secondaryTextColour];
 		cell.subtitle.text = layout.stamp;
-		cell.subtitle.frame = CGRectMake(kPadH + 20, fwd + 24, layout.bubbleFrame.size.width - kPadH - 26, 14);
+		cell.subtitle.frame = CGRectMake(kPadH + 24, fwd + 26, textW, 14);
+
+		cell.contactCallButton.hidden = NO;
+		cell.contactCallButton.frame = CGRectMake(layout.bubbleFrame.size.width - rightBtnW - 4, fwd + (layout.bubbleFrame.size.height - fwd - 32) / 2, 32, 32);
+		[cell.contactCallButton setImage:[TGIcons callArrowOutgoing:YES missed:NO] forState:UIControlStateNormal];
+		[cell.contactCallButton setTitle:nil forState:UIControlStateNormal];
+		cell.contactCallButton.tag = indexPath.row;
+		[cell.contactCallButton removeTarget:nil action:NULL forControlEvents:UIControlEventAllEvents];
+		[cell.contactCallButton addTarget:self action:@selector(callCellButtonTapped:) forControlEvents:UIControlEventTouchUpInside];
 
 		cell.picture.hidden = YES;
 		cell.time.text = @"";
@@ -3162,21 +3321,7 @@ static UIColor *TGSenderColour(int64_t userId) {
 		cell.icon.frame = CGRectMake(6, fwd + mapH - 22, 68, 16);
 		[cell.bubble bringSubviewToFront:cell.icon];
 
-		CGFloat stampW = layout.timeWidth + (mine ? 28 : 14);
-		cell.mediaStamp.hidden = NO;
-		cell.mediaStamp.backgroundColor = [locTheme mediaStampColour];
-		cell.mediaStamp.text = mine ? [NSString stringWithFormat:@"  %@", layout.stamp] : layout.stamp;
-		cell.mediaStamp.textAlignment = mine ? NSTextAlignmentLeft : NSTextAlignmentCenter;
-		cell.mediaStamp.frame = CGRectMake(mapW - stampW - 6, fwd + mapH - 22, stampW, 16);
-		[cell.bubble bringSubviewToFront:cell.mediaStamp];
-
-		cell.ticks.hidden = !mine;
-		if (mine) {
-			cell.ticks.image = [TGIcons ticksWhite:YES];
-			cell.ticks.frame = CGRectMake(CGRectGetMaxX(cell.mediaStamp.frame) - 17,
-										  CGRectGetMidY(cell.mediaStamp.frame) - 4.5f, 15, 9);
-			[cell.bubble bringSubviewToFront:cell.ticks];
-		}
+		cell.mediaStamp.hidden = YES;
 
 		NSDictionary *venue = [m[@"venue"] isKindOfClass:NSDictionary.class] ? m[@"venue"] : nil;
 		NSString *vTitle = venue[@"title"];
@@ -3193,6 +3338,9 @@ static UIColor *TGSenderColour(int64_t userId) {
 		if (!vTitle.length) vTitle = @"Location";
 		if (!vAddr.length)  vAddr = [NSString stringWithFormat:@"%.4f, %.4f", lat, lon];
 
+		CGFloat locTimeW = layout.timeWidth;
+		CGFloat locTicks = mine ? 18 : 0;
+
 		cell.body.hidden = NO;
 		cell.body.numberOfLines = 1;
 		cell.body.font = [UIFont boldSystemFontOfSize:14];
@@ -3205,9 +3353,22 @@ static UIColor *TGSenderColour(int64_t userId) {
 		cell.subtitle.font = [UIFont systemFontOfSize:12];
 		cell.subtitle.textColor = [locTheme fileMetaColour];
 		cell.subtitle.text = vAddr;
-		cell.subtitle.frame = CGRectMake(kPadH, fwd + mapH + 24, mapW - 2 * kPadH, 16);
+		cell.subtitle.frame = CGRectMake(kPadH, fwd + mapH + 24, mapW - 2 * kPadH - locTimeW - locTicks - 4, 16);
 
-		cell.time.text = @"";
+		cell.time.hidden = NO;
+		cell.time.text = layout.stamp;
+		cell.time.textColor = [locTheme timeColour];
+		cell.time.frame = CGRectMake(layout.bubbleFrame.size.width - locTimeW - locTicks - kPadH,
+									 layout.bubbleFrame.size.height - 17,
+									 locTimeW, 12);
+
+		cell.ticks.hidden = !mine;
+		if (mine) {
+			cell.ticks.image = [TGIcons ticksWhite:NO];
+			cell.ticks.frame = CGRectMake(layout.bubbleFrame.size.width - locTicks - kPadH + 2,
+										  layout.bubbleFrame.size.height - 15, 15, 9);
+			[cell.bubble bringSubviewToFront:cell.ticks];
+		}
 		return cell;
 	}
 
@@ -3230,12 +3391,8 @@ static UIColor *TGSenderColour(int64_t userId) {
 	UIColor *fill = mine ? [theme bubbleMineColour] : [theme bubbleTheirsColour];
 	cell.bubble.backgroundColor = layout.isSticker ? [UIColor clearColor] : fill;
 
-	cell.tail.hidden = layout.isSticker;
-	if (!cell.tail.hidden) {
-		cell.tail.image = [TGIcons bubbleTailForColour:fill outgoing:mine];
-		cell.tail.frame = layout.tailFrame;
-	}
-	cell.bubble.layer.borderWidth = layout.isSticker ? 0.0f : [theme bubbleBorderWidth];
+	cell.tail.hidden = YES;
+	cell.bubble.layer.borderWidth = (layout.isSticker || layout.isRound) ? 0.0f : [theme bubbleBorderWidth];
 	cell.bubble.layer.borderColor = [theme bubbleBorderColour].CGColor;
 	cell.bubble.layer.cornerRadius = [theme bubbleCornerRadius];
 	cell.body.textColor = [theme primaryTextColour];
@@ -3268,7 +3425,8 @@ static UIColor *TGSenderColour(int64_t userId) {
 		}
 		NSInteger dur = [m[@"duration"] integerValue];
 		NSString *durStr = (dur > 0) ? [NSString stringWithFormat:@"%ld:%02ld", (long)(dur / 60), (long)(dur % 60)] : @"";
-		NSString *stampText = durStr.length ? [NSString stringWithFormat:@"%@  %@", durStr, layout.stamp] : layout.stamp;
+		NSString *stamp = (layout.stamp.length && ![layout.stamp isEqualToString:@"(null)"]) ? layout.stamp : @"";
+		NSString *stampText = durStr.length ? (stamp.length ? [NSString stringWithFormat:@"%@  %@", durStr, stamp] : durStr) : stamp;
 
 		CGFloat stampW = TGTextSize(stampText, [UIFont systemFontOfSize:11], 0).width + (mine ? 26 : 14);
 		cell.mediaStamp.hidden = NO;
@@ -3338,7 +3496,66 @@ static UIColor *TGSenderColour(int64_t userId) {
 	}
 
 	cell.mediaStamp.hidden = YES;
-	if (layout.picSize.height > 0) {
+	if (layout.isAlbum) {
+		cell.collageView.hidden = NO;
+		cell.collageView.frame = layout.collageFrame;
+		cell.picture.hidden = YES;
+		cell.picture.image = nil;
+
+		NSArray *albumMsgs = m[@"albumMessages"];
+		NSUInteger count = albumMsgs.count;
+		NSArray *frames = layout.albumFrames;
+
+		for (NSInteger i = 0; i < 4; i++) {
+			UIImageView *iv = cell.collageViews[i];
+			if (i < (NSInteger)frames.count && i < (NSInteger)count) {
+				iv.hidden = NO;
+				iv.frame = [frames[i] CGRectValue];
+				NSDictionary *itemMsg = albumMsgs[i];
+				iv.image = [self imageFor:itemMsg];
+			} else {
+				iv.hidden = YES;
+				iv.image = nil;
+			}
+		}
+
+		if (count > 4 && frames.count >= 4) {
+			cell.collageMoreLabel.hidden = NO;
+			cell.collageMoreLabel.frame = [frames[3] CGRectValue];
+			cell.collageMoreLabel.text = [NSString stringWithFormat:@"+%ld", (long)(count - 3)];
+			[cell.collageView bringSubviewToFront:cell.collageMoreLabel];
+		} else {
+			cell.collageMoreLabel.hidden = YES;
+		}
+
+		__weak typeof(self) weakSelf = self;
+		cell.onCollageItemTapped = ^(NSInteger idx) {
+			TGChatViewController *strongSelf = weakSelf;
+			if (!strongSelf) return;
+			if (idx >= 0 && idx < (NSInteger)albumMsgs.count) {
+				NSDictionary *target = albumMsgs[idx];
+				NSArray *pool = strongSelf.rawMessages.count ? strongSelf.rawMessages : albumMsgs;
+				NSInteger targetIdx = [pool indexOfObject:target];
+				if (targetIdx == NSNotFound) {
+					pool = albumMsgs;
+					targetIdx = idx;
+				}
+				[TGMediaViewer presentItems:pool
+									startAt:targetIdx
+									 inChat:strongSelf.chatId];
+			}
+		};
+
+		if (!layout.bodySize.height) {
+			cell.mediaStamp.hidden = NO;
+			cell.mediaStamp.backgroundColor = [theme mediaStampColour];
+			cell.mediaStamp.text = mine ? [NSString stringWithFormat:@"  %@", layout.stamp] : layout.stamp;
+			cell.mediaStamp.textAlignment = mine ? NSTextAlignmentLeft : NSTextAlignmentCenter;
+			cell.mediaStamp.frame = layout.mediaStampFrame;
+			[cell.bubble bringSubviewToFront:cell.mediaStamp];
+		}
+	} else if (layout.picSize.height > 0) {
+		cell.collageView.hidden = YES;
 		cell.picture.hidden = NO;
 		UIImage *img = [self imageFor:m];
 		cell.picture.image = img;
@@ -3364,6 +3581,7 @@ static UIColor *TGSenderColour(int64_t userId) {
 			[cell.bubble bringSubviewToFront:cell.mediaStamp];
 		}
 	} else {
+		cell.collageView.hidden = YES;
 		cell.picture.hidden = YES;
 		cell.picture.image = nil;
 	}
@@ -3431,8 +3649,21 @@ static UIColor *TGSenderColour(int64_t userId) {
 	cell.body.numberOfLines = 0;
 	cell.body.lineBreakMode = NSLineBreakByWordWrapping;
 	cell.body.font = [UIFont systemFontOfSize:[TGTheme shared].messageFontSize];
-	TGSetBodyText(cell.body, m[@"text"], [theme primaryTextColour]);
+	NSArray *entities = m[@"entities"];
+	if (entities.count) {
+		cell.body.attributedText = TGAttributedMessageText(m[@"text"], entities, [UIFont systemFontOfSize:[TGTheme shared].messageFontSize], [theme primaryTextColour]);
+	} else {
+		TGSetBodyText(cell.body, m[@"text"], [theme primaryTextColour]);
+	}
 	cell.body.frame = layout.bodyFrame;
+
+	cell.onLinkTapped = ^(NSString *url) {
+		if (url.length) {
+			NSURL *u = [NSURL URLWithString:url];
+			if (!u.scheme.length) u = [NSURL URLWithString:[NSString stringWithFormat:@"http://%@", url]];
+			if (u) [[UIApplication sharedApplication] openURL:u];
+		}
+	};
 
 	// Reactions
 	UILabel *reactions = (UILabel *)[cell.bubble viewWithTag:0x9002];

@@ -17,8 +17,10 @@ static const CGFloat kPollRow     = 30.0f;
 UIFont *TGEmojiFontOfSize(CGFloat size);
 BOOL TGIsEmojiScalar(UTF32Char c);
 NSAttributedString *TGEmojiAttributedText(NSString *text, UIFont *base);
+NSAttributedString *TGAttributedMessageText(NSString *text, NSArray *entities, UIFont *baseFont, UIColor *textColor);
 void TGSetBodyText(UILabel *label, NSString *text, UIColor *colour);
 CGSize TGTextSize(NSString *text, UIFont *font, CGFloat width);
+CGSize TGTextSizeWithEntities(NSString *text, NSArray *entities, UIFont *font, CGFloat width);
 
 @interface TGMessageLayout : NSObject
 @property (nonatomic, assign) CGFloat rowHeight;
@@ -31,6 +33,8 @@ CGSize TGTextSize(NSString *text, UIFont *font, CGFloat width);
 @property (nonatomic, assign) CGRect quoteAuthorFrame;
 @property (nonatomic, assign) CGRect quoteFrame;
 @property (nonatomic, assign) CGRect pictureFrame;
+@property (nonatomic, assign) CGRect collageFrame;
+@property (nonatomic, strong) NSArray *albumFrames;
 @property (nonatomic, assign) CGRect mediaStampFrame;
 @property (nonatomic, assign) CGRect timeFrame;
 @property (nonatomic, assign) CGSize bodySize;
@@ -51,5 +55,8 @@ CGSize TGTextSize(NSString *text, UIFont *font, CGFloat width);
 @property (nonatomic, assign) BOOL isContact;
 @property (nonatomic, assign) BOOL isRound;
 @property (nonatomic, assign) BOOL isLocation;
+@property (nonatomic, assign) BOOL isAlbum;
 @property (nonatomic, assign) CGFloat fwdHeight;
+@property (nonatomic, strong) NSArray *entities;
+@property (nonatomic, strong) NSAttributedString *attributedBody;
 @end
