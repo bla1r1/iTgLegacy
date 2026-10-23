@@ -103,6 +103,7 @@ FRAMEWORKS := -framework UIKit -framework Foundation -framework QuickLook \
               -framework AddressBookUI -framework MobileCoreServices \
               -framework CoreLocation -framework MapKit \
               -framework CoreTelephony -framework CoreImage \
+              -framework CoreText -framework AssetsLibrary \
 
 
 # TDLib is loaded at runtime from libtdjson.dylib, never linked.
@@ -180,6 +181,7 @@ APP_SRC_M := \
 	src/Core/TGClient+Chats.m \
 	src/Core/TGClient+Files.m \
 	src/Core/TGClient+Account.m \
+	src/Core/TGClient+Stickers.m \
 	src/Core/TGDevice.m \
 	src/Core/TGCapabilities.m \
 	src/Core/TGTheme.m \
@@ -200,6 +202,8 @@ APP_SRC_M := \
 	src/Controllers/TGChatListViewController+Actions.m \
 	src/Controllers/TGChatListViewController+Search.m \
 	src/Views/TGChatCell.m \
+	src/Views/TGEmojiData.m \
+	src/Views/TGEmojiPanel.m \
 	src/Views/TGMessageLayout.m \
 	src/Views/TGBubbleCell.m \
 	src/Controllers/TGChatViewController.m \

@@ -313,6 +313,23 @@ typedef NS_ENUM(NSInteger, TGConnectionState) {
 /// Send a sticker TDLib already knows, by file id.
 - (void)sendStickerWithFileId:(NSInteger)fileId toChat:(int64_t)chatId thread:(int64_t)threadId;
 
+#pragma mark - sticker sets and GIFs (TGClient+Stickers)
+
+/// Installed sets: "id" (pass back as is), "title", and "cover" - a sticker
+/// in the same shape recentStickers gives.
+- (void)installedStickerSetsWithCompletion:(void (^)(NSArray *sets))completion;
+- (void)stickersInSet:(id)setId completion:(void (^)(NSArray *stickers))completion;
+- (void)favoriteStickersWithCompletion:(void (^)(NSArray *stickers))completion;
+
+/// GIFs: "fileId", "width", "height", "duration", optional "thumbId" (a
+/// still picture) and "minithumbnail" (NSData, a tiny inline JPEG). Search
+/// results also carry "queryId" and "resultId".
+- (void)savedAnimationsWithCompletion:(void (^)(NSArray *animations))completion;
+- (void)searchAnimations:(NSString *)query
+				  inChat:(int64_t)chatId
+			  completion:(void (^)(NSArray *animations))completion;
+- (void)sendAnimation:(NSDictionary *)animation toChat:(int64_t)chatId thread:(int64_t)threadId;
+
 /// Send a recorded voice note (.oga), with its duration in seconds.
 - (void)sendVoiceAtPath:(NSString *)path duration:(NSInteger)seconds
                  toChat:(int64_t)chatId thread:(int64_t)threadId;

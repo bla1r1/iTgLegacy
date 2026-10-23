@@ -651,22 +651,9 @@ NSDictionary *TGFlattenMessage(NSDictionary *m) {
 	   completion:^(NSDictionary *result){
 		NSMutableArray *out = [NSMutableArray array];
 		for (NSDictionary *sticker in result[@"stickers"]){
-			NSNumber *fileId = sticker[@"sticker"][@"id"];
-			if (!fileId)
-				continue;
-			NSString *format = sticker[@"format"][@"@type"] ?: @"";
-			NSNumber *thumbId = sticker[@"thumbnail"][@"file"][@"id"];
-			if (!thumbId || [thumbId integerValue] == 0) {
-				if ([format isEqualToString:@"stickerFormatWebp"]) {
-					thumbId = fileId;
-				}
-			}
-			[out addObject:@{
-				@"fileId"     : fileId,
-				@"emoji"      : sticker[@"emoji"] ?: @"",
-				@"isAnimated" : @(![format isEqualToString:@"stickerFormatWebp"]),
-				@"thumbId"    : thumbId ?: @0,
-			}];
+			NSDictionary *info = TGStickerInfo(sticker);
+			if (info)
+				[out addObject:info];
 		}
 		if (completion) completion(out);
 	}];

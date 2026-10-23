@@ -12,6 +12,7 @@
 #import "TGMessageLayout.h"
 #import "TGBubbleCell.h"
 #import "TGMediaViewer.h"
+#import "TGEmojiPanel.h"
 #import <MediaPlayer/MediaPlayer.h>
 #import <AVFoundation/AVFoundation.h>
 #import <CoreLocation/CoreLocation.h>
@@ -20,7 +21,7 @@
 
 static const CGFloat kInputHeight = 48.0f;
 
-@interface TGChatViewController () <UISearchBarDelegate, CLLocationManagerDelegate,
+@interface TGChatViewController () <UISearchBarDelegate, CLLocationManagerDelegate, TGEmojiPanelDelegate,
 		UIScrollViewDelegate, AVAudioPlayerDelegate,
 		ABPeoplePickerNavigationControllerDelegate>
 
@@ -75,7 +76,7 @@ static const CGFloat kInputHeight = 48.0f;
 @property (nonatomic, strong) UIImage *fullScreenImage;
 @property (nonatomic, strong) UIImageView *wallpaperView;
 @property (nonatomic, strong) UIButton *stickerButton;
-@property (nonatomic, strong) UIScrollView *stickerPanel;
+@property (nonatomic, strong) TGEmojiPanel *stickerPanel;   // emoji, stickers, GIFs
 @property (nonatomic, strong) NSMutableDictionary *layoutCache;
 @property (nonatomic, strong) UILabel *titleNameLabel;
 @property (nonatomic, strong) UILabel *titleSubtitleLabel;
@@ -155,9 +156,6 @@ static const CGFloat kInputHeight = 48.0f;
 - (void)showComposeBanner:(NSString *)text;
 - (void)toggleStickerPanel;
 - (void)hideStickerPanel;
-- (void)fillStickerPanel:(UIScrollView *)panel with:(NSArray *)stickers;
-- (void)appendRecentStickers:(NSArray *)stickers toPanel:(UIScrollView *)panel;
-- (void)stickerTapped:(UIButton *)button;
 - (void)attachTapped;
 - (void)shiftForKeyboardHeight:(CGFloat)height;
 - (void)keyboardWillShow:(NSNotification *)note;

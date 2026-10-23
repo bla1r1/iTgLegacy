@@ -227,6 +227,7 @@
 	if (self.recordPanel) {
 		self.recordPanel.backgroundColor = [theme inputBarColour];
 	}
+	[self.stickerPanel applyTheme];
 	if (self.editToolbar) {
 		self.editToolbar.backgroundColor = [theme inputBarColour];
 		[self.editDeleteButton setTitleColor:[theme destructiveColour] forState:UIControlStateNormal];

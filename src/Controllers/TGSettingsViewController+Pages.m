@@ -350,8 +350,8 @@
 			? @"Each of these redraws the screen while nothing is being touched, "
 			  @"which is where an A5 spends its battery. Turning one off leaves "
 			  @"the still picture."
-			: @"This device is below the tier that plays these at all, so the "
-			  @"first two switches change nothing here.";
+			: @"This device is below the tier that plays these at all, so these "
+			  @"switches change nothing here.";
 
 	return @[
 		TGSection(@"Resource-intensive processes", footer, @[
@@ -369,6 +369,14 @@
 					@"chat", TGRGB(0.20, 0.60, 0.86),
 					[TGCapabilities wallpaperWanted] && possible, ^(BOOL on){
 				[TGCapabilities setWallpaperWanted:on];
+				[weakSelf rebuild];
+			}),
+			TGSwitchInfoRow(@"Autoplay GIFs",
+					@"Loop GIFs silently in the chat. Off, a GIF plays when "
+					@"tapped.",
+					@"video", TGRGB(0.69, 0.32, 0.87),
+					[TGCapabilities gifAutoplayWanted] && possible, ^(BOOL on){
+				[TGCapabilities setGifAutoplayWanted:on];
 				[weakSelf rebuild];
 			}),
 		]),

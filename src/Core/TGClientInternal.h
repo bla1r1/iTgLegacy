@@ -6,6 +6,9 @@ typedef void  (*td_send_fn)(void *client, const char *request);
 typedef const char *(*td_recv_fn)(void *client, double timeout);
 typedef const char *(*td_exec_fn)(void *client, const char *request);
 
+/// A TDLib sticker in the shape the panel uses; nil without a file.
+NSDictionary *TGStickerInfo(NSDictionary *sticker);
+
 @interface TGClient ()
 @property (nonatomic, assign) void *handle;
 @property (nonatomic, assign) void *client;

@@ -43,6 +43,25 @@
 /// Wallpapers, which cost a full-screen image held in memory.
 + (BOOL)canShowWallpaper;
 
+/// GIFs loop silently inside their bubble. They are small H.264 files, which
+/// the A5 decodes in hardware a couple at a time; the A4 and older cannot
+/// keep up while the list scrolls, so there a GIF plays on tap.
++ (BOOL)canAutoplayGIFs;
+/// How many GIFs may play at once on this device.
++ (NSUInteger)maxConcurrentGIFs;
+
+/// Swiping a chat row for Mute / Pin / Delete. The API for more than one
+/// button on a swiped row arrived in iOS 8; before that a row is held.
++ (BOOL)canSwipeRowActions;
+
+/// The strip of recent photos in the attach sheet: a few dozen thumbnails
+/// decoded on open, too much for 256MB.
++ (BOOL)canShowRecentPhotos;
+
+/// Emoji the system font can draw. Each iOS knows a later Unicode, and one
+/// it does not know renders as nothing at all, so lists are filtered by it.
++ (BOOL)canDrawEmoji:(NSString *)emoji;
+
 /// Power Saving. These say what the user has asked for, not what the device
 /// can manage - nothing here turns on what the hardware cannot do, it only
 /// turns off what it can. Default on.
@@ -50,6 +69,8 @@
 + (void)setAnimatedStickersWanted:(BOOL)wanted;
 + (BOOL)wallpaperWanted;
 + (void)setWallpaperWanted:(BOOL)wanted;
++ (BOOL)gifAutoplayWanted;
++ (void)setGifAutoplayWanted:(BOOL)wanted;
 
 /// Every capability with its state, for the Device screen.
 + (NSArray *)all;

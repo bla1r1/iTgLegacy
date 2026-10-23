@@ -1,5 +1,6 @@
 #import "TGCapabilities.h"
 #import <UIKit/UIKit.h>
+#import <CoreText/CoreText.h>
 
 @implementation TGCapability
 @end
@@ -44,28 +45,72 @@ static void TGSetWanted(NSString *key, BOOL wanted) {
 + (void)setWallpaperWanted:(BOOL)wanted {
 	TGSetWanted(@"TGWantWallpaper", wanted);
 }
-
-+ (BOOL)canPlayAnimatedStickers {
-	// TGLottieView does play these on an A5 - not at full speed, but it plays.
-	// Custom emoji are the ones that need a newer chip, because they animate
-	// inside every message rather than one at a time.
-	return [TGDevice tier] >= TGDeviceTierLegacy && [self animatedStickersWanted];
++ (BOOL)gifAutoplayWanted { return TGWanted(@"TGWantGifAutoplay"); }
++ (void)setGifAutoplayWanted:(BOOL)wanted {
+	TGSetWanted(@"TGWantGifAutoplay", wanted);
 }
 
-+ (BOOL)canShowWallpaper {
-	return [TGDevice tier] >= TGDeviceTierLegacy && [self wallpaperWanted];
++ (BOOL)canAutoplayGIFs {
+	return [TGDevice tier] >= TGDeviceTierLegacy && [self gifAutoplayWanted];
 }
 
-+ (BOOL)canAnimateInline {
-	return [TGDevice tier] >= TGDeviceTierModern;
++ (NSUInteger)maxConcurrentGIFs {
+	switch ([TGDevice tier]){
+		case TGDeviceTierVintage: return 0;
+		case TGDeviceTierLegacy:  return 2;
+		case TGDeviceTierModern:  return 3;
+		case TGDeviceTierFull:    return 4;
+	}
+	return 2;
 }
 
-+ (BOOL)canHoldMultipleAccounts {
-	return [TGDevice tier] >= TGDeviceTierFull;
++ (BOOL)canSwipeRowActions {
+	return NSClassFromString(@"UITableViewRowAction") != nil;
 }
 
-+ (BOOL)canEncodeVideoCall {
-	return [TGDevice tier] >= TGDeviceTierFull;
++ (BOOL)canShowRecentPhotos {
+	return [TGDevice tier] >= TGDeviceTierLegacy;
+}
+
++ (BOOL)canDrawEmoji:(NSString *)emoji {
+	if (!emoji.length)
+		return NO;
+	static NSMutableDictionary *answers = nil;
+	static CTFontRef font = NULL;
+	if (!answers){
+		answers = [NSMutableDictionary dictionary];
+		font = CTFontCreateWithName(CFSTR("AppleColorEmoji"), 20, NULL);
+	}
+	NSNumber *known = answers[emoji];
+	if (known)
+		return known.boolValue;
+
+	// Asking for each character's glyph is not enough: a flag is two letters
+	// the font has on their own, and an unknown flag or joined sequence still
+	// "draws" - as two boxes or a family taken apart. Shaping the whole thing
+	// and wanting one glyph from the emoji font itself is what the screen
+	// will actually show.
+	BOOL ok = NO;
+	if (font){
+		NSAttributedString *text = [[NSAttributedString alloc] initWithString:emoji
+				attributes:@{(__bridge NSString *)kCTFontAttributeName : (__bridge id)font}];
+		CTLineRef line = CTLineCreateWithAttributedString((__bridge CFAttributedStringRef)text);
+		if (line){
+			CFArrayRef runs = CTLineGetGlyphRuns(line);
+			if (CFArrayGetCount(runs) == 1){
+				CTRunRef run = (CTRunRef)CFArrayGetValueAtIndex(runs, 0);
+				CTFontRef used = (CTFontRef)CFDictionaryGetValue(CTRunGetAttributes(run), kCTFontAttributeName);
+				NSString *name = used ? (__bridge_transfer NSString *)CTFontCopyPostScriptName(used) : nil;
+				CGGlyph glyph = 0;
+				if (CTRunGetGlyphCount(run) == 1)
+					CTRunGetGlyphs(run, CFRangeMake(0, 1), &glyph);
+				ok = glyph != 0 && [name isEqualToString:@"AppleColorEmoji"];
+			}
+			CFRelease(line);
+		}
+	}
+	answers[emoji] = @(ok);
+	return ok;
 }
 
 /// Everything the app gates, each with what it is waiting for. The order is
@@ -77,6 +122,9 @@ static void TGSetWanted(NSString *key, BOOL wanted) {
 		@[@"Voice notes",             @YES,  @"every device"],
 		@[@"Chat wallpaper",          @([self canShowWallpaper]),      @"Legacy - 512MB or more"],
 		@[@"Animated stickers",       @([self canPlayAnimatedStickers]), @"Legacy - 512MB or more"],
+		@[@"GIF autoplay",            @([self canAutoplayGIFs]),       @"Legacy - an A5 or later"],
+		@[@"Recent photos in attach", @([self canShowRecentPhotos]),   @"Legacy - 512MB or more"],
+		@[@"Swipe actions in chats",  @([self canSwipeRowActions]),    @"iOS 8 or later"],
 		@[@"Custom emoji",            @([self canAnimateInline]),      @"Modern - a 64-bit chip"],
 		@[@"Mini apps",               @([self canRunWebApps]),         @"iOS 9 or later"],
 		@[@"Multiple accounts",       @([self canHoldMultipleAccounts]), @"Full - 2GB or more"],
