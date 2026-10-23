@@ -61,6 +61,8 @@ typedef NS_ENUM(NSInteger, TGConnectionState) {
 /// The newest of your own messages in a chat the other side has read; 0 when
 /// nothing is known. Anything at or below it carries two ticks.
 - (int64_t)lastReadOutboxForChat:(int64_t)chatId;
+/// The newest incoming message you have read in a chat; 0 when unknown.
+- (int64_t)lastReadInboxForChat:(int64_t)chatId;
 
 /// Profile photo file id for a user, or nil if TDLib has not sent one.
 - (NSNumber *)photoFileIdForUserId:(int64_t)userId;

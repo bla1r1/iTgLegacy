@@ -26,7 +26,7 @@
 	// Service messages
 	if (layout.isService) {
 		TGTheme *serviceTheme = [TGTheme shared];
-		NSString *who = [[TGClient shared] nameForUserId:[m[@"senderId"] longLongValue]];
+		NSString *who = m[@"separator"] ? nil : [[TGClient shared] nameForUserId:[m[@"senderId"] longLongValue]];
 		NSString *line = who.length ? [NSString stringWithFormat:@"%@ %@", who, m[@"text"]] : (m[@"text"] ?: @"");
 
 		cell.bubble.frame = layout.bubbleFrame;
@@ -42,6 +42,14 @@
 		cell.body.textColor = [serviceTheme serviceTextColour];
 		cell.body.text = line;
 		cell.body.frame = layout.bodyFrame;
+		if ([m[@"separator"] isEqualToString:@"unread"]) {
+			cell.bubble.backgroundColor = [[serviceTheme inputBarColour] colorWithAlphaComponent:0.92f];
+			cell.bubble.layer.cornerRadius = 0;
+			cell.body.font = [UIFont boldSystemFontOfSize:13];
+			cell.body.textColor = [serviceTheme secondaryTextColour];
+		} else if (m[@"separator"]) {
+			cell.body.font = [UIFont boldSystemFontOfSize:12];
+		}
 		return [self finalizeCell:cell message:m layout:layout isMine:mine];
 	}
 

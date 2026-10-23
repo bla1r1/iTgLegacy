@@ -221,15 +221,27 @@ UIColor *TGSenderColour(int64_t userId) {
 	layout.stamp = [self stampFor:m];
 	layout.timeWidth = TGTextSize(layout.stamp, [UIFont systemFontOfSize:11], 0).width;
 
+	NSString *separator = m[@"separator"];
+	if ([separator isEqualToString:@"unread"]) {
+		// A full-width bar, not a plate: it marks a place, not an event.
+		layout.isService = YES;
+		layout.bubbleFrame = CGRectMake(0, 6, tableW, 24);
+		layout.bodyFrame = CGRectMake(0, 3, tableW, 18);
+		layout.rowHeight = 36;
+		return layout;
+	}
+
 	if (isService) {
-		NSString *who = [[TGClient shared] nameForUserId:[m[@"senderId"] longLongValue]];
+		NSString *who = separator ? nil : [[TGClient shared] nameForUserId:[m[@"senderId"] longLongValue]];
 		NSString *line = who.length ? [NSString stringWithFormat:@"%@ %@", who, m[@"text"]] : (m[@"text"] ?: @"");
 		UIFont *font = [UIFont systemFontOfSize:12];
 		CGFloat textW = MIN(TGTextSize(line, font, 0).width, tableW - 60);
 		CGFloat plateW = textW + 20;
-		layout.bubbleFrame = CGRectMake((tableW - plateW) / 2, 4, plateW, 21);
+		// A day plate gets a little more air than an event in the chat.
+		CGFloat top = separator ? 7 : 4;
+		layout.bubbleFrame = CGRectMake((tableW - plateW) / 2, top, plateW, 21);
 		layout.bodyFrame = CGRectMake(0, 2, plateW, 17);
-		layout.rowHeight = 30;
+		layout.rowHeight = separator ? 36 : 30;
 		if (msgId) self.layoutCache[msgId] = layout;
 		return layout;
 	}

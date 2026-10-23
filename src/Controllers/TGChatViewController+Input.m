@@ -109,6 +109,7 @@
 	self.editingId = 0;
 	self.composeBanner.hidden = YES;
 	[self inputChanged];
+	[self layoutChrome];
 }
 
 /// A strip above the composer saying what the next message will be: a reply,
@@ -149,6 +150,7 @@
 	if ([label isKindOfClass:UILabel.class])
 		label.text = text;
 	self.composeBanner.hidden = NO;
+	[self layoutChrome];
 }
 
 #pragma mark - sending
@@ -361,6 +363,7 @@ static const NSInteger kMessageSheetTag = 42;
 				b.size.width, kInputHeight);
 		self.table.frame = CGRectMake(0, 0, b.size.width,
 				b.size.height - kInputHeight - height);
+		[self layoutChrome];
 	} completion:^(BOOL done){
 		[self scrollToBottomAnimated:NO];
 	}];

@@ -93,6 +93,8 @@
 	[self.view addSubview:self.table];
 
 	[self buildInputBar:b];
+	[self buildChrome];
+	[self installSwipeToReply];
 
 	[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(keyboardWillShow:)
 			name:UIKeyboardWillShowNotification object:nil];
@@ -107,12 +109,18 @@
 			return;
 
 		if (message){
+			// Reading further up: leave the place alone and count it on the
+			// jump button instead. Your own message always brings you down.
+			BOOL follow = [me isNearBottom] || [message[@"outgoing"] boolValue];
 			NSMutableArray *nextRaw = [(me.rawMessages ?: me.messages) mutableCopy];
 			[nextRaw addObject:message];
 			me.rawMessages = nextRaw;
 			me.messages = [me groupedMessagesFromMessages:nextRaw];
 			[me.table reloadData];
-			[me scrollToBottomAnimated:YES];
+			if (follow)
+				[me scrollToBottomAnimated:YES];
+			else
+				[me noteArrivedWhileAway];
 			[me fetchMissingImages];
 			[[TGClient shared] markRead:@[message[@"id"]] inChat:chatId];
 			return;
@@ -129,6 +137,8 @@
 			selector:@selector(readOutboxChanged:)
 				name:TGChatReadOutboxChangedNotification object:nil];
 
+	// Captured before opening marks everything read.
+	self.readInboxAtOpen = [[TGClient shared] lastReadInboxForChat:self.chatId];
 	[[TGClient shared] openChat:self.chatId];
 	[self reload];
 }
@@ -171,7 +181,7 @@
 	[TGClient shared].onChatAction = ^(int64_t chatId, NSString *action){
 		if (chatId != weakSelf.chatId)
 			return;
-		subtitle.text = action ?: restingSubtitle;
+		[weakSelf showChatAction:action resting:restingSubtitle];
 	};
 
 	// An imported theme can arrive while a chat is open - repaint rather than
@@ -230,6 +240,7 @@
 		self.recordPanel.backgroundColor = [theme inputBarColour];
 	}
 	[self.stickerPanel applyTheme];
+	[self applyChromeTheme:theme];
 	if (self.editToolbar) {
 		self.editToolbar.backgroundColor = [theme inputBarColour];
 		[self.editDeleteButton setTitleColor:[theme destructiveColour] forState:UIControlStateNormal];
@@ -256,6 +267,7 @@
 		[[TGClient shared] closeChat:self.chatId];
 		[TGClient shared].onMessage = nil;
 		[TGClient shared].onChatAction = nil;
+		[self stopChrome];
 		[TGClient shared].onFileProgress = nil;
 		[self.images removeAllObjects];
 		[self.imagesRequested removeAllObjects];
@@ -356,7 +368,7 @@
 		}
 	}
 
-	return grouped;
+	return [self messagesWithSeparators:grouped];
 }
 
 - (void)reload {
@@ -365,12 +377,17 @@
 		TGChatViewController *me = weakSelf;
 		if (!me)
 			return;
+		BOOL firstLoad = !me.unreadChecked;
+		[me noteFirstUnreadIn:messages];
 		me.rawMessages = messages;
 		me.messages = [me groupedMessagesFromMessages:messages];
-		// hold the bottom until the media has settled
-		me.anchorToBottom = YES;
-		dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(6.0 * NSEC_PER_SEC)),
-				dispatch_get_main_queue(), ^{ me.anchorToBottom = NO; });
+		NSInteger unreadRow = firstLoad ? [me unreadSeparatorRow] : NSNotFound;
+		// hold the bottom until the media has settled - unless the chat opens
+		// at what you have not read yet
+		me.anchorToBottom = unreadRow == NSNotFound;
+		if (me.anchorToBottom)
+			dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(6.0 * NSEC_PER_SEC)),
+					dispatch_get_main_queue(), ^{ me.anchorToBottom = NO; });
 		// kinds only - the content is the user's, the log is read remotely
 		NSMutableArray *kinds = [NSMutableArray array];
 		for (NSDictionary *m in messages)
@@ -378,7 +395,11 @@
 		NSLog(@"TDLIB HISTORY: %lu msgs: %@",
 				(unsigned long)messages.count, [kinds componentsJoinedByString:@", "]);
 		[me.table reloadData];
-		[me scrollToBottomAnimated:NO];
+		if (unreadRow != NSNotFound)
+			[me.table scrollToRowAtIndexPath:[NSIndexPath indexPathForRow:unreadRow inSection:0]
+							atScrollPosition:UITableViewScrollPositionTop animated:NO];
+		else
+			[me scrollToBottomAnimated:NO];
 		[me fetchMissingImages];
 		[me resolveUnknownSenders];
 		[me fetchMissingQuotes];
@@ -842,13 +863,17 @@
 }
 
 - (void)scrollViewDidScroll:(UIScrollView *)scrollView {
-    if (self.isLoadingMoreHistory || !self.messages.count)
+    if (scrollView == self.table)
+        [self chromeDidScroll];
+    if (scrollView != self.table || self.isLoadingMoreHistory || !self.messages.count)
         return;
     
     // Load more when scrolled near the top
     if (scrollView.contentOffset.y < 100) {
         self.isLoadingMoreHistory = YES;
-        int64_t fromMessageId = [self.messages.firstObject[@"id"] longLongValue];
+        // The raw list: the grouped one starts with a day plate, which has no id.
+        NSArray *pool = self.rawMessages.count ? self.rawMessages : self.messages;
+        int64_t fromMessageId = [pool.firstObject[@"id"] longLongValue];
         
         [[TGClient shared] historyForChat:self.chatId fromMessageId:fromMessageId limit:60 completion:^(NSArray *older) {
             dispatch_async(dispatch_get_main_queue(), ^{

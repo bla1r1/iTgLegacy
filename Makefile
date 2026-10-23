@@ -215,6 +215,7 @@ APP_SRC_M := \
 	src/Controllers/TGChatViewController+Cells.m \
 	src/Controllers/TGChatViewController+Input.m \
 	src/Controllers/TGChatViewController+Media.m \
+	src/Controllers/TGChatViewController+Chrome.m \
 	src/Controllers/TGContactsViewController.m \
 	src/Controllers/TGTopicsViewController.m \
 	src/Controllers/TGForwardPicker.m \

@@ -79,6 +79,21 @@ static const CGFloat kInputHeight = 48.0f;
 @property (nonatomic, strong) TGEmojiPanel *stickerPanel;   // emoji, stickers, GIFs
 @property (nonatomic, strong) NSMutableDictionary *layoutCache;
 @property (nonatomic, strong) NSMutableDictionary *gifPaths;       // docId -> local MP4
+// Chrome (TGChatViewController+Chrome)
+@property (nonatomic, assign) int64_t readInboxAtOpen;   // where you had read up to
+@property (nonatomic, assign) int64_t unreadFromId;      // the "Unread Messages" bar goes above it
+@property (nonatomic, assign) BOOL unreadChecked;
+@property (nonatomic, strong) UILabel *floatingDate;
+@property (nonatomic, strong) UIButton *jumpButton;
+@property (nonatomic, strong) UILabel *jumpBadge;
+@property (nonatomic, assign) NSInteger newWhileAway;
+@property (nonatomic, strong) UIPanGestureRecognizer *replyPanRecognizer;
+@property (nonatomic, weak) UITableViewCell *replySwipeCell;
+@property (nonatomic, assign) NSInteger replySwipeRow;
+@property (nonatomic, strong) UIImageView *replyHint;
+@property (nonatomic, strong) NSTimer *typingTimer;
+@property (nonatomic, copy) NSString *typingBase;
+@property (nonatomic, assign) NSInteger typingStep;
 @property (nonatomic, strong) NSMutableSet *gifsRequested;
 @property (nonatomic, strong) UILabel *titleNameLabel;
 @property (nonatomic, strong) UILabel *titleSubtitleLabel;
@@ -210,6 +225,21 @@ static const CGFloat kInputHeight = 48.0f;
 - (float)playedFraction;
 - (void)voiceDiscTapped:(UITapGestureRecognizer *)tap;
 - (void)waveformScrubbed:(UIGestureRecognizer *)gesture;
+
+// Chrome
+- (NSArray *)messagesWithSeparators:(NSArray *)grouped;
+- (void)noteFirstUnreadIn:(NSArray *)raw;
+- (NSInteger)unreadSeparatorRow;
+- (void)buildChrome;
+- (void)applyChromeTheme:(TGTheme *)theme;
+- (void)layoutChrome;
+- (BOOL)isNearBottom;
+- (void)noteArrivedWhileAway;
+- (void)chromeDidScroll;
+- (void)installSwipeToReply;
+- (void)showChatAction:(NSString *)action resting:(NSString *)resting;
+- (void)stopChrome;
+- (void)runMessageAction:(NSString *)action;
 
 @end
 

@@ -14,10 +14,40 @@ static BOOL sIsCancelled;
 
 /// Send is for typed text, the microphone for everything else - showing both
 /// at once would leave one of them dead.
+/// Send takes the microphone's place once there is something to send, and
+/// the two cross over with a quick scale rather than blinking.
 - (void)inputChanged {
 	BOOL hasText = self.input.text.length > 0;
-	self.sendButton.hidden = !hasText;
-	self.micButton.hidden = hasText;
+	UIButton *coming = hasText ? self.sendButton : self.micButton;
+	UIButton *going = hasText ? self.micButton : self.sendButton;
+	if (!coming.hidden && going.hidden)
+		return;
+
+	if (!self.view.window){
+		coming.hidden = NO;
+		going.hidden = YES;
+		return;
+	}
+	CGAffineTransform small = CGAffineTransformMakeScale(0.3f, 0.3f);
+	coming.hidden = NO;
+	coming.alpha = 0;
+	coming.transform = small;
+	[UIView animateWithDuration:0.16 animations:^{
+		coming.alpha = 1;
+		coming.transform = CGAffineTransformIdentity;
+		going.alpha = 0;
+		going.transform = small;
+	} completion:^(BOOL finished){
+		// Settle on whatever the text says now; it may have changed again
+		// while this ran.
+		BOOL text = self.input.text.length > 0;
+		self.sendButton.hidden = !text;
+		self.micButton.hidden = text;
+		for (UIButton *button in @[self.sendButton, self.micButton]){
+			button.alpha = 1;
+			button.transform = CGAffineTransformIdentity;
+		}
+	}];
 }
 
 /// Their recording panel: a red dot, the running time, "Slide to cancel", and
