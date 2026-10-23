@@ -50,6 +50,29 @@ static void TGSetWanted(NSString *key, BOOL wanted) {
 	TGSetWanted(@"TGWantGifAutoplay", wanted);
 }
 
++ (BOOL)canPlayAnimatedStickers {
+	// TGLottieView does play these on an A5 - not at full speed, but it plays.
+	// Custom emoji are the ones that need a newer chip, because they animate
+	// inside every message rather than one at a time.
+	return [TGDevice tier] >= TGDeviceTierLegacy && [self animatedStickersWanted];
+}
+
++ (BOOL)canShowWallpaper {
+	return [TGDevice tier] >= TGDeviceTierLegacy && [self wallpaperWanted];
+}
+
++ (BOOL)canAnimateInline {
+	return [TGDevice tier] >= TGDeviceTierModern;
+}
+
++ (BOOL)canHoldMultipleAccounts {
+	return [TGDevice tier] >= TGDeviceTierFull;
+}
+
++ (BOOL)canEncodeVideoCall {
+	return [TGDevice tier] >= TGDeviceTierFull;
+}
+
 + (BOOL)canAutoplayGIFs {
 	return [TGDevice tier] >= TGDeviceTierLegacy && [self gifAutoplayWanted];
 }
