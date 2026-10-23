@@ -16,6 +16,10 @@ typedef NS_ENUM(NSInteger, TGAuthState) {
     TGAuthStateClosed
 };
 
+/// Posted on the main queue when the other side reads your messages in a
+/// chat; userInfo carries "chatId".
+extern NSString *const TGChatReadOutboxChangedNotification;
+
 @interface TGClient : NSObject
 
 + (instancetype)shared;
@@ -53,6 +57,10 @@ typedef NS_ENUM(NSInteger, TGConnectionState) {
 
 /// Chat id of Saved Messages, which is the signed-in user's own chat.
 - (int64_t)savedMessagesChatId;
+
+/// The newest of your own messages in a chat the other side has read; 0 when
+/// nothing is known. Anything at or below it carries two ticks.
+- (int64_t)lastReadOutboxForChat:(int64_t)chatId;
 
 /// Profile photo file id for a user, or nil if TDLib has not sent one.
 - (NSNumber *)photoFileIdForUserId:(int64_t)userId;

@@ -139,7 +139,7 @@
 									 pollTimeW - (mine ? 18 : 0), 12);
 		cell.ticks.hidden = !mine;
 		if (mine) {
-			cell.ticks.image = [TGIcons ticksWhite:NO];
+			cell.ticks.image = [self ticksForMessage:m white:NO];
 			cell.ticks.frame = CGRectMake(layout.bubbleFrame.size.width - kPadH - 15, layout.bubbleFrame.size.height - 15, 15, 9);
 		}
 		return [self finalizeCell:cell message:m layout:layout isMine:mine];
@@ -242,7 +242,7 @@
 									 fileTimeW - fileTicks, 12);
 		cell.ticks.hidden = !mine;
 		if (mine) {
-			cell.ticks.image = [TGIcons ticksWhite:NO];
+			cell.ticks.image = [self ticksForMessage:m white:NO];
 			cell.ticks.frame = CGRectMake(layout.bubbleFrame.size.width - kPadH - 15, layout.bubbleFrame.size.height - 15, 15, 9);
 		}
 		cell.picture.hidden = YES;
@@ -331,7 +331,7 @@
 									 fileTimeW - fileTicks, 12);
 		cell.ticks.hidden = !mine;
 		if (mine) {
-			cell.ticks.image = [TGIcons ticksWhite:NO];
+			cell.ticks.image = [self ticksForMessage:m white:NO];
 			cell.ticks.frame = CGRectMake(layout.bubbleFrame.size.width - kPadH - 15, fwd + 32, 15, 9);
 		}
 		cell.picture.hidden = YES;
@@ -445,7 +445,7 @@
 
 		cell.ticks.hidden = !mine;
 		if (mine) {
-			cell.ticks.image = [TGIcons ticksWhite:NO];
+			cell.ticks.image = [self ticksForMessage:m white:NO];
 			cell.ticks.frame = CGRectMake(layout.bubbleFrame.size.width - locTicks - kPadH + 2,
 										  layout.bubbleFrame.size.height - 15, 15, 9);
 			[cell.bubble bringSubviewToFront:cell.ticks];
@@ -519,7 +519,7 @@
 
 		cell.ticks.hidden = !mine;
 		if (mine) {
-			cell.ticks.image = [TGIcons ticksWhite:YES];
+			cell.ticks.image = [self ticksForMessage:m white:YES];
 			cell.ticks.frame = CGRectMake(CGRectGetMaxX(cell.mediaStamp.frame) - 16,
 										  CGRectGetMidY(cell.mediaStamp.frame) - 4.5f, 15, 9);
 			[cell.bubble bringSubviewToFront:cell.ticks];
@@ -720,7 +720,7 @@
 									 layout.timeWidth - tickRoom, 12);
 		cell.ticks.hidden = !mine;
 		if (mine) {
-			cell.ticks.image = [TGIcons ticksWhite:NO];
+			cell.ticks.image = [self ticksForMessage:m white:NO];
 			cell.ticks.frame = CGRectMake(layout.bubbleFrame.size.width - kPadH - 15, layout.bubbleFrame.size.height - 18, 15, 9);
 		}
 		return [self finalizeCell:cell message:m layout:layout isMine:mine];
@@ -769,18 +769,29 @@
 
 	cell.ticks.hidden = !mine;
 	if (mine && onPicture) {
-		cell.ticks.image = [TGIcons ticksWhite:YES];
+		cell.ticks.image = [self ticksForMessage:m white:YES];
 		cell.ticks.frame = CGRectMake(CGRectGetMaxX(cell.mediaStamp.frame) - 17,
 									  CGRectGetMidY(cell.mediaStamp.frame) - 4.5f, 15, 9);
 		[cell.bubble bringSubviewToFront:cell.ticks];
 	} else if (mine) {
-		cell.ticks.image = [TGIcons ticksWhite:NO];
+		cell.ticks.image = [self ticksForMessage:m white:NO];
 		cell.ticks.frame = CGRectMake(layout.bubbleFrame.size.width - kPadH - 15, layout.timeFrame.origin.y + 2, 15, 9);
 		[cell.bubble bringSubviewToFront:cell.ticks];
 	}
 	[cell.bubble bringSubviewToFront:cell.time];
 
 	return [self finalizeCell:cell message:m layout:layout isMine:mine];
+}
+
+#pragma mark - ticks
+
+/// Two ticks once the other side has read it, one until then.
+- (UIImage *)ticksForMessage:(NSDictionary *)m white:(BOOL)white {
+	// Saved Messages has no one on the other side to read it.
+	BOOL read = self.chatId == [[TGClient shared] savedMessagesChatId] ||
+				[m[@"id"] longLongValue] <= [[TGClient shared] lastReadOutboxForChat:self.chatId];
+	UIColor *colour = white ? [UIColor whiteColor] : [[TGTheme shared] ticksColour];
+	return [TGIcons ticksColour:colour read:read];
 }
 
 #pragma mark - runs
@@ -797,6 +808,35 @@ static BOOL TGSameRun(NSDictionary *a, NSDictionary *b) {
 	if ([a[@"senderId"] longLongValue] != [b[@"senderId"] longLongValue])
 		return NO;
 	return fabs([a[@"date"] doubleValue] - [b[@"date"] doubleValue]) < 300;
+}
+
+- (BOOL)runStartsAtRow:(NSInteger)row {
+	if (row <= 0 || row >= (NSInteger)self.messages.count)
+		return YES;
+	return !TGSameRun(self.messages[row - 1], self.messages[row]);
+}
+
+- (BOOL)runEndsAtRow:(NSInteger)row {
+	if (row < 0 || row + 1 >= (NSInteger)self.messages.count)
+		return YES;
+	return !TGSameRun(self.messages[row], self.messages[row + 1]);
+}
+
+/// How far a bubble moves from where its cached layout put it (3pt down) so
+/// that bubbles of one run sit 2pt apart and runs 8pt apart. Zero for rows
+/// that are not bubbles laid out at the top of their row.
+- (CGFloat)runShiftAtRow:(NSInteger)row layout:(TGMessageLayout *)layout {
+	if (layout.isService || fabs(layout.bubbleFrame.origin.y - 3.0f) > 0.1f)
+		return 0;
+	return ([self runStartsAtRow:row] ? 4.0f : 1.0f) - 3.0f;
+}
+
+- (CGFloat)runHeightChangeAtRow:(NSInteger)row layout:(TGMessageLayout *)layout {
+	if (layout.isService || fabs(layout.bubbleFrame.origin.y - 3.0f) > 0.1f)
+		return 0;
+	CGFloat above = [self runStartsAtRow:row] ? 4.0f : 1.0f;
+	CGFloat below = [self runEndsAtRow:row] ? 4.0f : 1.0f;
+	return (above - 3.0f) + (below - 3.0f);
 }
 
 /// A rounded box whose four corners can differ.
@@ -834,10 +874,27 @@ static UIBezierPath *TGBubblePath(CGSize size, CGFloat tl, CGFloat tr, CGFloat b
 	NSDictionary *m = self.messages[indexPath.row];
 	TGMessageLayout *layout = [self layoutForMessage:m atRow:indexPath.row];
 	NSInteger row = indexPath.row;
-	NSDictionary *previous = row > 0 ? self.messages[row - 1] : nil;
-	NSDictionary *next = row + 1 < (NSInteger)self.messages.count ? self.messages[row + 1] : nil;
-	BOOL first = !TGSameRun(previous, m);
-	BOOL last = !TGSameRun(m, next);
+	BOOL first = [self runStartsAtRow:row];
+	BOOL last = [self runEndsAtRow:row];
+
+	// The rhythm: positions are set from the layout each time, so this is
+	// safe however often the cell is shown.
+	CGFloat shift = [self runShiftAtRow:row layout:layout];
+	if (shift != 0) {
+		CGRect b = cell.bubble.frame;
+		b.origin.y = layout.bubbleFrame.origin.y + shift;
+		cell.bubble.frame = b;
+		if (!cell.senderAvatar.hidden) {
+			CGRect a = cell.senderAvatar.frame;
+			a.origin.y = layout.senderAvatarFrame.origin.y + shift;
+			cell.senderAvatar.frame = a;
+		}
+		if (!cell.checkbox.hidden) {
+			CGRect c = cell.checkbox.frame;
+			c.origin.y = CGRectGetMidY(b) - c.size.height / 2;
+			cell.checkbox.frame = c;
+		}
+	}
 
 	// A group shows the sender's picture once, beside the tail.
 	if (!last && !cell.senderAvatar.hidden)

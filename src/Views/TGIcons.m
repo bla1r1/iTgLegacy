@@ -553,7 +553,11 @@ void TGIconsSetCached(NSString *key, UIImage *img) {
 
 + (UIImage *)ticksWhite:(BOOL)white {
 	UIColor *c = white ? [UIColor whiteColor] : [[TGTheme shared] ticksColour];
-	NSString *key = [NSString stringWithFormat:@"ticks_%lu", (unsigned long)[c hash]];
+	return [self ticksColour:c read:YES];
+}
+
++ (UIImage *)ticksColour:(UIColor *)c read:(BOOL)read {
+	NSString *key = [NSString stringWithFormat:@"ticks_%lu_%d", (unsigned long)[c hash], read];
 	UIImage *cached = TGIconsGetCached(key);
 	if (cached) return cached;
 
@@ -566,10 +570,14 @@ void TGIconsSetCached(NSString *key, UIImage *img) {
 	CGContextSetLineCap(ctx, kCGLineCapRound);
 	CGContextSetLineJoin(ctx, kCGLineJoinRound);
 
-	CGContextMoveToPoint(ctx, 0.5f, 5.0f);
-	CGContextAddLineToPoint(ctx, 3.0f, 7.6f);
-	CGContextAddLineToPoint(ctx, 8.4f, 1.4f);
-	CGContextStrokePath(ctx);
+	// A single check is the right-hand one alone, so the mark stays put when
+	// it gains its partner.
+	if (read){
+		CGContextMoveToPoint(ctx, 0.5f, 5.0f);
+		CGContextAddLineToPoint(ctx, 3.0f, 7.6f);
+		CGContextAddLineToPoint(ctx, 8.4f, 1.4f);
+		CGContextStrokePath(ctx);
+	}
 
 	CGContextMoveToPoint(ctx, 6.0f, 5.0f);
 	CGContextAddLineToPoint(ctx, 8.5f, 7.6f);

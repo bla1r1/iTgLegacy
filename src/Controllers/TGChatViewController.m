@@ -122,6 +122,10 @@
 	[[NSNotificationCenter defaultCenter] addObserver:self
 			selector:@selector(musicChanged)
 				name:TGMusicPlayerChangedNotification object:nil];
+	// One tick turns into two when they read it.
+	[[NSNotificationCenter defaultCenter] addObserver:self
+			selector:@selector(readOutboxChanged:)
+				name:TGChatReadOutboxChangedNotification object:nil];
 
 	[[TGClient shared] openChat:self.chatId];
 	[self reload];
@@ -273,6 +277,11 @@
 }
 
 #pragma mark - data
+
+- (void)readOutboxChanged:(NSNotification *)note {
+	if ([note.userInfo[@"chatId"] longLongValue] == self.chatId)
+		[self reloadTableDebounced];
+}
 
 - (void)reloadTableDebounced {
 	[NSObject cancelPreviousPerformRequestsWithTarget:self.table selector:@selector(reloadData) object:nil];

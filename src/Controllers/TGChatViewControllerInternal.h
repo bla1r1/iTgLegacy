@@ -195,6 +195,11 @@ static const CGFloat kInputHeight = 48.0f;
 - (UIImage *)imageFor:(NSDictionary *)m;
 - (CGSize)imageSizeFor:(NSDictionary *)m;
 - (TGMessageLayout *)layoutForMessage:(NSDictionary *)m atRow:(NSInteger)row;
+/// Runs: neighbouring bubbles from one sender a few minutes apart.
+- (BOOL)runStartsAtRow:(NSInteger)row;
+- (BOOL)runEndsAtRow:(NSInteger)row;
+- (CGFloat)runHeightChangeAtRow:(NSInteger)row layout:(TGMessageLayout *)layout;
+- (UIImage *)ticksForMessage:(NSDictionary *)m white:(BOOL)white;
 - (BOOL)continuesAlbumAtRow:(NSInteger)row;
 - (BOOL)albumContinuesAfterRow:(NSInteger)row;
 - (void)pollOptionTapped:(UIButton *)option;

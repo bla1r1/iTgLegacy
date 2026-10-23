@@ -328,6 +328,14 @@ static NSString *TGChatDate(NSTimeInterval unix) {
 
 	cell.onlineDot.hidden = ![c[@"isOnline"] boolValue];
 
+	// Your own last message shows whether it has been read, beside the date.
+	// Saved Messages has no one to read it.
+	if ([c[@"lastOutgoing"] boolValue] && ![c[@"isSaved"] boolValue] && ![action length]){
+		BOOL read = [c[@"lastId"] longLongValue] <= [c[@"readOutbox"] longLongValue];
+		cell.tick.image = [TGIcons ticksColour:[theme ticksColour] read:read];
+		cell.tick.hidden = NO;
+	}
+
 	// A muted chat carries a small speaker after its title; a pinned one keeps
 	// a marker where the badge sits when it has none.
 	BOOL muted = [c[@"isMuted"] boolValue];

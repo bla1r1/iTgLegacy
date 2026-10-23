@@ -3,6 +3,8 @@
 #include <dlfcn.h>
 #include "api_id.h"
 
+NSString *const TGChatReadOutboxChangedNotification = @"TGChatReadOutboxChangedNotification";
+
 @implementation TGClient
 
 + (instancetype)shared {
@@ -245,6 +247,7 @@
 		[type isEqualToString:@"updateChatPosition"] ||
 		[type isEqualToString:@"updateChatTitle"] ||
 		[type isEqualToString:@"updateChatReadInbox"] ||
+		[type isEqualToString:@"updateChatReadOutbox"] ||
 		[type isEqualToString:@"updateChatNotificationSettings"]){
 		[self applyChatUpdate:obj];
 		return;

@@ -43,6 +43,8 @@
 /// Delivery ticks, drawn the way Telegram draws them: two checks overlapping
 /// into one mark, not two separate glyphs side by side.
 + (UIImage *)ticksWhite:(BOOL)white;
+/// One check for sent, two for read, in a given colour.
++ (UIImage *)ticksColour:(UIColor *)colour read:(BOOL)read;
 + (UIImage *)selectionCheckboxSelected:(BOOL)selected;
 
 /// The arrow beside a call in a chat: down-left for one that came in, up-right

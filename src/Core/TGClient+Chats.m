@@ -453,6 +453,8 @@ int64_t TGArchiveOrder(NSArray *positions) {
 	}
 	if (chat[@"unread_count"])
 		info[@"unread"] = chat[@"unread_count"];
+	if (chat[@"last_read_outbox_message_id"])
+		info[@"readOutbox"] = chat[@"last_read_outbox_message_id"];
 
 	NSString *chatType = chat[@"type"][@"@type"];
 	if (chatType)
@@ -519,6 +521,8 @@ int64_t TGArchiveOrder(NSArray *positions) {
 - (NSString *)previewForLastMessage:(NSDictionary *)last inChat:(NSMutableDictionary *)info {
 	NSString *text = TGMessagePreview(last);
 	info[@"previewText"] = text ?: @"";
+	info[@"lastId"] = last[@"id"] ?: @(0);
+	info[@"lastOutgoing"] = @([last[@"is_outgoing"] boolValue]);
 	[info removeObjectForKey:@"lastAuthor"];
 	if ([last[@"is_outgoing"] boolValue]){
 		if (![info[@"isSaved"] boolValue])
@@ -540,6 +544,10 @@ int64_t TGArchiveOrder(NSArray *positions) {
 	return [NSString stringWithFormat:@"%@: %@", who, text];
 }
 
+- (int64_t)lastReadOutboxForChat:(int64_t)chatId {
+	return [self.chatsById[@(chatId)][@"readOutbox"] longLongValue];
+}
+
 - (void)applyChatUpdate:(NSDictionary *)update {
 	NSNumber *chatId = update[@"chat_id"];
 	if (!chatId)
@@ -556,6 +564,11 @@ int64_t TGArchiveOrder(NSArray *positions) {
 		info[@"title"] = update[@"title"];
 	if (update[@"unread_count"])
 		info[@"unread"] = update[@"unread_count"];
+	if (update[@"last_read_outbox_message_id"]){
+		info[@"readOutbox"] = update[@"last_read_outbox_message_id"];
+		[[NSNotificationCenter defaultCenter] postNotificationName:TGChatReadOutboxChangedNotification
+				object:self userInfo:@{@"chatId": chatId}];
+	}
 
 	NSDictionary *last = update[@"last_message"];
 	if ([last isKindOfClass:NSDictionary.class]){

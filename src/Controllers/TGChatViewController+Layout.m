@@ -444,7 +444,8 @@ UIColor *TGSenderColour(int64_t userId) {
 
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
 	NSDictionary *m = self.messages[indexPath.row];
-	return [self layoutForMessage:m atRow:indexPath.row].rowHeight;
+	TGMessageLayout *layout = [self layoutForMessage:m atRow:indexPath.row];
+	return layout.rowHeight + [self runHeightChangeAtRow:indexPath.row layout:layout];
 }
 
 @end
