@@ -40,7 +40,7 @@ this does not.
 | **done** | Reactions | shown on messages; can add a thumbs up |
 | | Message selection and multi-actions | one message at a time |
 | **done** | Jump to the quoted message | scrolls and flashes it |
-| | Unread separator and jump-to-unread | history opens at the bottom |
+| **done** | Unread separator and jump-to-unread | opens at the Unread Messages bar; a jump-down button counts what arrives while reading above |
 | | Scheduled and silent sending | |
 | **done** | Saved Messages | from the Folders menu |
 
@@ -62,9 +62,9 @@ this does not.
 | **done** | Albums (grouped media) | one block, one timestamp |
 | *in progress* | Download progress and cancel | progress shown; no cancel |
 | **done** | Save to camera roll | hold the full-screen picture |
-| | GIF autoplay | plays on tap only |
-| *in progress* | Send stickers | a strip of recent stickers; animated ones stand in as their emoji |
-| | Sticker sets: install, browse, favourites | |
+| **done** | GIF autoplay | muted loop in the bubble on A5 and up (Power Saving switch); tap still opens the viewer |
+| **done** | Send stickers and GIFs | emoji / sticker / GIF panel; GIF search through @gif |
+| *in progress* | Sticker sets: install, browse, favourites | browse installed sets and favourites; installing new sets not yet |
 | *in progress* | Photo viewer | zooms; no swipe between photos |
 | **done** | Polls | question, options and shares; tap to vote |
 

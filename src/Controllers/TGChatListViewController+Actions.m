@@ -1,4 +1,5 @@
 #import "TGChatListViewControllerInternal.h"
+#import "TGCapabilities.h"
 
 @implementation TGChatListViewController (Actions)
 
@@ -130,6 +131,55 @@
 			[me.tableView reloadData];
 		}
 	});
+}
+
+#pragma mark - swipe actions
+
+/// Swipe a row left for Mute, Archive and Delete, the way their iOS client
+/// does. The API for more than a single Delete arrived in iOS 8; before that
+/// rows are not swiped at all and holding one opens the same choices.
+- (BOOL)tableView:(UITableView *)tableView canEditRowAtIndexPath:(NSIndexPath *)indexPath {
+	if (![TGCapabilities canSwipeRowActions] || self.searchResults)
+		return NO;
+	NSInteger index = indexPath.row - (NSInteger)[self headerRows].count;
+	return index >= 0 && index < (NSInteger)[self visibleChats].count;
+}
+
+- (void)tableView:(UITableView *)tableView commitEditingStyle:(UITableViewCellEditingStyle)style
+		forRowAtIndexPath:(NSIndexPath *)indexPath {
+	// Required for the swipe to appear; the buttons below do the work.
+}
+
+- (NSArray *)tableView:(UITableView *)tableView editActionsForRowAtIndexPath:(NSIndexPath *)indexPath {
+	Class rowAction = NSClassFromString(@"UITableViewRowAction");
+	NSInteger index = indexPath.row - (NSInteger)[self headerRows].count;
+	NSArray *chats = [self visibleChats];
+	if (!rowAction || index < 0 || index >= (NSInteger)chats.count)
+		return @[];
+	NSDictionary *chat = chats[index];
+	BOOL muted = [chat[@"isMuted"] boolValue];
+
+	__weak typeof(self) weakSelf = self;
+	void (^run)(NSInteger) = ^(NSInteger choice){
+		TGChatListViewController *me = weakSelf;
+		[me.tableView setEditing:NO animated:YES];
+		me.actionChat = chat;
+		[me runChatAction:choice];
+	};
+	// Same choice numbers as the held-row menu: 1 mute, 2 archive, 3 delete.
+	id delete = [rowAction rowActionWithStyle:UITableViewRowActionStyleDestructive
+										title:@"Delete"
+									  handler:^(id action, NSIndexPath *path){ run(3); }];
+	id archive = [rowAction rowActionWithStyle:UITableViewRowActionStyleNormal
+										 title:self.showsArchive ? @"Unarchive" : @"Archive"
+									   handler:^(id action, NSIndexPath *path){ run(2); }];
+	[archive setBackgroundColor:[UIColor colorWithRed:0.66f green:0.69f blue:0.73f alpha:1]];
+	id mute = [rowAction rowActionWithStyle:UITableViewRowActionStyleNormal
+									  title:muted ? @"Unmute" : @"Mute"
+									handler:^(id action, NSIndexPath *path){ run(1); }];
+	[mute setBackgroundColor:[UIColor colorWithRed:1.0f green:0.58f blue:0.0f alpha:1]];
+	// Right to left: Delete sits at the edge.
+	return @[delete, archive, mute];
 }
 
 @end

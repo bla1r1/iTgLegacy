@@ -183,12 +183,21 @@
 	}
 
 	UIImage *image = info[UIImagePickerControllerOriginalImage];
+	if (image)
+		[self sendImage:image];
+}
+
+/// TDLib wants a path, so the picture is written to a temporary file first -
+/// one per photo, since two sent in a row would otherwise overwrite each
+/// other before the first has uploaded.
+- (void)sendImage:(UIImage *)image {
 	if (!image)
 		return;
-
-	// TDLib wants a path, so write the pick to a temporary file first.
-	NSString *path = [NSTemporaryDirectory()
-			stringByAppendingPathComponent:@"outgoing.jpg"];
+	CFUUIDRef uuid = CFUUIDCreate(NULL);
+	NSString *name = (__bridge_transfer NSString *)CFUUIDCreateString(NULL, uuid);
+	CFRelease(uuid);
+	NSString *path = [NSTemporaryDirectory() stringByAppendingPathComponent:
+			[NSString stringWithFormat:@"outgoing-%@.jpg", name]];
 	if (![UIImageJPEGRepresentation(image, 0.85f) writeToFile:path atomically:YES]){
 		NSLog(@"cannot stage the picked image");
 		return;

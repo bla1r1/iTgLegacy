@@ -204,6 +204,7 @@ APP_SRC_M := \
 	src/Views/TGChatCell.m \
 	src/Views/TGEmojiData.m \
 	src/Views/TGEmojiPanel.m \
+	src/Views/TGAttachSheet.m \
 	src/Views/TGMessageLayout.m \
 	src/Views/TGBubbleCell.m \
 	src/Controllers/TGChatViewController.m \

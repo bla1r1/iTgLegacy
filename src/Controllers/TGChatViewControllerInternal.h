@@ -239,7 +239,7 @@ static const CGFloat kInputHeight = 48.0f;
 - (void)installSwipeToReply;
 - (void)showChatAction:(NSString *)action resting:(NSString *)resting;
 - (void)stopChrome;
-- (void)runMessageAction:(NSString *)action;
+- (void)sendImage:(UIImage *)image;
 
 @end
 

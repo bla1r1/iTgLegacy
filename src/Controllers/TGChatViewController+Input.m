@@ -2,6 +2,7 @@
 #import "TGTheme.h"
 #import "TGIcons.h"
 #import "UIImage+WebP.h"
+#import "TGAttachSheet.h"
 
 @implementation TGChatViewController (Input)
 
@@ -270,16 +271,21 @@ static const NSInteger kAttachSheetTag  = 41;
 static const NSInteger kMessageSheetTag = 42;
 
 - (void)attachTapped {
-	UIActionSheet *sheet = [[UIActionSheet alloc] initWithTitle:nil
-													  delegate:self
-											 cancelButtonTitle:nil
-										destructiveButtonTitle:nil
-											 otherButtonTitles:@"Photo or Video",
-														   @"Location",
-														   @"Contact", nil];
-	sheet.cancelButtonIndex = [sheet addButtonWithTitle:@"Cancel"];
-	sheet.tag = kAttachSheetTag;
-	[sheet showInView:self.view];
+	[self.input resignFirstResponder];
+	[self hideStickerPanel];
+	UIView *host = self.navigationController.view ?: self.view;
+	TGAttachSheet *sheet = [TGAttachSheet showInView:host];
+	__weak typeof(self) weakSelf = self;
+	sheet.onPhoto = ^(UIImage *image){
+		[weakSelf sendImage:image];
+	};
+	sheet.onChoice = ^(TGAttachChoice choice){
+		switch (choice){
+			case TGAttachChoiceGallery:  [weakSelf pickMedia]; break;
+			case TGAttachChoiceLocation: [weakSelf sendCurrentLocation]; break;
+			case TGAttachChoiceContact:  [weakSelf pickContact]; break;
+		}
+	};
 }
 
 - (void)actionSheet:(UIActionSheet *)sheet clickedButtonAtIndex:(NSInteger)index {

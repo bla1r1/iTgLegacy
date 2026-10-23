@@ -106,9 +106,35 @@ static UIImage *TGGlyphAvatar(CGFloat side, void (^draw)(CGContextRef ctx, CGFlo
 	UIGraphicsBeginImageContextWithOptions(CGSizeMake(size, size), NO, 0);
 	CGContextRef ctx = UIGraphicsGetCurrentContext();
 
-	CGContextSetRGBFillColor(ctx, [c[0] floatValue], [c[1] floatValue],
-								  [c[2] floatValue], 1.0f);
-	CGContextFillEllipseInRect(ctx, CGRectMake(0, 0, size, size));
+	NSUInteger slot = order[(NSUInteger)llabs(colourId) % 7];
+	if (isFlat){
+		// Their current placeholders: the same seven hues as a gradient, lighter
+		// at the top. Drawn into the circle the plain colour used to fill.
+		static const uint32_t top[8]    = {0xFF845E, 0xFEBB5B, 0xB694F9, 0x9AD164,
+										   0x53EDD6, 0x5CAFFA, 0xFF8AAC, 0xFF845E};
+		static const uint32_t bottom[8] = {0xD45246, 0xF68136, 0x6C61DF, 0x46BA43,
+										   0x28C9B7, 0x408ACF, 0xD95574, 0xD45246};
+		CGFloat components[8] = {
+			((top[slot] >> 16) & 0xFF) / 255.0f, ((top[slot] >> 8) & 0xFF) / 255.0f,
+			(top[slot] & 0xFF) / 255.0f, 1.0f,
+			((bottom[slot] >> 16) & 0xFF) / 255.0f, ((bottom[slot] >> 8) & 0xFF) / 255.0f,
+			(bottom[slot] & 0xFF) / 255.0f, 1.0f,
+		};
+		CGFloat locations[2] = {0.0f, 1.0f};
+		CGColorSpaceRef space = CGColorSpaceCreateDeviceRGB();
+		CGGradientRef gradient = CGGradientCreateWithColorComponents(space, components, locations, 2);
+		CGContextSaveGState(ctx);
+		CGContextAddEllipseInRect(ctx, CGRectMake(0, 0, size, size));
+		CGContextClip(ctx);
+		CGContextDrawLinearGradient(ctx, gradient, CGPointMake(0, 0), CGPointMake(0, size), 0);
+		CGContextRestoreGState(ctx);
+		CGGradientRelease(gradient);
+		CGColorSpaceRelease(space);
+	} else {
+		CGContextSetRGBFillColor(ctx, [c[0] floatValue], [c[1] floatValue],
+									  [c[2] floatValue], 1.0f);
+		CGContextFillEllipseInRect(ctx, CGRectMake(0, 0, size, size));
+	}
 
 	if (!isFlat){
 		// a glassy highlight across the top half
@@ -122,7 +148,8 @@ static UIImage *TGGlyphAvatar(CGFloat side, void (^draw)(CGContextRef ctx, CGFlo
 	}
 
 	NSString *text = initials.length ? initials : @"?";
-	UIFont *font = [UIFont boldSystemFontOfSize:size * 0.4f];
+	UIFont *font = [UIFont fontWithName:@"HelveticaNeue-Medium" size:size * 0.4f]
+			?: [UIFont boldSystemFontOfSize:size * 0.4f];
 	CGSize textSize = [text sizeWithFont:font];
 	[[UIColor whiteColor] set];
 	[text drawAtPoint:CGPointMake((size - textSize.width) / 2,

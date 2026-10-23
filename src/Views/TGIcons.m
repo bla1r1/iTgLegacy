@@ -65,91 +65,132 @@ void TGIconsSetCached(NSString *key, UIImage *img) {
 	return image;
 }
 
+// The three tab glyphs as paths, so each can be drawn filled (the selected
+// tab, and every tab before iOS 7) or as an outline (the others, which is
+// how their iOS 7 tab bar tells them apart).
+static UIBezierPath *TGChatsTabPath(CGFloat s) {
+	// Smooth Telegram chat bubble
+	CGFloat r = 7.0f;
+	CGRect rect = CGRectMake(3.0f, 4.0f, s - 6.0f, 15.0f);
+	UIBezierPath *p = [UIBezierPath bezierPath];
+	[p moveToPoint:CGPointMake(rect.origin.x + r, rect.origin.y)];
+	[p addLineToPoint:CGPointMake(CGRectGetMaxX(rect) - r, rect.origin.y)];
+	[p addArcWithCenter:CGPointMake(CGRectGetMaxX(rect) - r, rect.origin.y + r) radius:r startAngle:-M_PI_2 endAngle:0 clockwise:YES];
+	[p addLineToPoint:CGPointMake(CGRectGetMaxX(rect), CGRectGetMaxY(rect) - r)];
+	[p addArcWithCenter:CGPointMake(CGRectGetMaxX(rect) - r, CGRectGetMaxY(rect) - r) radius:r startAngle:0 endAngle:M_PI_2 clockwise:YES];
+	[p addLineToPoint:CGPointMake(rect.origin.x + 13.0f, CGRectGetMaxY(rect))];
+	// Tail curving down-left
+	[p addCurveToPoint:CGPointMake(rect.origin.x + 3.0f, CGRectGetMaxY(rect) + 5.0f)
+		 controlPoint1:CGPointMake(rect.origin.x + 8.0f, CGRectGetMaxY(rect) + 1.0f)
+		 controlPoint2:CGPointMake(rect.origin.x + 4.5f, CGRectGetMaxY(rect) + 3.5f)];
+	// Tail curve returning to bubble body
+	[p addCurveToPoint:CGPointMake(rect.origin.x + 6.0f, CGRectGetMaxY(rect))
+		 controlPoint1:CGPointMake(rect.origin.x + 4.5f, CGRectGetMaxY(rect) + 3.5f)
+		 controlPoint2:CGPointMake(rect.origin.x + 5.5f, CGRectGetMaxY(rect) + 1.5f)];
+	[p addLineToPoint:CGPointMake(rect.origin.x + r, CGRectGetMaxY(rect))];
+	[p addArcWithCenter:CGPointMake(rect.origin.x + r, CGRectGetMaxY(rect) - r) radius:r startAngle:M_PI_2 endAngle:M_PI clockwise:YES];
+	[p addLineToPoint:CGPointMake(rect.origin.x, rect.origin.y + r)];
+	[p addArcWithCenter:CGPointMake(rect.origin.x + r, rect.origin.y + r) radius:r startAngle:M_PI endAngle:-M_PI_2 clockwise:YES];
+	[p closePath];
+	return p;
+}
+
+static UIBezierPath *TGContactsTabPath(CGFloat s) {
+	// head and shoulders
+	UIBezierPath *p = [UIBezierPath bezierPathWithOvalInRect:CGRectMake(s/2 - 5, 4, 10, 10)];
+	[p appendPath:[UIBezierPath bezierPathWithRoundedRect:CGRectMake(s/2 - 9, 16, 18, 12) cornerRadius:9]];
+	return p;
+}
+
+static UIBezierPath *TGSettingsTabPath(CGFloat s) {
+	// iOS 7 Telegram 6-toothed circular gear
+	CGFloat cx = s / 2.0f;
+	CGFloat cy = s / 2.0f;
+	CGFloat rOut = 11.5f;
+	CGFloat rIn = 9.2f;
+	CGFloat rHole = 3.8f;
+	NSInteger teeth = 6;
+
+	UIBezierPath *gear = [UIBezierPath bezierPath];
+	CGFloat step = (CGFloat)(M_PI * 2.0 / teeth);
+	CGFloat halfTooth = step * 0.24f;
+
+	for (NSInteger i = 0; i < teeth; i++) {
+		CGFloat angle = i * step;
+		CGFloat a1 = angle - halfTooth;
+		CGFloat a2 = angle + halfTooth;
+		CGFloat aNext = angle + step - halfTooth;
+
+		CGPoint p1 = CGPointMake(cx + rIn * cosf(a1 - 0.12f), cy + rIn * sinf(a1 - 0.12f));
+		CGPoint p2 = CGPointMake(cx + rOut * cosf(a1), cy + rOut * sinf(a1));
+		CGPoint p3 = CGPointMake(cx + rOut * cosf(a2), cy + rOut * sinf(a2));
+		CGPoint p4 = CGPointMake(cx + rIn * cosf(a2 + 0.12f), cy + rIn * sinf(a2 + 0.12f));
+
+		if (i == 0) [gear moveToPoint:p1];
+		else [gear addLineToPoint:p1];
+		[gear addLineToPoint:p2];
+		[gear addLineToPoint:p3];
+		[gear addLineToPoint:p4];
+		[gear addArcWithCenter:CGPointMake(cx, cy) radius:rIn startAngle:a2 + 0.12f endAngle:aNext - 0.12f clockwise:YES];
+	}
+	[gear closePath];
+
+	UIBezierPath *hole = [UIBezierPath bezierPathWithOvalInRect:
+			CGRectMake(cx - rHole, cy - rHole, rHole * 2.0f, rHole * 2.0f)];
+	[gear appendPath:hole];
+	gear.usesEvenOddFillRule = YES;
+	return gear;
+}
+
+static void TGDrawTabPath(CGContextRef ctx, UIBezierPath *path, BOOL filled) {
+	CGContextAddPath(ctx, path.CGPath);
+	if (filled){
+		if (path.usesEvenOddFillRule)
+			CGContextEOFillPath(ctx);
+		else
+			CGContextFillPath(ctx);
+		return;
+	}
+	CGContextSetLineWidth(ctx, 1.6f);
+	CGContextSetLineJoin(ctx, kCGLineJoinRound);
+	CGContextStrokePath(ctx);
+}
+
 #pragma mark - tab bar
 
 + (UIImage *)chats {
 	return [self iconNamed:@"chats" draw:^(CGContextRef ctx, CGFloat s){
-		// Smooth Telegram chat bubble
-		CGFloat r = 7.0f;
-		CGRect rect = CGRectMake(3.0f, 4.0f, s - 6.0f, 15.0f);
-		UIBezierPath *p = [UIBezierPath bezierPath];
-		[p moveToPoint:CGPointMake(rect.origin.x + r, rect.origin.y)];
-		[p addLineToPoint:CGPointMake(CGRectGetMaxX(rect) - r, rect.origin.y)];
-		[p addArcWithCenter:CGPointMake(CGRectGetMaxX(rect) - r, rect.origin.y + r) radius:r startAngle:-M_PI_2 endAngle:0 clockwise:YES];
-		[p addLineToPoint:CGPointMake(CGRectGetMaxX(rect), CGRectGetMaxY(rect) - r)];
-		[p addArcWithCenter:CGPointMake(CGRectGetMaxX(rect) - r, CGRectGetMaxY(rect) - r) radius:r startAngle:0 endAngle:M_PI_2 clockwise:YES];
-		[p addLineToPoint:CGPointMake(rect.origin.x + 13.0f, CGRectGetMaxY(rect))];
-		// Tail curving down-left
-		[p addCurveToPoint:CGPointMake(rect.origin.x + 3.0f, CGRectGetMaxY(rect) + 5.0f)
-			 controlPoint1:CGPointMake(rect.origin.x + 8.0f, CGRectGetMaxY(rect) + 1.0f)
-			 controlPoint2:CGPointMake(rect.origin.x + 4.5f, CGRectGetMaxY(rect) + 3.5f)];
-		// Tail curve returning to bubble body
-		[p addCurveToPoint:CGPointMake(rect.origin.x + 6.0f, CGRectGetMaxY(rect))
-			 controlPoint1:CGPointMake(rect.origin.x + 4.5f, CGRectGetMaxY(rect) + 3.5f)
-			 controlPoint2:CGPointMake(rect.origin.x + 5.5f, CGRectGetMaxY(rect) + 1.5f)];
-		[p addLineToPoint:CGPointMake(rect.origin.x + r, CGRectGetMaxY(rect))];
-		[p addArcWithCenter:CGPointMake(rect.origin.x + r, CGRectGetMaxY(rect) - r) radius:r startAngle:M_PI_2 endAngle:M_PI clockwise:YES];
-		[p addLineToPoint:CGPointMake(rect.origin.x, rect.origin.y + r)];
-		[p addArcWithCenter:CGPointMake(rect.origin.x + r, rect.origin.y + r) radius:r startAngle:M_PI endAngle:-M_PI_2 clockwise:YES];
-		[p closePath];
-
-		CGContextAddPath(ctx, p.CGPath);
-		CGContextFillPath(ctx);
+		TGDrawTabPath(ctx, TGChatsTabPath(s), YES);
 	}];
 }
 
 + (UIImage *)contacts {
 	return [self iconNamed:@"contacts" draw:^(CGContextRef ctx, CGFloat s){
-		// head and shoulders
-		CGContextFillEllipseInRect(ctx, CGRectMake(s/2 - 5, 4, 10, 10));
-		CGRect shoulders = CGRectMake(s/2 - 9, 16, 18, 12);
-		UIBezierPath *p = [UIBezierPath bezierPathWithRoundedRect:shoulders cornerRadius:9];
-		CGContextAddPath(ctx, p.CGPath);
-		CGContextFillPath(ctx);
+		TGDrawTabPath(ctx, TGContactsTabPath(s), YES);
 	}];
 }
 
 + (UIImage *)settings {
 	return [self iconNamed:@"settings" draw:^(CGContextRef ctx, CGFloat s){
-		// iOS 7 Telegram 6-toothed circular gear
-		CGFloat cx = s / 2.0f;
-		CGFloat cy = s / 2.0f;
-		CGFloat rOut = 11.5f;
-		CGFloat rIn = 9.2f;
-		CGFloat rHole = 3.8f;
-		NSInteger teeth = 6;
+		TGDrawTabPath(ctx, TGSettingsTabPath(s), YES);
+	}];
+}
 
-		UIBezierPath *gear = [UIBezierPath bezierPath];
-		CGFloat step = (CGFloat)(M_PI * 2.0 / teeth);
-		CGFloat halfTooth = step * 0.24f;
++ (UIImage *)chatsOutline {
+	return [self iconNamed:@"chats-outline" draw:^(CGContextRef ctx, CGFloat s){
+		TGDrawTabPath(ctx, TGChatsTabPath(s), NO);
+	}];
+}
 
-		for (NSInteger i = 0; i < teeth; i++) {
-			CGFloat angle = i * step;
-			CGFloat a1 = angle - halfTooth;
-			CGFloat a2 = angle + halfTooth;
-			CGFloat aNext = angle + step - halfTooth;
++ (UIImage *)contactsOutline {
+	return [self iconNamed:@"contacts-outline" draw:^(CGContextRef ctx, CGFloat s){
+		TGDrawTabPath(ctx, TGContactsTabPath(s), NO);
+	}];
+}
 
-			CGPoint p1 = CGPointMake(cx + rIn * cosf(a1 - 0.12f), cy + rIn * sinf(a1 - 0.12f));
-			CGPoint p2 = CGPointMake(cx + rOut * cosf(a1), cy + rOut * sinf(a1));
-			CGPoint p3 = CGPointMake(cx + rOut * cosf(a2), cy + rOut * sinf(a2));
-			CGPoint p4 = CGPointMake(cx + rIn * cosf(a2 + 0.12f), cy + rIn * sinf(a2 + 0.12f));
-
-			if (i == 0) [gear moveToPoint:p1];
-			else [gear addLineToPoint:p1];
-			[gear addLineToPoint:p2];
-			[gear addLineToPoint:p3];
-			[gear addLineToPoint:p4];
-			[gear addArcWithCenter:CGPointMake(cx, cy) radius:rIn startAngle:a2 + 0.12f endAngle:aNext - 0.12f clockwise:YES];
-		}
-		[gear closePath];
-
-		UIBezierPath *hole = [UIBezierPath bezierPathWithOvalInRect:
-				CGRectMake(cx - rHole, cy - rHole, rHole * 2.0f, rHole * 2.0f)];
-		[gear appendPath:hole];
-		gear.usesEvenOddFillRule = YES;
-
-		CGContextAddPath(ctx, gear.CGPath);
-		CGContextEOFillPath(ctx);
++ (UIImage *)settingsOutline {
+	return [self iconNamed:@"settings-outline" draw:^(CGContextRef ctx, CGFloat s){
+		TGDrawTabPath(ctx, TGSettingsTabPath(s), NO);
 	}];
 }
 

@@ -8,6 +8,10 @@
 + (UIImage *)chats;        ///< tab bar
 + (UIImage *)contacts;
 + (UIImage *)settings;
+/// The same three as outlines, for the tabs that are not selected (iOS 7+).
++ (UIImage *)chatsOutline;
++ (UIImage *)contactsOutline;
++ (UIImage *)settingsOutline;
 
 + (UIImage *)compose;      ///< new message
 + (UIImage *)send;

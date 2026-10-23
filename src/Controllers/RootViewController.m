@@ -68,6 +68,17 @@ static const CGFloat kCompactBarHeight = 32.0f;
 	settingsNC.tabBarItem = [[UITabBarItem alloc] initWithTitle:@"Settings"
 														   image:[TGIcons settings] tag:2];
 
+	// From iOS 7 their tab bar draws the other tabs as outlines and only the
+	// selected one filled; before that the bar's own glow marks the selection.
+	if ([chatsNC.tabBarItem respondsToSelector:@selector(setSelectedImage:)]){
+		chatsNC.tabBarItem.image = [TGIcons chatsOutline];
+		chatsNC.tabBarItem.selectedImage = [TGIcons chats];
+		contactsNC.tabBarItem.image = [TGIcons contactsOutline];
+		contactsNC.tabBarItem.selectedImage = [TGIcons contacts];
+		settingsNC.tabBarItem.image = [TGIcons settingsOutline];
+		settingsNC.tabBarItem.selectedImage = [TGIcons settings];
+	}
+
 	[self setViewControllers:@[chatsNC, contactsNC, settingsNC] animated:NO];
 	[self setSelectedIndex:0];
 
