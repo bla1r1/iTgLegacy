@@ -42,6 +42,7 @@ NSDictionary *TGFlattenMessage(NSDictionary *m) {
 	NSString *ctype = content[@"@type"];
 	NSNumber *photoFileId = nil;   // an image to show in the bubble
 	NSNumber *docFileId   = nil;   // a file to play or offer for download
+	NSNumber *docSize     = nil;   // its size in bytes, where it matters
 	NSString *docName     = nil;
 	NSString *extra       = nil;   // text the content itself carries
 	NSNumber *latitude = nil, *longitude = nil;
@@ -102,6 +103,8 @@ NSDictionary *TGFlattenMessage(NSDictionary *m) {
 		// Telegram GIFs are MP4, so they play like any video.
 		photoFileId = content[@"animation"][@"thumbnail"][@"file"][@"id"];
 		docFileId   = content[@"animation"][@"animation"][@"id"];
+		docSize     = content[@"animation"][@"animation"][@"size"] ?:
+					  content[@"animation"][@"animation"][@"expected_size"];
 		docName     = content[@"animation"][@"file_name"];
 		mediaWidth  = [content[@"animation"][@"width"] intValue];
 		mediaHeight = [content[@"animation"][@"height"] intValue];
@@ -398,6 +401,7 @@ NSDictionary *TGFlattenMessage(NSDictionary *m) {
 		@"mediaHeight": @(mediaHeight),
 		@"docId"     : docFileId   ?: [NSNull null],
 		@"docName"   : docName     ?: @"",
+		@"docSize"   : docSize     ?: @(0),
 		@"service"   : @(isService),
 		// Several photos sent together share an album id; the chat draws them
 		// as one block rather than as unrelated messages.

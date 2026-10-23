@@ -4,6 +4,13 @@
 #import "TGBubbleCell.h"
 #import "TGTheme.h"
 #import "TGIcons.h"
+#import <AVFoundation/AVFoundation.h>
+
+@interface TGBubbleCell ()
+@property (nonatomic, strong) AVPlayer *loopPlayer;
+@property (nonatomic, strong) AVPlayerLayer *loopLayer;
+@property (nonatomic, copy) NSString *loopingPath;
+@end
 
 @implementation TGBubbleCell
 
@@ -253,7 +260,69 @@
 	}
 }
 
+#pragma mark - looping GIF
+
+- (BOOL)isPlayingLoop {
+	return self.loopPlayer != nil;
+}
+
+- (void)playLoopingVideoAtPath:(NSString *)path {
+	if (!path.length)
+		return;
+	if (self.loopPlayer && [self.loopingPath isEqualToString:path]){
+		self.loopLayer.frame = self.picture.bounds;
+		return;
+	}
+	[self stopLoopingVideo];
+
+	AVPlayer *player = [AVPlayer playerWithURL:[NSURL fileURLWithPath:path]];
+	if (!player)
+		return;
+	if ([player respondsToSelector:@selector(setMuted:)])
+		player.muted = YES;
+	player.actionAtItemEnd = AVPlayerActionAtItemEndNone;
+
+	AVPlayerLayer *layer = [AVPlayerLayer playerLayerWithPlayer:player];
+	layer.videoGravity = AVLayerVideoGravityResizeAspectFill;
+	layer.frame = self.picture.bounds;
+	[self.picture.layer addSublayer:layer];
+
+	[[NSNotificationCenter defaultCenter] addObserver:self
+			selector:@selector(loopEnded:)
+				name:AVPlayerItemDidPlayToEndTimeNotification
+			  object:player.currentItem];
+
+	self.loopPlayer = player;
+	self.loopLayer = layer;
+	self.loopingPath = path;
+	[player play];
+}
+
+- (void)loopEnded:(NSNotification *)note {
+	if (note.object != self.loopPlayer.currentItem)
+		return;
+	[self.loopPlayer seekToTime:kCMTimeZero];
+	[self.loopPlayer play];
+}
+
+- (void)stopLoopingVideo {
+	if (!self.loopPlayer)
+		return;
+	[[NSNotificationCenter defaultCenter] removeObserver:self
+			name:AVPlayerItemDidPlayToEndTimeNotification object:self.loopPlayer.currentItem];
+	[self.loopPlayer pause];
+	[self.loopLayer removeFromSuperlayer];
+	self.loopLayer = nil;
+	self.loopPlayer = nil;
+	self.loopingPath = nil;
+}
+
+- (void)dealloc {
+	[self stopLoopingVideo];
+}
+
 - (void)resetForReuse {
+	[self stopLoopingVideo];
 	self.icon.hidden = YES;
 	self.subtitle.hidden = YES;
 	self.sender.hidden = YES;

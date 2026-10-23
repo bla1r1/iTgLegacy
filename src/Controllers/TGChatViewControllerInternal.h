@@ -78,6 +78,8 @@ static const CGFloat kInputHeight = 48.0f;
 @property (nonatomic, strong) UIButton *stickerButton;
 @property (nonatomic, strong) TGEmojiPanel *stickerPanel;   // emoji, stickers, GIFs
 @property (nonatomic, strong) NSMutableDictionary *layoutCache;
+@property (nonatomic, strong) NSMutableDictionary *gifPaths;       // docId -> local MP4
+@property (nonatomic, strong) NSMutableSet *gifsRequested;
 @property (nonatomic, strong) UILabel *titleNameLabel;
 @property (nonatomic, strong) UILabel *titleSubtitleLabel;
 @property (nonatomic, strong) UIView *pinnedBannerView;

@@ -43,6 +43,13 @@
 @property (nonatomic, copy) void (^onCollageItemTapped)(NSInteger index);
 @property (nonatomic, copy) void (^onLinkTapped)(NSString *url);
 
+/// A GIF looping silently over the picture. Telegram's GIFs are short
+/// MP4s, so this is a muted video layer, not an image sequence.
+- (void)playLoopingVideoAtPath:(NSString *)path;
+- (void)stopLoopingVideo;
+@property (nonatomic, readonly) BOOL isPlayingLoop;
+@property (nonatomic, readonly) NSString *loopingPath;
+
 - (void)resetForReuse;
 - (void)applyTheme;
 

@@ -1,5 +1,6 @@
 #import "TGChatViewControllerInternal.h"
 #import <QuartzCore/QuartzCore.h>
+#import "TGCapabilities.h"
 
 @implementation TGChatViewController (Cells)
 
@@ -794,6 +795,55 @@
 	return [TGIcons ticksColour:colour read:read];
 }
 
+#pragma mark - GIFs
+
+static const long long kGifAutoDownloadLimit = 3 * 1024 * 1024;
+
+/// Loops a GIF in its bubble when the device can afford it: downloaded on
+/// sight if small, and only so many playing at once.
+- (void)startGifIfWantedIn:(TGBubbleCell *)cell message:(NSDictionary *)m {
+	if (![m[@"kind"] isEqualToString:@"messageAnimation"] || cell.picture.hidden ||
+		![TGCapabilities canAutoplayGIFs] || self.isEditingMessages){
+		[cell stopLoopingVideo];
+		return;
+	}
+	NSNumber *docId = [m[@"docId"] isKindOfClass:NSNumber.class] ? m[@"docId"] : nil;
+	if (!docId)
+		return;
+
+	NSString *path = self.gifPaths[docId];
+	if (path){
+		NSUInteger playing = 0;
+		for (UITableViewCell *visible in self.table.visibleCells)
+			if (visible != cell && [visible isKindOfClass:TGBubbleCell.class] &&
+				((TGBubbleCell *)visible).isPlayingLoop)
+				playing++;
+		if (playing >= [TGCapabilities maxConcurrentGIFs])
+			return;
+		[cell playLoopingVideoAtPath:path];
+		cell.disc.hidden = YES;
+		return;
+	}
+
+	long long size = [m[@"docSize"] longLongValue];
+	if ([self.gifsRequested containsObject:docId] || size <= 0 || size > kGifAutoDownloadLimit)
+		return;
+	[self.gifsRequested addObject:docId];
+	__weak typeof(self) weakSelf = self;
+	[[TGClient shared] downloadFile:docId.integerValue completion:^(NSString *downloaded){
+		TGChatViewController *me = weakSelf;
+		if (!me || !downloaded.length)
+			return;
+		me.gifPaths[docId] = downloaded;
+		[me reloadTableDebounced];
+	}];
+}
+
+- (void)tableView:(UITableView *)tableView didEndDisplayingCell:(UITableViewCell *)tableCell forRowAtIndexPath:(NSIndexPath *)indexPath {
+	if ([tableCell isKindOfClass:TGBubbleCell.class])
+		[(TGBubbleCell *)tableCell stopLoopingVideo];
+}
+
 #pragma mark - runs
 
 /// Two neighbours belong to one run - one block with a single tail - when the
@@ -873,6 +923,7 @@ static UIBezierPath *TGBubblePath(CGSize size, CGFloat tl, CGFloat tr, CGFloat b
 
 	NSDictionary *m = self.messages[indexPath.row];
 	TGMessageLayout *layout = [self layoutForMessage:m atRow:indexPath.row];
+	[self startGifIfWantedIn:cell message:m];
 	NSInteger row = indexPath.row;
 	BOOL first = [self runStartsAtRow:row];
 	BOOL last = [self runEndsAtRow:row];

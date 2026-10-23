@@ -48,6 +48,8 @@
 	[self buildTitleView];
 	self.messages = @[];
 	self.layoutCache = [NSMutableDictionary dictionary];
+	self.gifPaths = [NSMutableDictionary dictionary];
+	self.gifsRequested = [NSMutableSet set];
 	self.senderAvatars = [NSMutableDictionary dictionary];
 	self.senderAvatarsRequested = [NSMutableSet set];
 	self.images = [NSMutableDictionary dictionary];
