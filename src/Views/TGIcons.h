@@ -36,8 +36,9 @@
 + (UIImage *)waveform:(NSData *)waveform size:(CGSize)size
                played:(CGFloat)played colour:(UIColor *)colour;
 
-/// The 6x10 tail Telegram hangs off the corner of a bubble.
-+ (UIImage *)bubbleTailForColour:(UIColor *)colour outgoing:(BOOL)outgoing;          ///< map marker
+/// The tail Telegram hangs off the bottom corner of the last bubble in a run,
+/// kTailWidth x kTailHeight; it sits flush against the bubble's edge.
++ (UIImage *)bubbleTailForColour:(UIColor *)colour outgoing:(BOOL)outgoing;
 
 /// Delivery ticks, drawn the way Telegram draws them: two checks overlapping
 /// into one mark, not two separate glyphs side by side.
@@ -77,6 +78,10 @@
 
 + (UIImage *)settingsIconNamed:(NSString *)name color:(UIColor *)color;
 
+/// A menu glyph filled in one colour at a given side. Template tinting does
+/// not exist before iOS 7, so a list that needs a grey glyph draws it grey.
++ (UIImage *)glyphNamed:(NSString *)name colour:(UIColor *)colour side:(CGFloat)side;
+
 @end
 
 @interface TGIcons (Avatars)
@@ -90,6 +95,10 @@
 + (UIImage *)avatarWithInitials:(NSString *)initials
                            size:(CGFloat)size
                        colourId:(int64_t)colourId;
+
+/// The colour of a name in a group, picked the same way as the placeholder
+/// avatar so a sender's name and picture always match.
++ (UIColor *)nameColourForId:(int64_t)colourId dark:(BOOL)dark;
 
 + (UIImage *)mapPinBadge;
 + (UIImage *)mapPlaceholderSize:(CGSize)size;

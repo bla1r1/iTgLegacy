@@ -3,7 +3,7 @@
 //
 #import <UIKit/UIKit.h>
 
-static const CGFloat kBubbleMaxW  = 240.0f;
+static const CGFloat kBubbleMaxW  = 246.0f;   // text width; the bubble is ~83% of the screen
 static const CGFloat kPadH        = 10.0f;
 static const CGFloat kAvatarSide  = 28.0f;   // sender avatar in groups
 static const CGFloat kPadV        = 7.0f;
@@ -13,6 +13,8 @@ static const CGFloat kFileTile    = 71.0f;
 static const CGFloat kFileDisc    = 37.0f;
 static const CGFloat kMediaRadius = 6.0f;
 static const CGFloat kPollRow     = 30.0f;
+static const CGFloat kTailWidth   = 6.0f;    // the hook on the last bubble of a run
+static const CGFloat kTailHeight  = 13.0f;
 
 UIFont *TGEmojiFontOfSize(CGFloat size);
 BOOL TGIsEmojiScalar(UTF32Char c);

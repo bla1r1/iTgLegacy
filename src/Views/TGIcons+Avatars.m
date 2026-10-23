@@ -20,6 +20,22 @@ static UIImage *TGGlyphAvatar(CGFloat side, void (^draw)(CGContextRef ctx, CGFlo
 
 @implementation TGIcons (Avatars)
 
++ (UIColor *)nameColourForId:(int64_t)colourId dark:(BOOL)dark {
+	// Their name colours, in the same slots as the placeholder palette below
+	// and through the same [0,7,4,1,6,3,5] order, so a name never disagrees
+	// with the circle beside it. The eighth slot repeats red there too.
+	static const uint32_t light[8] = {0xCC5049, 0xD67722, 0x955CDB, 0x40A920,
+									  0x309EBA, 0x368AD1, 0xC7508B, 0xCC5049};
+	static const uint32_t night[8] = {0xFC5C51, 0xFA790F, 0x895DD5, 0x0FB297,
+									  0x00C1A6, 0x3CA5EC, 0xD54FAF, 0xFC5C51};
+	static const NSUInteger order[7] = {0, 7, 4, 1, 6, 3, 5};
+	uint32_t c = (dark ? night : light)[order[(NSUInteger)llabs(colourId) % 7]];
+	return [UIColor colorWithRed:((c >> 16) & 0xFF) / 255.0f
+						   green:((c >> 8) & 0xFF) / 255.0f
+							blue:(c & 0xFF) / 255.0f
+						   alpha:1.0f];
+}
+
 + (UIImage *)archiveAvatarOfSide:(CGFloat)side {
 	NSString *key = [NSString stringWithFormat:@"archiveAvatar_%.0f", side];
 	UIImage *cached = TGIconsGetCached(key);

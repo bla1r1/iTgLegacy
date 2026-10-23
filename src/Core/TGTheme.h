@@ -128,6 +128,8 @@ extern NSString *const TGThemeChangedNotification;
 - (UIColor *)inputBarColour;
 - (UIColor *)searchBarBackgroundColour;
 - (UIColor *)timeColour;            ///< the stamp in the corner of a bubble
+- (UIColor *)timeMineColour;        ///< the same stamp in your own bubble
+- (UIColor *)listDateColour;        ///< the date on a chat list row
 - (UIColor *)cellDetailColour;      ///< the value on the right of a settings row
 - (UIColor *)sectionHeaderColour;   ///< the caption above a group of rows
 - (UIColor *)profileHeaderColour;   ///< the block behind a profile picture
@@ -156,6 +158,7 @@ extern NSString *const TGThemeChangedNotification;
 - (UIColor *)serviceTextColour;
 
 - (CGFloat)bubbleCornerRadius;
+- (CGFloat)bubbleJoinedCornerRadius; ///< corners where bubbles of one run meet
 - (CGFloat)bubbleBorderWidth;       ///< 0 when flat
 
 @end

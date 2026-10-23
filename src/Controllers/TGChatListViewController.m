@@ -29,7 +29,8 @@
 	[self.tableView addGestureRecognizer:hold];
 
 	self.tableView.rowHeight = kRowHeight;
-	self.tableView.separatorStyle = UITableViewCellSeparatorStyleSingleLine;
+	// Each row draws its own hairline from under the text; see TGChatCell.
+	self.tableView.separatorStyle = UITableViewCellSeparatorStyleNone;
 	if ([self respondsToSelector:@selector(setEdgesForExtendedLayout:)])
 		self.edgesForExtendedLayout = UIRectEdgeNone;
 
@@ -275,10 +276,13 @@ static NSString *TGChatDate(NSTimeInterval unix) {
 	cell.previewLabel.textColor = [theme secondaryTextColour];
 	cell.dateLabel.backgroundColor = bg;
 	cell.dateLabel.opaque = YES;
-	cell.dateLabel.textColor = [theme secondaryTextColour];
+	cell.dateLabel.textColor = [theme listDateColour];
 	cell.onlineDot.hidden = YES;
 	cell.tick.hidden = YES;
+	cell.muteIcon.hidden = YES;
+	cell.pin.hidden = YES;
 	cell.onlineDot.layer.borderColor = bg.CGColor;
+	cell.separator.backgroundColor = [theme separatorColour];
 
 	if (theme.isDark) {
 		UIView *selected = [[UIView alloc] init];
@@ -316,25 +320,26 @@ static NSString *TGChatDate(NSTimeInterval unix) {
 	if ([action length]){
 		cell.previewLabel.text = action;
 		cell.previewLabel.textColor = [theme typingColour];
+	} else if (c[@"previewText"]){
+		[cell setPreview:c[@"previewText"] author:c[@"lastAuthor"]];
 	} else {
 		cell.previewLabel.text = c[@"text"];
 	}
 
 	cell.onlineDot.hidden = ![c[@"isOnline"] boolValue];
 
-	// A muted chat says so in its title; a pinned one keeps a marker where the
-	// date sits when it has none.
-	cell.titleLabel.text = [c[@"isMuted"] boolValue]
-			? [NSString stringWithFormat:@"%@ \U0001F507", c[@"title"] ?: @""]
-			: c[@"title"];
+	// A muted chat carries a small speaker after its title; a pinned one keeps
+	// a marker where the badge sits when it has none.
+	BOOL muted = [c[@"isMuted"] boolValue];
+	cell.muteIcon.hidden = !muted;
+	if (muted)
+		cell.muteIcon.image = [TGIcons glyphNamed:@"mute" colour:[theme listDateColour] side:28];
 
 	NSInteger unread = [c[@"unread"] integerValue];
 	cell.badge.hidden = (unread <= 0);
 	cell.pin.hidden = !([c[@"isPinned"] boolValue] && unread <= 0);
-	if (!cell.pin.hidden){
-		cell.pin.image = [TGIcons menuGlyphNamed:@"pin"];
-		cell.pin.tintColor = [theme secondaryTextColour];
-	}
+	if (!cell.pin.hidden)
+		cell.pin.image = [TGIcons glyphNamed:@"pin" colour:[theme listDateColour] side:28];
 	cell.badge.text = unread > 0 ? [NSString stringWithFormat:@"%ld", (long)unread] : @"";
 	// A muted chat still counts, it just stops shouting about it.
 	cell.badge.backgroundColor = [c[@"isMuted"] boolValue]

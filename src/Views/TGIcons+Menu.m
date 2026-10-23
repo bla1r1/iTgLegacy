@@ -344,6 +344,28 @@ void TGIconsClearSettingsIconCache(void) {
 	}];
 }
 
++ (UIImage *)glyphNamed:(NSString *)name colour:(UIColor *)colour side:(CGFloat)side {
+	NSString *key = [NSString stringWithFormat:@"glyph-%@-%.0f-%@", name, side, colour];
+	UIImage *cached = TGIconsGetCached(key);
+	if (cached) return cached;
+
+	UIImage *glyph = [self menuGlyphNamed:name];
+	if (!glyph) return nil;
+
+	UIGraphicsBeginImageContextWithOptions(CGSizeMake(side, side), NO, 0);
+	CGContextRef ctx = UIGraphicsGetCurrentContext();
+	CGContextTranslateCTM(ctx, 0, side);
+	CGContextScaleCTM(ctx, 1.0, -1.0);
+	CGContextClipToMask(ctx, CGRectMake(0, 0, side, side), glyph.CGImage);
+	[colour setFill];
+	CGContextFillRect(ctx, CGRectMake(0, 0, side, side));
+	UIImage *image = UIGraphicsGetImageFromCurrentImageContext();
+	UIGraphicsEndImageContext();
+
+	if (image) TGIconsSetCached(key, image);
+	return image;
+}
+
 + (UIImage *)settingsIconNamed:(NSString *)name color:(UIColor *)color {
 	// Every settings row asks for its icon in cellForRow, and the list reloads
 	// on every appearance - redrawing sixteen of these each time is what made

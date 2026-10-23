@@ -47,7 +47,7 @@ typedef const char *(*td_exec_fn)(void *client, const char *request);
 - (void)mergeChat:(NSDictionary *)chat;
 - (void)applyChatUpdate:(NSDictionary *)update;
 - (void)rebuildChats;
-- (NSString *)previewForLastMessage:(NSDictionary *)last inChat:(NSDictionary *)info;
+- (NSString *)previewForLastMessage:(NSDictionary *)last inChat:(NSMutableDictionary *)info;
 
 @end
 

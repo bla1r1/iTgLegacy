@@ -1,4 +1,5 @@
 #import "TGIconsInternal.h"
+#import "TGMessageLayout.h"
 
 static NSMutableDictionary *sCache = nil;
 
@@ -524,21 +525,22 @@ void TGIconsSetCached(NSString *key, UIImage *img) {
 	UIImage *cached = TGIconsGetCached(key);
 	if (cached) return cached;
 
-	CGSize size = CGSizeMake(6, 10);
+	// The bubble's own edge runs down the inner side; the tail flares out
+	// from it along a concave curve and ends in a point at the bottom.
+	CGFloat w = kTailWidth, h = kTailHeight;
+	CGSize size = CGSizeMake(w, h);
 	UIGraphicsBeginImageContextWithOptions(size, NO, 0);
 	CGContextRef ctx = UIGraphicsGetCurrentContext();
 	[colour set];
 
 	if (outgoing){
 		CGContextMoveToPoint(ctx, 0, 0);
-		CGContextAddLineToPoint(ctx, 0, 10);
-		CGContextAddCurveToPoint(ctx, 3, 9, 5, 7, 6, 4);
-		CGContextAddLineToPoint(ctx, 0, 4);
+		CGContextAddCurveToPoint(ctx, 0, h * 0.55f, w * 0.35f, h * 0.85f, w, h);
+		CGContextAddLineToPoint(ctx, 0, h);
 	} else {
-		CGContextMoveToPoint(ctx, 6, 0);
-		CGContextAddLineToPoint(ctx, 6, 10);
-		CGContextAddCurveToPoint(ctx, 3, 9, 1, 7, 0, 4);
-		CGContextAddLineToPoint(ctx, 6, 4);
+		CGContextMoveToPoint(ctx, w, 0);
+		CGContextAddCurveToPoint(ctx, w, h * 0.55f, w * 0.65f, h * 0.85f, 0, h);
+		CGContextAddLineToPoint(ctx, w, h);
 	}
 	CGContextClosePath(ctx);
 	CGContextFillPath(ctx);

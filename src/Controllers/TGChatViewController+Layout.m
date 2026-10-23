@@ -1,24 +1,8 @@
 #import "TGChatViewControllerInternal.h"
 
 UIColor *TGSenderColour(int64_t userId) {
-	static NSArray *lightPalette = nil;
-	static NSArray *darkPalette = nil;
-	if (!lightPalette) {
-		lightPalette = @[[UIColor colorWithRed:0.85f green:0.27f blue:0.27f alpha:1],
-						 [UIColor colorWithRed:0.20f green:0.55f blue:0.85f alpha:1],
-						 [UIColor colorWithRed:0.25f green:0.62f blue:0.35f alpha:1],
-						 [UIColor colorWithRed:0.75f green:0.45f blue:0.15f alpha:1],
-						 [UIColor colorWithRed:0.55f green:0.35f blue:0.75f alpha:1],
-						 [UIColor colorWithRed:0.20f green:0.60f blue:0.62f alpha:1]];
-		darkPalette = @[[UIColor colorWithRed:0.95f green:0.45f blue:0.45f alpha:1],
-						[UIColor colorWithRed:0.42f green:0.70f blue:0.98f alpha:1],
-						[UIColor colorWithRed:0.45f green:0.80f blue:0.55f alpha:1],
-						[UIColor colorWithRed:0.95f green:0.65f blue:0.35f alpha:1],
-						[UIColor colorWithRed:0.75f green:0.55f blue:0.95f alpha:1],
-						[UIColor colorWithRed:0.40f green:0.78f blue:0.80f alpha:1]];
-	}
-	NSArray *p = [TGTheme shared].isDark ? darkPalette : lightPalette;
-	return p[(NSUInteger)llabs(userId) % p.count];
+	// Same slot as the sender's placeholder avatar, so the two always match.
+	return [TGIcons nameColourForId:userId dark:[TGTheme shared].isDark];
 }
 
 @implementation TGChatViewController (Layout)
@@ -396,7 +380,7 @@ UIColor *TGSenderColour(int64_t userId) {
 	CGFloat top = [self continuesAlbumAtRow:row] ? 0 : 3;
 
 	if (senderName.length) {
-		x += kAvatarSide + 4;
+		x += kAvatarSide + 4 + kTailWidth;   // the tail hangs between picture and bubble
 		layout.senderName = senderName;
 		layout.senderFrame = CGRectMake(kPadH, kPadV, bubbleW - 2 * kPadH, 14);
 		CGFloat avatarY = MAX(2.0f, top + bubbleH - kAvatarSide);

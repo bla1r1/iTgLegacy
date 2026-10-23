@@ -1,4 +1,5 @@
 #import "TGChatViewControllerInternal.h"
+#import <QuartzCore/QuartzCore.h>
 
 @implementation TGChatViewController (Cells)
 
@@ -132,7 +133,7 @@
 		cell.picture.hidden = YES;
 		cell.disc.hidden = YES;
 		cell.time.text = layout.stamp;
-		cell.time.textColor = [pollTheme timeColour];
+		cell.time.textColor = mine ? [pollTheme timeMineColour] : [pollTheme timeColour];
 		CGFloat pollTimeW = layout.timeWidth;
 		cell.time.frame = CGRectMake(layout.bubbleFrame.size.width - pollTimeW - kPadH, layout.bubbleFrame.size.height - 17,
 									 pollTimeW - (mine ? 18 : 0), 12);
@@ -234,7 +235,7 @@
 		cell.subtitle.frame = CGRectMake(textX, fwd + kPadV + 46, layout.bubbleFrame.size.width - textX - kPadH, 17);
 
 		cell.time.text = layout.stamp;
-		cell.time.textColor = [cardTheme timeColour];
+		cell.time.textColor = mine ? [cardTheme timeMineColour] : [cardTheme timeColour];
 		CGFloat fileTimeW = layout.timeWidth;
 		CGFloat fileTicks = mine ? 18 : 0;
 		cell.time.frame = CGRectMake(layout.bubbleFrame.size.width - fileTimeW - kPadH, layout.bubbleFrame.size.height - 17,
@@ -323,7 +324,7 @@
 		[cell.contactAddButton addTarget:self action:@selector(contactAddButtonTapped:) forControlEvents:UIControlEventTouchUpInside];
 
 		cell.time.text = layout.stamp;
-		cell.time.textColor = [cardTheme timeColour];
+		cell.time.textColor = mine ? [cardTheme timeMineColour] : [cardTheme timeColour];
 		CGFloat fileTimeW = layout.timeWidth;
 		CGFloat fileTicks = mine ? 18 : 0;
 		cell.time.frame = CGRectMake(layout.bubbleFrame.size.width - fileTimeW - kPadH, fwd + 30,
@@ -437,7 +438,7 @@
 
 		cell.time.hidden = NO;
 		cell.time.text = layout.stamp;
-		cell.time.textColor = [locTheme timeColour];
+		cell.time.textColor = mine ? [locTheme timeMineColour] : [locTheme timeColour];
 		cell.time.frame = CGRectMake(layout.bubbleFrame.size.width - locTimeW - locTicks - kPadH,
 									 layout.bubbleFrame.size.height - 17,
 									 locTimeW, 12);
@@ -713,7 +714,7 @@
 
 		cell.picture.hidden = YES;
 		cell.time.text = layout.stamp;
-		cell.time.textColor = [voiceTheme timeColour];
+		cell.time.textColor = mine ? [voiceTheme timeMineColour] : [voiceTheme timeColour];
 		CGFloat tickRoom = mine ? 18 : 0;
 		cell.time.frame = CGRectMake(layout.bubbleFrame.size.width - layout.timeWidth - kPadH, layout.bubbleFrame.size.height - 20,
 									 layout.timeWidth - tickRoom, 12);
@@ -763,7 +764,7 @@
 
 	BOOL onPicture = !cell.mediaStamp.hidden;
 	cell.time.text = (onPicture || [self albumContinuesAfterRow:indexPath.row]) ? @"" : layout.stamp;
-	cell.time.textColor = [theme timeColour];
+	cell.time.textColor = mine ? [theme timeMineColour] : [theme timeColour];
 	cell.time.frame = layout.timeFrame;
 
 	cell.ticks.hidden = !mine;
@@ -780,6 +781,99 @@
 	[cell.bubble bringSubviewToFront:cell.time];
 
 	return [self finalizeCell:cell message:m layout:layout isMine:mine];
+}
+
+#pragma mark - runs
+
+/// Two neighbours belong to one run - one block with a single tail - when the
+/// same person sent them within a few minutes of each other.
+static BOOL TGSameRun(NSDictionary *a, NSDictionary *b) {
+	if (!a || !b)
+		return NO;
+	if ([a[@"service"] boolValue] || [b[@"service"] boolValue])
+		return NO;
+	if ([a[@"outgoing"] boolValue] != [b[@"outgoing"] boolValue])
+		return NO;
+	if ([a[@"senderId"] longLongValue] != [b[@"senderId"] longLongValue])
+		return NO;
+	return fabs([a[@"date"] doubleValue] - [b[@"date"] doubleValue]) < 300;
+}
+
+/// A rounded box whose four corners can differ.
+static UIBezierPath *TGBubblePath(CGSize size, CGFloat tl, CGFloat tr, CGFloat br, CGFloat bl) {
+	CGFloat cap = MIN(size.width, size.height) / 2;
+	tl = MIN(tl, cap); tr = MIN(tr, cap); br = MIN(br, cap); bl = MIN(bl, cap);
+	CGFloat w = size.width, h = size.height;
+
+	UIBezierPath *path = [UIBezierPath bezierPath];
+	[path moveToPoint:CGPointMake(tl, 0)];
+	[path addLineToPoint:CGPointMake(w - tr, 0)];
+	[path addArcWithCenter:CGPointMake(w - tr, tr) radius:tr startAngle:-M_PI_2 endAngle:0 clockwise:YES];
+	[path addLineToPoint:CGPointMake(w, h - br)];
+	[path addArcWithCenter:CGPointMake(w - br, h - br) radius:br startAngle:0 endAngle:M_PI_2 clockwise:YES];
+	[path addLineToPoint:CGPointMake(bl, h)];
+	[path addArcWithCenter:CGPointMake(bl, h - bl) radius:bl startAngle:M_PI_2 endAngle:M_PI clockwise:YES];
+	[path addLineToPoint:CGPointMake(0, tl)];
+	[path addArcWithCenter:CGPointMake(tl, tl) radius:tl startAngle:M_PI endAngle:M_PI * 1.5 clockwise:YES];
+	[path closePath];
+	return path;
+}
+
+/// Shapes the bubble by its place in the run: the outer corners stay round,
+/// the ones facing a neighbour of the same run nearly square off, and only
+/// the last bubble hangs a tail. Done here rather than in the layout because
+/// a run changes as messages arrive while a cached layout does not; every
+/// change to the list reloads the table, so this runs again each time.
+- (void)tableView:(UITableView *)tableView willDisplayCell:(UITableViewCell *)tableCell forRowAtIndexPath:(NSIndexPath *)indexPath {
+	if (![tableCell isKindOfClass:TGBubbleCell.class] || indexPath.row >= (NSInteger)self.messages.count)
+		return;
+	TGBubbleCell *cell = (TGBubbleCell *)tableCell;
+	cell.bubble.layer.mask = nil;
+	cell.tail.hidden = YES;
+
+	NSDictionary *m = self.messages[indexPath.row];
+	TGMessageLayout *layout = [self layoutForMessage:m atRow:indexPath.row];
+	NSInteger row = indexPath.row;
+	NSDictionary *previous = row > 0 ? self.messages[row - 1] : nil;
+	NSDictionary *next = row + 1 < (NSInteger)self.messages.count ? self.messages[row + 1] : nil;
+	BOOL first = !TGSameRun(previous, m);
+	BOOL last = !TGSameRun(m, next);
+
+	// A group shows the sender's picture once, beside the tail.
+	if (!last && !cell.senderAvatar.hidden)
+		cell.senderAvatar.hidden = YES;
+
+	TGTheme *theme = [TGTheme shared];
+	UIColor *fill = cell.bubble.backgroundColor;
+	BOOL plain = !fill || CGColorGetAlpha(fill.CGColor) < 0.01f;
+	// A drawn border would be clipped by the mask, so the skeuomorphic style
+	// keeps its plain rounded box; so do the things that are not bubbles.
+	if (!theme.isFlat || [theme bubbleBorderWidth] > 0 || plain ||
+		layout.isService || layout.isSticker || layout.isRound)
+		return;
+
+	BOOL mine = [m[@"outgoing"] boolValue];
+	CGFloat big = [theme bubbleCornerRadius];
+	CGFloat small = [theme bubbleJoinedCornerRadius];
+	CGFloat top = first ? big : small;
+	CGFloat bottom = last ? 0 : small;   // the tail takes the last one's corner
+	CGSize size = cell.bubble.bounds.size;
+	UIBezierPath *path = mine ? TGBubblePath(size, big, top, bottom, big)
+							  : TGBubblePath(size, top, big, big, bottom);
+
+	CAShapeLayer *mask = [CAShapeLayer layer];
+	mask.frame = cell.bubble.bounds;
+	mask.path = path.CGPath;
+	cell.bubble.layer.cornerRadius = 0;
+	cell.bubble.layer.mask = mask;
+
+	if (last) {
+		CGRect b = cell.bubble.frame;
+		cell.tail.image = [TGIcons bubbleTailForColour:fill outgoing:mine];
+		cell.tail.frame = CGRectMake(mine ? CGRectGetMaxX(b) : CGRectGetMinX(b) - kTailWidth,
+									 CGRectGetMaxY(b) - kTailHeight, kTailWidth, kTailHeight);
+		cell.tail.hidden = NO;
+	}
 }
 
 @end

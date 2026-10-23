@@ -2,6 +2,9 @@
 #import "TGTheme.h"
 #import <QuartzCore/QuartzCore.h>
 
+static const CGFloat kInset    = 10.0f;   // picture from the left edge, text from the right
+static const CGFloat kTextLeft = kInset + kAvatar + 10.0f;
+
 static CGSize TGChatCellTextSize(NSString *text, UIFont *font) {
 	if (!text.length || !font) return CGSizeZero;
 	if ([text respondsToSelector:@selector(sizeWithAttributes:)]) {
@@ -11,6 +14,12 @@ static CGSize TGChatCellTextSize(NSString *text, UIFont *font) {
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
 	return [text sizeWithFont:font];
 #pragma clang diagnostic pop
+}
+
+/// Their titles are a medium weight, not bold; Helvetica Neue has carried one
+/// since iOS 5, and bold is the fallback where it does not.
+static UIFont *TGChatCellTitleFont(void) {
+	return [UIFont fontWithName:@"HelveticaNeue-Medium" size:16] ?: [UIFont boldSystemFontOfSize:16];
 }
 
 @implementation TGChatCell
@@ -26,7 +35,7 @@ static CGSize TGChatCellTextSize(NSString *text, UIFont *font) {
 	self.backgroundColor = [theme listBackgroundColour];
 	self.contentView.backgroundColor = [theme listBackgroundColour];
 
-	self.avatar = [[UIImageView alloc] initWithFrame:CGRectMake(10, (kRowHeight - kAvatar) / 2, kAvatar, kAvatar)];
+	self.avatar = [[UIImageView alloc] initWithFrame:CGRectMake(kInset, (kRowHeight - kAvatar) / 2, kAvatar, kAvatar)];
 	self.avatar.layer.cornerRadius = kAvatar / 2;
 	self.avatar.clipsToBounds = YES;
 	self.avatar.layer.shouldRasterize = YES;
@@ -36,21 +45,21 @@ static CGSize TGChatCellTextSize(NSString *text, UIFont *font) {
 	[self.contentView addSubview:self.avatar];
 
 	self.titleLabel = [[UILabel alloc] init];
-	self.titleLabel.font = [UIFont boldSystemFontOfSize:16];
+	self.titleLabel.font = TGChatCellTitleFont();
 	self.titleLabel.textColor = [theme primaryTextColour];
 	self.titleLabel.lineBreakMode = NSLineBreakByTruncatingTail;
 	[self.contentView addSubview:self.titleLabel];
 
 	self.previewLabel = [[UILabel alloc] init];
-	self.previewLabel.font = [UIFont systemFontOfSize:14];
+	self.previewLabel.font = [UIFont systemFontOfSize:15];
 	self.previewLabel.textColor = [theme secondaryTextColour];
-	self.previewLabel.numberOfLines = 1;
+	self.previewLabel.numberOfLines = 2;
 	self.previewLabel.lineBreakMode = NSLineBreakByTruncatingTail;
 	[self.contentView addSubview:self.previewLabel];
 
 	self.dateLabel = [[UILabel alloc] init];
-	self.dateLabel.font = [UIFont systemFontOfSize:12];
-	self.dateLabel.textColor = [theme timeColour];
+	self.dateLabel.font = [UIFont systemFontOfSize:14];
+	self.dateLabel.textColor = [theme listDateColour];
 	self.dateLabel.textAlignment = NSTextAlignmentRight;
 	[self.contentView addSubview:self.dateLabel];
 
@@ -66,10 +75,11 @@ static CGSize TGChatCellTextSize(NSString *text, UIFont *font) {
 	self.badge.hidden = YES;
 	[self.contentView addSubview:self.badge];
 
+	CGFloat dot = 15;
 	self.onlineDot = [[UIView alloc] initWithFrame:
-			CGRectMake(10 + kAvatar - 14, (kRowHeight - kAvatar) / 2 + kAvatar - 14, 14, 14)];
+			CGRectMake(kInset + kAvatar - dot, (kRowHeight - kAvatar) / 2 + kAvatar - dot, dot, dot)];
 	self.onlineDot.backgroundColor = [theme onlineColour];
-	self.onlineDot.layer.cornerRadius = 7;
+	self.onlineDot.layer.cornerRadius = dot / 2;
 	self.onlineDot.layer.borderWidth = 2;
 	self.onlineDot.layer.borderColor = [theme listBackgroundColour].CGColor;
 	self.onlineDot.layer.shouldRasterize = YES;
@@ -86,33 +96,81 @@ static CGSize TGChatCellTextSize(NSString *text, UIFont *font) {
 	self.pin.hidden = YES;
 	[self.contentView addSubview:self.pin];
 
-	self.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+	self.muteIcon = [[UIImageView alloc] init];
+	self.muteIcon.contentMode = UIViewContentModeScaleAspectFit;
+	self.muteIcon.hidden = YES;
+	[self.contentView addSubview:self.muteIcon];
+
+	// The table's own separator runs under the picture and cannot be inset
+	// before iOS 7, so the row draws its own.
+	self.separator = [[UIView alloc] init];
+	self.separator.backgroundColor = [theme separatorColour];
+	[self.contentView addSubview:self.separator];
+
+	// No disclosure arrow: a chat row is not a settings row.
+	self.accessoryType = UITableViewCellAccessoryNone;
 	return self;
+}
+
+- (void)setPreview:(NSString *)text author:(NSString *)author {
+	TGTheme *theme = [TGTheme shared];
+	text = text ?: @"";
+	if (!author.length || ![self.previewLabel respondsToSelector:@selector(setAttributedText:)]) {
+		self.previewLabel.text = author.length ? [NSString stringWithFormat:@"%@: %@", author, text] : text;
+		return;
+	}
+	NSString *prefix = [author stringByAppendingString:@": "];
+	NSMutableAttributedString *line = [[NSMutableAttributedString alloc]
+			initWithString:[prefix stringByAppendingString:text]
+				attributes:@{NSFontAttributeName: self.previewLabel.font,
+							 NSForegroundColorAttributeName: [theme secondaryTextColour]}];
+	[line addAttribute:NSForegroundColorAttributeName
+				 value:[theme primaryTextColour]
+				 range:NSMakeRange(0, prefix.length)];
+	self.previewLabel.attributedText = line;
 }
 
 - (void)layoutSubviews {
 	[super layoutSubviews];
 	CGFloat w = self.contentView.bounds.size.width;
-	CGFloat left = kAvatar + 20;
-	CGFloat right = 78;   // room for date and the disclosure arrow
+	CGFloat h = self.contentView.bounds.size.height;
+	CGFloat right = w - kInset;
 
-	self.dateLabel.frame  = CGRectMake(w - right, 10, right - 8, 16);
-	self.titleLabel.frame = CGRectMake(left, 9, w - left - right, 20);
-	self.previewLabel.frame = CGRectMake(left, 32, w - left - right + 40, 20);
-
-	// Your own last message is marked, the way it is in their chat item.
-	if (!self.tick.hidden){
-		CGSize s = TGChatCellTextSize(self.dateLabel.text, self.dateLabel.font);
-		self.tick.frame = CGRectMake(w - 8 - s.width - 19, 13, 15, 9);
+	// The first line: the date pinned to the right edge, the ticks before it,
+	// and the title taking whatever is left.
+	CGSize date = TGChatCellTextSize(self.dateLabel.text, self.dateLabel.font);
+	self.dateLabel.frame = CGRectMake(right - ceilf(date.width), 11, ceilf(date.width), 18);
+	CGFloat titleRight = CGRectGetMinX(self.dateLabel.frame) - 6;
+	if (!self.tick.hidden) {
+		self.tick.frame = CGRectMake(titleRight - 15, 16, 15, 9);
+		titleRight -= 19;
 	}
 
-	if (!self.badge.hidden){
+	CGFloat muteW = self.muteIcon.hidden ? 0 : 20;
+	CGFloat titleRoom = MAX(0, titleRight - kTextLeft - muteW);
+	CGFloat titleW = MIN(ceilf(TGChatCellTextSize(self.titleLabel.text, self.titleLabel.font).width), titleRoom);
+	self.titleLabel.frame = CGRectMake(kTextLeft, 10, titleW, 20);
+	if (!self.muteIcon.hidden)
+		self.muteIcon.frame = CGRectMake(kTextLeft + titleW + 3, 12, 16, 16);
+
+	// The second line: the badge (or the pin) at the right edge, and the
+	// preview wrapping onto a second line up to it.
+	CGFloat previewRight = right;
+	if (!self.badge.hidden) {
 		CGSize s = TGChatCellTextSize(self.badge.text, self.badge.font);
-		CGFloat bw = MAX(20, s.width + 12);
-		self.badge.frame = CGRectMake(w - right + 30, 36, bw, 20);
+		CGFloat bw = MAX(20, ceilf(s.width) + 12);
+		self.badge.frame = CGRectMake(right - bw, 42, bw, 20);
+		previewRight = right - bw - 8;
+	} else if (!self.pin.hidden) {
+		self.pin.frame = CGRectMake(right - 16, 44, 16, 16);
+		previewRight = right - 24;
 	}
-	if (!self.pin.hidden)
-		self.pin.frame = CGRectMake(w - right + 34, 38, 16, 16);
+	CGFloat previewW = MAX(0, previewRight - kTextLeft);
+	CGSize fit = [self.previewLabel sizeThatFits:CGSizeMake(previewW, 40)];
+	self.previewLabel.frame = CGRectMake(kTextLeft, 32, previewW, MIN(ceilf(fit.height), 38));
+
+	CGFloat hair = 1.0f / [UIScreen mainScreen].scale;
+	self.separator.frame = CGRectMake(kTextLeft, h - hair, w - kTextLeft, hair);
 }
 
 - (void)applyTheme {
@@ -121,10 +179,11 @@ static CGSize TGChatCellTextSize(NSString *text, UIFont *font) {
 	self.contentView.backgroundColor = [theme listBackgroundColour];
 	self.titleLabel.textColor = [theme primaryTextColour];
 	self.previewLabel.textColor = [theme secondaryTextColour];
-	self.dateLabel.textColor = [theme timeColour];
+	self.dateLabel.textColor = [theme listDateColour];
 	self.badge.backgroundColor = [theme badgeColour];
 	self.onlineDot.backgroundColor = [theme onlineColour];
 	self.onlineDot.layer.borderColor = [theme listBackgroundColour].CGColor;
+	self.separator.backgroundColor = [theme separatorColour];
 }
 
 @end

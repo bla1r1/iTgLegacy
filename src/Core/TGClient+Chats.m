@@ -512,10 +512,20 @@ int64_t TGArchiveOrder(NSArray *positions) {
 }
 
 /// In a group the list shows who spoke last - "Назар: text" - which is the
-/// only way to tell a busy group apart at a glance.
-- (NSString *)previewForLastMessage:(NSDictionary *)last inChat:(NSDictionary *)info {
+/// only way to tell a busy group apart at a glance. The speaker and the bare
+/// text are also kept apart ("lastAuthor", "previewText") so the list can set
+/// the name in its own colour; your own messages are "You" anywhere but in
+/// Saved Messages, where everything is yours.
+- (NSString *)previewForLastMessage:(NSDictionary *)last inChat:(NSMutableDictionary *)info {
 	NSString *text = TGMessagePreview(last);
-	if (![info[@"isGroup"] boolValue] || [last[@"is_outgoing"] boolValue])
+	info[@"previewText"] = text ?: @"";
+	[info removeObjectForKey:@"lastAuthor"];
+	if ([last[@"is_outgoing"] boolValue]){
+		if (![info[@"isSaved"] boolValue])
+			info[@"lastAuthor"] = @"You";
+		return text;
+	}
+	if (![info[@"isGroup"] boolValue])
 		return text;
 
 	int64_t sender = [last[@"sender_id"][@"user_id"] longLongValue];
@@ -526,6 +536,7 @@ int64_t TGArchiveOrder(NSArray *positions) {
 		[self ensureUserName:sender completion:^{ [weakSelf rebuildChats]; }];
 		return text;
 	}
+	info[@"lastAuthor"] = who;
 	return [NSString stringWithFormat:@"%@: %@", who, text];
 }
 
