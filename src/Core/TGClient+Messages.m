@@ -682,6 +682,12 @@ NSDictionary *TGFlattenMessage(NSDictionary *m) {
 			@"emoji"   : @"",
 		},
 	}];
+
+	// Sending does not put it in Recently Used on its own, so the strip never
+	// filled up as stickers were sent.
+	[self send:@{@"@type"       : @"addRecentSticker",
+				 @"is_attached" : @NO,
+				 @"sticker"     : @{@"@type" : @"inputFileId", @"id" : @(fileId)}}];
 }
 
 - (void)sendVoiceAtPath:(NSString *)path duration:(NSInteger)seconds

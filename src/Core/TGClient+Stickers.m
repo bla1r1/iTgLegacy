@@ -128,6 +128,42 @@ static NSDictionary *TGAnimationInfo(NSDictionary *animation) {
 	}];
 }
 
+- (void)setSticker:(NSInteger)fileId favourite:(BOOL)favourite {
+	if (fileId <= 0)
+		return;
+	// Answered rather than fire-and-forget: a refused favourite is otherwise
+	// silent, and "nothing happened" is the hardest kind of bug to chase.
+	[self request:@{@"@type"   : favourite ? @"addFavoriteSticker" : @"removeFavoriteSticker",
+					@"sticker" : @{@"@type" : @"inputFileId", @"id" : @(fileId)}}
+	   completion:^(NSDictionary *result){
+		NSLog(@"TGClient: %@ favourite %ld -> %@", favourite ? @"add" : @"remove",
+				(long)fileId, result[@"@type"]);
+	}];
+}
+
+- (void)removeRecentSticker:(NSInteger)fileId {
+	if (fileId <= 0)
+		return;
+	[self request:@{@"@type"       : @"removeRecentSticker",
+					@"is_attached" : @NO,
+					@"sticker"     : @{@"@type" : @"inputFileId", @"id" : @(fileId)}}
+	   completion:^(NSDictionary *result){
+		NSLog(@"TGClient: remove recent %ld -> %@", (long)fileId, result[@"@type"]);
+	}];
+}
+
+- (void)removeStickerSet:(id)setId {
+	if (!setId)
+		return;
+	[self request:@{@"@type"        : @"changeStickerSet",
+					@"set_id"       : setId,
+					@"is_installed" : @NO,
+					@"is_archived"  : @NO}
+	   completion:^(NSDictionary *result){
+		NSLog(@"TGClient: remove set %@ -> %@", setId, result[@"@type"]);
+	}];
+}
+
 - (void)savedAnimationsWithCompletion:(void (^)(NSArray *))completion {
 	[self request:@{@"@type" : @"getSavedAnimations"}
 	   completion:^(NSDictionary *result){

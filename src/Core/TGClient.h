@@ -322,6 +322,12 @@ typedef NS_ENUM(NSInteger, TGConnectionState) {
 - (void)installedStickerSetsWithCompletion:(void (^)(NSArray *sets))completion;
 - (void)stickersInSet:(id)setId completion:(void (^)(NSArray *stickers))completion;
 - (void)favoriteStickersWithCompletion:(void (^)(NSArray *stickers))completion;
+/// Add or remove a sticker from Favourites, which is what holding one does.
+- (void)setSticker:(NSInteger)fileId favourite:(BOOL)favourite;
+/// Drop one sticker out of Recently Used.
+- (void)removeRecentSticker:(NSInteger)fileId;
+/// Uninstall a sticker set, which is what removing a pack means.
+- (void)removeStickerSet:(id)setId;
 
 /// GIFs: "fileId", "width", "height", "duration", optional "thumbId" (a
 /// still picture) and "minithumbnail" (NSData, a tiny inline JPEG). Search

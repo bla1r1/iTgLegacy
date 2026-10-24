@@ -16,6 +16,7 @@ static TGPopupMenu *sOpenMenu = nil;
 	UIView *_card;
 	NSArray *_items;
 	void (^_choice)(NSInteger, NSString *);
+	NSTimeInterval _shownAt;
 }
 
 + (void)dismiss {
@@ -35,6 +36,7 @@ static TGPopupMenu *sOpenMenu = nil;
 	TGPopupMenu *menu = [[TGPopupMenu alloc] initWithFrame:host.bounds];
 	[menu buildWithItems:items atPoint:point];
 	menu->_choice = [choice copy];
+	menu->_shownAt = [NSDate timeIntervalSinceReferenceDate];
 	[host addSubview:menu];
 	sOpenMenu = menu;
 
@@ -124,8 +126,13 @@ static TGPopupMenu *sOpenMenu = nil;
 		choice(index, title);
 }
 
-/// Anything outside the card closes the menu and chooses nothing.
+/// Anything outside the card closes the menu and chooses nothing - but not
+/// the touch that opened it. A menu raised by a long press appears under a
+/// finger that is still down, and lifting it landed here as an outside tap,
+/// so the card vanished before it could be read, let alone used.
 - (void)touchesEnded:(NSSet *)touches withEvent:(UIEvent *)event {
+	if ([NSDate timeIntervalSinceReferenceDate] - _shownAt < 0.4)
+		return;
 	CGPoint where = [[touches anyObject] locationInView:self];
 	if (!CGRectContainsPoint(_card.frame, where))
 		[TGPopupMenu dismiss];
