@@ -509,6 +509,32 @@ static void TGDrawTabPath(CGContextRef ctx, UIBezierPath *path, BOOL filled) {
 	return image;
 }
 
++ (UIImage *)lockOfSide:(CGFloat)side colour:(UIColor *)colour {
+	NSString *key = [NSString stringWithFormat:@"lock_%.0f_%lu", side, (unsigned long)[colour hash]];
+	UIImage *cached = TGIconsGetCached(key);
+	if (cached) return cached;
+
+	UIGraphicsBeginImageContextWithOptions(CGSizeMake(side, side), NO, 0);
+	CGContextRef ctx = UIGraphicsGetCurrentContext();
+	[colour set];
+
+	// Shackle first, so the body covers where it meets the case.
+	CGContextSetLineWidth(ctx, MAX(1.0f, side * 0.09f));
+	CGContextSetLineCap(ctx, kCGLineCapRound);
+	CGContextAddArc(ctx, side / 2, side * 0.42f, side * 0.18f, M_PI, 0, 0);
+	CGContextStrokePath(ctx);
+
+	UIBezierPath *body = [UIBezierPath bezierPathWithRoundedRect:
+			CGRectMake(side * 0.24f, side * 0.42f, side * 0.52f, side * 0.38f)
+												   cornerRadius:side * 0.08f];
+	[body fill];
+
+	UIImage *image = UIGraphicsGetImageFromCurrentImageContext();
+	UIGraphicsEndImageContext();
+	TGIconsSetCached(key, image);
+	return image;
+}
+
 + (UIImage *)waveform:(NSData *)waveform size:(CGSize)size
                played:(CGFloat)played colour:(UIColor *)colour {
 	if (!waveform.length || size.width <= 0 || size.height <= 0)

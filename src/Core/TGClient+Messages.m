@@ -668,11 +668,18 @@ NSDictionary *TGFlattenMessage(NSDictionary *m) {
 		@"@type"                : @"sendMessage",
 		@"chat_id"              : @(chatId),
 		@"message_thread_id"    : @(threadId),
+		// This TDLib nests the file one level down: inputMessageSticker takes
+		// an inputSticker, which is what carries the InputFile. Handing it the
+		// InputFile directly answers "InputFile is not specified".
 		@"input_message_content": @{
 			@"@type"   : @"inputMessageSticker",
-			@"sticker" : @{@"@type" : @"inputFileId", @"id" : @(fileId)},
-			@"width"   : @512,
-			@"height"  : @512,
+			@"sticker" : @{
+				@"@type"   : @"inputSticker",
+				@"sticker" : @{@"@type" : @"inputFileId", @"id" : @(fileId)},
+				@"width"   : @512,
+				@"height"  : @512,
+			},
+			@"emoji"   : @"",
 		},
 	}];
 }

@@ -35,6 +35,10 @@
 /// bar glyphs are template images and cannot carry a fill of their own.
 + (UIImage *)microphoneOfSide:(CGFloat)side colour:(UIColor *)colour;
 
+/// The padlock on the recorder's lock capsule, drawn rather than set as an
+/// emoji - iOS 7 has no colour glyph for it on every device.
++ (UIImage *)lockOfSide:(CGFloat)side colour:(UIColor *)colour;
+
 /// The bars of a voice message, drawn from TDLib's five-bits-per-sample
 /// waveform. `played` is how much of it has been listened to, 0 to 1.
 + (UIImage *)waveform:(NSData *)waveform size:(CGSize)size

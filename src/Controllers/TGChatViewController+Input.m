@@ -168,6 +168,9 @@
 		[[TGClient shared] sendText:text toChat:self.chatId
 							 thread:self.threadId replyTo:self.replyToId];
 
+	// Before clearComposeState, so inputChanged sees an empty field and puts
+	// the microphone back in the send button's place.
+	self.input.text = @"";
 	[self clearComposeState];
 
 	// TDLib echoes the message back as an update; refresh shortly after.

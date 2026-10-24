@@ -95,6 +95,34 @@ static void TGSetWanted(NSString *key, BOOL wanted) {
 	return [TGDevice tier] >= TGDeviceTierLegacy;
 }
 
+/// iOS 7's typesetter segfaults outright when it meets a character the emoji
+/// font has no glyph for - 🏳️ (U+1F3F3) is one - so ask the font directly
+/// before handing anything to CTLine. Selectors and joiners carry no glyph of
+/// their own, and a surrogate pair answers on its lead unit.
+static BOOL TGEmojiFontHasGlyphs(CTFontRef font, NSString *s) {
+	NSUInteger len = s.length;
+	if (!len || len > 64)
+		return NO;
+	unichar buf[64];
+	[s getCharacters:buf range:NSMakeRange(0, len)];
+	for (NSUInteger i = 0; i < len; i++){
+		unichar c = buf[i];
+		if (c == 0xFE0E || c == 0xFE0F || c == 0x200D)
+			continue;
+		unichar pair[2] = { c, 0 };
+		CFIndex n = 1;
+		if (c >= 0xD800 && c <= 0xDBFF && i + 1 < len){
+			pair[1] = buf[++i];
+			n = 2;
+		}
+		CGGlyph glyphs[2] = { 0, 0 };
+		CTFontGetGlyphsForCharacters(font, pair, glyphs, n);
+		if (glyphs[0] == 0)
+			return NO;
+	}
+	return YES;
+}
+
 + (BOOL)canDrawEmoji:(NSString *)emoji {
 	if (!emoji.length)
 		return NO;
@@ -114,7 +142,7 @@ static void TGSetWanted(NSString *key, BOOL wanted) {
 	// and wanting one glyph from the emoji font itself is what the screen
 	// will actually show.
 	BOOL ok = NO;
-	if (font){
+	if (font && TGEmojiFontHasGlyphs(font, emoji)){
 		NSAttributedString *text = [[NSAttributedString alloc] initWithString:emoji
 				attributes:@{(__bridge NSString *)kCTFontAttributeName : (__bridge id)font}];
 		CTLineRef line = CTLineCreateWithAttributedString((__bridge CFAttributedStringRef)text);

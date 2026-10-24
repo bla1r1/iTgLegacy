@@ -162,10 +162,10 @@ static BOOL sIsCancelled;
 		pill.layer.cornerRadius = pillW / 2.0f; // Rounded rice grain capsule
 		pill.clipsToBounds = YES;
 
-		UILabel *lockIcon = [[UILabel alloc] initWithFrame:CGRectMake(0, 8, pillW, 20)];
-		lockIcon.text = @"🔒";
-		lockIcon.font = [UIFont systemFontOfSize:14];
-		lockIcon.textAlignment = NSTextAlignmentCenter;
+		UIImageView *lockIcon = [[UIImageView alloc] initWithFrame:
+				CGRectMake((pillW - 18) / 2, 8, 18, 18)];
+		lockIcon.image = [TGIcons lockOfSide:18
+									  colour:[UIColor colorWithWhite:0.92f alpha:1.0f]];
 		lockIcon.backgroundColor = [UIColor clearColor];
 		[pill addSubview:lockIcon];
 

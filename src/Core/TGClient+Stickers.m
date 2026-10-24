@@ -194,12 +194,17 @@ static NSDictionary *TGAnimationInfo(NSDictionary *animation) {
 		@"@type"                : @"sendMessage",
 		@"chat_id"              : @(chatId),
 		@"message_thread_id"    : @(threadId),
+		// Same nesting as stickers: inputMessageAnimation takes an
+		// inputAnimation, and that is what holds the InputFile.
 		@"input_message_content": @{
 			@"@type"     : @"inputMessageAnimation",
-			@"animation" : @{@"@type" : @"inputFileId", @"id" : animation[@"fileId"]},
-			@"duration"  : animation[@"duration"] ?: @0,
-			@"width"     : animation[@"width"] ?: @0,
-			@"height"    : animation[@"height"] ?: @0,
+			@"animation" : @{
+				@"@type"     : @"inputAnimation",
+				@"animation" : @{@"@type" : @"inputFileId", @"id" : animation[@"fileId"]},
+				@"duration"  : animation[@"duration"] ?: @0,
+				@"width"     : animation[@"width"] ?: @0,
+				@"height"    : animation[@"height"] ?: @0,
+			},
 		},
 	}];
 }
