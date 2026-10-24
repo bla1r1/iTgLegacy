@@ -20,6 +20,9 @@
 #import <MobileCoreServices/MobileCoreServices.h>
 
 static const CGFloat kInputHeight = 48.0f;
+/// The reply / edit strip above the composer: two lines, the way their client
+/// shows who is being answered and what they said.
+static const CGFloat kComposeBannerHeight = 44.0f;
 
 @interface TGChatViewController () <UISearchBarDelegate, CLLocationManagerDelegate, TGEmojiPanelDelegate,
 		UIScrollViewDelegate, AVAudioPlayerDelegate,
@@ -171,7 +174,9 @@ static const CGFloat kInputHeight = 48.0f;
 - (void)buildInputBar:(CGRect)b;
 - (void)clearComposeState;
 - (void)showComposeBanner:(NSString *)text;
+- (void)showComposeBanner:(NSString *)text subtitle:(NSString *)subtitle;
 - (void)toggleStickerPanel;
+- (void)openStickerPanelTab:(NSString *)name;
 - (void)hideStickerPanel;
 - (void)attachTapped;
 - (void)shiftForKeyboardHeight:(CGFloat)height;

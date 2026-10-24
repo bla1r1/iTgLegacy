@@ -662,6 +662,25 @@
 										 layout.pictureFrame.origin.y + (layout.picSize.height - disc) / 2, disc, disc);
 		}
 
+		// A GIF that cannot loop here is still watchable - tapping it opens
+		// the same MP4 in the viewer - so the corner says what it is and why
+		// it is sitting still rather than leaving it looking like a broken
+		// picture.
+		if ([kind isEqualToString:@"messageAnimation"] && ![TGCapabilities canAutoplayGIFs]) {
+			cell.icon.hidden = NO;
+			cell.icon.layer.cornerRadius = 3;
+			cell.icon.clipsToBounds = YES;
+			cell.icon.backgroundColor = [UIColor colorWithWhite:0.0f alpha:0.45f];
+			cell.icon.textColor = [UIColor whiteColor];
+			cell.icon.font = [UIFont boldSystemFontOfSize:10];
+			cell.icon.text = [TGCapabilities gifAutoplayWanted] ? @" GIF · tap to play "
+																: @" GIF · autoplay off ";
+			CGSize fits = [cell.icon sizeThatFits:CGSizeMake(layout.picSize.width, 16)];
+			cell.icon.frame = CGRectMake(kPadH + 6, layout.pictureFrame.origin.y + 6,
+										 MIN(fits.width + 8, layout.picSize.width - 12), 16);
+			[cell.bubble bringSubviewToFront:cell.icon];
+		}
+
 		if (!layout.bodySize.height) {
 			cell.mediaStamp.hidden = NO;
 			cell.mediaStamp.backgroundColor = [theme mediaStampColour];

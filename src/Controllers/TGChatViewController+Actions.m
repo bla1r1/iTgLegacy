@@ -2,6 +2,40 @@
 #import "TGForwardPicker.h"
 #import "TGPopupMenu.h"
 
+/// What the reply strip shows on its second line. The rows here are already
+/// flattened, so TGMessagePreview - which reads a raw TDLib content - cannot
+/// be used; a media row carries no text and is named by its kind instead.
+static NSString *TGComposePreview(NSDictionary *m) {
+	NSString *text = m[@"text"];
+	if (text.length)
+		return text;
+	NSString *kind = m[@"kind"] ?: @"";
+	if ([kind hasPrefix:@"message"])
+		kind = [kind substringFromIndex:7];
+	if (!kind.length)
+		return @"";
+	// "VoiceNote" reads as "Voice note" on the strip.
+	NSMutableString *spaced = [NSMutableString stringWithString:[kind substringToIndex:1]];
+	for (NSUInteger i = 1; i < kind.length; i++){
+		unichar c = [kind characterAtIndex:i];
+		if (c >= 'A' && c <= 'Z')
+			[spaced appendFormat:@" %c", (char)(c - 'A' + 'a')];
+		else
+			[spaced appendFormat:@"%C", c];
+	}
+	return spaced;
+}
+
+/// The sticker's own file, whichever shape the message carries it in: a .tgs
+/// rides as the document, a .webp as the picture.
+static NSInteger TGStickerFileId(NSDictionary *m) {
+	NSNumber *docId = [m[@"docId"] isKindOfClass:NSNumber.class] ? m[@"docId"] : nil;
+	if (docId.integerValue > 0 && [m[@"docName"] isEqualToString:@"tgs"])
+		return docId.integerValue;
+	NSNumber *photoId = [m[@"photoId"] isKindOfClass:NSNumber.class] ? m[@"photoId"] : nil;
+	return photoId.integerValue > 0 ? photoId.integerValue : docId.integerValue;
+}
+
 @implementation TGChatViewController (Actions)
 
 #pragma mark - message actions
@@ -38,6 +72,9 @@
 		[items addObject:@{@"title" : @"Copy", @"icon" : @"copy"}];
 	if (mine && [m[@"text"] length])
 		[items addObject:@{@"title" : @"Edit", @"icon" : @"edit"}];
+	// A sticker you are holding is a sticker you may want to keep.
+	if ([m[@"kind"] isEqualToString:@"messageSticker"] && TGStickerFileId(m) > 0)
+		[items addObject:@{@"title" : @"Add to Favourites", @"icon" : @"pin"}];
 	if (mine)
 		[items addObject:@{@"title" : @"Delete", @"icon" : @"delete",
 						   @"destructive" : @YES}];
@@ -66,8 +103,9 @@
 	if ([action isEqualToString:@"Reply"]){
 		self.replyToId = messageId;
 		self.editingId = 0;
-		[self showComposeBanner:[NSString stringWithFormat:@"Reply to: %@",
-				[m[@"text"] length] ? m[@"text"] : m[@"kind"]]];
+		NSString *who = [m[@"outgoing"] boolValue] ? @"You"
+				: ([[TGClient shared] nameForUserId:[m[@"senderId"] longLongValue]] ?: @"Reply");
+		[self showComposeBanner:who subtitle:TGComposePreview(m)];
 		[self.input becomeFirstResponder];
 
 	} else if ([action isEqualToString:@"Forward"]){
@@ -96,6 +134,11 @@
 		self.input.text = m[@"text"];
 		[self showComposeBanner:@"Editing"];
 		[self.input becomeFirstResponder];
+
+	} else if ([action isEqualToString:@"Add to Favourites"]){
+		[[TGClient shared] setSticker:TGStickerFileId(m) favourite:YES];
+		[TGSnackbar showInView:self.navigationController.view ?: self.view
+						  text:@"Added to Favourites" seconds:2 onCommit:nil];
 
 	} else if ([action isEqualToString:@"Delete"]){
 		[self promptDeleteMessages:@[@(messageId)]];

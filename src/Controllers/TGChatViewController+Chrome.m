@@ -162,10 +162,17 @@ static UIImage *TGJumpChevron(UIColor *colour) {
 /// panel; called from wherever that frame changes.
 - (void)layoutChrome {
 	CGRect table = self.table.frame;
-	// Clear of the reply / edit strip when one is showing over the table.
+	// Clear of the reply / edit strip when one is showing over the table. The
+	// strip rides directly on the composer, so it has to be placed here rather
+	// than where it was built: the keyboard moves the bar out from under it.
 	CGFloat bottom = CGRectGetMaxY(table);
-	if (self.composeBanner && !self.composeBanner.hidden)
+	if (self.composeBanner && !self.composeBanner.hidden){
+		self.composeBanner.frame = CGRectMake(0,
+				CGRectGetMinY(self.inputBar.frame) - kComposeBannerHeight,
+				self.view.bounds.size.width, kComposeBannerHeight);
+		[self.view bringSubviewToFront:self.composeBanner];
 		bottom = MIN(bottom, CGRectGetMinY(self.composeBanner.frame));
+	}
 	self.jumpButton.frame = CGRectMake(CGRectGetMaxX(table) - kJumpSide - 8,
 									   bottom - kJumpSide - 10, kJumpSide, kJumpSide);
 	CGSize badge = [self.jumpBadge sizeThatFits:CGSizeMake(60, 18)];

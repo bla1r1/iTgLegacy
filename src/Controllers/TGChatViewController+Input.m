@@ -117,24 +117,49 @@
 /// an edit, or a recording in progress. Declared and used from three places
 /// but never written, so holding the microphone brought the app down.
 - (void)showComposeBanner:(NSString *)text {
+	[self showComposeBanner:text subtitle:nil];
+}
+
+static const NSInteger kBannerTitleTag    = 71;
+static const NSInteger kBannerSubtitleTag = 72;
+
+/// Their layout: an accent stripe, who is being answered on the first line and
+/// what they said on the second. `subtitle` nil keeps the one-line form the
+/// recorder and the editor use.
+- (void)showComposeBanner:(NSString *)text subtitle:(NSString *)subtitle {
+	CGFloat width = self.view.bounds.size.width;
 	if (!self.composeBanner){
-		CGRect b = self.view.bounds;
 		self.composeBanner = [[UIView alloc] initWithFrame:
-				CGRectMake(0, CGRectGetMinY(self.inputBar.frame) - 28, b.size.width, 28)];
+				CGRectMake(0, CGRectGetMinY(self.inputBar.frame) - kComposeBannerHeight,
+						   width, kComposeBannerHeight)];
 		self.composeBanner.backgroundColor = [[TGTheme shared] inputBarColour];
 		self.composeBanner.autoresizingMask = UIViewAutoresizingFlexibleWidth |
 											  UIViewAutoresizingFlexibleTopMargin;
 
-		UILabel *label = [[UILabel alloc] initWithFrame:
-				CGRectMake(10, 4, b.size.width - 50, 20)];
-		label.font = [UIFont systemFontOfSize:13];
-		label.textColor = [[TGTheme shared] accentColour];
-		label.backgroundColor = [UIColor clearColor];
-		label.autoresizingMask = UIViewAutoresizingFlexibleWidth;
-		[self.composeBanner addSubview:label];
+		UIView *stripe = [[UIView alloc] initWithFrame:CGRectMake(12, 7, 2, kComposeBannerHeight - 14)];
+		stripe.backgroundColor = [[TGTheme shared] accentColour];
+		[self.composeBanner addSubview:stripe];
+
+		UILabel *title = [[UILabel alloc] initWithFrame:
+				CGRectMake(22, 5, width - 66, 17)];
+		title.tag = kBannerTitleTag;
+		title.font = [UIFont boldSystemFontOfSize:13];
+		title.textColor = [[TGTheme shared] accentColour];
+		title.backgroundColor = [UIColor clearColor];
+		title.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+		[self.composeBanner addSubview:title];
+
+		UILabel *preview = [[UILabel alloc] initWithFrame:
+				CGRectMake(22, 22, width - 66, 17)];
+		preview.tag = kBannerSubtitleTag;
+		preview.font = [UIFont systemFontOfSize:13];
+		preview.textColor = [[TGTheme shared] secondaryTextColour];
+		preview.backgroundColor = [UIColor clearColor];
+		preview.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+		[self.composeBanner addSubview:preview];
 
 		UIButton *cancel = [UIButton buttonWithType:UIButtonTypeCustom];
-		cancel.frame = CGRectMake(b.size.width - 40, 0, 40, 28);
+		cancel.frame = CGRectMake(width - 44, 0, 44, kComposeBannerHeight);
 		cancel.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
 		[cancel setTitle:@"\u00d7" forState:UIControlStateNormal];
 		[cancel setTitleColor:[[TGTheme shared] secondaryTextColour]
@@ -147,9 +172,15 @@
 		[self.view addSubview:self.composeBanner];
 	}
 
-	UILabel *label = (UILabel *)[self.composeBanner.subviews firstObject];
-	if ([label isKindOfClass:UILabel.class])
-		label.text = text;
+	UILabel *title   = (UILabel *)[self.composeBanner viewWithTag:kBannerTitleTag];
+	UILabel *preview = (UILabel *)[self.composeBanner viewWithTag:kBannerSubtitleTag];
+	title.text   = text;
+	preview.text = subtitle ?: @"";
+	// One line centres itself; two share the strip.
+	CGFloat half = kComposeBannerHeight / 2;
+	title.frame = CGRectMake(22, subtitle.length ? 5 : half - 9,
+							 self.composeBanner.bounds.size.width - 66, 17);
+
 	self.composeBanner.hidden = NO;
 	[self layoutChrome];
 }
@@ -239,6 +270,19 @@
 		self.stickerPanel.frame = CGRectMake(0, b.size.height - height, b.size.width, height);
 	}];
 	[self shiftForKeyboardHeight:height];
+}
+
+/// itglegacy://stickers/<emoji|stickers|gifs> - open the panel on a given tab,
+/// which is the only way a URL can reach a tab a finger would tap.
+- (void)openStickerPanelTab:(NSString *)name {
+	if (![self stickerPanelShown])
+		[self toggleStickerPanel];
+	TGEmojiPanelTab tab = TGEmojiPanelTabEmoji;
+	if ([name isEqualToString:@"stickers"])
+		tab = TGEmojiPanelTabStickers;
+	else if ([name isEqualToString:@"gifs"])
+		tab = TGEmojiPanelTabGIFs;
+	[self.stickerPanel selectTab:tab];
 }
 
 - (void)emojiPanel:(TGEmojiPanel *)panel didPickEmoji:(NSString *)emoji {
