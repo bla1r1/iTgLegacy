@@ -1,5 +1,19 @@
 #import "TGProfileViewControllerInternal.h"
 
+/// Flattened messages carry a unix date, not a formatted stamp; the shared
+/// lists want a short one beside each row.
+static NSString *TGProfileShortDate(NSNumber *date) {
+	if (![date isKindOfClass:NSNumber.class] || !date.doubleValue)
+		return nil;
+	static NSDateFormatter *formatter = nil;
+	if (!formatter){
+		formatter = [[NSDateFormatter alloc] init];
+		formatter.dateStyle = NSDateFormatterMediumStyle;
+		formatter.timeStyle = NSDateFormatterNoStyle;
+	}
+	return [formatter stringFromDate:[NSDate dateWithTimeIntervalSince1970:date.doubleValue]];
+}
+
 @implementation TGProfileViewController
 
 - (instancetype)initWithChatId:(int64_t)chatId userId:(int64_t)userId title:(NSString *)title {
@@ -99,7 +113,11 @@
 
 	[self buildActionsIn:header atY:(16 + side + 62)];
 
-	if (self.userId){
+	// Saved Messages is the chat with yourself, so asking for its presence
+	// answers your own - and a bookmark folder reading "online" is nonsense.
+	if (self.chatId && self.chatId == [[TGClient shared] savedMessagesChatId]){
+		self.statusLabel.text = nil;
+	} else if (self.userId){
 		__weak typeof(self) weakSelf = self;
 		[[TGClient shared] statusForUser:self.userId completion:^(NSString *status){
 			weakSelf.statusLabel.text = status;
@@ -213,26 +231,25 @@
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
 	if (section == kSectionDetails) return self.details.count;
-	if (section == kSectionStories) return self.stories.count;
-	if (section == kSectionGifts)   return self.gifts.count;
+	// Stories and Gifts live in the bar above the shared section now, so the
+	// standalone sections would show the same rows a second time.
+	if (section == kSectionStories) return 0;
+	if (section == kSectionGifts)   return 0;
 	if (section == kSectionMembers) return self.members.count;
 
 	if (section == kSectionMedia) {
-		switch (self.selectedMediaTab) {
-			case 0: return self.photos.count ? 1 : 0; // Media strip
-			case 1: return self.files.count; // Files
-			case 2: return 0; // Voice (dummy)
-			case 3: return 0; // Links (dummy)
-		}
+		// The photo strip is one row holding a scroller; every other category
+		// is a plain list.
+		// Media and Stories are both strips of pictures: one row holding a
+		// scroller. The rest are plain lists.
+		if ([self selectedTabIsStrip] || [self selectedTabIsGrid])
+			return [self selectedMediaRows].count ? 1 : 0;
+		return [self selectedMediaRows].count;
 	}
 	return 0;
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
-	if (section == kSectionStories && self.stories.count)
-		return [NSString stringWithFormat:@"%lu stories", (unsigned long)self.stories.count];
-	if (section == kSectionGifts && self.gifts.count)
-		return [NSString stringWithFormat:@"%lu gifts", (unsigned long)self.gifts.count];
 	if (section == kSectionMembers && self.members.count)
 		return [NSString stringWithFormat:@"%lu members", (unsigned long)self.members.count];
 	return nil;
@@ -240,11 +257,16 @@
 
 - (UIView *)tableView:(UITableView *)tableView viewForHeaderInSection:(NSInteger)section {
 	if (section == kSectionMedia) {
-		UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0, 0, tableView.bounds.size.width, 44)];
+		UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0, 0, tableView.bounds.size.width, 38)];
 		header.backgroundColor = [UIColor clearColor];
-		UISegmentedControl *segments = [[UISegmentedControl alloc] initWithItems:@[@"Media", @"Files", @"Voice", @"Links"]];
-		segments.frame = CGRectMake(10, 6, tableView.bounds.size.width - 20, 32);
-		segments.selectedSegmentIndex = self.selectedMediaTab;
+		NSArray *tabs = [self currentMediaTabs];
+		NSMutableArray *titles = [NSMutableArray array];
+		for (NSDictionary *tab in tabs)
+			[titles addObject:tab[@"title"]];
+		UISegmentedControl *segments = [[UISegmentedControl alloc] initWithItems:titles];
+		segments.frame = CGRectMake(10, 3, tableView.bounds.size.width - 20, 30);
+		segments.selectedSegmentIndex = MIN(MAX(0, self.selectedMediaTab),
+											(NSInteger)titles.count - 1);
 		segments.tintColor = [[TGTheme shared] accentColour];
 		[segments addTarget:self action:@selector(mediaTabChanged:) forControlEvents:UIControlEventValueChanged];
 		[header addSubview:segments];
@@ -268,19 +290,37 @@
 }
 
 - (CGFloat)tableView:(UITableView *)tableView heightForHeaderInSection:(NSInteger)section {
-	if (section == kSectionMedia) return 44;
+	if (section == kSectionMedia) return 38;
+	// Stories and Gifts are categories in the bar now and have no rows left.
+	// A grouped table still pads an empty section at both ends, and two of
+	// them in a row opened a gap the size of a screen above the bar.
+	if ([self tableView:tableView numberOfRowsInSection:section] == 0)
+		return CGFLOAT_MIN;
 	return [super tableView:tableView heightForHeaderInSection:section];
 }
 
+- (CGFloat)tableView:(UITableView *)tableView heightForFooterInSection:(NSInteger)section {
+	if ([self tableView:tableView numberOfRowsInSection:section] == 0)
+		return CGFLOAT_MIN;
+	if (section == kSectionMedia)
+		return CGFLOAT_MIN;
+	return [super tableView:tableView heightForFooterInSection:section];
+}
+
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
-	if (indexPath.section == kSectionMedia && self.selectedMediaTab == 0) return 84;
+	if (indexPath.section == kSectionMedia && [self selectedTabIsStrip])
+		return 84;
+	if (indexPath.section == kSectionMedia && [self selectedTabIsGrid])
+		return [self storyGridHeight];
 	if (indexPath.section == kSectionStories) return 56;
 	return indexPath.section == kSectionDetails ? 52 : 44;
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-	if (indexPath.section == kSectionMedia && self.selectedMediaTab == 0)
+	if (indexPath.section == kSectionMedia && [self selectedTabIsStrip])
 		return [self photoStripCell:tableView];
+	if (indexPath.section == kSectionMedia && [self selectedTabIsGrid])
+		return [self storyGridCell:tableView];
 
 	UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"row"];
 	if (!cell)
@@ -381,11 +421,31 @@
 				(name.length ? [name substringToIndex:1].uppercaseString : @"?")
 													  size:32 colourId:userId];
 	} else if (indexPath.section == kSectionMedia) {
-		if (self.selectedMediaTab == 1) { // Files
-			NSDictionary *m = self.files[indexPath.row];
-			cell.textLabel.text = m[@"docName"] ?: @"File";
-			cell.detailTextLabel.text = nil;
-			cell.imageView.image = [TGIcons document];
+		NSString *kind = [self selectedMediaKind];
+		NSArray *rows = [self selectedMediaRows];
+		if (indexPath.row < (NSInteger)rows.count) {
+			NSDictionary *m = rows[indexPath.row];
+			if ([kind isEqualToString:@"files"]) {
+				cell.textLabel.text = m[@"docName"] ?: @"File";
+				cell.detailTextLabel.text = nil;
+				cell.imageView.image = [TGIcons document];
+			} else if ([kind isEqualToString:@"voice"]) {
+				cell.textLabel.text = @"Voice message";
+				cell.detailTextLabel.text = TGProfileShortDate(m[@"date"]);
+				cell.imageView.image = [TGIcons microphone];
+			} else if ([kind isEqualToString:@"links"]) {
+				// The link itself is the title; the message it came in is the
+				// detail, which is what makes a list of them readable.
+				cell.textLabel.text = m[@"link"] ?: m[@"text"] ?: @"Link";
+				cell.textLabel.numberOfLines = 2;
+				cell.detailTextLabel.text = TGProfileShortDate(m[@"date"]);
+				cell.imageView.image = [TGIcons glyphNamed:@"copy"
+													colour:[[TGTheme shared] secondaryTextColour]
+													  side:24];
+			} else if ([kind isEqualToString:@"gifts"]) {
+				cell.textLabel.text = m[@"title"] ?: @"Gift";
+				cell.detailTextLabel.text = m[@"subtitle"];
+			}
 		}
 	}
 	return cell;
@@ -394,10 +454,8 @@
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
 	[tableView deselectRowAtIndexPath:indexPath animated:YES];
 
-	if (indexPath.section == kSectionStories){
-		[self openStoryAtIndex:indexPath.row];
+	if (indexPath.section == kSectionMedia)
 		return;
-	}
 
 	// The actions live in the tiles now; a row of the card copies its value,
 	// which is the only thing there is to do with a phone number or a link.

@@ -10,10 +10,6 @@
 		[tiles addObject:@[@"call",  @"call"]];
 		[tiles addObject:@[@"video", @"video"]];
 	}
-	// Only when there is something to open: a tile that always says "stories"
-	// and always answers "none" is worse than no tile.
-	if (self.stories.count)
-		[tiles addObject:@[@"more", @"stories"]];
 	[tiles addObject:@[(self.muted ? @"unmute" : @"mute"),
 					   (self.muted ? @"unmute" : @"mute")]];
 	if (self.onSearchTapped)
@@ -65,10 +61,6 @@
 		self.muted = !self.muted;
 		[[TGClient shared] setChat:self.chatId muted:self.muted];
 		[self buildHeader];              // the tile says the opposite now
-	} else if ([action isEqualToString:@"stories"]){
-		[self.tableView scrollToRowAtIndexPath:
-				[NSIndexPath indexPathForRow:0 inSection:kSectionStories]
-					  atScrollPosition:UITableViewScrollPositionTop animated:YES];
 	} else if ([action isEqualToString:@"search"]){
 		if (self.onSearchTapped) self.onSearchTapped();
 	} else {

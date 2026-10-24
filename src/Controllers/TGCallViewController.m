@@ -108,17 +108,17 @@
     CGFloat btnY = b.size.height - 130;
     CGFloat gap = (b.size.width - (60 * 4)) / 5;
     
-    self.speakerBtn = [self createButtonAtX:gap y:btnY title:@"Speaker" icon:@"🔊"];
+    self.speakerBtn = [self createButtonAtX:gap y:btnY title:@"Speaker" icon:@"unmute"];
     self.speakerLbl = self.lastCreatedLabel;
-    self.videoBtn = [self createButtonAtX:gap*2 + 60 y:btnY title:@"Video" icon:@"📹"];
+    self.videoBtn = [self createButtonAtX:gap*2 + 60 y:btnY title:@"Video" icon:@"video"];
     self.videoLbl = self.lastCreatedLabel;
-    self.micBtn = [self createButtonAtX:gap*3 + 120 y:btnY title:@"Mute" icon:@"🎤"];
+    self.micBtn = [self createButtonAtX:gap*3 + 120 y:btnY title:@"Mute" icon:@"microphone"];
     self.micLbl = self.lastCreatedLabel;
-    self.endBtn = [self createButtonAtX:gap*4 + 180 y:btnY title:@"End" icon:@"✖️"];
+    self.endBtn = [self createButtonAtX:gap*4 + 180 y:btnY title:@"End" icon:@"endcall"];
     self.endLbl = self.lastCreatedLabel;
     self.endBtn.backgroundColor = [UIColor colorWithRed:0.9f green:0.2f blue:0.2f alpha:1];
 
-    self.acceptBtn = [self createButtonAtX:(b.size.width / 2) + 35 y:btnY title:@"Accept" icon:@"📞"];
+    self.acceptBtn = [self createButtonAtX:(b.size.width / 2) + 35 y:btnY title:@"Accept" icon:@"call"];
     self.acceptLbl = self.lastCreatedLabel;
     self.acceptBtn.backgroundColor = [UIColor colorWithRed:0.2f green:0.8f blue:0.3f alpha:1];
     [self.acceptBtn addTarget:self action:@selector(acceptCall) forControlEvents:UIControlEventTouchUpInside];
@@ -152,8 +152,18 @@
     btn.layer.shouldRasterize = YES;
     btn.layer.rasterizationScale = [UIScreen mainScreen].scale;
     btn.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.2];
-    [btn setTitle:icon forState:UIControlStateNormal];
-    btn.titleLabel.font = [UIFont systemFontOfSize:24];
+    // Drawn glyphs rather than emoji: iOS 7's font has no colour glyph for
+    // some of these, and the ones it does have do not match the rest of the
+    // iconography.
+    UIImage *glyph = [icon isEqualToString:@"microphone"]
+            ? [TGIcons microphoneOfSide:28 colour:[UIColor whiteColor]]
+            : [TGIcons glyphNamed:icon colour:[UIColor whiteColor] side:28];
+    if (glyph){
+        [btn setImage:glyph forState:UIControlStateNormal];
+    } else {
+        [btn setTitle:icon forState:UIControlStateNormal];
+        btn.titleLabel.font = [UIFont systemFontOfSize:24];
+    }
     [self.view addSubview:btn];
     
     UILabel *lbl = [[UILabel alloc] initWithFrame:CGRectMake(x - 10, y + 65, 80, 15)];
@@ -230,6 +240,7 @@
     switch (state){
         case TGCallStatePending:
             self.statusLabel.text = self.outgoing ? @"Calling..." : @"Incoming...";
+            [self setStatusPulsing:YES];
             break;
         case TGCallStateExchangingKeys:
         case TGCallStateConnecting:
@@ -237,16 +248,19 @@
             [self setupEmojis];
             break;
         case TGCallStateEstablished:
+            [self setStatusPulsing:NO];
             self.bgLayer.colors = @[(id)[UIColor colorWithRed:0.27f green:0.69f blue:0.55f alpha:1].CGColor,
                                     (id)[UIColor colorWithRed:0.45f green:0.77f blue:0.43f alpha:1].CGColor];
             [self setupEmojis];
             break;
         case TGCallStateFailed:
             self.statusLabel.text = [TGCall shared].endReason ?: @"Call failed";
+            [self windDown];
             [self dismissShortly];
             break;
         case TGCallStateEnded:
             self.statusLabel.text = [TGCall shared].endReason ?: @"Call ended";
+            [self windDown];
             [self dismissShortly];
             break;
         default:
@@ -296,8 +310,54 @@
 }
 
 - (void)end {
+    // Hanging up takes a moment to come back from the network; without this
+    // the screen just sits there and the tap looks like it was missed.
+    self.statusLabel.text = @"Ending...";
+    [self setStatusPulsing:NO];
+    [UIView animateWithDuration:0.12 animations:^{
+        self.endBtn.transform = CGAffineTransformMakeScale(0.86f, 0.86f);
+    } completion:^(BOOL done){
+        [UIView animateWithDuration:0.12 animations:^{
+            self.endBtn.transform = CGAffineTransformIdentity;
+        }];
+    }];
+    [self windDown];
     [[TGCall shared] hangUp];
     [self dismissShortly];
+}
+
+/// The call is over: the controls fade out and the backdrop goes red, so the
+/// second before the screen closes shows what happened.
+- (void)windDown {
+    [self setStatusPulsing:NO];
+    self.bgLayer.colors = @[(id)[UIColor colorWithRed:0.45f green:0.16f blue:0.16f alpha:1].CGColor,
+                            (id)[UIColor colorWithRed:0.30f green:0.10f blue:0.12f alpha:1].CGColor];
+    [UIView animateWithDuration:0.25 animations:^{
+        for (UIView *view in @[self.speakerBtn, self.videoBtn, self.micBtn,
+                               self.acceptBtn, self.speakerLbl, self.videoLbl,
+                               self.micLbl, self.acceptLbl])
+            view.alpha = 0;
+        self.endBtn.alpha = 0.5f;
+    }];
+}
+
+/// A slow breath on the status while it is still ringing - the one hint that
+/// the call is live and not stuck.
+- (void)setStatusPulsing:(BOOL)pulsing {
+    if (!pulsing){
+        [self.statusLabel.layer removeAnimationForKey:@"pulse"];
+        self.statusLabel.alpha = 1;
+        return;
+    }
+    if ([self.statusLabel.layer animationForKey:@"pulse"])
+        return;
+    CABasicAnimation *fade = [CABasicAnimation animationWithKeyPath:@"opacity"];
+    fade.fromValue = @1.0f;
+    fade.toValue = @0.45f;
+    fade.duration = 0.9;
+    fade.autoreverses = YES;
+    fade.repeatCount = HUGE_VALF;
+    [self.statusLabel.layer addAnimation:fade forKey:@"pulse"];
 }
 
 - (void)dismissShortly {

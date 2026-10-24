@@ -69,6 +69,9 @@
 
 	BOOL pinned = [self.actionChat[@"isPinned"] boolValue];
 	BOOL muted  = [self.actionChat[@"isMuted"] boolValue];
+	// A one-to-one chat is only deleted; a group is left as well, and the menu
+	// has to say which of the two is about to happen.
+	BOOL isGroup = [self.actionChat[@"isGroup"] boolValue];
 	NSArray *items = @[
 		@{@"title" : (pinned ? @"Unpin" : @"Pin"),
 		  @"icon"  : (pinned ? @"unpin" : @"pin")},
@@ -76,7 +79,8 @@
 		  @"icon"  : (muted ? @"unmute" : @"mute")},
 		@{@"title" : (self.showsArchive ? @"Unarchive" : @"Archive"),
 		  @"icon"  : (self.showsArchive ? @"unarchive" : @"archive")},
-		@{@"title" : @"Delete and Leave", @"icon" : @"delete", @"destructive" : @YES},
+		@{@"title" : (isGroup ? @"Delete and Leave" : @"Delete Chat"),
+		  @"icon"  : @"delete", @"destructive" : @YES},
 	];
 
 	CGRect rect = [self.tableView rectForRowAtIndexPath:
@@ -108,12 +112,22 @@
 /// once: the row goes, and the count on the plate is the window to change your
 /// mind. Their design answers this with a snackbar rather than a dialog.
 - (void)confirmDeleteChat:(int64_t)chatId {
+	// Read before the row goes: visibleChats drops whatever is waiting on the
+	// undo plate, and the snackbar is the only place left that can say a group
+	// was also left.
+	BOOL isGroup = NO;
+	for (NSDictionary *chat in self.chats)
+		if ([chat[@"id"] longLongValue] == chatId){
+			isGroup = [chat[@"isGroup"] boolValue];
+			break;
+		}
+
 	self.chatPendingDeletion = chatId;
 	[self.tableView reloadData];
 
 	__weak typeof(self) weakSelf = self;
 	[TGSnackbar showInView:self.navigationController.view
-					  text:@"Chat deleted"
+					  text:(isGroup ? @"Left and deleted" : @"Chat deleted")
 				   seconds:5
 				  onCommit:^{
 		[[TGClient shared] deleteChat:chatId];
@@ -168,7 +182,7 @@
 	};
 	// Same choice numbers as the held-row menu: 1 mute, 2 archive, 3 delete.
 	id delete = [rowAction rowActionWithStyle:UITableViewRowActionStyleDestructive
-										title:@"Delete"
+										title:([chat[@"isGroup"] boolValue] ? @"Leave" : @"Delete")
 									  handler:^(id action, NSIndexPath *path){ run(3); }];
 	id archive = [rowAction rowActionWithStyle:UITableViewRowActionStyleNormal
 										 title:self.showsArchive ? @"Unarchive" : @"Archive"

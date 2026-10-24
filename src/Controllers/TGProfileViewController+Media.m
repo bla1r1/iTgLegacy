@@ -1,4 +1,10 @@
 #import "TGProfileViewControllerInternal.h"
+#import <AVFoundation/AVFoundation.h>
+
+/// Only one story is ever open, so the player it needs can live here rather
+/// than as state on a category that cannot hold any.
+static AVPlayer *sStoryPlayer = nil;
+static AVPlayerLayer *sStoryLayer = nil;
 
 @implementation TGProfileViewController (Media)
 
@@ -37,12 +43,157 @@
 		weakSelf.files = messages;
 		[weakSelf reloadTableDebounced];
 	}];
+	// Voice and Links were tabs that always came back empty because nothing
+	// ever asked for them.
+	[[TGClient shared] mediaInChat:self.chatId
+							filter:@"searchMessagesFilterVoiceNote"
+						completion:^(NSArray *messages){
+		weakSelf.voice = messages;
+		[weakSelf reloadTableDebounced];
+	}];
+	[[TGClient shared] mediaInChat:self.chatId
+							filter:@"searchMessagesFilterUrl"
+						completion:^(NSArray *messages){
+		weakSelf.links = messages;
+		[weakSelf reloadTableDebounced];
+	}];
+}
+
+/// The bar across the top of the shared section, in their order: what the
+/// profile has to show comes first, then the message categories. A category
+/// with nothing in it is left out rather than offered as an empty tab.
+- (NSArray *)currentMediaTabs {
+	NSMutableArray *out = [NSMutableArray array];
+	if (self.stories.count)
+		[out addObject:@{@"title" : @"Stories", @"kind" : @"stories"}];
+	if (self.gifts.count)
+		[out addObject:@{@"title" : @"Gifts",   @"kind" : @"gifts"}];
+	[out addObject:@{@"title" : @"Media", @"kind" : @"media"}];
+	if (self.files.count)
+		[out addObject:@{@"title" : @"Files", @"kind" : @"files"}];
+	if (self.voice.count)
+		[out addObject:@{@"title" : @"Voice", @"kind" : @"voice"}];
+	if (self.links.count)
+		[out addObject:@{@"title" : @"Links", @"kind" : @"links"}];
+	return out;
+}
+
+/// Media is a strip you push sideways; Stories is a grid that wraps, the way
+/// the sticker panel lays its rows out.
+- (BOOL)selectedTabIsStrip {
+	return [[self selectedMediaKind] isEqualToString:@"media"];
+}
+
+- (BOOL)selectedTabIsGrid {
+	return [[self selectedMediaKind] isEqualToString:@"stories"];
+}
+
+static const CGFloat kStoryGridGap     = 2.0f;
+static const NSInteger kStoryGridCols  = 3;
+
+/// Edge to edge, like the media strip: the tile is whatever is left after the
+/// gaps, not a fixed 76 with the remainder thrown away as margin.
++ (CGFloat)storySideForWidth:(CGFloat)width {
+	return floorf((width - kStoryGridGap * (kStoryGridCols - 1)) / kStoryGridCols);
+}
+
+- (CGFloat)storyGridHeight {
+	NSInteger count = MIN((NSInteger)self.stories.count, 20);
+	if (!count)
+		return 0;
+	NSInteger rows = (count + kStoryGridCols - 1) / kStoryGridCols;
+	CGFloat side = [[self class] storySideForWidth:self.tableView.bounds.size.width];
+	return rows * side + (rows - 1) * kStoryGridGap;
+}
+
+/// The stories as a wrapping grid of pictures, each one opening its story.
+/// Cached like the media strip: rebuilding it on every pass through
+/// cellForRow handed back a grid whose pictures had already been asked for
+/// and so never arrived again - scrolling away and back emptied it.
+- (UITableViewCell *)storyGridCell:(UITableView *)tableView {
+	if (self.storyGridCellCache)
+		return self.storyGridCellCache;
+
+	UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault
+												   reuseIdentifier:nil];
+	cell.selectionStyle = UITableViewCellSelectionStyleNone;
+
+	CGFloat width = tableView.bounds.size.width;
+	CGFloat side = [[self class] storySideForWidth:width];
+	NSInteger count = MIN((NSInteger)self.stories.count, 20);
+
+	for (NSInteger i = 0; i < count; i++){
+		NSDictionary *story = self.stories[i];
+		NSNumber *fileId = story[@"photoId"];
+		CGRect frame = CGRectMake((i % kStoryGridCols) * (side + kStoryGridGap),
+								  (i / kStoryGridCols) * (side + kStoryGridGap),
+								  side, side);
+
+		UIImageView *thumb = [[UIImageView alloc] initWithFrame:frame];
+		thumb.backgroundColor = [[TGTheme shared] fileTileColour];
+		thumb.contentMode = UIViewContentModeScaleAspectFill;
+		thumb.clipsToBounds = YES;
+		[cell.contentView addSubview:thumb];
+
+		if ([story[@"isVideo"] boolValue]){
+			UIImageView *mark = [[UIImageView alloc] initWithFrame:
+					CGRectMake(side - 20, side - 20, 16, 16)];
+			mark.image = [TGIcons glyphNamed:@"video" colour:[UIColor whiteColor] side:16];
+			[thumb addSubview:mark];
+		}
+
+		UIButton *tap = [UIButton buttonWithType:UIButtonTypeCustom];
+		tap.frame = frame;
+		tap.tag = 500 + i;
+		[tap addTarget:self action:@selector(storyTileTapped:)
+			  forControlEvents:UIControlEventTouchUpInside];
+		[cell.contentView addSubview:tap];
+
+		if ([fileId integerValue] > 0)
+			[[TGClient shared] downloadFile:fileId.integerValue completion:^(NSString *path){
+				[TGIcons loadImageAtPath:path into:thumb];
+			}];
+	}
+	self.storyGridCellCache = cell;
+	return cell;
+}
+
+/// What the selected tab shows; nil for the photo strip, which is not a list.
+- (NSString *)selectedMediaKind {
+	NSArray *tabs = [self currentMediaTabs];
+	if (!tabs.count)
+		return @"media";
+	NSInteger index = MIN(MAX(0, self.selectedMediaTab), (NSInteger)tabs.count - 1);
+	return tabs[index][@"kind"];
+}
+
+/// The rows behind the selected tab, for the list-shaped categories.
+- (NSArray *)selectedMediaRows {
+	NSString *kind = [self selectedMediaKind];
+	if ([kind isEqualToString:@"media"])   return self.photos ?: @[];
+	if ([kind isEqualToString:@"files"])   return self.files ?: @[];
+	if ([kind isEqualToString:@"voice"])   return self.voice ?: @[];
+	if ([kind isEqualToString:@"links"])   return self.links ?: @[];
+	if ([kind isEqualToString:@"stories"]) return self.stories ?: @[];
+	if ([kind isEqualToString:@"gifts"])   return self.gifts ?: @[];
+	return @[];
+}
+
+- (void)storyTileTapped:(UIButton *)button {
+	[self openStoryAtIndex:button.tag - 500];
 }
 
 - (void)mediaTabChanged:(UISegmentedControl *)sender {
 	self.selectedMediaTab = sender.selectedSegmentIndex;
-	[self.tableView reloadSections:[NSIndexSet indexSetWithIndex:kSectionMedia]
-				  withRowAnimation:UITableViewRowAnimationAutomatic];
+	// The strip is cached, and the next tab may want different pictures in it.
+	self.mediaStripCell = nil;
+	self.mediaStrip = nil;
+	self.storyGridCellCache = nil;
+	[self.thumbnailsRequested removeAllObjects];
+	// Switching a tab is not a change of content to be animated. Even with no
+	// row animation, reloading the one section slid the outgoing rows up out
+	// of the way; reloading the table swaps them in place.
+	[self.tableView reloadData];
 }
 
 /// A horizontal strip of thumbnails: a grid would mean a collection view,
@@ -62,10 +213,13 @@
 	strip.delegate = self;
 	self.mediaStrip = strip;
 
+	BOOL showingStories = NO;
+	NSArray *rows = self.photos;
+
 	CGFloat side = 76, gap = 4, x = gap;
-	NSInteger limit = MIN((NSInteger)self.photos.count, 20); // only show up to 20 photos
+	NSInteger limit = MIN((NSInteger)rows.count, 20);
 	for (NSInteger i = 0; i < limit; i++){
-		NSDictionary *m = self.photos[i];
+		NSDictionary *m = rows[i];
 		NSNumber *fileId = m[@"photoId"];
 		if (!fileId) continue;
 
@@ -77,6 +231,22 @@
 		// rather than the strip asking for all twenty the moment it is built.
 		thumb.tag = fileId.integerValue;
 		[strip addSubview:thumb];
+
+		if (showingStories){
+			// A video story says so in the corner, and the whole tile opens it.
+			if ([m[@"isVideo"] boolValue]){
+				UIImageView *mark = [[UIImageView alloc] initWithFrame:
+						CGRectMake(side - 20, side - 20, 16, 16)];
+				mark.image = [TGIcons glyphNamed:@"video" colour:[UIColor whiteColor] side:16];
+				[thumb addSubview:mark];
+			}
+			UIButton *tap = [UIButton buttonWithType:UIButtonTypeCustom];
+			tap.frame = CGRectMake(x, 2, side, side);
+			tap.tag = 500 + i;
+			[tap addTarget:self action:@selector(storyTileTapped:)
+				  forControlEvents:UIControlEventTouchUpInside];
+			[strip addSubview:tap];
+		}
 		x += side + gap;
 	}
 	strip.contentSize = CGSizeMake(x, 80);
@@ -152,10 +322,12 @@
 		[backdrop addSubview:label];
 	}
 
+	UILabel *note = nil;
 	if ([story[@"isVideo"] boolValue]){
-		UILabel *note = [[UILabel alloc] initWithFrame:
+		note = [[UILabel alloc] initWithFrame:
 				CGRectMake(0, 24, window.bounds.size.width, 18)];
-		note.text = @"Video story - showing the first frame";
+		note.text = story[@"videoId"] ? @"Loading video..."
+									  : @"Video story - showing the first frame";
 		note.font = [UIFont systemFontOfSize:12];
 		note.textAlignment = NSTextAlignmentCenter;
 		note.textColor = [UIColor colorWithWhite:1 alpha:0.6f];
@@ -172,9 +344,69 @@
 	[[TGClient shared] downloadFile:fileId.integerValue completion:^(NSString *path){
 		[TGIcons loadImageAtPath:path into:picture];
 	}];
+
+	// The still is the poster frame; the video plays over it once it is here.
+	NSNumber *videoId = story[@"videoId"];
+	if (![videoId isKindOfClass:NSNumber.class] || videoId.integerValue <= 0)
+		return;
+	__weak UIView *weakBackdrop = backdrop;
+	__weak UILabel *weakNote = note;
+	[[TGClient shared] downloadFile:videoId.integerValue completion:^(NSString *path){
+		UIView *host = weakBackdrop;
+		if (!host || !host.superview || !path.length){
+			weakNote.text = @"Video story - showing the first frame";
+			return;
+		}
+		[self stopStoryPlayback];
+
+		// Without this the session is still whatever the last recorder left
+		// it as, and a story with sound plays silent.
+		NSError *sessionError = nil;
+		[[AVAudioSession sharedInstance] setCategory:AVAudioSessionCategoryPlayback
+											   error:&sessionError];
+		[[AVAudioSession sharedInstance] setActive:YES error:NULL];
+
+		AVPlayer *player = [AVPlayer playerWithURL:[NSURL fileURLWithPath:path]];
+		if (!player){
+			weakNote.text = @"Video story - showing the first frame";
+			return;
+		}
+		player.actionAtItemEnd = AVPlayerActionAtItemEndNone;
+		AVPlayerLayer *layer = [AVPlayerLayer playerLayerWithPlayer:player];
+		layer.videoGravity = AVLayerVideoGravityResizeAspect;
+		layer.frame = picture.frame;
+		[host.layer addSublayer:layer];
+
+		[[NSNotificationCenter defaultCenter] addObserver:self
+				selector:@selector(storyReachedEnd:)
+					name:AVPlayerItemDidPlayToEndTimeNotification
+				  object:player.currentItem];
+
+		sStoryPlayer = player;
+		sStoryLayer = layer;
+		weakNote.hidden = YES;
+		[player play];
+	}];
+}
+
+- (void)storyReachedEnd:(NSNotification *)note {
+	[sStoryPlayer seekToTime:kCMTimeZero];
+	[sStoryPlayer play];
+}
+
+- (void)stopStoryPlayback {
+	if (!sStoryPlayer && !sStoryLayer)
+		return;
+	[[NSNotificationCenter defaultCenter] removeObserver:self
+			name:AVPlayerItemDidPlayToEndTimeNotification object:nil];
+	[sStoryPlayer pause];
+	[sStoryLayer removeFromSuperlayer];
+	sStoryPlayer = nil;
+	sStoryLayer = nil;
 }
 
 - (void)closeStory:(UITapGestureRecognizer *)tap {
+	[self stopStoryPlayback];
 	UIView *backdrop = tap.view;
 	[UIView animateWithDuration:0.2 animations:^{ backdrop.alpha = 0; }
 					 completion:^(BOOL done){ [backdrop removeFromSuperview]; }];

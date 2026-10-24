@@ -22,6 +22,18 @@ static NSDictionary *TGFlattenStory(NSDictionary *story) {
 		fileId = content[@"video"][@"thumbnail"][@"file"][@"id"];
 	}
 
+	// The video itself, not just its poster frame - without this a video
+	// story could only ever be shown as a still. The smaller alternative is
+	// preferred where the server offers one; this is a 512MB phone.
+	NSNumber *videoId = nil;
+	NSNumber *videoDuration = nil;
+	if ([kind isEqualToString:@"storyContentVideo"]){
+		NSDictionary *video = [content[@"alternative_video"] isKindOfClass:NSDictionary.class]
+				? content[@"alternative_video"] : content[@"video"];
+		videoId = video[@"video"][@"id"];
+		videoDuration = video[@"duration"];
+	}
+
 	NSMutableDictionary *out = [@{
 		@"storyId"  : story[@"id"] ?: @(0),
 		@"date"     : story[@"date"] ?: @(0),
@@ -31,6 +43,10 @@ static NSDictionary *TGFlattenStory(NSDictionary *story) {
 	} mutableCopy];
 	if (fileId)
 		out[@"photoId"] = fileId;
+	if (videoId)
+		out[@"videoId"] = videoId;
+	if (videoDuration)
+		out[@"duration"] = videoDuration;
 	return out;
 }
 

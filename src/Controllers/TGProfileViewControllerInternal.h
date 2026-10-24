@@ -27,12 +27,17 @@ static const NSInteger kSectionMedia   = 4;
 @property (nonatomic, strong) NSArray *details;   // label/value pairs
 @property (nonatomic, strong) NSArray *photos;    // flattened messages
 @property (nonatomic, strong) NSArray *files;
+@property (nonatomic, strong) NSArray *voice;
+@property (nonatomic, strong) NSArray *links;
+/// The categories the bar is showing, in order: each is @{"title", "kind"}.
+@property (nonatomic, strong) NSArray *mediaTabs;
 @property (nonatomic, strong) NSArray *members;
 @property (nonatomic, strong) NSArray *gifts;
 @property (nonatomic, strong) NSArray *stories;
 @property (nonatomic, assign) BOOL blocked;
 @property (nonatomic, strong) UIImageView *avatarView;
 @property (nonatomic, strong) UITableViewCell *mediaStripCell;
+@property (nonatomic, strong) UITableViewCell *storyGridCellCache;
 @property (nonatomic, strong) UILabel *statusLabel;
 @property (nonatomic, strong) NSArray *actionNames;
 @property (nonatomic, assign) BOOL muted;
@@ -59,10 +64,19 @@ static const NSInteger kSectionMedia   = 4;
 
 - (void)loadMedia;
 - (void)mediaTabChanged:(UISegmentedControl *)sender;
+- (NSArray *)currentMediaTabs;
+- (NSString *)selectedMediaKind;
+- (BOOL)selectedTabIsStrip;
+- (BOOL)selectedTabIsGrid;
+- (CGFloat)storyGridHeight;
+- (UITableViewCell *)storyGridCell:(UITableView *)tableView;
+- (NSArray *)selectedMediaRows;
 - (UITableViewCell *)photoStripCell:(UITableView *)tableView;
 - (void)fetchVisibleThumbnails;
 - (void)openStoryAtIndex:(NSInteger)index;
 - (void)closeStory:(UITapGestureRecognizer *)tap;
+- (void)storyTileTapped:(UIButton *)button;
+- (void)stopStoryPlayback;
 
 @end
 

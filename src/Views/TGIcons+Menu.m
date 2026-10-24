@@ -21,7 +21,9 @@ void TGIconsClearSettingsIconCache(void) {
 				@"notifications", @"privacy", @"data", @"chat", @"folder",
 				@"devices", @"language", @"faq", @"policy",
 				// the profile's action tiles
-				@"call", @"video", @"search", @"more", nil];
+				@"call", @"video", @"search", @"more",
+				// the call screen
+				@"endcall", @"recent", @"star", nil];
 	// An unknown name has to answer nil, not a blank square: a row with no
 	// glyph is better than a row with a hole where one should be.
 	if (![known containsObject:name])
@@ -181,11 +183,12 @@ void TGIconsClearSettingsIconCache(void) {
 			CGContextAddLineToPoint(ctx, s * 0.72f, s * 0.36f);
 			CGContextStrokePath(ctx);
 
-		} else if ([name isEqualToString:@"call"]){
-			// Sleek telephone receiver angled at 45 degrees
+		} else if ([name isEqualToString:@"call"] || [name isEqualToString:@"endcall"]){
+			// Sleek telephone receiver angled at 45 degrees. Hanging up is the
+			// same receiver turned face down.
 			CGContextSaveGState(ctx);
 			CGContextTranslateCTM(ctx, s / 2.0f, s / 2.0f);
-			CGContextRotateCTM(ctx, -M_PI_4);
+			CGContextRotateCTM(ctx, [name isEqualToString:@"endcall"] ? M_PI_4 * 3 : -M_PI_4);
 
 			UIBezierPath *phone = [UIBezierPath bezierPath];
 			[phone moveToPoint:CGPointMake(9.0f, 3.8f)];
@@ -217,6 +220,31 @@ void TGIconsClearSettingsIconCache(void) {
 			CGContextAddLineToPoint(ctx, s - m, s * 0.66f);
 			CGContextAddLineToPoint(ctx, m + s * 0.46f, s * 0.56f);
 			CGContextClosePath(ctx);
+			CGContextStrokePath(ctx);
+
+		} else if ([name isEqualToString:@"recent"]){
+			// a clock, for the "recently used" strip entry
+			CGContextStrokeEllipseInRect(ctx, CGRectMake(m, m, s - 2 * m, s - 2 * m));
+			CGContextMoveToPoint(ctx, s * 0.5f, s * 0.30f);
+			CGContextAddLineToPoint(ctx, s * 0.5f, s * 0.52f);
+			CGContextAddLineToPoint(ctx, s * 0.66f, s * 0.60f);
+			CGContextStrokePath(ctx);
+
+		} else if ([name isEqualToString:@"star"]){
+			// a five-pointed star, for Favourites
+			CGFloat cx = s / 2.0f, cy = s / 2.0f, outer = s * 0.32f, inner = outer * 0.42f;
+			UIBezierPath *star = [UIBezierPath bezierPath];
+			for (int i = 0; i < 10; i++){
+				CGFloat r = (i % 2) ? inner : outer;
+				CGFloat a = -M_PI_2 + i * M_PI / 5.0f;
+				CGPoint p = CGPointMake(cx + r * cosf(a), cy + r * sinf(a));
+				if (i == 0)
+					[star moveToPoint:p];
+				else
+					[star addLineToPoint:p];
+			}
+			[star closePath];
+			CGContextAddPath(ctx, star.CGPath);
 			CGContextStrokePath(ctx);
 
 		} else if ([name isEqualToString:@"search"]){

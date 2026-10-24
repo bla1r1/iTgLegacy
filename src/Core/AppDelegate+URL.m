@@ -522,7 +522,11 @@ static NSString *TGBase64FromImage(UIImage *img) {
 			if (![tabs isKindOfClass:UITabBarController.class])
 				return;
 			UIViewController *top = [tabs.viewControllers[tabs.selectedIndex] topViewController];
-			if ([top respondsToSelector:@selector(toggleStickerPanel)])
+			// With a tab name it opens on that tab, which is what a test
+			// needs; bare, it toggles the way the button does.
+			if (arg.length && [top respondsToSelector:@selector(openStickerPanelTab:)])
+				[top performSelector:@selector(openStickerPanelTab:) withObject:arg];
+			else if ([top respondsToSelector:@selector(toggleStickerPanel)])
 				[top performSelector:@selector(toggleStickerPanel)];
 		});
 		return YES;
