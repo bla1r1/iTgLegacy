@@ -106,6 +106,19 @@
 				[weakSelf openURL:@"https://telegram.org/privacy"];
 			}),
 		]),
+
+		TGSection(nil, nil, @[
+			TGRedRow(@"Log out", ^{
+				UIAlertView *alert = [[UIAlertView alloc]
+						initWithTitle:@"Log out"
+						      message:@"Are you sure you want to log out?"
+						     delegate:weakSelf
+					cancelButtonTitle:@"Cancel"
+					otherButtonTitles:@"Log out", nil];
+				alert.tag = 0;
+				[alert show];
+			}),
+		]),
 	];
 }
 

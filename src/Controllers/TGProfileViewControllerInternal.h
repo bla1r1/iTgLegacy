@@ -16,6 +16,7 @@ static const NSInteger kSectionStories = 1;
 static const NSInteger kSectionGifts   = 2;
 static const NSInteger kSectionMembers = 3;
 static const NSInteger kSectionMedia   = 4;
+static const NSInteger kSectionLogout  = 5;
 
 @interface TGProfileViewController () <UIActionSheetDelegate, UIAlertViewDelegate, UIScrollViewDelegate>
 

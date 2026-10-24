@@ -148,6 +148,8 @@
 - (void)alertView:(UIAlertView *)alert clickedButtonAtIndex:(NSInteger)index {
 	if (alert.tag == 71 && index != alert.cancelButtonIndex)
 		[[TGClient shared] clearHistoryInChat:self.chatId];
+	else if (alert.tag == 72 && index != alert.cancelButtonIndex)
+		[[TGClient shared] logOut];
 }
 
 @end

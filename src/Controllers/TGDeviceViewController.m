@@ -2,8 +2,9 @@
 #import "TGDevice.h"
 #import "TGCapabilities.h"
 #import "TGTheme.h"
+#import "TGClient.h"
 
-@interface TGDeviceViewController ()
+@interface TGDeviceViewController () <UIAlertViewDelegate>
 @property (nonatomic, strong) NSArray *capabilities;
 @end
 
@@ -48,23 +49,29 @@
 #pragma mark - table
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
-	return 2;
+	return 3;
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
-	return section == 0 ? @"Hardware" : @"Features";
+	if (section == 0) return @"Hardware";
+	if (section == 1) return @"Features";
+	return nil;
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
 	if (section == 0)
 		return @"Vintage: iPhone 3GS and 4. Legacy: 4S, 5 and 5c. "
 			   @"Modern: 5s and 6. Full: 6s and later.";
-	return @"Features off here are not missing from the app - this device "
-		   @"cannot run them.";
+	if (section == 1)
+		return @"Features off here are not missing from the app - this device "
+			   @"cannot run them.";
+	return nil;
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-	return section == 0 ? 4 : self.capabilities.count;
+	if (section == 0) return 4;
+	if (section == 1) return self.capabilities.count;
+	return 1; // Log out
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
@@ -100,6 +107,16 @@
 		return cell;
 	}
 
+	if (indexPath.section == 2){
+		// Log out — red, centred, tappable
+		cell.selectionStyle = UITableViewCellSelectionStyleDefault;
+		cell.textLabel.text = @"Log out";
+		cell.textLabel.textColor = [UIColor colorWithRed:1.0f green:0.23f blue:0.18f alpha:1.0f];
+		cell.textLabel.textAlignment = NSTextAlignmentCenter;
+		cell.detailTextLabel.text = nil;
+		return cell;
+	}
+
 	TGCapability *capability = self.capabilities[indexPath.row];
 	cell.textLabel.text = capability.name;
 	cell.detailTextLabel.text = capability.available ? @"on" : capability.requirement;
@@ -110,6 +127,25 @@
 			? [[TGTheme shared] primaryTextColour]
 			: [[TGTheme shared] secondaryTextColour];
 	return cell;
+}
+
+- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
+	[tableView deselectRowAtIndexPath:indexPath animated:YES];
+	if (indexPath.section != 2)
+		return;
+	// Log out — confirm before doing anything irreversible
+	UIAlertView *alert = [[UIAlertView alloc]
+			initWithTitle:@"Log out"
+			      message:@"Are you sure you want to log out?"
+			     delegate:self
+		cancelButtonTitle:@"Cancel"
+		otherButtonTitles:@"Log out", nil];
+	[alert show];
+}
+
+- (void)alertView:(UIAlertView *)alert clickedButtonAtIndex:(NSInteger)index {
+	if (index != alert.cancelButtonIndex)
+		[[TGClient shared] logOut];
 }
 
 - (void)tableView:(UITableView *)tableView willDisplayHeaderView:(UIView *)view forSection:(NSInteger)section {

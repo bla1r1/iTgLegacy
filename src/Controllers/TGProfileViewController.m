@@ -226,7 +226,7 @@ static NSString *TGProfileShortDate(NSNumber *date) {
 #pragma mark - table
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
-	return 5;
+	return 6;
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
@@ -245,6 +245,12 @@ static NSString *TGProfileShortDate(NSNumber *date) {
 		if ([self selectedTabIsStrip] || [self selectedTabIsGrid])
 			return [self selectedMediaRows].count ? 1 : 0;
 		return [self selectedMediaRows].count;
+	}
+
+	if (section == kSectionLogout){
+		// Show "Log out" only when this is the signed-in user's own profile.
+		int64_t myId = [[TGClient shared].me[@"id"] longLongValue];
+		return (self.userId && self.userId == myId) ? 1 : 0;
 	}
 	return 0;
 }
@@ -410,6 +416,16 @@ static NSString *TGProfileShortDate(NSNumber *date) {
 		return cell;
 	}
 
+	if (indexPath.section == kSectionLogout){
+		cell.selectionStyle = UITableViewCellSelectionStyleDefault;
+		cell.textLabel.text = @"Log out";
+		cell.textLabel.textColor = [UIColor colorWithRed:1.0f green:0.23f blue:0.18f alpha:1.0f];
+		cell.textLabel.textAlignment = NSTextAlignmentCenter;
+		cell.detailTextLabel.text = nil;
+		cell.imageView.image = nil;
+		return cell;
+	}
+
 	if (indexPath.section == kSectionMembers){
 		NSDictionary *member = self.members[indexPath.row];
 		int64_t userId = [member[@"id"] longLongValue];
@@ -453,6 +469,18 @@ static NSString *TGProfileShortDate(NSNumber *date) {
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
 	[tableView deselectRowAtIndexPath:indexPath animated:YES];
+
+	if (indexPath.section == kSectionLogout){
+		UIAlertView *alert = [[UIAlertView alloc]
+				initWithTitle:@"Log out"
+				      message:@"Are you sure you want to log out?"
+				     delegate:self
+			cancelButtonTitle:@"Cancel"
+			otherButtonTitles:@"Log out", nil];
+		alert.tag = 72;
+		[alert show];
+		return;
+	}
 
 	if (indexPath.section == kSectionMedia)
 		return;
