@@ -1,4 +1,5 @@
 #import "TGChatListViewControllerInternal.h"
+#import "TGStatusText.h"
 
 @implementation TGChatListViewController
 
@@ -60,7 +61,11 @@
 		[weakSelf.tableView reloadData];
 	};
 	[TGClient shared].onConnectionState = ^(TGConnectionState state, NSString *text){
-		weakSelf.title = text ?: @"Chats";
+		NSString *line = TGNetworkSubtitleForState((NSInteger)state, text);
+		// The list title reads "Chats"/"Archived"/the folder while the
+		// connection is fine; the network names it otherwise. Before, READY
+		// reset the title to "Chats" and a chosen folder got erased (B4).
+		weakSelf.title = line ?: [weakSelf titleForCurrentList];
 	};
 	[self reload];
 }

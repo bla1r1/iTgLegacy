@@ -1,4 +1,5 @@
 #import "TGClientInternal.h"
+#import "TGStatusText.h"
 
 /// TDLib names the three scopes; the app names them shortly.
 static NSString *TGScopeType(NSString *scope) {
@@ -280,39 +281,9 @@ static NSArray *TGPacksFrom(NSDictionary *target) {
 - (void)statusForUser:(int64_t)userId completion:(void (^)(NSString *))completion {
 	[self request:@{@"@type" : @"getUser", @"user_id" : @(userId)}
 	   completion:^(NSDictionary *user){
-		NSDictionary *status = user[@"status"];
-		NSString *kind = status[@"@type"];
-		NSString *text = nil;
-
-		if ([kind isEqualToString:@"userStatusOnline"]){
-			text = @"online";
-		} else if ([kind isEqualToString:@"userStatusRecently"]){
-			text = @"last seen recently";
-		} else if ([kind isEqualToString:@"userStatusLastWeek"]){
-			text = @"last seen within a week";
-		} else if ([kind isEqualToString:@"userStatusLastMonth"]){
-			text = @"last seen within a month";
-		} else if ([kind isEqualToString:@"userStatusOffline"]){
-			NSTimeInterval was = [status[@"was_online"] doubleValue];
-			static NSDateFormatter *fmt = nil;
-			if (!fmt){
-				fmt = [[NSDateFormatter alloc] init];
-				[fmt setDateFormat:@"HH:mm"];
-			}
-			NSDate *date = [NSDate dateWithTimeIntervalSince1970:was];
-			BOOL today = [[NSCalendar currentCalendar]
-					components:NSDayCalendarUnit fromDate:date].day ==
-						 [[NSCalendar currentCalendar]
-					components:NSDayCalendarUnit fromDate:[NSDate date]].day;
-			text = today
-				? [NSString stringWithFormat:@"last seen at %@", [fmt stringFromDate:date]]
-				: @"last seen a long time ago";
-		} else {
-			// userStatusEmpty is what TDLib sends for someone who has turned
-			// their last-seen off, and for a user it will not talk about. Every
-			// client shows the same phrase rather than an empty subtitle.
-			text = @"last seen recently";
-		}
+		// The phrase table now lives in TGStatusText alongside the network
+		// names, so a host test can pin every line it can say (B4).
+		NSString *text = TGStatusTextFromTDStatus(user[@"status"]);
 		if (completion) completion(text);
 	}];
 }

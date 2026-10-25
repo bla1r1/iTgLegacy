@@ -4,6 +4,17 @@
 @implementation TGChatListViewController (Actions)
 
 /// Folders are a filter over the same chats, offered as a choice.
+/// The names the list titles answer with: "Archived" when this screen is
+/// showing the archive, the folder's own title when a folder is selected.
+- (NSString *)titleForCurrentList {
+	if (self.showsArchive)
+		return @"Archived";
+	for (NSDictionary *f in [TGClient shared].folders)
+		if ([f[@"id"] integerValue] == self.folderId)
+			return f[@"title"] ?: @"Chats";
+	return @"Chats";
+}
+
 - (void)foldersTapped {
 	NSArray *folders = [TGClient shared].folders;
 	// Tapping and getting nothing back reads as a broken button; an account

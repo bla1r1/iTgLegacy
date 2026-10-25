@@ -97,6 +97,12 @@ static const CGFloat kComposeBannerHeight = 44.0f;
 @property (nonatomic, strong) NSTimer *typingTimer;
 @property (nonatomic, copy) NSString *typingBase;
 @property (nonatomic, assign) NSInteger typingStep;
+// The three owners of the header subtitle. The resting status is what the
+// last-seen answered; the network line shows whenever TDLib is not ready
+// (B4 - a chat opened offline used to freeze at "last seen...").
+@property (nonatomic, strong) NSString *restingSubtitle;
+@property (nonatomic, strong) NSString *networkSubtitle;
+- (void)titleSubtitleOwnerChanged:(NSNotification *)note;
 @property (nonatomic, strong) NSMutableSet *gifsRequested;
 @property (nonatomic, strong) UILabel *titleNameLabel;
 @property (nonatomic, strong) UILabel *titleSubtitleLabel;

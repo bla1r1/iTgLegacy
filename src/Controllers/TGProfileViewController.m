@@ -36,6 +36,14 @@ static NSString *TGProfileShortDate(NSNumber *date) {
 		self.edgesForExtendedLayout = UIRectEdgeNone;
 	[self applyTheme];
 
+	// The status line listens to the network too (B4): a profile opened
+	// offline used to freeze at its captured last-seen.
+	NSNotificationCenter *nc = [NSNotificationCenter defaultCenter];
+	[nc addObserver:self selector:@selector(statusLabelOwnerChanged:)
+			name:TGConnectionStateChangedNotification object:nil];
+	[nc addObserver:self selector:@selector(statusLabelOwnerChanged:)
+			name:TGUserStatusChangedNotification object:nil];
+
 	[self buildHeader];
 	[self loadDetails];
 	[self loadMedia];
@@ -113,21 +121,26 @@ static NSString *TGProfileShortDate(NSNumber *date) {
 
 	[self buildActionsIn:header atY:(16 + side + 62)];
 
-	// Saved Messages is the chat with yourself, so asking for its presence
-	// answers your own - and a bookmark folder reading "online" is nonsense.
+	// The status line listens to presence too: a status arriving while the
+	// profile is open refreshes the line (B4).
 	if (self.chatId && self.chatId == [[TGClient shared] savedMessagesChatId]){
 		self.statusLabel.text = nil;
 	} else if (self.userId){
 		__weak typeof(self) weakSelf = self;
 		[[TGClient shared] statusForUser:self.userId completion:^(NSString *status){
-			weakSelf.statusLabel.text = status;
+			if (!status.length)
+				return;
+			weakSelf.restingStatus = status;
+			[weakSelf statusLabelOwnerChanged:nil];
 		}];
 	} else {
 		__weak typeof(self) weakSelf = self;
 		[[TGClient shared] memberCountForChat:self.chatId completion:^(NSInteger count){
-			if (count > 0)
-				weakSelf.statusLabel.text = [NSString stringWithFormat:@"%ld members",
+			if (count > 0){
+				weakSelf.restingStatus = [NSString stringWithFormat:@"%ld members",
 						(long)count];
+				[weakSelf statusLabelOwnerChanged:nil];
+			}
 		}];
 	}
 

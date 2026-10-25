@@ -177,11 +177,20 @@
 
 	// "typing..." takes the subtitle over while it lasts, then hands it back.
 	__weak typeof(self) weakSelf = self;
-	__block NSString *restingSubtitle = @"";
+	self.restingSubtitle = @"";
+
+	// The subtitle belongs to the network whenever TDLib is not ready (B4):
+	// a chat opened offline used to freeze at its captured "last seen"
+	// instead of breathing "Waiting for network".
+	NSNotificationCenter *nc = [NSNotificationCenter defaultCenter];
+	[nc addObserver:self selector:@selector(titleSubtitleOwnerChanged:)
+			name:TGConnectionStateChangedNotification object:nil];
+	[nc addObserver:self selector:@selector(titleSubtitleOwnerChanged:)
+			name:TGUserStatusChangedNotification object:nil];
 	[TGClient shared].onChatAction = ^(int64_t chatId, NSString *action){
 		if (chatId != weakSelf.chatId)
 			return;
-		[weakSelf showChatAction:action resting:restingSubtitle];
+		[weakSelf showChatAction:action resting:weakSelf.restingSubtitle];
 	};
 
 	// An imported theme can arrive while a chat is open - repaint rather than
@@ -202,17 +211,16 @@
 		[[TGClient shared] statusForUser:self.chatId completion:^(NSString *status){
 			if (!status.length)
 				return;
-			restingSubtitle = status;
-			if (!subtitle.text.length)
-				subtitle.text = status;
+			weakSelf.restingSubtitle = status;
+			[weakSelf titleSubtitleOwnerChanged:nil];
 		}];
 		return;
 	}
 
 	[[TGClient shared] memberCountForChat:self.chatId completion:^(NSInteger count){
 		if (count > 0){
-			restingSubtitle = [NSString stringWithFormat:@"%ld members", (long)count];
-			subtitle.text = restingSubtitle;
+			weakSelf.restingSubtitle = [NSString stringWithFormat:@"%ld members", (long)count];
+			[weakSelf titleSubtitleOwnerChanged:nil];
 		}
 	}];
 }

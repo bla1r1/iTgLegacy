@@ -5,6 +5,7 @@
 //
 #import "TGChatViewControllerInternal.h"
 #import <QuartzCore/QuartzCore.h>
+#import "TGStatusText.h"
 
 static const CGFloat kJumpSide = 40.0f;
 
@@ -361,9 +362,38 @@ static const CGFloat kReplyPull = 56.0f;   // how far a bubble travels before it
 	}
 }
 
+#pragma mark - subtitle ownership
+
+/// Whose phrase the header subtitle carries: the network state first, then
+/// the typing dots, then the resting last-seen. B4: a chat opened offline
+/// used to sit at its captured status and never say "Waiting for network".
+- (void)titleSubtitleOwnerChanged:(NSNotification *)note {
+	NSString *network = TGNetworkSubtitleForState(
+			(NSInteger)[TGClient shared].connectionState, nil);
+	if (network.length){
+		self.networkSubtitle = network;
+		self.titleSubtitleLabel.text = network;
+		self.titleSubtitleLabel.textColor = [[TGTheme shared] barSubtitleColour];
+		return;
+	}
+
+	NSString *was = self.networkSubtitle;
+	self.networkSubtitle = nil;
+	if (!was.length && note)
+		return;   // nothing of ours to hand back
+
+	if (!self.typingTimer){
+		NSString *resting = self.restingSubtitle ?: @"";
+		if (resting.length){
+			self.titleSubtitleLabel.text = resting;
+			self.titleSubtitleLabel.textColor = [[TGTheme shared] barSubtitleColour];
+		}
+	}
+	// A live typing timer re-writes the line on its own tick.
+}
+
 #pragma mark - typing
 
-/// "typing" with its dots counting up, rather than a static "typing...".
 - (void)showChatAction:(NSString *)action resting:(NSString *)resting {
 	[self.typingTimer invalidate];
 	self.typingTimer = nil;

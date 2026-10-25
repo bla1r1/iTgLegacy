@@ -74,7 +74,8 @@ CLIENT_OBJC_SRCS := \
     $(SRC)/Core/TGClient+Chats.m \
     $(SRC)/Core/TGClient+Messages.m \
     $(SRC)/Core/TGClient+Stickers.m \
-    $(SRC)/Core/TGClient+Files.m
+    $(SRC)/Core/TGClient+Files.m \
+    $(SRC)/Core/TGStatusText.m
 
 # Test helper ObjC sources. TGClientStub and TGCallAudioEngineStub stand in
 # for the iOS-only production classes that TGCall.mm would otherwise need.
@@ -108,7 +109,8 @@ TEST_SRCS := \
 
 CLIENT_TEST_SRCS := \
     $(TESTS)/TGClientChatsTests.m \
-    $(TESTS)/TGClientFilesTests.m
+    $(TESTS)/TGClientFilesTests.m \
+    $(TESTS)/TGStatusTextTests.m
 
 TEST_BINARY := $(BUILD)/TGCallTests
 CLIENT_BINARY := $(BUILD)/TGClientTests

@@ -1,7 +1,20 @@
 #import "TGProfileViewControllerInternal.h"
 #import "TGCapabilities.h"
+#import "TGStatusText.h"
 
 @implementation TGProfileViewController (Actions)
+
+/// Whose phrase the status line carries: the network state first, then the
+/// resting answer (last seen or member count). B4: a profile opened offline
+/// used to freeze at its captured status instead of saying why it cannot
+/// answer - "Waiting for network".
+- (void)statusLabelOwnerChanged:(NSNotification *)note {
+	NSString *network = TGNetworkSubtitleForState(
+			(NSInteger)[TGClient shared].connectionState, nil);
+	NSString *line = network ?: (self.restingStatus ?: @"");
+	if (line.length && ![self.statusLabel.text isEqualToString:line])
+		self.statusLabel.text = line;
+}
 
 /// The tiles under the name: a glyph over a word, on a soft rounded plate.
 /// Only the ones that mean something here - a group has no one to call.

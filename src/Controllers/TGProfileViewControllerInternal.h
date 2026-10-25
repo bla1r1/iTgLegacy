@@ -42,6 +42,11 @@ static const NSInteger kSectionLogout  = 5;
 @property (nonatomic, strong) NSString *mediaGridCacheContent;
 @property (nonatomic, strong) UITableViewCell *storyGridCellCache;
 @property (nonatomic, strong) UILabel *statusLabel;
+// What the status line would say without the network: the last seen that
+// answered, or the member count. The network override for TDLib-not-ready
+// lives in statusLabelOwnerChanged (B4).
+@property (nonatomic, strong) NSString *restingStatus;
+- (void)statusLabelOwnerChanged:(NSNotification *)note;
 @property (nonatomic, strong) NSArray *actionNames;
 @property (nonatomic, assign) BOOL muted;
 @property (nonatomic, strong) NSString *phoneNumber;

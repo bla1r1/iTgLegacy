@@ -4,6 +4,8 @@
 #include "api_id.h"
 
 NSString *const TGChatReadOutboxChangedNotification = @"TGChatReadOutboxChangedNotification";
+NSString *const TGConnectionStateChangedNotification = @"TGConnectionStateChangedNotification";
+NSString *const TGUserStatusChangedNotification = @"TGUserStatusChangedNotification";
 
 @implementation TGClient
 
@@ -273,6 +275,11 @@ NSString *const TGChatReadOutboxChangedNotification = @"TGChatReadOutboxChangedN
 		self.connectionState = state;
 		if (self.onConnectionState)
 			self.onConnectionState(state, text);
+		[[NSNotificationCenter defaultCenter]
+				postNotificationName:TGConnectionStateChangedNotification
+							  object:nil
+							userInfo:@{@"state" : @(state),
+									   @"text"  : text ?: @""}];
 		return;
 	}
 	if ([type isEqualToString:@"updateNewCallSignalingData"]){
@@ -366,7 +373,14 @@ NSString *const TGChatReadOutboxChangedNotification = @"TGChatReadOutboxChangedN
 	// A private chat's id is the user's id, so presence lands straight on the
 	// chat the list is drawing.
 	if ([type isEqualToString:@"updateUserStatus"]){
+		int64_t userId = [obj[@"user_id"] longLongValue];
 		NSMutableDictionary *chat = self.chatsById[obj[@"user_id"]];
+		// Presence screens (chat header, profile status) hear this even when
+		// the user sits in no loaded chat.
+		[[NSNotificationCenter defaultCenter]
+				postNotificationName:TGUserStatusChangedNotification
+							  object:nil
+							userInfo:@{@"userId" : @(userId)}];
 		if (!chat)
 			return;
 		BOOL online = [obj[@"status"][@"@type"] isEqualToString:@"userStatusOnline"];

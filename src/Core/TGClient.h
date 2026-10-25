@@ -19,6 +19,12 @@ typedef NS_ENUM(NSInteger, TGAuthState) {
 /// Posted on the main queue when the other side reads your messages in a
 /// chat; userInfo carries "chatId".
 extern NSString *const TGChatReadOutboxChangedNotification;
+// Fired when updateConnectionState arrives, so screens that need not own the
+// single onConnectionState slot can still see the network change (B4).
+extern NSString *const TGConnectionStateChangedNotification;
+// Fired when updateUserStatus arrives: chat headers and profile status
+// labels re-render their line instead of freezing at the fetched one.
+extern NSString *const TGUserStatusChangedNotification;
 
 @interface TGClient : NSObject
 
