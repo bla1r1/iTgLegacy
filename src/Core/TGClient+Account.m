@@ -168,6 +168,11 @@ static NSArray *TGPacksFrom(NSDictionary *target) {
 		@"user_id" : @(userId),
 		@"force"   : @NO,
 	} completion:^(NSDictionary *chat){
+		// The answer is a full chat object, id included; feeding it into
+		// the cache puts a photo and a title beside the id, so the screen a
+		// contact opens is dressed like any other chat instead of a bare
+		// id and name pair (B6).
+		[self mergeChat:chat];
 		if (completion)
 			completion([chat[@"id"] longLongValue]);
 	}];
