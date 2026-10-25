@@ -4,14 +4,12 @@
 #import <AssetsLibrary/AssetsLibrary.h>
 #import <QuartzCore/QuartzCore.h>
 
-static const CGFloat kMargin    = 8.0f;
 static const CGFloat kRow       = 52.0f;
 static const CGFloat kStrip     = 100.0f;
 static const CGFloat kThumb     = 86.0f;
 static const NSUInteger kRecentPhotos = 24;
 
 @interface TGAttachSheet ()
-@property (nonatomic, strong) UIView *backdrop;
 @property (nonatomic, strong) UIView *card;
 @property (nonatomic, strong) UIView *cancelCard;
 @property (nonatomic, strong) UIScrollView *strip;
@@ -23,8 +21,7 @@ static const NSUInteger kRecentPhotos = 24;
 @implementation TGAttachSheet
 
 + (TGAttachSheet *)showInView:(UIView *)view {
-	TGAttachSheet *sheet = [[TGAttachSheet alloc] initWithFrame:view.bounds];
-	[view addSubview:sheet];
+	TGAttachSheet *sheet = [TGAttachSheet sheetForView:view];
 	[sheet present];
 	return sheet;
 }
@@ -33,27 +30,16 @@ static const NSUInteger kRecentPhotos = 24;
 	self = [super initWithFrame:frame];
 	if (!self)
 		return nil;
-	self.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
 	TGTheme *theme = [TGTheme shared];
 
-	self.backdrop = [[UIView alloc] initWithFrame:self.bounds];
-	self.backdrop.autoresizingMask = self.autoresizingMask;
-	self.backdrop.backgroundColor = [UIColor colorWithWhite:0 alpha:0.4f];
-	self.backdrop.alpha = 0;
-	[self.backdrop addGestureRecognizer:[[UITapGestureRecognizer alloc]
-			initWithTarget:self action:@selector(dismiss)]];
-	[self addSubview:self.backdrop];
-
 	BOOL strip = [TGCapabilities canShowRecentPhotos];
-	CGFloat w = frame.size.width - 2 * kMargin;
 	NSArray *titles = @[@"Photo or Video", @"Location", @"Contact"];
 	CGFloat cardH = (strip ? kStrip : 0) + kRow * titles.count;
 
-	self.card = [[UIView alloc] initWithFrame:CGRectMake(kMargin, 0, w, cardH)];
-	self.card.backgroundColor = [theme cardBackgroundColour];
-	self.card.layer.cornerRadius = 12;
-	self.card.clipsToBounds = YES;
-	[self addSubview:self.card];
+	// Two floating cards, the way their attach menu stacks them: the
+	// choices, and Cancel on its own under them.
+	self.card = [self addCardOfHeight:cardH edgeToEdge:NO];
+	CGFloat w = self.card.bounds.size.width;
 
 	CGFloat y = 0;
 	if (strip){
@@ -79,16 +65,11 @@ static const NSUInteger kRecentPhotos = 24;
 		y += kRow;
 	}
 
-	self.cancelCard = [[UIView alloc] initWithFrame:CGRectMake(kMargin, 0, w, kRow)];
-	self.cancelCard.backgroundColor = [theme cardBackgroundColour];
-	self.cancelCard.layer.cornerRadius = 12;
-	self.cancelCard.clipsToBounds = YES;
+	self.cancelCard = [self addCardOfHeight:kRow edgeToEdge:NO];
 	UIButton *cancel = [self rowButtonTitled:@"Cancel" bold:YES frame:self.cancelCard.bounds];
 	[cancel addTarget:self action:@selector(dismiss) forControlEvents:UIControlEventTouchUpInside];
 	[self.cancelCard addSubview:cancel];
-	[self addSubview:self.cancelCard];
 
-	[self placeCardsShown:NO];
 	return self;
 }
 
@@ -100,34 +81,6 @@ static const NSUInteger kRecentPhotos = 24;
 	[button setTitleColor:[[TGTheme shared] accentColour] forState:UIControlStateNormal];
 	[button setTitleColor:[[TGTheme shared] secondaryTextColour] forState:UIControlStateHighlighted];
 	return button;
-}
-
-- (void)placeCardsShown:(BOOL)shown {
-	CGFloat h = self.bounds.size.height;
-	CGFloat total = self.card.bounds.size.height + kMargin + kRow + kMargin;
-	CGFloat top = shown ? h - total : h;
-	CGRect card = self.card.frame;
-	card.origin.y = top;
-	self.card.frame = card;
-	CGRect cancel = self.cancelCard.frame;
-	cancel.origin.y = top + card.size.height + kMargin;
-	self.cancelCard.frame = cancel;
-}
-
-- (void)present {
-	[UIView animateWithDuration:0.25 animations:^{
-		self.backdrop.alpha = 1;
-		[self placeCardsShown:YES];
-	}];
-}
-
-- (void)dismiss {
-	[UIView animateWithDuration:0.2 animations:^{
-		self.backdrop.alpha = 0;
-		[self placeCardsShown:NO];
-	} completion:^(BOOL finished){
-		[self removeFromSuperview];
-	}];
 }
 
 - (void)choiceTapped:(UIButton *)button {

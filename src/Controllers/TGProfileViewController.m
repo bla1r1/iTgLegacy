@@ -14,6 +14,34 @@ static NSString *TGProfileShortDate(NSNumber *date) {
 	return [formatter stringFromDate:[NSDate dateWithTimeIntervalSince1970:date.doubleValue]];
 }
 
+/// The gift glyph: the sticker's own emoji drawn large. Every gift cell
+/// starts here, and the sticker thumbnail replaces the image once the
+/// download lands - until then the row is never blank (B5).
+static UIImage *TGGiftGlyph(NSString *emoji) {
+	if (!emoji.length)
+		emoji = @"🎁";
+	static NSCache *cache = nil;
+	static dispatch_once_t once;
+	dispatch_once(&once, ^{ cache = [[NSCache alloc] init]; });
+	NSString *key = [emoji stringByAppendingFormat:@"@40"];
+	UIImage *cached = [cache objectForKey:key];
+	if (cached)
+		return cached;
+
+	UIGraphicsBeginImageContextWithOptions(CGSizeMake(40, 40), NO, 0);
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+	[emoji drawInRect:CGRectMake(1, 1, 38, 38)
+			 withFont:[UIFont boldSystemFontOfSize:28]
+		lineBreakMode:NSLineBreakByClipping
+		   alignment:NSTextAlignmentCenter];
+#pragma clang diagnostic pop
+	UIImage *img = UIGraphicsGetImageFromCurrentImageContext();
+	UIGraphicsEndImageContext();
+	[cache setObject:img forKey:key];
+	return img;
+}
+
 @implementation TGProfileViewController
 
 - (instancetype)initWithChatId:(int64_t)chatId userId:(int64_t)userId title:(NSString *)title {
@@ -436,13 +464,39 @@ static NSString *TGProfileShortDate(NSNumber *date) {
 
 	if (indexPath.section == kSectionGifts){
 		NSDictionary *gift = self.gifts[indexPath.row];
-		cell.textLabel.text = gift[@"title"] ?: @"Gift";
+		NSString *emoji = gift[@"emoji"] ?: @"";
+		NSString *message = gift[@"message"];
+		cell.textLabel.text = (message.length && emoji.length)
+				? [NSString stringWithFormat:@"%@ %@", emoji, message]
+				: (emoji.length ? emoji : @"Gift");
 		cell.textLabel.font = [UIFont systemFontOfSize:15];
 		cell.textLabel.textColor = [[TGTheme shared] primaryTextColour];
-		cell.detailTextLabel.text = [NSString stringWithFormat:@"%@ stars",
-				gift[@"starCount"] ?: @(0)];
+		NSString *stars = [NSString stringWithFormat:@"%lu stars",
+				(unsigned long)[gift[@"starCount"] integerValue]];
+		cell.detailTextLabel.text = [NSString stringWithFormat:@"%@ · %@",
+				TGProfileShortDate(gift[@"date"]) ?: @"", stars];
 		cell.detailTextLabel.font = [UIFont systemFontOfSize:12];
 		cell.detailTextLabel.textColor = [[TGTheme shared] secondaryTextColour];
+
+		cell.imageView.image = TGGiftGlyph(emoji);
+		NSNumber *thumbId = gift[@"thumbFileId"];
+		if ([thumbId isKindOfClass:NSNumber.class]){
+			__weak UITableViewCell *weakCell = cell;
+			[[TGClient shared] downloadFile:thumbId.integerValue
+								   priority:TGDownloadPriorityOnScreen
+								 completion:^(NSString *path){
+				if (!weakCell || !path.length)
+					return;
+				UIImage *image = [TGIcons decodedImage:
+						[UIImage imageWithContentsOfFile:path]
+						fittingSize:CGSizeMake(40, 40) fill:YES
+						scale:[UIScreen mainScreen].scale];
+				if (!image)
+					return;
+				weakCell.imageView.image = image;
+				[weakCell setNeedsLayout];
+			}];
+		}
 		return cell;
 	}
 
@@ -489,8 +543,34 @@ static NSString *TGProfileShortDate(NSNumber *date) {
 													colour:[[TGTheme shared] secondaryTextColour]
 													  side:24];
 			} else if ([kind isEqualToString:@"gifts"]) {
-				cell.textLabel.text = m[@"title"] ?: @"Gift";
-				cell.detailTextLabel.text = m[@"subtitle"];
+				NSString *emoji = m[@"emoji"] ?: @"";
+				NSString *message = m[@"message"];
+				cell.textLabel.text = (message.length && emoji.length)
+						? [NSString stringWithFormat:@"%@ %@", emoji, message]
+						: (emoji.length ? emoji : @"Gift");
+				NSString *stars = [NSString stringWithFormat:@"%lu stars",
+						(unsigned long)[m[@"starCount"] integerValue]];
+				cell.detailTextLabel.text = [NSString stringWithFormat:@"%@ · %@",
+						TGProfileShortDate(m[@"date"]) ?: @"", stars];
+				cell.imageView.image = TGGiftGlyph(emoji);
+				NSNumber *thumbId = m[@"thumbFileId"];
+				if ([thumbId isKindOfClass:NSNumber.class]){
+					__weak UITableViewCell *weakCell = cell;
+					[[TGClient shared] downloadFile:thumbId.integerValue
+										   priority:TGDownloadPriorityOnScreen
+										 completion:^(NSString *path){
+						if (!weakCell || !path.length)
+							return;
+						UIImage *image = [TGIcons decodedImage:
+								[UIImage imageWithContentsOfFile:path]
+								fittingSize:CGSizeMake(40, 40) fill:YES
+								scale:[UIScreen mainScreen].scale];
+						if (!image)
+							return;
+						weakCell.imageView.image = image;
+						[weakCell setNeedsLayout];
+					}];
+				}
 			}
 		}
 	}

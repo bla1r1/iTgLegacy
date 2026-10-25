@@ -2,12 +2,14 @@
 #import "TGClient.h"
 
 // Which local calendar day an instant belongs to, as a running day count.
-// Rounding with a half-day window keeps the index stable across DST shifts;
-// plain arithmetic, and nothing above this iOS 7 target.
+// The offset shifts the Unix midnights onto local ones, and plain floor
+// division counts the days; the +12h anchor people reach for first actually
+// moves the boundary to local NOON, so a chat unchanged since morning read
+// as "yesterday" the moment the clock passed 12:00.
 static NSInteger TGDayIndex(NSDate *date){
 	NSTimeInterval local = date.timeIntervalSince1970
 			+ [NSTimeZone.systemTimeZone secondsFromGMTForDate:date];
-	return (NSInteger)((local + 43200.0) / 86400.0);
+	return (NSInteger)floor(local / 86400.0);
 }
 
 static NSString *TGHourString(NSTimeInterval unix){

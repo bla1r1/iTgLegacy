@@ -1,4 +1,5 @@
 #import "TGProfileViewControllerInternal.h"
+#import "TGGiftViewer.h"
 #import <AVFoundation/AVFoundation.h>
 
 /// Only one story is ever open, so the player it needs can live here rather
@@ -95,8 +96,10 @@ static AVPlayerLayer *sStoryLayer = nil;
 - (BOOL)selectedTabIsGrid {
 	NSString *kind = [self selectedMediaKind];
 	// Media became a grid of its own: one row of the table holds the tiles
-	// the photo strip used to (B1). Stories share the same renderer.
-	return [kind isEqualToString:@"media"] || [kind isEqualToString:@"stories"];
+	// the photo strip used to (B1). Stories share the same renderer, and
+	// gifts read like the official sheet: big square tiles.
+	return [kind isEqualToString:@"media"] || [kind isEqualToString:@"stories"] ||
+		   [kind isEqualToString:@"gifts"];
 }
 
 static const CGFloat kStoryGridGap     = 2.0f;
@@ -108,11 +111,41 @@ static const NSInteger kStoryGridCols  = 3;
 	return floorf((width - kStoryGridGap * (kStoryGridCols - 1)) / kStoryGridCols);
 }
 
+/// A gift tile wears its emoji drawn large - the artwork the tab strip
+/// carries until a decodable picture exists. Like TGGiftGlyph in the main
+/// file, but sized for the grid, and the tile colour sits behind it (B5).
++ (UIImage *)giftTileGlyph:(NSString *)emoji side:(CGFloat)side {
+	if (!emoji.length)
+		emoji = @"🎁";
+	static NSCache *cache = nil;
+	static dispatch_once_t once;
+	dispatch_once(&once, ^{ cache = [[NSCache alloc] init]; });
+	NSString *key = [emoji stringByAppendingFormat:@"@%g", side];
+	UIImage *cached = [cache objectForKey:key];
+	if (cached)
+		return cached;
+
+	UIGraphicsBeginImageContextWithOptions(CGSizeMake(side, side), NO, 0);
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+	[emoji drawInRect:CGRectMake(side * 0.18f, side * 0.18f, side * 0.64f, side * 0.64f)
+			 withFont:[UIFont boldSystemFontOfSize:side * 0.5f]
+		lineBreakMode:NSLineBreakByClipping
+		   alignment:NSTextAlignmentCenter];
+#pragma clang diagnostic pop
+	UIImage *img = UIGraphicsGetImageFromCurrentImageContext();
+	UIGraphicsEndImageContext();
+	[cache setObject:img forKey:key];
+	return img;
+}
+
 - (CGFloat)storyGridHeight {
 	NSString *kind = [self selectedMediaKind];
 	BOOL storyKind = [kind isEqualToString:@"stories"];
+	BOOL giftKind = [kind isEqualToString:@"gifts"];
 	NSInteger dataCount = storyKind ? (NSInteger)self.stories.count
-									: (NSInteger)self.photos.count;
+						: giftKind ? (NSInteger)self.gifts.count
+						: (NSInteger)self.photos.count;
 	NSInteger count = MIN(dataCount, 20);
 	if (!count)
 		return 0;
@@ -133,7 +166,10 @@ static const NSInteger kStoryGridCols  = 3;
 - (UITableViewCell *)mediaGridCell:(UITableView *)tableView {
 	NSString *kind = [self selectedMediaKind];
 	BOOL storyKind = [kind isEqualToString:@"stories"];
-	NSString *cacheName = storyKind ? @"story" : @"media";
+	BOOL giftKind = [kind isEqualToString:@"gifts"];
+	// One cache per kind: the rows themselves change shape between them,
+	// and a grid built for photos cannot be re-faced for gifts.
+	NSString *cacheName = kind;
 
 	if ([self.mediaGridCacheContent isEqualToString:cacheName] && self.storyGridCellCache)
 		return self.storyGridCellCache;
@@ -149,6 +185,47 @@ static const NSInteger kStoryGridCols  = 3;
 
 	for (NSInteger i = 0; i < count; i++){
 		NSDictionary *tile = rows[i];
+		CGRect frame = CGRectMake((i % kStoryGridCols) * (side + kStoryGridGap),
+								  (i / kStoryGridCols) * (side + kStoryGridGap),
+								  side, side);
+
+		if (giftKind){
+			// Gift tiles read like the official gifts grid: the emoji is
+			// the artwork, tile colour behind it, and the sender's face
+			// rides the top-left corner. No download ride-alongs on the
+			// strip - the glyph is cached and free, and the 4S has paid
+			// enough queue time (B5).
+			NSString *emoji = tile[@"emoji"];
+			UIImageView *glyph = [[UIImageView alloc] initWithFrame:frame];
+			glyph.image = [[self class] giftTileGlyph:emoji side:side];
+			glyph.contentMode = UIViewContentModeScaleAspectFit;
+			glyph.backgroundColor = [[TGTheme shared] fileTileColour];
+			glyph.clipsToBounds = YES;
+			[cell.contentView addSubview:glyph];
+
+			NSInteger userId = [tile[@"senderUserId"] longLongValue];
+			NSString *name = [[TGClient shared] nameForUserId:userId];
+			NSString *first = name.length
+					? [name substringToIndex:1].uppercaseString : @"?";
+			UIButton *face = [UIButton buttonWithType:UIButtonTypeCustom];
+			face.frame = CGRectMake(4, 4, 26, 26);
+			face.layer.cornerRadius = 13;
+			face.layer.masksToBounds = YES;
+			face.enabled = NO;
+			[face setImage:[TGIcons avatarWithInitials:first size:26
+											  colourId:userId]
+				  forState:UIControlStateNormal];
+			[cell.contentView addSubview:face];
+
+			UIButton *tap = [UIButton buttonWithType:UIButtonTypeCustom];
+			tap.frame = frame;
+			tap.tag = 700 + i;
+			[tap addTarget:self action:@selector(giftTileTapped:)
+				  forControlEvents:UIControlEventTouchUpInside];
+			[cell.contentView addSubview:tap];
+			continue;
+		}
+
 		// Story tiles render their thumbnail, photo tiles whatever the
 		// message carries. The tile list asks for the list-sized render,
 		// not the largest one; a 105 pt square is at most 220 px wide and
@@ -156,9 +233,6 @@ static const NSInteger kStoryGridCols  = 3;
 		NSNumber *fileId = storyKind
 				? (tile[@"thumbPhotoId"] ?: tile[@"photoId"])
 				: (tile[@"photoId"] ?: tile[@"thumbPhotoId"]);
-		CGRect frame = CGRectMake((i % kStoryGridCols) * (side + kStoryGridGap),
-								  (i / kStoryGridCols) * (side + kStoryGridGap),
-								  side, side);
 
 		UIImageView *thumb = [[UIImageView alloc] initWithFrame:frame];
 		thumb.backgroundColor = [[TGTheme shared] fileTileColour];
@@ -225,6 +299,19 @@ static const NSInteger kStoryGridCols  = 3;
 
 - (void)storyTileTapped:(UIButton *)button {
 	[self openStoryAtIndex:button.tag - 500];
+}
+
+/// A gift tile opens the detail sheet, the way the official grid does:
+/// artwork on top, From / Date / Cost, an OK button (B5).
+- (void)giftTileTapped:(UIButton *)button {
+	NSString *kind = [self selectedMediaKind];
+	if (![kind isEqualToString:@"gifts"])
+		return;
+	NSInteger index = button.tag - 700;
+	NSArray *rows = [self selectedMediaRows];
+	if (index < 0 || index >= (NSInteger)rows.count)
+		return;
+	[TGGiftViewer showGift:rows[index] inView:self.view];
 }
 
 - (void)mediaTabChanged:(UISegmentedControl *)sender {

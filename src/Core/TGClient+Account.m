@@ -9,6 +9,41 @@ static NSString *TGScopeType(NSString *scope) {
 }
 
 /// Flatten one TDLib story down to what a profile row needs.
+/// One gift as the list wants it. A gift wears a sticker: its thumbnail is
+/// the still picture the row draws (a WebP sticker doubles as its own
+/// thumbnail, per the sticker panel's rule), and the emoji beside it is the
+/// glyph every layout falls back to. "title" does not exist in the schema -
+/// the old flatten invented it, and every gift rendered identically.
+static NSDictionary *TGFlattenGift(NSDictionary *entry) {
+	NSDictionary *gift = entry[@"gift"][@"gift"] ?: entry[@"gift"];
+	NSDictionary *sticker = gift[@"sticker"];
+	NSString *format = sticker[@"format"][@"@type"] ?: @"";
+	BOOL webp = [format isEqualToString:@"stickerFormatWebp"];
+
+	NSDictionary *thumbnail = sticker[@"thumbnail"];
+	NSString *thumbFormat = thumbnail[@"format"][@"@type"] ?: @"";
+	NSNumber *thumbId = thumbnail[@"file"][@"id"];
+	BOOL thumbIsPicture = [thumbFormat isEqualToString:@"thumbnailFormatWebp"] ||
+						  [thumbFormat isEqualToString:@"thumbnailFormatJpeg"] ||
+						  [thumbFormat isEqualToString:@"thumbnailFormatPng"];
+	if (!thumbId || !thumbIsPicture)
+		thumbId = webp ? sticker[@"sticker"][@"id"] : nil;
+
+	NSString *message = entry[@"message"][@"text"];
+	NSMutableDictionary *out = [@{
+		@"date"      : entry[@"date"] ?: @(0),
+		@"emoji"     : sticker[@"emoji"] ?: @"",
+		@"starCount" : gift[@"star_count"] ?: @(0),
+		// Who gave it: the tile badge and the viewer's "From" row read here.
+		@"senderUserId" : entry[@"sender_id"][@"user_id"] ?: @(0),
+	} mutableCopy];
+	if (message.length)
+		out[@"message"] = message;
+	if (thumbId)
+		out[@"thumbFileId"] = thumbId;
+	return out;
+}
+
 static NSDictionary *TGFlattenStory(NSDictionary *story) {
 	NSDictionary *content = story[@"content"];
 	NSString *kind = content[@"@type"];
@@ -189,11 +224,9 @@ static NSArray *TGPacksFrom(NSDictionary *target) {
 	} completion:^(NSDictionary *result){
 		NSMutableArray *out = [NSMutableArray array];
 		for (NSDictionary *entry in result[@"gifts"]){
-			NSDictionary *gift = entry[@"gift"][@"gift"] ?: entry[@"gift"];
-			[out addObject:@{
-				@"title"     : gift[@"title"] ?: @"Gift",
-				@"starCount" : gift[@"star_count"] ?: @0,
-			}];
+			if (![entry isKindOfClass:NSDictionary.class])
+				continue;
+			[out addObject:TGFlattenGift(entry)];
 		}
 		if (completion) completion(out);
 	}];
