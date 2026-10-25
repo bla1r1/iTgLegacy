@@ -6,6 +6,7 @@
 #import "AppDelegate.h"
 #import "AppDelegate+URL.h"
 #import "RootViewController.h"
+#import "TGNavController.h"
 #import "TGClient.h"
 #import "TGTheme.h"
 #import "TGCall.h"
@@ -213,7 +214,7 @@ static void TGWatchForIncomingCalls(void) {
 	};
 
 	UINavigationController *nav =
-		[[UINavigationController alloc] initWithRootViewController:loginVC];
+		[[TGNavController alloc] initWithRootViewController:loginVC];
 	[[TGTheme shared] styleNavigationBar:nav.navigationBar];
 	[self.window setRootViewController:nav];
 	self.rootViewController = nil;

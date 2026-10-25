@@ -181,6 +181,7 @@ APP_SRC_M := \
 	src/Core/TGClient+Chats.m \
 	src/Core/TGClient+Files.m \
 	src/Core/TGStatusText.m \
+	src/Controllers/TGNavController.m \
 	src/Core/TGClient+Account.m \
 	src/Core/TGClient+Stickers.m \
 	src/Core/TGDevice.m \

@@ -109,7 +109,11 @@ static const NSInteger kStoryGridCols  = 3;
 }
 
 - (CGFloat)storyGridHeight {
-	NSInteger count = MIN((NSInteger)self.stories.count, 20);
+	NSString *kind = [self selectedMediaKind];
+	BOOL storyKind = [kind isEqualToString:@"stories"];
+	NSInteger dataCount = storyKind ? (NSInteger)self.stories.count
+									: (NSInteger)self.photos.count;
+	NSInteger count = MIN(dataCount, 20);
 	if (!count)
 		return 0;
 	NSInteger rows = (count + kStoryGridCols - 1) / kStoryGridCols;

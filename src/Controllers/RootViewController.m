@@ -7,6 +7,7 @@
 #import "TGChatListViewController.h"
 #import "TGContactsViewController.h"
 #import "TGSettingsViewController.h"
+#import "TGNavController.h"
 #import "TGIcons.h"
 #import "TGTheme.h"
 #import "TGMusicPlayer.h"
@@ -50,18 +51,18 @@ static const CGFloat kCompactBarHeight = 32.0f;
 
 	TGChatListViewController *chats = [[TGChatListViewController alloc] init];
 	UINavigationController *chatsNC =
-		[[UINavigationController alloc] initWithRootViewController:chats];
+		[[TGNavController alloc] initWithRootViewController:chats];
 	chatsNC.tabBarItem = [[UITabBarItem alloc] initWithTitle:@"Chats"
 														image:[TGIcons chats] tag:0];
 
 	TGContactsViewController *contacts = [[TGContactsViewController alloc] init];
 	UINavigationController *contactsNC =
-		[[UINavigationController alloc] initWithRootViewController:contacts];
+		[[TGNavController alloc] initWithRootViewController:contacts];
 	contactsNC.tabBarItem = [[UITabBarItem alloc] initWithTitle:@"Contacts"
 														   image:[TGIcons contacts] tag:1];
 
 	UINavigationController *settingsNC =
-		[[UINavigationController alloc] initWithNavigationBarClass:[TGCompactNavigationBar class]
+		[[TGNavController alloc] initWithNavigationBarClass:[TGCompactNavigationBar class]
 													  toolbarClass:nil];
 	[settingsNC setViewControllers:@[[[TGSettingsViewController alloc] init]]];
 	settingsNC.delegate = self;

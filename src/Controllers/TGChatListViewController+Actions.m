@@ -67,6 +67,8 @@
 		NSString *t = [f isKindOfClass:NSDictionary.class] ? f[@"title"] : nil;
 		self.title = [t isKindOfClass:NSString.class] && t.length ? t : @"Chats";
 	}
+	NSLog(@"TGClient: B3 folder choice=%ld -> id=%lld title=%@", (long)choice,
+			(long long)self.folderId, self.title);
 	[self reload];
 }
 
