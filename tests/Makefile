@@ -50,7 +50,8 @@ LDFLAGS := \
     -lcrypto \
     -lz \
     -lc++ \
-    -framework Foundation
+    -framework Foundation \
+    -framework AppKit
 
 # ─── sources ──────────────────────────────────────────────────────────────────
 
@@ -63,19 +64,37 @@ OBJC_SRCS := \
     $(SRC)/Calls/TGCallMessages.m \
     $(SRC)/Calls/TGCallIce.m \
     $(SRC)/Calls/TGCallReflector.m \
-    $(SRC)/Calls/TGCall.mm
+    $(SRC)/Calls/TGCall.mm \
+    $(SRC)/Views/TGMessageLayout.m
+
+# Real TGClient sources, compiled only into the second binary: the main
+# binary links a test stub of TGClient instead, which the call tests need.
+CLIENT_OBJC_SRCS := \
+    $(SRC)/Core/TGClient.m \
+    $(SRC)/Core/TGClient+Chats.m \
+    $(SRC)/Core/TGClient+Messages.m \
+    $(SRC)/Core/TGClient+Stickers.m
 
 # Test helper ObjC sources. TGClientStub and TGCallAudioEngineStub stand in
 # for the iOS-only production classes that TGCall.mm would otherwise need.
+# UIKitShim.m backs tests/shim/UIKit so real src that imports UIKit
+# (TGMessageLayout, TGClientInternal) compiles on the host.
 TEST_HELPER_SRCS := \
     $(TESTS)/TGCallPeer.m \
     $(TESTS)/TGCallReflectorStub.m \
     $(TESTS)/TGClientStub.m \
     $(TESTS)/TGCallAudioEngineStub.m \
     $(TESTS)/TGAudioSessionShim.m \
-    $(TESTS)/TGLibTgvoipBridge.mm
+    $(TESTS)/TGLibTgvoipBridge.mm \
+    $(TESTS)/shim/UIKit/UIKitShim.m
 
-# Test files (included via main.m, not compiled separately)
+# Stand-ins around the real TGClient for the second binary (see
+# TGClientTestSupport.m).
+CLIENT_HELPER_SRCS := \
+    $(TESTS)/shim/UIKit/UIKitShim.m \
+    $(TESTS)/TGClientTestSupport.m
+
+# Test files (included via main.m / main_client.m, not compiled separately)
 TEST_SRCS := \
     $(TESTS)/TGCallCryptoTests.m \
     $(TESTS)/TGCallStunTests.m \
@@ -83,28 +102,49 @@ TEST_SRCS := \
     $(TESTS)/TGCallIceTests.m \
     $(TESTS)/TGCallReflectorTests.m \
     $(TESTS)/TGCallIntegrationTests.m \
-    $(TESTS)/TGLibTgvoipHooksTests.m
+    $(TESTS)/TGLibTgvoipHooksTests.m \
+    $(TESTS)/TGMessageLayoutTests.m
+
+CLIENT_TEST_SRCS := \
+    $(TESTS)/TGClientChatsTests.m
 
 TEST_BINARY := $(BUILD)/TGCallTests
+CLIENT_BINARY := $(BUILD)/TGClientTests
 
 # ─── targets ──────────────────────────────────────────────────────────────────
 
 .PHONY: test build clean
 
-test: $(TEST_BINARY)
+TEST_BINARY_DEPS := $(TESTS)/main.m $(C_SRCS) $(OBJC_SRCS) $(TEST_HELPER_SRCS) $(TEST_SRCS) \
+                $(TESTS)/TGTestRunner.h $(TESTS)/TGCallTestHelpers.h
+CLIENT_BINARY_DEPS := $(TESTS)/main_client.m $(CLIENT_OBJC_SRCS) $(CLIENT_HELPER_SRCS) \
+                $(CLIENT_TEST_SRCS) $(TESTS)/TGTestRunner.h
+
+test: $(TEST_BINARY) $(CLIENT_BINARY)
 	@echo "\n════════ Running call stack tests ════════"
 	$(TEST_BINARY)
+	@echo "\n════════ Running TGClient regression tests ════════"
+	$(CLIENT_BINARY)
 
-build: $(TEST_BINARY)
+build: $(TEST_BINARY) $(CLIENT_BINARY)
 
-$(TEST_BINARY): $(TESTS)/main.m $(C_SRCS) $(OBJC_SRCS) $(TEST_HELPER_SRCS) $(TEST_SRCS) \
-                $(TESTS)/TGTestRunner.h $(TESTS)/TGCallTestHelpers.h
+$(TEST_BINARY): $(TEST_BINARY_DEPS)
 	@mkdir -p $(BUILD)
 	$(CLANG) $(CFLAGS) \
 	    $(C_SRCS) \
 	    $(OBJC_SRCS) \
 	    $(TEST_HELPER_SRCS) \
 	    $(TESTS)/main.m \
+	    $(LDFLAGS) \
+	    -o $@
+	@echo "  Built $(notdir $@)"
+
+$(CLIENT_BINARY): $(CLIENT_BINARY_DEPS)
+	@mkdir -p $(BUILD)
+	$(CLANG) $(CFLAGS) \
+	    $(CLIENT_OBJC_SRCS) \
+	    $(CLIENT_HELPER_SRCS) \
+	    $(TESTS)/main_client.m \
 	    $(LDFLAGS) \
 	    -o $@
 	@echo "  Built $(notdir $@)"
