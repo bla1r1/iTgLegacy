@@ -28,6 +28,9 @@ FILTER="LegacyTG"
 DO_BUILD=1
 CHECK_ONLY=0
 SHOT_ONLY=0
+# Several devices on one cable happens (an old test bench plus a donor);
+# --udid UDID pins every tool to the chosen one.
+DEV_UDID=""
 
 # SSH settings, used only for launch method B.
 # Everything (port, user, key, legacy ssh-rsa algorithms) lives in the
@@ -41,6 +44,7 @@ while [ $# -gt 0 ]; do
 		--no-build) DO_BUILD=0; shift ;;
 		--seconds)  SECONDS_TO_LOG="$2"; shift 2 ;;
 		--filter)   FILTER="$2"; shift 2 ;;
+		--udid)     DEV_UDID="$2"; shift 2 ;;
 		--check)    CHECK_ONLY=1; shift ;;
 		--shot)     SHOT_ONLY=1; shift ;;
 		*) echo "unknown option: $1"; exit 2 ;;
@@ -49,6 +53,19 @@ done
 
 mkdir -p "$LOGDIR"
 say() { printf '\n=== %s\n' "$*"; }
+
+# The device tools talk to the first USB-connected phone by default; wrap
+# them so -u lands in front of every call once a UDID was picked. The
+# wrappers shadow, not patch, so existing call sites stay untouched.
+if [ -n "$DEV_UDID" ]; then
+	for _cmd in ideviceinfo ideviceinstaller ideviceimagemounter \
+			idevicedebug idevicesyslog idevicecrashreport; do
+		eval "$_cmd() { command $_cmd -u $DEV_UDID \"\$@\"; }"
+	done
+	# idevice_id has no -u flag; filtering its listing keeps
+	# wait_for_device honest about which phone answered.
+	eval 'idevice_id() { command idevice_id "$@" | grep -i "$DEV_UDID"; }'
+fi
 
 # ---------------------------------------------------------------- device ----
 wait_for_device() {

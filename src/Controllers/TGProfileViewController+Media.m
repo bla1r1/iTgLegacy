@@ -243,7 +243,21 @@ static const NSInteger kStoryGridCols  = 3;
 	// Switching a tab is not a change of content to be animated. Even with no
 	// row animation, reloading the one section slid the outgoing rows up out
 	// of the way; reloading the table swaps them in place.
+	//
+	// The offset is preserved rather than reset: the sections above the media
+	// one do not change height, so keeping the offset holds the same part of
+	// the media section on screen. When the new tab is shorter than the
+	// current scroll position falls off it, land back on the section header
+	// instead of letting the table clamp the offset into the footer.
+	CGPoint offset = self.tableView.contentOffset;
+	CGFloat mediaTop = [self.tableView rectForHeaderInSection:kSectionMedia].origin.y;
 	[self.tableView reloadData];
+	CGFloat maxY = self.tableView.contentSize.height - self.tableView.bounds.size.height;
+	maxY = MAX(0, maxY);
+	if (offset.y > maxY + 0.5f || offset.y < mediaTop - self.tableView.bounds.size.height)
+		offset.y = mediaTop;
+	offset.y = MIN(MAX(offset.y, 0), maxY);
+	[self.tableView setContentOffset:offset animated:NO];
 }
 
 /// Displays full-screen view for the selected story.

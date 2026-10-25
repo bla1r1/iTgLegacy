@@ -696,7 +696,6 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V5";
 	// decoder so the speaker proves the encode-decode-play chain works without
 	// the peer having to send anything - it has never sent us a frame, so that
 	// half of the engine has never once run.
-	self.audioEngine.emitMorseSignal = YES;
 	self.audioEngine.loopbackToSpeaker = NO;   // proved; anything heard now is theirs
 	self.audioEngine.onOutgoingOpusFrame = ^(NSData *opusFrame) {
 		[weakSelf sendOutgoingAudioFrame:opusFrame];

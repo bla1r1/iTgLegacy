@@ -29,6 +29,17 @@ static NSString *TGProfileShortDate(NSNumber *date) {
 	return self;
 }
 
+- (void)willAnimateRotationToInterfaceOrientation:(UIInterfaceOrientation)toInterfaceOrientation
+							  duration:(NSTimeInterval)duration {
+	[super willAnimateRotationToInterfaceOrientation:toInterfaceOrientation duration:duration];
+	// grid tiles and cached cells are laid out to the width at build time;
+	// caches pinned to the old width would keep portrait frames spanning a
+	// rotated screen, so drop them and let the table re-ask its metrics.
+	self.storyGridCellCache = nil;
+	self.mediaGridCacheContent = nil;
+	[self.tableView reloadData];
+}
+
 - (void)viewDidLoad {
 	[super viewDidLoad];
 	self.title = @"Info";

@@ -243,8 +243,15 @@ int64_t TGArchiveOrder(NSArray *positions) {
 		NSMutableArray *out = [NSMutableArray array];
 		for (NSNumber *chatId in result[@"chat_ids"]){
 			NSDictionary *info = me.chatsById[chatId];
+			// An unknown id is still a chat the folder holds: this folder
+			// walk is often the first time tdlib hears about it, and its
+			// info update runs behind the answer. A pending placeholder
+			// keeps the merge honest (it counts the drop and retries)
+			// instead of shrinking folder lists silently.
 			if (info)
 				[out addObject:info];
+			else
+				[out addObject:@{@"id" : chatId, @"pending" : @YES}];
 		}
 		NSLog(@"TGClient: folder %ld holds %lu chats",
 				(long)folderId, (unsigned long)out.count);
@@ -394,11 +401,12 @@ int64_t TGArchiveOrder(NSArray *positions) {
 }
 
 - (NSNumber *)photoFileIdForChat:(int64_t)chatId {
-	for (NSArray *list in @[self.chats, self.archivedChats])
-		for (NSDictionary *c in list)
-			if ([c[@"id"] longLongValue] == chatId)
-				return c[@"photoFileId"];
-	return nil;
+	// The cache is the source of truth: the wrapper lists (.chats holding
+	// only the un-foldered portion, archive the pulled-up one) came and went
+	// with the active folder, and a chat opened through a folder used to
+	// lose its photo to a nil lookup and render as initials.
+	NSDictionary *info = self.chatsById[@(chatId)];
+	return info[@"photoFileId"];
 }
 
 /// Member count for a group, so the chat header can carry a subtitle.
@@ -594,12 +602,19 @@ int64_t TGArchiveOrder(NSArray *positions) {
 	NSDictionary *position = update[@"position"];
 	if ([position isKindOfClass:NSDictionary.class]){
 		NSString *listType = position[@"list"][@"@type"];
-		if ([listType isEqualToString:@"chatListArchive"])
+		if ([listType isEqualToString:@"chatListArchive"]){
 			info[@"archiveOrder"] = @(TGArchiveOrder(@[position]));
-		else {
+		} else if ([listType isEqualToString:@"chatListMain"]){
 			info[@"order"] = @(TGMainListOrder(@[position]));
 			info[@"isPinned"] = @(TGPinnedInMain(@[position]));
+			// Main and archive are mutually exclusive: a chat that just got a
+			// main position died out of the archive, and the stale
+			// archiveOrder would otherwise keep it on the archive strip.
+			info[@"archiveOrder"] = @0;
 		}
+		// A chatListFolder position says nothing about the main list: zero
+		// order with a pinned reset here used to unpin the chat wholesale
+		// every time its folder reshuffled.
 	}
 
 	[self rebuildChats];

@@ -3,11 +3,33 @@
 #include <dlfcn.h>
 #include "api_id.h"
 
+/// The plain string a folder is named with. tdlib nests the name two levels
+/// deep: chatFolderInfo.name is a chatFolderName whose "text" is itself a
+/// formattedText, and only THAT "text" is the string. The old chain stopped
+/// one level short (B3 - every folder parsed as an empty string), and the
+/// pill strip had three nameless tabs to show for it.
+static NSString *TGPlainTitle(id value){
+	while ([value isKindOfClass:NSDictionary.class])
+		value = value[@"text"];
+	return [value isKindOfClass:NSString.class] ? value : nil;
+}
+
+static NSString *TGFolderTitle(NSDictionary *f){
+	NSString *answer = TGPlainTitle(f[@"title"]) ?: TGPlainTitle(f[@"name"]);
+	if (!answer.length)
+		answer = @"";
+	return answer;
+}
+
 NSString *const TGChatReadOutboxChangedNotification = @"TGChatReadOutboxChangedNotification";
 NSString *const TGConnectionStateChangedNotification = @"TGConnectionStateChangedNotification";
 NSString *const TGUserStatusChangedNotification = @"TGUserStatusChangedNotification";
 
 @implementation TGClient
+
+- (NSUInteger)chatsCached {
+	return self.chatsById.count;
+}
 
 + (instancetype)shared {
 	static TGClient *s = nil;
@@ -393,11 +415,22 @@ NSString *const TGUserStatusChangedNotification = @"TGUserStatusChangedNotificat
 
 	if ([type isEqualToString:@"updateChatFolders"]){
 		NSMutableArray *out = [NSMutableArray array];
-		for (NSDictionary *f in obj[@"chat_folders"])
-			[out addObject:@{@"id"    : f[@"id"] ?: @(0),
-							 @"title" : f[@"title"][@"text"] ?: f[@"name"][@"text"] ?: f[@"title"] ?: @""}];
+		for (NSDictionary *f in obj[@"chat_folders"]){
+			NSString *title = TGFolderTitle(f);
+			// A raw dump only when tdlib's nested naming defeats us again -
+			// the syslog line then tells the exact key it moved to.
+			if (!title.length)
+				NSLog(@"TGClient: B3 chat_folders raw: %@", f);
+			[out addObject:@{@"id" : @(f[@"id"] ? [f[@"id"] longLongValue] : 0),
+							 @"title" : title}];
+		}
 		self.folders = out;
 		NSLog(@"TGClient: %lu folders", (unsigned long)out.count);
+		// The chat list learns the pill strip and the All chats merge from
+		// this update too; silently returning left both stale until the
+		// user wandered into a folder and back. The call site is main.
+		if (self.onChatsChanged)
+			self.onChatsChanged();
 		return;
 	}
 	if ([type isEqualToString:@"updateUnreadChatCount"]){

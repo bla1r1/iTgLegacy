@@ -26,9 +26,16 @@
 @property (nonatomic, strong) NSDictionary *actionChat; // long-pressed row
 @property (nonatomic, assign) int64_t chatPendingDeletion;
 @property (nonatomic, assign) CGFloat headerHeight;
+@property (nonatomic, assign) CGFloat parkOffset;  // scroll that hides search + archive strip
+@property (nonatomic, assign) BOOL userRevealed;   // the strip was pulled out on purpose; keep it
+@property (nonatomic, strong) NSArray *mergedChats;   // all chats: main + folders
+@property (nonatomic, copy) NSString *mergedSignature;
+@property (nonatomic, assign) BOOL mergeInFlight;
 
 - (void)reload;
+- (void)mergeAllFolderChats;
 - (void)rebuildTableHeader;
+- (void)folderTabTapped:(UIButton *)pill;
 - (void)hideHeaderAboveFrom:(CGFloat)previousHeight;
 - (NSArray *)visibleChats;
 - (NSArray *)headerRows;

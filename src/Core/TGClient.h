@@ -91,6 +91,10 @@ typedef NS_ENUM(NSInteger, TGConnectionState) {
 
 /// Chats in the archive, same shape as `chats`.
 @property (nonatomic, readonly) NSArray *archivedChats;
+
+/// How many chat records the client has actually cached - the merge uses it
+/// to notice when the cache grew enough to be worth re-reading the folders.
+@property (nonatomic, readonly) NSUInteger chatsCached;
 /// Called on the main queue when the archive changes.
 @property (nonatomic, copy) void (^onArchiveChanged)(void);
 

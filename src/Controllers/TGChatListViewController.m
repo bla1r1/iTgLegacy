@@ -1,16 +1,27 @@
 #import "TGChatListViewControllerInternal.h"
 #import "TGStatusText.h"
 
+// Height of the folder pill strip above the chat list (official-style tabs).
+static const CGFloat kFolderTabRow = 40.0f;
+
 @implementation TGChatListViewController
+
+- (void)willAnimateRotationToInterfaceOrientation:(UIInterfaceOrientation)toInterfaceOrientation
+							  duration:(NSTimeInterval)duration {
+	[super willAnimateRotationToInterfaceOrientation:toInterfaceOrientation duration:duration];
+	// The search bar and the folder pill strip are built to the width at
+	// header build time; a rotated screen needs both re-measured. The pills
+	// live in the sticky section header, so the table has to re-ask for it.
+	[self rebuildTableHeader];
+	[self.tableView reloadData];
+}
 
 - (void)viewDidLoad {
 	[super viewDidLoad];
 
 	self.title = self.showsArchive ? @"Archived" : @"Chats";
-	if (!self.showsArchive)
-		self.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc]
-				initWithTitle:@"Folders" style:UIBarButtonItemStylePlain
-					   target:self action:@selector(foldersTapped)];
+	// The top "Folders" button retired: the pill strip is the switcher now,
+	// and every action on the list sits on the bars already.
 	self.chats = @[];
 	self.avatars = [NSMutableDictionary dictionary];
 	self.avatarsRequested = [NSMutableSet set];
@@ -55,7 +66,13 @@
 	}];
 
 	[TGClient shared].onChatsChanged = ^{
-		[weakSelf reload];
+		// While the cache fills, updates arrive in floods - one per chat.
+		// A reload for each means the table re-lays out dozens of times and
+		// the old 4S crawls; coalescing the floods to a few ticks keeps the
+		// load quick and visibly the same.
+		[NSObject cancelPreviousPerformRequestsWithTarget:weakSelf
+				selector:@selector(reload) object:nil];
+		[weakSelf performSelector:@selector(reload) withObject:nil afterDelay:0.3];
 	};
 	[TGClient shared].onArchiveChanged = ^{
 		[weakSelf.tableView reloadData];
@@ -70,59 +87,281 @@
 	[self reload];
 }
 
+/// A horizontal strip of folder pills, the way the official clients show
+/// them: "All chats" first, then every folder, the active one filled with
+/// the accent colour. Tapping one switches the list in place - no sheet,
+/// no navigation.
+- (void)buildFolderTabsInto:(UIView *)header atY:(CGFloat)y width:(CGFloat)width folders:(NSArray *)folders {
+	UIScrollView *strip = [[UIScrollView alloc] initWithFrame:CGRectMake(0, y, width, kFolderTabRow)];
+	strip.showsHorizontalScrollIndicator = NO;
+	strip.alwaysBounceHorizontal = YES;
+	strip.backgroundColor = [UIColor clearColor];
+	[header addSubview:strip];
+
+	UIFont *font = [UIFont boldSystemFontOfSize:13];
+	CGFloat x = 8;
+	for (NSInteger i = 0; i <= (NSInteger)folders.count; i++){
+		NSString *title = nil;
+		if (i > 0)
+			title = [folders[i - 1] isKindOfClass:NSDictionary.class]
+					? folders[i - 1][@"title"] : nil;
+		NSString *label = (i == 0) ? @"All chats" : nil;
+		if (!label)
+			label = [title isKindOfClass:NSString.class] && title.length
+					? title : @"Folder";
+		BOOL active = (i == 0 && self.folderId == 0) ||
+				(i > 0 && [folders[i - 1] isKindOfClass:NSDictionary.class] &&
+				 [folders[i - 1][@"id"] integerValue] == self.folderId);
+		CGFloat w = MIN([label sizeWithFont:font].width + 26, 150);
+		UIButton *pill = [UIButton buttonWithType:UIButtonTypeCustom];
+		pill.frame = CGRectMake(x, 5, w, kFolderTabRow - 10);
+		pill.tag = 100 + i;
+		[pill setTitle:label forState:UIControlStateNormal];
+		pill.titleLabel.font = font;
+		pill.titleLabel.lineBreakMode = NSLineBreakByTruncatingTail;
+		pill.layer.cornerRadius = 13;
+		if (active){
+			[pill setBackgroundColor:[[TGTheme shared] accentColour]];
+			[pill setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+		} else {
+			[pill setBackgroundColor:[[TGTheme shared] cardBackgroundColour]];
+			[pill setTitleColor:[[TGTheme shared] primaryTextColour]
+					   forState:UIControlStateNormal];
+			pill.layer.borderWidth = 0.5f;
+			pill.layer.borderColor = [[TGTheme shared] separatorColour].CGColor;
+		}
+		[pill addTarget:self action:@selector(folderTabTapped:)
+			  forControlEvents:UIControlEventTouchUpInside];
+		[strip addSubview:pill];
+		x += w + 6;
+	}
+
+	strip.contentSize = CGSizeMake(x, kFolderTabRow);
+}
+
+/// The rightmost pill (index folders.count + 1) opens the archive; every
+/// other index is a regular folder switch.
+- (void)folderTabTapped:(UIButton *)pill {
+	NSLog(@"TGClient: B3 pill tag=%ld folders=%lu", (long)pill.tag,
+			(unsigned long)[TGClient shared].folders.count);
+	[self runFolderChoice:pill.tag - 100];
+}
+
+/// Sticky section header. In a plain table the pinning keeps the pill strip
+/// at the top edge while the chat list scrolls beneath it, so the folder
+/// switcher outlives the collapsing search header - after the chats load,
+/// hideHeaderAboveFrom still parks the big header above the fold, as it
+/// always has, and the pills are no longer riding along with it.
+- (CGFloat)tableView:(UITableView *)tableView heightForHeaderInSection:(NSInteger)section {
+	if (self.showsArchive || [TGClient shared].folders.count == 0)
+		return 0;
+	return kFolderTabRow;
+}
+
+- (UIView *)tableView:(UITableView *)tableView viewForHeaderInSection:(NSInteger)section {
+	if (self.showsArchive || [TGClient shared].folders.count == 0)
+		return nil;
+	UIView *strip = [[UIView alloc] initWithFrame:CGRectMake(0, 0,
+			tableView.bounds.size.width ?: 320, kFolderTabRow)];
+	strip.backgroundColor = [[TGTheme shared] listBackgroundColour];
+	[self buildFolderTabsInto:strip atY:0 width:strip.bounds.size.width
+			folders:[TGClient shared].folders];
+	return strip;
+}
+
 - (void)rebuildTableHeader {
+	// Search alone in the collapsing header now; the archive strip lives in
+	// the table as the first row (see headerRows) and hides behind the
+	// pinned pills on load - hideHeaderAboveFrom parks both of them.
 	CGFloat width = self.tableView.bounds.size.width ?: 320;
-	BOOL showArchive = !self.showsArchive && self.folderId == 0 &&
-					   [TGClient shared].archivedChats.count > 0;
-	CGFloat height = 44 + (showArchive ? kRowHeight : 0);
 	UIColor *bg = [[TGTheme shared] listBackgroundColour];
 
-	UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0, 0, width, height)];
+	UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0, 0, width, 44)];
 	header.backgroundColor = bg;
 	self.searchBar.frame = CGRectMake(0, 0, width, 44);
 	[header addSubview:self.searchBar];
 
-	if (showArchive){
-		TGChatCell *row = [[TGChatCell alloc] initWithStyle:UITableViewCellStyleDefault
-											reuseIdentifier:nil];
-		row.frame = CGRectMake(0, 44, width, kRowHeight);
-		row.backgroundColor = bg;
-		row.contentView.backgroundColor = bg;
-		row.titleLabel.text = @"Archived Chats";
-		row.titleLabel.textColor = [[TGTheme shared] primaryTextColour];
-		row.titleLabel.backgroundColor = bg;
-		row.previewLabel.text = [NSString stringWithFormat:@"%lu chats",
-				(unsigned long)[TGClient shared].archivedChats.count];
-		row.previewLabel.textColor = [[TGTheme shared] secondaryTextColour];
-		row.previewLabel.backgroundColor = bg;
-		row.dateLabel.backgroundColor = bg;
-		row.avatar.image = [TGIcons archiveAvatarOfSide:kAvatar];
-		row.avatar.backgroundColor = [UIColor clearColor];
-		row.userInteractionEnabled = YES;
-		[row addGestureRecognizer:[[UITapGestureRecognizer alloc]
-				initWithTarget:self action:@selector(openArchive)]];
-		[row layoutSubviews];
-		[header addSubview:row];
-
-		UIView *hair = [[UIView alloc] initWithFrame:
-				CGRectMake(0, height - 0.5f, width, 0.5f)];
-		hair.backgroundColor = [[TGTheme shared] separatorColour];
-		[header addSubview:hair];
-	}
-
 	CGFloat wasHidingHeader = self.headerHeight;
 	self.tableView.tableHeaderView = header;
-	self.headerHeight = height;
+	self.headerHeight = 44;
+	// Once the chats load the park jumps past the search bar AND the archive
+	// strip: scroll past both and the pinned pills sit alone over the rows,
+	// because the chat rows start exactly at the band's lower edge. A pull
+	// down walks both of them back into view.
+	BOOL archiveParked = [[self headerRows] containsObject:@"archive"];
+	self.parkOffset = 44 + (archiveParked ? kRowHeight : 0);
 	[self hideHeaderAboveFrom:wasHidingHeader];
 }
 
+/// "All chats" is the union of the main list and every folder's chats.
+/// The folder asks run in parallel; whatever each returns that the
+/// list has not seen yet joins the merge. The result refreshes the table
+/// only while the user is still looking at All chats.
+- (void)mergeAllFolderChats {
+	if (self.showsArchive || self.folderId != 0)
+		return;
+
+	NSString *sig = [NSString stringWithFormat:@"c%lu f%lu",
+			(unsigned long)[TGClient shared].chatsCached,
+			(unsigned long)[TGClient shared].folders.count];
+	if (!self.mergedChats &&
+			![sig isEqualToString:self.mergedSignature]) {
+		// first pass, wait for the chain
+	} else if ([sig isEqualToString:self.mergedSignature]) {
+		// nothing new for the merge to gather
+		return;
+	}
+
+	NSMutableArray *folders = [NSMutableArray arrayWithArray:
+			[TGClient shared].folders];
+	if (!folders.count){
+		self.mergedChats = [TGClient shared].chats;
+		self.mergedSignature = sig;
+		return;
+	}
+
+	if (self.mergeInFlight)
+		return;
+	self.mergeInFlight = YES;
+
+	NSArray *base = [TGClient shared].chats ?: @[];
+	NSMutableArray *merged = [NSMutableArray arrayWithArray:base];
+	NSMutableSet *seen = [NSMutableSet set];
+	for (NSDictionary *c in merged){
+		id cid = c[@"id"];
+		if (cid)
+			[seen addObject:[NSString stringWithFormat:@"%@", cid]];
+	}
+
+	__weak typeof(self) weakSelf = self;
+	NSString *signature = sig;
+	__block NSInteger pendings = 0;
+	dispatch_group_t group = dispatch_group_create();
+	// The asks run together: one round trip per folder at once instead of
+	// a chain where each folder waits for the one before it.
+	for (NSDictionary *folder in folders){
+		NSInteger askId = [folder[@"id"] integerValue];
+		dispatch_group_enter(group);
+		[[TGClient shared] chatsInFolder:askId completion:^(NSArray *chats){
+			for (NSDictionary *c in chats){
+				// A folder may hold archived chats too (the archive is a
+				// flag, not a separate bucket from the folders); they belong
+				// to the archive strip, not to All chats. Pending entries -
+				// ids tdlib named in the folder but has not described yet -
+				// wait for the retry below instead of joining the list.
+				if ([c[@"pending"] boolValue]){
+					pendings++;
+					continue;
+				}
+				if ([c[@"archiveOrder"] longLongValue] > 0)
+					continue;
+				NSString *key = [NSString stringWithFormat:@"%@", c[@"id"]];
+				if (key.length && ![seen containsObject:key]){
+					[seen addObject:key];
+					[merged addObject:c];
+				}
+			}
+			dispatch_group_leave(group);
+		}];
+	}
+	// The completions above all land on the main queue, so merged, seen and
+	// pendings stay single-threaded.
+	dispatch_group_notify(group, dispatch_get_main_queue(), ^{
+		if (!weakSelf || weakSelf.folderId != 0){
+			weakSelf.mergeInFlight = NO;
+			weakSelf.mergedChats = nil;
+			weakSelf.mergedSignature = nil;
+			return;
+		}
+		// Pinned first, then newest last message first: the merge
+		// appended the folders after the main list, and without a sort
+		// All chats read like a grab bag. Within the pinned block the
+		// same date rule applies, so the order stays stable.
+		NSArray *combined = [merged sortedArrayUsingComparator:
+				^NSComparisonResult(NSDictionary *a, NSDictionary *b){
+			BOOL pa = [a[@"isPinned"] boolValue], pb = [b[@"isPinned"] boolValue];
+			if (pa != pb)
+				return pa ? NSOrderedAscending : NSOrderedDescending;
+			if (pa){
+				// A pin keeps its slot through newer messages: the sort
+				// inside the pinned block reads tdlib's position order,
+				// not the message date.
+				int64_t oa = [a[@"order"] longLongValue];
+				int64_t ob = [b[@"order"] longLongValue];
+				if (oa != ob)
+					return oa > ob ? NSOrderedAscending : NSOrderedDescending;
+			}
+			int64_t da = [a[@"date"] longLongValue], db = [b[@"date"] longLongValue];
+			if (da == db)
+				return NSOrderedSame;
+			return da > db ? NSOrderedAscending : NSOrderedDescending;
+		}];
+		weakSelf.mergedChats = combined;
+		// A folder answer that dropped unseen ids is not the whole
+		// picture: withholding the signature makes the next pass run
+		// again, and a short retry covers a silent cache (no chat
+		// update will fire onChatsChanged meanwhile).
+		weakSelf.mergedSignature = pendings ? nil : signature;
+		weakSelf.mergeInFlight = NO;
+		[weakSelf.tableView reloadData];
+		[weakSelf fetchMissingAvatars];
+		if (pendings){
+			[NSObject cancelPreviousPerformRequestsWithTarget:weakSelf
+					selector:@selector(mergeAllFolderChats) object:nil];
+			[weakSelf performSelector:@selector(mergeAllFolderChats)
+						   withObject:nil afterDelay:1.0];
+		}
+	});
+}
+
 - (void)hideHeaderAboveFrom:(CGFloat)previousHeight {
+	// The user pulled the strip out themselves and left it there; parking
+	// again on the next cache tick would snap it shut under their eyes.
+	if (self.userRevealed)
+		return;
+	// reloadData does not refresh contentSize until the next layout pass;
+	// measuring here reads the pre-reload size and misjudges the park. Lay
+	// the table out first, then decide.
+	[self.tableView layoutIfNeeded];
+	NSLog(@"TGClient: park? content=%0.0f bounds=%0.0f y=%0.0f prev=%0.0f park=%0.0f rows=%lu",
+			self.tableView.contentSize.height,
+			self.tableView.bounds.size.height,
+			self.tableView.contentOffset.y, previousHeight,
+			self.parkOffset, (unsigned long)[self headerRows].count);
 	if (self.tableView.contentSize.height <= self.tableView.bounds.size.height)
 		return;
 	CGFloat y = self.tableView.contentOffset.y;
 	if (y > 0.5f && fabs(y - previousHeight) > 0.5f)
 		return;
-	self.tableView.contentOffset = CGPointMake(0, self.headerHeight);
+	self.tableView.contentOffset = CGPointMake(0, self.parkOffset);
+}
+
+/// Returning to the top after the archive strip has been scrolled away
+/// settles on the park again - the official client hides the strip once the
+/// list has been walked, and only a deliberate pull down reveals it.
+- (void)scrollViewWillEndDragging:(UIScrollView *)scrollView
+					 withVelocity:(CGPoint)velocity
+		  targetContentOffset:(inout CGPoint *)targetContentOffset {
+	if (self.searchResults || self.showsArchive || self.folderId != 0)
+		return;
+	if (![[self headerRows] containsObject:@"archive"])
+		return;
+	CGFloat from = scrollView.contentOffset.y;
+	CGFloat target = targetContentOffset->y;
+	if (target < self.parkOffset - 20){
+		if (from > self.parkOffset + 1){
+			// walking back to the top after the strip was scrolled away:
+			// settle on the park and wake up to hide it again later
+			self.userRevealed = NO;
+			targetContentOffset->y = self.parkOffset;
+			[scrollView setContentOffset:CGPointMake(0, self.parkOffset)
+								animated:YES];
+		} else {
+			// a deliberate pull upward from the park into the reveal zone:
+			// the strip stays until the list gets walked again
+			self.userRevealed = YES;
+		}
+	}
 }
 
 /// Saved Messages is your own chat; it is not always in the list, and every
@@ -162,14 +401,27 @@
 		return;
 	}
 
-	self.chats = [TGClient shared].chats;
+	// "All chats" means all of them: tdlib's chatListMain holds only the
+	// chats with no folder, the rest lives behind chatListFolder requests.
+	// The merge below fills the gap in the background.
+	self.chats = self.mergedChats ?: [TGClient shared].chats;
 	[self.tableView reloadData];
 	[self rebuildTableHeader];
 	[self fetchMissingAvatars];
+	[self mergeAllFolderChats];
 }
 
-/// Chat list header rows (e.g. archived chats).
+/// Chat list header rows. The archive strip sits below the pinned pills as
+/// the first row of the list, and the initial scroll parks it behind the
+/// pills band, so All chats opens clean and the strip needs a pull down.
+/// The strip only joins once the list holds enough rows to park it: a bare
+/// start (archive row drawn over an empty list) parks nothing and the strip
+/// would sit there for the whole load.
 - (NSArray *)headerRows {
+	if (self.searchResults || self.showsArchive || self.folderId != 0)
+		return @[];
+	if ([TGClient shared].archivedChats.count > 0 && self.chats.count > 9)
+		return @[@"archive"];
 	return @[];
 }
 

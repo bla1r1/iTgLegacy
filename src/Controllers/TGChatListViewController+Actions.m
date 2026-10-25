@@ -69,6 +69,8 @@
 	}
 	NSLog(@"TGClient: B3 folder choice=%ld -> id=%lld title=%@", (long)choice,
 			(long long)self.folderId, self.title);
+	// Redraw the pill strip so the newly chosen tab is the filled one.
+	[self rebuildTableHeader];
 	[self reload];
 }
 
