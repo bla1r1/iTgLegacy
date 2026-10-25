@@ -180,6 +180,7 @@ APP_SRC_M := \
 	src/Core/TGClient+Messages.m \
 	src/Core/TGClient+Chats.m \
 	src/Core/TGClient+Files.m \
+	src/Core/TGStatusText.m \
 	src/Core/TGClient+Account.m \
 	src/Core/TGClient+Stickers.m \
 	src/Core/TGDevice.m \
@@ -281,12 +282,18 @@ ARM64_APP_OBJS   := $(patsubst %.m,$(ARM64_OBJ_DIR)/%.o,$(APP_SRC_M)) \
 ARM64_ALL_OBJS   := $(ARM64_LIBTG_OBJS) $(ARM64_APP_OBJS)
 
 # Compiler Flags per Architecture
+# Header dependency files: every compile emits a .d next to the .o, so a
+# changed header re-triggers the translation units that include it. Without
+# this the linker happily mixes pre-rename and post-rename objects, and the
+# result crashes with unrecognized selectors at runtime (2026-10-25).
 CFLAGS_ARMV7    := -arch armv7 -mthumb -O2 -isysroot $(SDK_PATH) $(MIN_IOS) $(INCLUDES) $(DEFINES) -fPIC \
+                   -MMD -MP \
                    -Wno-macro-redefined -Wno-implicit-function-declaration -Wno-incompatible-pointer-types -Wno-deprecated-declarations
 OBJCFLAGS_ARMV7 := $(CFLAGS_ARMV7) -fobjc-arc
 CXXFLAGS_ARMV7  := $(CFLAGS_ARMV7) $(CXX_STDLIB_INC) -std=c++11 -fno-use-cxa-atexit -fno-threadsafe-statics -Wno-error
 
 CFLAGS_ARM64    := -arch arm64 -O2 -isysroot $(SDK_PATH) $(MIN_IOS) $(INCLUDES) $(DEFINES) -fPIC \
+                   -MMD -MP \
                    -Wno-macro-redefined -Wno-implicit-function-declaration -Wno-incompatible-pointer-types -Wno-deprecated-declarations
 OBJCFLAGS_ARM64 := $(CFLAGS_ARM64) -fobjc-arc
 CXXFLAGS_ARM64  := $(CFLAGS_ARM64) $(CXX_STDLIB_INC) -std=c++11 -fno-use-cxa-atexit -fno-threadsafe-statics -Wno-error
@@ -422,6 +429,11 @@ $(ARM64_OBJ_DIR)/%.o: %.cpp
 
 clean:
 	@rm -rf "$(BUILD_DIR)/armv7" "$(BUILD_DIR)/arm64" "$(BUILD_DIR)/fat_app" "$(BUILD_DIR)/ipa" "$(BUILD_DIR)/Payload" "$(BUILD_DIR)/tools"
+
+# The .d files the compilers drop next to the objects carry the real header
+# dependencies; include them so a header edit invalidates its .m files.
+-include $(ARMV7_LIBTG_OBJS:.o=.d) $(ARMV7_APP_OBJS:.o=.d)
+-include $(ARM64_LIBTG_OBJS:.o=.d) $(ARM64_APP_OBJS:.o=.d)
 
 help:
 	@echo "Available targets:"
