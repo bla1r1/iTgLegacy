@@ -17,31 +17,44 @@
 		return;
 	}
 
-	UIActionSheet *sheet = [[UIActionSheet alloc] initWithTitle:@"Show"
-													   delegate:self
-											  cancelButtonTitle:nil
-										 destructiveButtonTitle:nil
-											  otherButtonTitles:@"All chats", nil];
-	for (NSDictionary *f in folders)
-		[sheet addButtonWithTitle:f[@"title"]];
-	sheet.cancelButtonIndex = [sheet addButtonWithTitle:@"Cancel"];
-	[sheet showInView:self.view];
+	// A popup instead of a UIActionSheet: on the 4S the sheet threw inside
+	// addButtonWithTitle: (B3 - folders crash on tap) even though every
+	// parsed folder title is a non-nil string. The popup is the control the
+	// chat rows already use, built from the same strings.
+	NSMutableArray *items = [NSMutableArray array];
+	[items addObject:@{@"title" : @"All chats"}];
+	for (NSDictionary *f in folders){
+		NSString *title = [f isKindOfClass:NSDictionary.class] ? f[@"title"] : nil;
+		NSLog(@"TGClient: B3 folder id=%@ title=%@ class=%@",
+				[f isKindOfClass:NSDictionary.class] ? f[@"id"] : nil,
+				title, [title class]);
+		if ([title isKindOfClass:NSString.class] && title.length)
+			[items addObject:@{@"title" : title}];
+	}
+
+	__weak typeof(self) weakSelf = self;
+	CGPoint where = CGPointMake(self.view.bounds.size.width / 2,
+								self.view.bounds.size.height / 2);
+	[TGPopupMenu showItems:items
+				   atPoint:where
+					inView:self.navigationController.view
+				  onChoice:^(NSInteger choice, NSString *title){
+		[weakSelf runFolderChoice:choice];
+	}];
 }
 
-- (void)actionSheet:(UIActionSheet *)sheet clickedButtonAtIndex:(NSInteger)index {
-	if (index == sheet.cancelButtonIndex)
-		return;
-
-	// Saved Messages has its own row now, so this sheet is All chats followed
+- (void)runFolderChoice:(NSInteger)choice {
+	// Saved Messages has its own row now, so the menu is All chats followed
 	// by the folders themselves.
 	NSArray *folders = [TGClient shared].folders;
-	if (index == 0){
+	if (choice == 0){
 		self.folderId = 0;
 		self.title = self.showsArchive ? @"Archived" : @"Chats";
-	} else if (index - 1 < (NSInteger)folders.count){
-		NSDictionary *f = folders[index - 1];
-		self.folderId = [f[@"id"] integerValue];
-		self.title = f[@"title"];
+	} else if (choice - 1 < (NSInteger)folders.count){
+		NSDictionary *f = folders[choice - 1];
+		self.folderId = [f isKindOfClass:NSDictionary.class] ? [f[@"id"] integerValue] : 0;
+		NSString *t = [f isKindOfClass:NSDictionary.class] ? f[@"title"] : nil;
+		self.title = [t isKindOfClass:NSString.class] && t.length ? t : @"Chats";
 	}
 	[self reload];
 }

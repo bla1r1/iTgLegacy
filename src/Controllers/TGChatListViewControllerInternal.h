@@ -42,6 +42,7 @@
 @interface TGChatListViewController (Actions)
 
 - (void)foldersTapped;
+- (void)runFolderChoice:(NSInteger)choice;
 - (void)rowHeld:(UILongPressGestureRecognizer *)hold;
 - (void)showActionsForRow:(NSInteger)row;
 - (void)runChatAction:(NSInteger)choice;

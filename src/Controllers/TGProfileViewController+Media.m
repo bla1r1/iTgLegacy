@@ -26,6 +26,8 @@ static AVPlayerLayer *sStoryLayer = nil;
 	[[TGClient shared] storiesForChat:self.chatId completion:^(NSArray *stories){
 		BOOL gainedTile = stories.count && !weakSelf.stories.count;
 		weakSelf.stories = stories;
+		// A fresh set means the cached grid cell still shows the old tiles.
+		weakSelf.storyGridCellCache = nil;
 		if (gainedTile)
 			[weakSelf buildHeader];      // the tile row is one shorter without it
 		[weakSelf reloadTableDebounced];
@@ -35,6 +37,10 @@ static AVPlayerLayer *sStoryLayer = nil;
 							filter:@"searchMessagesFilterPhotoAndVideo"
 						completion:^(NSArray *messages){
 		weakSelf.photos = messages;
+		// Same for the grid: without this, late-arriving media is invisible
+		// until the user pokes another tab (B1's cache family).
+		weakSelf.storyGridCellCache = nil;
+		weakSelf.mediaGridCacheContent = nil;
 		[weakSelf reloadTableDebounced];
 	}];
 	[[TGClient shared] mediaInChat:self.chatId
@@ -64,28 +70,33 @@ static AVPlayerLayer *sStoryLayer = nil;
 /// with nothing in it is left out rather than offered as an empty tab.
 - (NSArray *)currentMediaTabs {
 	NSMutableArray *out = [NSMutableArray array];
-	if (self.stories.count)
-		[out addObject:@{@"title" : @"Stories", @"kind" : @"stories"}];
-	if (self.gifts.count)
-		[out addObject:@{@"title" : @"Gifts",   @"kind" : @"gifts"}];
-	[out addObject:@{@"title" : @"Media", @"kind" : @"media"}];
+	// The bar reads left-to-right the way the official profile does. The
+	// order is fixed: stories and gifts keep their slots at the end whether
+	// they have content yet or not, so a category that loads late cannot
+	// slide the user's selected tab out from under their finger - holding
+	// reorderable positions was the whole "the grids simply swapped" bug
+	// family (B1).
+	[out addObject:@{@"title" : @"Media",   @"kind" : @"media"}];
 	if (self.files.count)
 		[out addObject:@{@"title" : @"Files", @"kind" : @"files"}];
 	if (self.voice.count)
 		[out addObject:@{@"title" : @"Voice", @"kind" : @"voice"}];
 	if (self.links.count)
 		[out addObject:@{@"title" : @"Links", @"kind" : @"links"}];
+	if (self.stories.count)
+		[out addObject:@{@"title" : @"Stories", @"kind" : @"stories"}];
+	if (self.gifts.count)
+		[out addObject:@{@"title" : @"Gifts",   @"kind" : @"gifts"}];
 	return out;
 }
 
 /// Media is a strip you push sideways; Stories is a grid that wraps, the way
 /// the sticker panel lays its rows out.
-- (BOOL)selectedTabIsStrip {
-	return [[self selectedMediaKind] isEqualToString:@"media"];
-}
-
 - (BOOL)selectedTabIsGrid {
-	return [[self selectedMediaKind] isEqualToString:@"stories"];
+	NSString *kind = [self selectedMediaKind];
+	// Media became a grid of its own: one row of the table holds the tiles
+	// the photo strip used to (B1). Stories share the same renderer.
+	return [kind isEqualToString:@"media"] || [kind isEqualToString:@"stories"];
 }
 
 static const CGFloat kStoryGridGap     = 2.0f;
@@ -110,24 +121,37 @@ static const NSInteger kStoryGridCols  = 3;
 /// Cached like the media strip: rebuilding it on every pass through
 /// cellForRow handed back a grid whose pictures had already been asked for
 /// and so never arrived again - scrolling away and back emptied it.
-- (UITableViewCell *)storyGridCell:(UITableView *)tableView {
-	if (self.storyGridCellCache)
+/// One grid renderer serves every tile-shaped category: photos for "media"
+/// and story tiles for "stories". A grid means no collection view - iOS 6
+/// has one, but this screen stretches a grouped table instead, and one row
+/// of it holds this scroller-less cell (B1: media drew the story tiles and
+/// the photo strip was a second, forgetful cache).
+- (UITableViewCell *)mediaGridCell:(UITableView *)tableView {
+	NSString *kind = [self selectedMediaKind];
+	BOOL storyKind = [kind isEqualToString:@"stories"];
+	NSString *cacheName = storyKind ? @"story" : @"media";
+
+	if ([self.mediaGridCacheContent isEqualToString:cacheName] && self.storyGridCellCache)
 		return self.storyGridCellCache;
 
 	UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault
 												   reuseIdentifier:nil];
 	cell.selectionStyle = UITableViewCellSelectionStyleNone;
 
+	NSArray *rows = [self selectedMediaRows];
 	CGFloat width = tableView.bounds.size.width;
 	CGFloat side = [[self class] storySideForWidth:width];
-	NSInteger count = MIN((NSInteger)self.stories.count, 20);
+	NSInteger count = MIN((NSInteger)rows.count, 20);
 
 	for (NSInteger i = 0; i < count; i++){
-		NSDictionary *story = self.stories[i];
-		// The tile list asks for the list-sized render, not the largest one;
-		// a 105 pt square is at most 220 px wide and the queue is shared
-		// with everything else (B2).
-		NSNumber *fileId = story[@"thumbPhotoId"] ?: story[@"photoId"];
+		NSDictionary *tile = rows[i];
+		// Story tiles render their thumbnail, photo tiles whatever the
+		// message carries. The tile list asks for the list-sized render,
+		// not the largest one; a 105 pt square is at most 220 px wide and
+		// the queue is shared with everything else (B2).
+		NSNumber *fileId = storyKind
+				? (tile[@"thumbPhotoId"] ?: tile[@"photoId"])
+				: (tile[@"photoId"] ?: tile[@"thumbPhotoId"]);
 		CGRect frame = CGRectMake((i % kStoryGridCols) * (side + kStoryGridGap),
 								  (i / kStoryGridCols) * (side + kStoryGridGap),
 								  side, side);
@@ -138,36 +162,49 @@ static const NSInteger kStoryGridCols  = 3;
 		thumb.clipsToBounds = YES;
 		[cell.contentView addSubview:thumb];
 
-		if ([story[@"isVideo"] boolValue]){
-			UIImageView *mark = [[UIImageView alloc] initWithFrame:
-					CGRectMake(side - 20, side - 20, 16, 16)];
-			mark.image = [TGIcons glyphNamed:@"video" colour:[UIColor whiteColor] side:16];
-			[thumb addSubview:mark];
+		if (storyKind){
+			if ([tile[@"isVideo"] boolValue]){
+				UIImageView *mark = [[UIImageView alloc] initWithFrame:
+						CGRectMake(side - 20, side - 20, 16, 16)];
+				mark.image = [TGIcons glyphNamed:@"video" colour:[UIColor whiteColor] side:16];
+				[thumb addSubview:mark];
+			}
+
+			UIButton *tap = [UIButton buttonWithType:UIButtonTypeCustom];
+			tap.frame = frame;
+			tap.tag = 500 + i;
+			[tap addTarget:self action:@selector(storyTileTapped:)
+				  forControlEvents:UIControlEventTouchUpInside];
+			[cell.contentView addSubview:tap];
 		}
 
-		UIButton *tap = [UIButton buttonWithType:UIButtonTypeCustom];
-		tap.frame = frame;
-		tap.tag = 500 + i;
-		[tap addTarget:self action:@selector(storyTileTapped:)
-			  forControlEvents:UIControlEventTouchUpInside];
-		[cell.contentView addSubview:tap];
-
-		if ([fileId integerValue] > 0)
-			[[TGClient shared] downloadFile:fileId.integerValue completion:^(NSString *path){
+		if ([fileId integerValue] > 0){
+			__weak typeof(self) weakSelf = self;
+			[[TGClient shared] downloadFile:fileId.integerValue
+								   priority:TGDownloadPriorityOnScreen
+								 completion:^(NSString *path){
 				[TGIcons loadImageAtPath:path into:thumb];
+				(void)weakSelf;
 			}];
+		}
 	}
+
 	self.storyGridCellCache = cell;
+	self.mediaGridCacheContent = cacheName;
 	return cell;
 }
 
 /// What the selected tab shows; nil for the photo strip, which is not a list.
 - (NSString *)selectedMediaKind {
-	NSArray *tabs = [self currentMediaTabs];
-	if (!tabs.count)
-		return @"media";
-	NSInteger index = MIN(MAX(0, self.selectedMediaTab), (NSInteger)tabs.count - 1);
-	return tabs[index][@"kind"];
+	NSString *kind = self.storedMediaKind;
+	// The answer is only valid while that kind still has a tab: stories end,
+	// gifts empty out, and holding a dead kind would render a toolbar
+	// selection that no longer matches. Falling back to the photo strip is
+	// what the official clients do.
+	for (NSDictionary *tab in [self currentMediaTabs])
+		if ([tab[@"kind"] isEqualToString:kind])
+			return kind;
+	return @"media";
 }
 
 /// The rows behind the selected tab, for the list-shaped categories.
@@ -187,117 +224,22 @@ static const NSInteger kStoryGridCols  = 3;
 }
 
 - (void)mediaTabChanged:(UISegmentedControl *)sender {
-	self.selectedMediaTab = sender.selectedSegmentIndex;
-	// The strip is cached, and the next tab may want different pictures in it.
-	self.mediaStripCell = nil;
-	self.mediaStrip = nil;
+	NSArray *tabs = [self currentMediaTabs];
+	NSInteger index = MIN(MAX(0, sender.selectedSegmentIndex), (NSInteger)tabs.count - 1);
+	// The kind is resolved here, at tap time. The tab array can reorder as
+	// categories load (gifts before media, stories before both); holding a
+	// number instead made the selection follow the array's rows, and the
+	// profile's media grid turned into whatever moved into that position
+	// (B1 - "the grids simply swapped").
+	self.storedMediaKind = tabs[index][@"kind"];
+	// The grid is cached per kind, and the next tab wants different tiles.
 	self.storyGridCellCache = nil;
+	self.mediaGridCacheContent = nil;
 	[self.thumbnailsRequested removeAllObjects];
 	// Switching a tab is not a change of content to be animated. Even with no
 	// row animation, reloading the one section slid the outgoing rows up out
 	// of the way; reloading the table swaps them in place.
 	[self.tableView reloadData];
-}
-
-/// A horizontal strip of thumbnails: a grid would mean a collection view,
-/// which iOS 6 has but this screen does not need.
-- (UITableViewCell *)photoStripCell:(UITableView *)tableView {
-	if (self.mediaStripCell) {
-		return self.mediaStripCell;
-	}
-
-	UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:nil];
-	cell.selectionStyle = UITableViewCellSelectionStyleNone;
-	
-	UIScrollView *strip = [[UIScrollView alloc] initWithFrame:CGRectMake(0, 2, tableView.bounds.size.width, 80)];
-	strip.showsHorizontalScrollIndicator = NO;
-	[cell.contentView addSubview:strip];
-
-	strip.delegate = self;
-	self.mediaStrip = strip;
-
-	BOOL showingStories = NO;
-	NSArray *rows = self.photos;
-
-	CGFloat side = 76, gap = 4, x = gap;
-	NSInteger limit = MIN((NSInteger)rows.count, 20);
-	for (NSInteger i = 0; i < limit; i++){
-		NSDictionary *m = rows[i];
-		NSNumber *fileId = m[@"photoId"];
-		if (!fileId) continue;
-
-		UIImageView *thumb = [[UIImageView alloc] initWithFrame:CGRectMake(x, 2, side, side)];
-		thumb.backgroundColor = [[TGTheme shared] fileTileColour];
-		thumb.contentMode = UIViewContentModeScaleAspectFill;
-		thumb.clipsToBounds = YES;
-		// The id rides on the view so the scroll handler can ask for it later
-		// rather than the strip asking for all twenty the moment it is built.
-		thumb.tag = fileId.integerValue;
-		[strip addSubview:thumb];
-
-		if (showingStories){
-			// A video story says so in the corner, and the whole tile opens it.
-			if ([m[@"isVideo"] boolValue]){
-				UIImageView *mark = [[UIImageView alloc] initWithFrame:
-						CGRectMake(side - 20, side - 20, 16, 16)];
-				mark.image = [TGIcons glyphNamed:@"video" colour:[UIColor whiteColor] side:16];
-				[thumb addSubview:mark];
-			}
-			UIButton *tap = [UIButton buttonWithType:UIButtonTypeCustom];
-			tap.frame = CGRectMake(x, 2, side, side);
-			tap.tag = 500 + i;
-			[tap addTarget:self action:@selector(storyTileTapped:)
-				  forControlEvents:UIControlEventTouchUpInside];
-			[strip addSubview:tap];
-		}
-		x += side + gap;
-	}
-	strip.contentSize = CGSizeMake(x, 80);
-	self.mediaStripCell = cell;
-	[self fetchVisibleThumbnails];
-	return cell;
-}
-
-/// Lazily downloads thumbnails visible in the media strip viewport.
-- (void)fetchVisibleThumbnails {
-	UIScrollView *strip = self.mediaStrip;
-	if (!strip)
-		return;
-
-	CGRect window = CGRectMake(strip.contentOffset.x - strip.bounds.size.width, 0,
-							   strip.bounds.size.width * 3, strip.bounds.size.height);
-	for (UIView *view in strip.subviews){
-		if (![view isKindOfClass:UIImageView.class] || view.tag == 0)
-			continue;
-		if (!CGRectIntersectsRect(view.frame, window))
-			continue;
-
-		UIImageView *thumb = (UIImageView *)view;
-		NSNumber *fileId = @(thumb.tag);
-		if ([self.thumbnailsRequested containsObject:fileId])
-			continue;
-		[self.thumbnailsRequested addObject:fileId];
-
-		__weak typeof(self) weakSelf = self;
-		[[TGClient shared] downloadFile:fileId.integerValue
-							   priority:TGDownloadPriorityOnScreen
-							 completion:^(NSString *path){
-			// A nil callback means the watchdog gave up or the download
-			// errored: lifting the mark turns the next scroll pass into the
-			// retry, instead of leaving the tile empty forever (B2).
-			if (!path.length){
-				TGProfileViewController *me = weakSelf;
-				[me.thumbnailsRequested removeObject:fileId];
-				return;
-			}
-			[TGIcons loadImageAtPath:path into:thumb];
-		}];
-	}
-}
-
-- (void)scrollViewDidScroll:(UIScrollView *)scrollView {
-	if (scrollView == self.mediaStrip)
-		[self fetchVisibleThumbnails];
 }
 
 /// Displays full-screen view for the selected story.

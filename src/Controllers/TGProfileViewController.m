@@ -242,11 +242,8 @@ static NSString *TGProfileShortDate(NSNumber *date) {
 	if (section == kSectionMembers) return self.members.count;
 
 	if (section == kSectionMedia) {
-		// The photo strip is one row holding a scroller; every other category
-		// is a plain list.
-		// Media and Stories are both strips of pictures: one row holding a
-		// scroller. The rest are plain lists.
-		if ([self selectedTabIsStrip] || [self selectedTabIsGrid])
+		// Media and Stories each draw into one grid row; the rest are lists.
+		if ([self selectedTabIsGrid])
 			return [self selectedMediaRows].count ? 1 : 0;
 		return [self selectedMediaRows].count;
 	}
@@ -275,8 +272,16 @@ static NSString *TGProfileShortDate(NSNumber *date) {
 			[titles addObject:tab[@"title"]];
 		UISegmentedControl *segments = [[UISegmentedControl alloc] initWithItems:titles];
 		segments.frame = CGRectMake(10, 3, tableView.bounds.size.width - 20, 30);
-		segments.selectedSegmentIndex = MIN(MAX(0, self.selectedMediaTab),
-											(NSInteger)titles.count - 1);
+		// The highlighted segment comes from the stored kind, not a number:
+		// the array behind titles reorders as categories load (B1).
+		NSString *kind = [self selectedMediaKind];
+		NSInteger selected = 0;
+		for (NSInteger i = 0; i < (NSInteger)tabs.count; i++)
+			if ([tabs[i][@"kind"] isEqualToString:kind]){
+				selected = i;
+				break;
+			}
+		segments.selectedSegmentIndex = selected;
 		segments.tintColor = [[TGTheme shared] accentColour];
 		[segments addTarget:self action:@selector(mediaTabChanged:) forControlEvents:UIControlEventValueChanged];
 		[header addSubview:segments];
@@ -318,8 +323,6 @@ static NSString *TGProfileShortDate(NSNumber *date) {
 }
 
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
-	if (indexPath.section == kSectionMedia && [self selectedTabIsStrip])
-		return 84;
 	if (indexPath.section == kSectionMedia && [self selectedTabIsGrid])
 		return [self storyGridHeight];
 	if (indexPath.section == kSectionStories) return 56;
@@ -327,10 +330,8 @@ static NSString *TGProfileShortDate(NSNumber *date) {
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-	if (indexPath.section == kSectionMedia && [self selectedTabIsStrip])
-		return [self photoStripCell:tableView];
 	if (indexPath.section == kSectionMedia && [self selectedTabIsGrid])
-		return [self storyGridCell:tableView];
+		return [self mediaGridCell:tableView];
 
 	UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"row"];
 	if (!cell)

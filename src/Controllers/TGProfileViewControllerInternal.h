@@ -18,9 +18,8 @@ static const NSInteger kSectionMembers = 3;
 static const NSInteger kSectionMedia   = 4;
 static const NSInteger kSectionLogout  = 5;
 
-@interface TGProfileViewController () <UIActionSheetDelegate, UIAlertViewDelegate, UIScrollViewDelegate>
+@interface TGProfileViewController () <UIAlertViewDelegate>
 
-@property (nonatomic, strong) UIScrollView *mediaStrip;
 @property (nonatomic, strong) NSMutableSet *thumbnailsRequested;
 @property (nonatomic, assign) int64_t chatId;
 @property (nonatomic, assign) int64_t userId;
@@ -31,19 +30,21 @@ static const NSInteger kSectionLogout  = 5;
 @property (nonatomic, strong) NSArray *voice;
 @property (nonatomic, strong) NSArray *links;
 /// The categories the bar is showing, in order: each is @{"title", "kind"}.
-@property (nonatomic, strong) NSArray *mediaTabs;
+/// Built fresh on every render by currentMediaTabs.
+@property (nonatomic, copy)   NSString *storedMediaKind;
 @property (nonatomic, strong) NSArray *members;
 @property (nonatomic, strong) NSArray *gifts;
 @property (nonatomic, strong) NSArray *stories;
 @property (nonatomic, assign) BOOL blocked;
 @property (nonatomic, strong) UIImageView *avatarView;
-@property (nonatomic, strong) UITableViewCell *mediaStripCell;
+// The one grid cell, cached by kind: "story" or "media", per
+// mediaGridCacheContent. A fresh cache per kind, invalidated by data or tab.
+@property (nonatomic, strong) NSString *mediaGridCacheContent;
 @property (nonatomic, strong) UITableViewCell *storyGridCellCache;
 @property (nonatomic, strong) UILabel *statusLabel;
 @property (nonatomic, strong) NSArray *actionNames;
 @property (nonatomic, assign) BOOL muted;
 @property (nonatomic, strong) NSString *phoneNumber;
-@property (nonatomic, assign) NSInteger selectedMediaTab;
 
 - (void)buildHeader;
 - (void)loadDetails;
@@ -67,13 +68,10 @@ static const NSInteger kSectionLogout  = 5;
 - (void)mediaTabChanged:(UISegmentedControl *)sender;
 - (NSArray *)currentMediaTabs;
 - (NSString *)selectedMediaKind;
-- (BOOL)selectedTabIsStrip;
 - (BOOL)selectedTabIsGrid;
 - (CGFloat)storyGridHeight;
-- (UITableViewCell *)storyGridCell:(UITableView *)tableView;
+- (UITableViewCell *)mediaGridCell:(UITableView *)tableView;
 - (NSArray *)selectedMediaRows;
-- (UITableViewCell *)photoStripCell:(UITableView *)tableView;
-- (void)fetchVisibleThumbnails;
 - (void)openStoryAtIndex:(NSInteger)index;
 - (void)closeStory:(UITapGestureRecognizer *)tap;
 - (void)storyTileTapped:(UIButton *)button;
