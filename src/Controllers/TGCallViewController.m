@@ -3,6 +3,7 @@
 #import "TGClient.h"
 #import "TGTheme.h"
 #import "TGIcons.h"
+#import "TGCapabilities.h"
 #import <QuartzCore/QuartzCore.h>
 #import <CommonCrypto/CommonDigest.h>
 
@@ -106,15 +107,21 @@
     [self.view addSubview:self.statusLabel];
 
     CGFloat btnY = b.size.height - 130;
-    CGFloat gap = (b.size.width - (60 * 4)) / 5;
+    BOOL canVideo = [TGCapabilities canEncodeVideoCall];
+    CGFloat btnCount = canVideo ? 4 : 3;
+    CGFloat gap = (b.size.width - (60 * btnCount)) / (btnCount + 1);
     
     self.speakerBtn = [self createButtonAtX:gap y:btnY title:@"Speaker" icon:@"unmute"];
     self.speakerLbl = self.lastCreatedLabel;
-    self.videoBtn = [self createButtonAtX:gap*2 + 60 y:btnY title:@"Video" icon:@"video"];
+    self.videoBtn = [self createButtonAtX:canVideo ? (gap*2 + 60) : -100 y:btnY title:@"Video" icon:@"video"];
     self.videoLbl = self.lastCreatedLabel;
-    self.micBtn = [self createButtonAtX:gap*3 + 120 y:btnY title:@"Mute" icon:@"microphone"];
+    if (!canVideo) {
+        self.videoBtn.hidden = YES;
+        self.videoLbl.hidden = YES;
+    }
+    self.micBtn = [self createButtonAtX:canVideo ? (gap*3 + 120) : (gap*2 + 60) y:btnY title:@"Mute" icon:@"microphone"];
     self.micLbl = self.lastCreatedLabel;
-    self.endBtn = [self createButtonAtX:gap*4 + 180 y:btnY title:@"End" icon:@"endcall"];
+    self.endBtn = [self createButtonAtX:canVideo ? (gap*4 + 180) : (gap*3 + 120) y:btnY title:@"End" icon:@"endcall"];
     self.endLbl = self.lastCreatedLabel;
     self.endBtn.backgroundColor = [UIColor colorWithRed:0.9f green:0.2f blue:0.2f alpha:1];
 
@@ -206,29 +213,51 @@
         self.endLbl.frame = CGRectMake((b.size.width / 2) - 105, btnY + 65, 80, 15);
         self.endLbl.text = @"Decline";
     } else {
-        CGFloat gap = (b.size.width - (60 * 4)) / 5;
+        BOOL canVideo = [TGCapabilities canEncodeVideoCall];
         self.acceptBtn.hidden = YES;
         self.acceptLbl.hidden = YES;
         
-        self.speakerBtn.hidden = NO;
-        self.speakerLbl.hidden = NO;
-        self.speakerBtn.frame = CGRectMake(gap, btnY, 60, 60);
-        self.speakerLbl.frame = CGRectMake(gap - 10, btnY + 65, 80, 15);
-        
-        self.videoBtn.hidden = NO;
-        self.videoLbl.hidden = NO;
-        self.videoBtn.frame = CGRectMake(gap*2 + 60, btnY, 60, 60);
-        self.videoLbl.frame = CGRectMake(gap*2 + 50, btnY + 65, 80, 15);
-        
-        self.micBtn.hidden = NO;
-        self.micLbl.hidden = NO;
-        self.micBtn.frame = CGRectMake(gap*3 + 120, btnY, 60, 60);
-        self.micLbl.frame = CGRectMake(gap*3 + 110, btnY + 65, 80, 15);
-        
-        self.endBtn.hidden = NO;
-        self.endLbl.hidden = NO;
-        self.endBtn.frame = CGRectMake(gap*4 + 180, btnY, 60, 60);
-        self.endLbl.frame = CGRectMake(gap*4 + 170, btnY + 65, 80, 15);
+        if (canVideo) {
+            CGFloat gap = (b.size.width - (60 * 4)) / 5;
+            self.speakerBtn.hidden = NO;
+            self.speakerLbl.hidden = NO;
+            self.speakerBtn.frame = CGRectMake(gap, btnY, 60, 60);
+            self.speakerLbl.frame = CGRectMake(gap - 10, btnY + 65, 80, 15);
+            
+            self.videoBtn.hidden = NO;
+            self.videoLbl.hidden = NO;
+            self.videoBtn.frame = CGRectMake(gap*2 + 60, btnY, 60, 60);
+            self.videoLbl.frame = CGRectMake(gap*2 + 50, btnY + 65, 80, 15);
+            
+            self.micBtn.hidden = NO;
+            self.micLbl.hidden = NO;
+            self.micBtn.frame = CGRectMake(gap*3 + 120, btnY, 60, 60);
+            self.micLbl.frame = CGRectMake(gap*3 + 110, btnY + 65, 80, 15);
+            
+            self.endBtn.hidden = NO;
+            self.endLbl.hidden = NO;
+            self.endBtn.frame = CGRectMake(gap*4 + 180, btnY, 60, 60);
+            self.endLbl.frame = CGRectMake(gap*4 + 170, btnY + 65, 80, 15);
+        } else {
+            CGFloat gap = (b.size.width - (60 * 3)) / 4;
+            self.videoBtn.hidden = YES;
+            self.videoLbl.hidden = YES;
+            
+            self.speakerBtn.hidden = NO;
+            self.speakerLbl.hidden = NO;
+            self.speakerBtn.frame = CGRectMake(gap, btnY, 60, 60);
+            self.speakerLbl.frame = CGRectMake(gap - 10, btnY + 65, 80, 15);
+            
+            self.micBtn.hidden = NO;
+            self.micLbl.hidden = NO;
+            self.micBtn.frame = CGRectMake(gap*2 + 60, btnY, 60, 60);
+            self.micLbl.frame = CGRectMake(gap*2 + 50, btnY + 65, 80, 15);
+            
+            self.endBtn.hidden = NO;
+            self.endLbl.hidden = NO;
+            self.endBtn.frame = CGRectMake(gap*3 + 120, btnY, 60, 60);
+            self.endLbl.frame = CGRectMake(gap*3 + 110, btnY + 65, 80, 15);
+        }
         self.endLbl.text = @"End";
     }
 }

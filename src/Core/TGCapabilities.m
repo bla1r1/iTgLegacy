@@ -52,8 +52,9 @@ static void TGSetWanted(NSString *key, BOOL wanted) {
 
 + (BOOL)canPlayAnimatedStickers {
 	// TGLottieView does play these on an A5 - not at full speed, but it plays.
-	// Custom emoji are the ones that need a newer chip, because they animate
-	// inside every message rather than one at a time.
+	// Single-core chips (A4) choke on parallel vector rendering.
+	if ([NSProcessInfo processInfo].processorCount < 2)
+		return NO;
 	return [TGDevice tier] >= TGDeviceTierLegacy && [self animatedStickersWanted];
 }
 
@@ -70,7 +71,9 @@ static void TGSetWanted(NSString *key, BOOL wanted) {
 }
 
 + (BOOL)canEncodeVideoCall {
-	return [TGDevice tier] >= TGDeviceTierFull;
+	// Video calls require 64-bit hardware (A7+), hardware VideoToolbox
+	// available cleanly on iOS 9+, and at least 2GB of RAM to prevent jetsam.
+	return [self is64Bit] && [self systemVersion] >= 9.0 && [TGDevice tier] >= TGDeviceTierFull;
 }
 
 + (BOOL)canAutoplayGIFs {
@@ -179,7 +182,7 @@ static BOOL TGEmojiFontHasGlyphs(CTFontRef font, NSString *s) {
 		@[@"Custom emoji",            @([self canAnimateInline]),      @"Modern - a 64-bit chip"],
 		@[@"Mini apps",               @([self canRunWebApps]),         @"iOS 9 or later"],
 		@[@"Multiple accounts",       @([self canHoldMultipleAccounts]), @"Full - 2GB or more"],
-		@[@"Video calls",             @([self canEncodeVideoCall]),    @"Full - an A9 or later"],
+		@[@"Video calls",             @([self canEncodeVideoCall]),    @"Full - 64-bit, iOS 9+, 2GB+"],
 	];
 
 	NSMutableArray *out = [NSMutableArray array];

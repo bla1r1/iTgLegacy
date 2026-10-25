@@ -539,7 +539,7 @@
 	}
 
 	// Animated sticker
-	NSString *tgsPath = [m[@"docName"] isEqualToString:@"tgs"] ? self.lottiePaths[m[@"docId"]] : nil;
+	NSString *tgsPath = ([TGCapabilities canPlayAnimatedStickers] && [m[@"docName"] isEqualToString:@"tgs"]) ? self.lottiePaths[m[@"docId"]] : nil;
 	if (tgsPath) {
 		CGFloat side = 128;
 		cell.bubble.backgroundColor = [UIColor clearColor];

@@ -1,4 +1,5 @@
 #import "TGProfileViewControllerInternal.h"
+#import "TGCapabilities.h"
 
 @implementation TGProfileViewController (Actions)
 
@@ -8,7 +9,8 @@
 	NSMutableArray *tiles = [NSMutableArray array];
 	if (self.userId){
 		[tiles addObject:@[@"call",  @"call"]];
-		[tiles addObject:@[@"video", @"video"]];
+		if ([TGCapabilities canEncodeVideoCall])
+			[tiles addObject:@[@"video", @"video"]];
 	}
 	[tiles addObject:@[(self.muted ? @"unmute" : @"mute"),
 					   (self.muted ? @"unmute" : @"mute")]];

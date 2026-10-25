@@ -20,6 +20,7 @@ static const TGDeviceRow kDevices[] = {
 	{"iPhone3,2",  "iPhone 4",         "A4",       512,  7.1,  TGDeviceTierVintage},
 	{"iPhone3,3",  "iPhone 4",         "A4",       512,  7.1,  TGDeviceTierVintage},
 	{"iPod4,1",    "iPod touch 4",     "A4",       256,  6.1,  TGDeviceTierVintage},
+	{"iPad1,1",    "iPad 1",           "A4",       256,  5.1,  TGDeviceTierVintage},
 
 	// Legacy: still armv7, but they reached iOS 9 or 10.
 	{"iPhone4,1",  "iPhone 4S",        "A5",       512,  9.3,  TGDeviceTierLegacy},
@@ -28,6 +29,19 @@ static const TGDeviceRow kDevices[] = {
 	{"iPhone5,3",  "iPhone 5c",        "A6",      1024, 10.3,  TGDeviceTierLegacy},
 	{"iPhone5,4",  "iPhone 5c",        "A6",      1024, 10.3,  TGDeviceTierLegacy},
 	{"iPod5,1",    "iPod touch 5",     "A5",       512,  9.3,  TGDeviceTierLegacy},
+	{"iPad2,1",    "iPad 2",           "A5",       512,  9.3,  TGDeviceTierLegacy},
+	{"iPad2,2",    "iPad 2",           "A5",       512,  9.3,  TGDeviceTierLegacy},
+	{"iPad2,3",    "iPad 2",           "A5",       512,  9.3,  TGDeviceTierLegacy},
+	{"iPad2,4",    "iPad 2",           "A5",       512,  9.3,  TGDeviceTierLegacy},
+	{"iPad2,5",    "iPad mini 1",      "A5",       512,  9.3,  TGDeviceTierLegacy},
+	{"iPad2,6",    "iPad mini 1",      "A5",       512,  9.3,  TGDeviceTierLegacy},
+	{"iPad2,7",    "iPad mini 1",      "A5",       512,  9.3,  TGDeviceTierLegacy},
+	{"iPad3,1",    "iPad 3",           "A5X",     1024,  9.3,  TGDeviceTierLegacy},
+	{"iPad3,2",    "iPad 3",           "A5X",     1024,  9.3,  TGDeviceTierLegacy},
+	{"iPad3,3",    "iPad 3",           "A5X",     1024,  9.3,  TGDeviceTierLegacy},
+	{"iPad3,4",    "iPad 4",           "A6X",     1024, 10.3,  TGDeviceTierLegacy},
+	{"iPad3,5",    "iPad 4",           "A6X",     1024, 10.3,  TGDeviceTierLegacy},
+	{"iPad3,6",    "iPad 4",           "A6X",     1024, 10.3,  TGDeviceTierLegacy},
 
 	// Modern: the first 64-bit phones, all of which stopped at 12.5.
 	{"iPhone6,1",  "iPhone 5s",        "A7",      1024, 12.5,  TGDeviceTierModern},
@@ -35,6 +49,15 @@ static const TGDeviceRow kDevices[] = {
 	{"iPhone7,2",  "iPhone 6",         "A8",      1024, 12.5,  TGDeviceTierModern},
 	{"iPhone7,1",  "iPhone 6 Plus",    "A8",      1024, 12.5,  TGDeviceTierModern},
 	{"iPod7,1",    "iPod touch 6",     "A8",      1024, 12.5,  TGDeviceTierModern},
+	{"iPad4,1",    "iPad Air 1",       "A7",      1024, 12.5,  TGDeviceTierModern},
+	{"iPad4,2",    "iPad Air 1",       "A7",      1024, 12.5,  TGDeviceTierModern},
+	{"iPad4,3",    "iPad Air 1",       "A7",      1024, 12.5,  TGDeviceTierModern},
+	{"iPad4,4",    "iPad mini 2",      "A7",      1024, 12.5,  TGDeviceTierModern},
+	{"iPad4,5",    "iPad mini 2",      "A7",      1024, 12.5,  TGDeviceTierModern},
+	{"iPad4,6",    "iPad mini 2",      "A7",      1024, 12.5,  TGDeviceTierModern},
+	{"iPad4,7",    "iPad mini 3",      "A7",      1024, 12.5,  TGDeviceTierModern},
+	{"iPad4,8",    "iPad mini 3",      "A7",      1024, 12.5,  TGDeviceTierModern},
+	{"iPad4,9",    "iPad mini 3",      "A7",      1024, 12.5,  TGDeviceTierModern},
 
 	// Full: 2GB and up, and none of them stopped at 12.
 	{"iPhone8,1",  "iPhone 6s",        "A9",      2048, 15.8,  TGDeviceTierFull},
@@ -54,6 +77,16 @@ static const TGDeviceRow kDevices[] = {
 	{"iPhone11,2", "iPhone XS",        "A12",     4096, 18.0,  TGDeviceTierFull},
 	{"iPhone11,4", "iPhone XS Max",    "A12",     4096, 18.0,  TGDeviceTierFull},
 	{"iPhone11,6", "iPhone XS Max",    "A12",     4096, 18.0,  TGDeviceTierFull},
+	{"iPad5,1",    "iPad mini 4",      "A8",      2048, 15.8,  TGDeviceTierFull},
+	{"iPad5,2",    "iPad mini 4",      "A8",      2048, 15.8,  TGDeviceTierFull},
+	{"iPad5,3",    "iPad Air 2",       "A8X",     2048, 15.8,  TGDeviceTierFull},
+	{"iPad5,4",    "iPad Air 2",       "A8X",     2048, 15.8,  TGDeviceTierFull},
+	{"iPad6,11",   "iPad 5",           "A9",      2048, 16.7,  TGDeviceTierFull},
+	{"iPad6,12",   "iPad 5",           "A9",      2048, 16.7,  TGDeviceTierFull},
+	{"iPad6,3",    "iPad Pro 9.7\"",   "A9X",     2048, 16.7,  TGDeviceTierFull},
+	{"iPad6,4",    "iPad Pro 9.7\"",   "A9X",     2048, 16.7,  TGDeviceTierFull},
+	{"iPad6,7",    "iPad Pro 12.9\"",  "A9X",     4096, 16.7,  TGDeviceTierFull},
+	{"iPad6,8",    "iPad Pro 12.9\"",  "A9X",     4096, 16.7,  TGDeviceTierFull},
 };
 
 static const TGDeviceRow *TGFindDevice(void) {
@@ -122,6 +155,10 @@ static const TGDeviceRow *TGFindDevice(void) {
 
 	// Unknown hardware: judge it by what it can actually do rather than
 	// refusing to run well on a phone released after this was written.
+	// Single-core CPUs (A4, 3GS) lack the horsepower for modern tasks.
+	if ([NSProcessInfo processInfo].processorCount < 2)
+		return TGDeviceTierVintage;
+
 	if (sizeof(void *) == 8)
 		return [self memoryMB] >= 2048 ? TGDeviceTierFull : TGDeviceTierModern;
 	return [self memoryMB] > 512 ? TGDeviceTierLegacy : TGDeviceTierVintage;

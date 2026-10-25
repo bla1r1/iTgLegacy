@@ -1,4 +1,5 @@
 #import "TGChatViewControllerInternal.h"
+#import "TGCapabilities.h"
 
 UIColor *TGSenderColour(int64_t userId) {
 	// Same slot as the sender's placeholder avatar, so the two always match.
@@ -318,7 +319,7 @@ UIColor *TGSenderColour(int64_t userId) {
 		return layout;
 	}
 
-	if ([m[@"docName"] isEqualToString:@"tgs"] && self.lottiePaths[m[@"docId"]]) {
+	if ([TGCapabilities canPlayAnimatedStickers] && [m[@"docName"] isEqualToString:@"tgs"] && self.lottiePaths[m[@"docId"]]) {
 		CGFloat side = 128;
 		layout.bubbleFrame = CGRectMake(mine ? (tableW - side - 8) : 8, 3, side, side + 14);
 		layout.rowHeight = 148;

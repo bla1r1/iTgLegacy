@@ -1,6 +1,7 @@
 #import "TGChatViewControllerInternal.h"
 #import "TGThemeFile.h"
 #import "UIImage+WebP.h"
+#import "TGCapabilities.h"
 
 @implementation TGChatViewController (Media)
 
@@ -122,26 +123,29 @@
 	}
 
 	// Animated stickers need the .tgs itself, not the still thumbnail.
-	for (NSDictionary *m in allMsgs){
-		if (![m[@"docName"] isEqualToString:@"tgs"])
-			continue;
-		NSNumber *docId = m[@"docId"];
-		if (![docId isKindOfClass:NSNumber.class] || self.lottiePaths[docId])
-			continue;
-		if ([self.imagesRequested containsObject:docId])
-			continue;
-		[self.imagesRequested addObject:docId];
+	// Only fetch when the device and user settings allow animated stickers.
+	if ([TGCapabilities canPlayAnimatedStickers]){
+		for (NSDictionary *m in allMsgs){
+			if (![m[@"docName"] isEqualToString:@"tgs"])
+				continue;
+			NSNumber *docId = m[@"docId"];
+			if (![docId isKindOfClass:NSNumber.class] || self.lottiePaths[docId])
+				continue;
+			if ([self.imagesRequested containsObject:docId])
+				continue;
+			[self.imagesRequested addObject:docId];
 
-		[[TGClient shared] downloadFile:[docId integerValue] completion:^(NSString *path){
-			TGChatViewController *me = weakSelf;
-			if (!me || !path)
-				return;
-			me.lottiePaths[docId] = path;
-			[me.layoutCache removeAllObjects];
-			[me reloadTableDebounced];
-			if (me.anchorToBottom)
-				[me scrollToBottomAnimated:NO];
-		}];
+			[[TGClient shared] downloadFile:[docId integerValue] completion:^(NSString *path){
+				TGChatViewController *me = weakSelf;
+				if (!me || !path)
+					return;
+				me.lottiePaths[docId] = path;
+				[me.layoutCache removeAllObjects];
+				[me reloadTableDebounced];
+				if (me.anchorToBottom)
+					[me scrollToBottomAnimated:NO];
+			}];
+		}
 	}
 
 	for (NSDictionary *m in allMsgs){
