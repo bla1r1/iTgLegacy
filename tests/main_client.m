@@ -10,6 +10,7 @@
 #import "TGTestRunner.h"
 
 #import "TGClientChatsTests.m"
+#import "TGClientFilesTests.m"
 
 int main(int argc, char *argv[]) {
 	@autoreleasepool {

@@ -124,7 +124,10 @@ static const NSInteger kStoryGridCols  = 3;
 
 	for (NSInteger i = 0; i < count; i++){
 		NSDictionary *story = self.stories[i];
-		NSNumber *fileId = story[@"photoId"];
+		// The tile list asks for the list-sized render, not the largest one;
+		// a 105 pt square is at most 220 px wide and the queue is shared
+		// with everything else (B2).
+		NSNumber *fileId = story[@"thumbPhotoId"] ?: story[@"photoId"];
 		CGRect frame = CGRectMake((i % kStoryGridCols) * (side + kStoryGridGap),
 								  (i / kStoryGridCols) * (side + kStoryGridGap),
 								  side, side);
@@ -275,7 +278,18 @@ static const NSInteger kStoryGridCols  = 3;
 			continue;
 		[self.thumbnailsRequested addObject:fileId];
 
-		[[TGClient shared] downloadFile:fileId.integerValue completion:^(NSString *path){
+		__weak typeof(self) weakSelf = self;
+		[[TGClient shared] downloadFile:fileId.integerValue
+							   priority:TGDownloadPriorityOnScreen
+							 completion:^(NSString *path){
+			// A nil callback means the watchdog gave up or the download
+			// errored: lifting the mark turns the next scroll pass into the
+			// retry, instead of leaving the tile empty forever (B2).
+			if (!path.length){
+				TGProfileViewController *me = weakSelf;
+				[me.thumbnailsRequested removeObject:fileId];
+				return;
+			}
 			[TGIcons loadImageAtPath:path into:thumb];
 		}];
 	}

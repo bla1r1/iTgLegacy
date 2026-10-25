@@ -191,10 +191,20 @@
 		NSNumber *fileId = c[@"photoFileId"];
 		if (!fileId || self.avatars[fileId] || [self.avatarsRequested containsObject:fileId])
 			continue;
+		// The mark follows the request from start to finish: set here, and
+		// lifted on a nil callback, so a watchdog timeout or a lost download
+		// reads as "ask me again on the next pass" instead of leaving the
+		// avatar a placeholder forever (B2).
 		[self.avatarsRequested addObject:fileId];
 
-		[[TGClient shared] downloadFile:[fileId integerValue] completion:^(NSString *path){
-			if (!path) return;
+		[[TGClient shared] downloadFile:[fileId integerValue]
+							   priority:TGDownloadPriorityAvatar
+							 completion:^(NSString *path){
+			if (!path){
+				TGChatListViewController *me = weakSelf;
+				[me.avatarsRequested removeObject:fileId];
+				return;
+			}
 			dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_BACKGROUND, 0), ^{
 				UIImage *img = [UIImage imageWithContentsOfFile:path];
 				if (!img) return;

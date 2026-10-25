@@ -34,7 +34,8 @@ NSDictionary *TGStickerInfo(NSDictionary *sticker);
 @property (nonatomic, assign) TGConnectionState connectionState;
 @property (nonatomic, strong) NSMutableDictionary *pendingRequests;  // @extra -> completion
 @property (nonatomic, assign) NSUInteger requestSeq;
-@property (nonatomic, strong) NSMutableDictionary *fileWaiters;      // fileId -> completions
+@property (nonatomic, strong) NSMutableDictionary *fileWaiters;      // fileId -> waiters {cb, expired}
+@property (nonatomic, strong) NSMutableDictionary *fileWaiterPriorities;  // fileId -> standing priority
 @property (nonatomic, strong) NSDictionary *codeInfo;
 @property (nonatomic, copy)   NSString *qrCodeLink;
 
@@ -46,6 +47,12 @@ NSDictionary *TGStickerInfo(NSDictionary *sticker);
 - (void)sendTdlibParameters;
 - (void)flushPendingPhoneNumber;
 - (void)notifyFileWaiters:(NSInteger)fileId path:(NSString *)path;
+- (void)expireFileWaiters:(NSInteger)fileId;
+- (void)sweepFileWaiters:(NSInteger)fileId;
+
+// The download watchdog timeout, 45 s in production; the host tests shrink
+// it so the timer fires inside a test runtime.
+extern double TGFileWaiterTimeoutSeconds;
 - (void)cacheProfilePhoto:(NSDictionary *)user;
 - (void)mergeChat:(NSDictionary *)chat;
 - (void)applyChatUpdate:(NSDictionary *)update;

@@ -147,7 +147,17 @@ typedef NS_ENUM(NSInteger, TGConnectionState) {
 
 /// Download a file by TDLib id. `completion` gets the local path, or nil.
 /// Already-downloaded files complete immediately.
+/// How eagerly TDLib downloads; 1 is lowest, 32 highest. A file asked again
+/// at a higher rank than its standing request re-raises it on the wire, so an
+/// avatar can overtake a photo grid that started earlier.
+typedef NS_ENUM(NSInteger, TGDownloadPriority) {
+	TGDownloadPriorityBackground = 1,   // media a scroll may never reach
+	TGDownloadPriorityOnScreen   = 16,  // tiles the user is looking at right now
+	TGDownloadPriorityAvatar     = 32,  // avatars: small files, always wanted
+};
+
 - (void)downloadFile:(NSInteger)fileId completion:(void (^)(NSString *path))completion;
+- (void)downloadFile:(NSInteger)fileId priority:(NSInteger)priority completion:(void (^)(NSString *path))completion;
 
 #pragma mark - messages
 

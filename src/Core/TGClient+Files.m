@@ -1,15 +1,48 @@
 #import "TGClientInternal.h"
 
-@implementation TGClient (Files)
+// Note: this file is shared with the host test suite (tests/Makefile compiles
+// it into TGClientTests); nothing device-only lives here.
 
 #pragma mark - files
 
+@implementation TGClient (Files)
+
+// The watchdog timing: how long a waiter waits for a download answer, and how
+// long a fully expired record may still hope for a late updateFile before the
+// sweep retires it. Tunables, because the layout of a slow 3G reply is not
+// reproducible in a test otherwise (see tests/TGClientFilesTests.m).
+double TGFileWaiterTimeoutSeconds = 45.0;
+static const NSTimeInterval TGFileWaiterSweepOffset = 15.0 * 60.0;
+
+/// A waiter is a callback plus whether it has already been served nil by the
+/// watchdog. Expired waiters stay in the record: a file that finishes
+/// downloading past the timeout still reaches them on the second pass (B2 —
+/// before this, the watchdog deleted the record and a late updateFile
+/// notified nobody, ever).
+typedef void (^TGFileWaiterBlock)(NSString *);
+
+static NSMutableDictionary *TGWaiter(TGFileWaiterBlock cb){
+	return [NSMutableDictionary dictionaryWithDictionary:
+			@{ @"cb" : (cb ? (id)cb : (id)[NSNull null]), @"expired" : @NO }];
+}
+
+/// Delivers a path (or a fatal nil - an error answer) to every waiter of the
+/// file and retires the record.
 - (void)notifyFileWaiters:(NSInteger)fileId path:(NSString *)path {
-	NSNumber *fid = @(fileId);
-	NSArray *callbacks = nil;
+	NSMutableArray *callbacks = nil;
 	@synchronized(self.fileWaiters){
-		callbacks = [self.fileWaiters[fid] copy];
+		NSNumber *fid = @(fileId);
+		NSArray *waiters = self.fileWaiters[fid];
+		if (!waiters)
+			return;
+		callbacks = [NSMutableArray array];
+		for (NSDictionary *waiter in waiters){
+			id cb = waiter[@"cb"];
+			if (cb != [NSNull null] && cb)
+				[callbacks addObject:cb];
+		}
 		[self.fileWaiters removeObjectForKey:fid];
+		[self.fileWaiterPriorities removeObjectForKey:fid];
 	}
 	if (!callbacks.count)
 		return;
@@ -21,52 +54,153 @@
 	});
 }
 
-- (void)downloadFile:(NSInteger)fileId completion:(void (^)(NSString *))completion {
+/// Serves every waiter that has not run yet with a nil - the timeout reached
+/// them - but keeps the record itself alive. A watcher who only stuffed a
+/// file id into a "requested" set (the chat list marks its avatars that way)
+/// clears the mark on nil and tries again on the next pass, while the
+/// download itself keeps going: its late updateFile still calls callbacks.
+- (void)expireFileWaiters:(NSInteger)fileId {
+	NSMutableArray *callbacks = [NSMutableArray array];
+	@synchronized(self.fileWaiters){
+		NSArray *waiters = self.fileWaiters[@(fileId)];
+		if (!waiters)
+			return;
+		for (NSMutableDictionary *waiter in waiters){
+			if ([waiter[@"expired"] boolValue])
+				continue;
+			waiter[@"expired"] = @YES;
+			id cb = waiter[@"cb"];
+			if (cb != [NSNull null] && cb)
+				[callbacks addObject:cb];
+		}
+	}
+	if (!callbacks.count)
+		return;
+
+	dispatch_async(dispatch_get_main_queue(), ^{
+		for (void (^cb)(NSString *) in callbacks){
+			cb(nil);
+		}
+	});
+}
+
+/// Retires the record of a file nothing ever came back for, and whose waiters
+/// have long since been served nil. A fresh (unexpired) waiter keeps the
+/// record - its own watchdog will expire it and schedule another sweep.
+- (void)sweepFileWaiters:(NSInteger)fileId {
+	@synchronized(self.fileWaiters){
+		NSNumber *fid = @(fileId);
+		NSArray *waiters = self.fileWaiters[fid];
+		if (!waiters)
+			return;
+		for (NSDictionary *waiter in waiters){
+			if (![waiter[@"expired"] boolValue])
+				return;   // a live waiter; its sweep comes later
+		}
+		[self.fileWaiters removeObjectForKey:fid];
+		[self.fileWaiterPriorities removeObjectForKey:fid];
+	}
+}
+
+- (void)downloadFile:(NSInteger)fileId
+			priority:(NSInteger)priority
+		  completion:(void (^)(NSString *path))completion {
 	if (fileId <= 0){
 		if (completion) completion(nil);
 		return;
 	}
 
 	NSNumber *fid = @(fileId);
-	BOOL firstWaiter = NO;
+	BOOL sendRequest = NO;
+	BOOL armWatchdog = NO;
+	NSInteger storedPriority = 0;
 	@synchronized(self.fileWaiters){
 		NSMutableArray *waiters = self.fileWaiters[fid];
 		if (!waiters){
 			waiters = [NSMutableArray array];
 			self.fileWaiters[fid] = waiters;
-			firstWaiter = YES;
+			sendRequest = YES;
+			armWatchdog = YES;
+			storedPriority = priority;
+			self.fileWaiterPriorities[fid] = @(priority);
+		} else {
+			storedPriority = [self.fileWaiterPriorities[fid] integerValue];
+			BOOL allExpired = YES;
+			for (NSDictionary *waiter in waiters){
+				if (![waiter[@"expired"] boolValue]){
+					allExpired = NO;
+					break;
+				}
+			}
+			// The same file asked again at a higher rank re-raises the
+			// request: TDLib orders its queue by it, which is how an
+			// avatar overtakes a grid of photos (B2).
+			if (priority > storedPriority){
+				storedPriority = priority;
+				self.fileWaiterPriorities[fid] = @(priority);
+				sendRequest = YES;
+			}
+			// A retry after every waiter expired re-arms the watchdog - the
+			// original timer already fired and cannot expire the newcomer.
+			armWatchdog = allExpired;
 		}
-		if (completion){
-			[waiters addObject:[completion copy]];
-		}
+		if (completion)
+			[waiters addObject:TGWaiter(completion)];
 	}
 
-	if (!firstWaiter)
-		return;
+	if (sendRequest){
+		__weak typeof(self) weakSelf = self;
+		[self request:@{
+			@"@type"       : @"downloadFile",
+			@"file_id"     : fid,
+			@"priority"    : @(storedPriority),
+			@"offset"      : @(0),
+			@"limit"       : @(0),
+			@"synchronous" : @NO,
+		} completion:^(NSDictionary *result){
+			TGClient *me = weakSelf;
+			if (!me) return;
+			NSString *path = result[@"local"][@"path"];
+			BOOL done = [result[@"local"][@"is_downloading_completed"] boolValue];
+			if (done && path.length){
+				[me notifyFileWaiters:fileId path:path];
+			} else if ([result[@"@type"] isEqualToString:@"error"]){
+				[me notifyFileWaiters:fileId path:nil];
+			}
+			// Anything else - a file object whose download is still in
+			// progress - is waited for through updateFile updates.
+		}];
+	}
 
-	__weak typeof(self) weakSelf = self;
-	[self request:@{
-		@"@type"       : @"downloadFile",
-		@"file_id"     : fid,
-		@"priority"    : @(1),
-		@"offset"      : @(0),
-		@"limit"       : @(0),
-		@"synchronous" : @NO,
-	} completion:^(NSDictionary *result){
-		TGClient *me = weakSelf;
-		if (!me) return;
-		NSString *path = result[@"local"][@"path"];
-		BOOL done = [result[@"local"][@"is_downloading_completed"] boolValue];
-		if (done && path.length){
-			[me notifyFileWaiters:fileId path:path];
-		} else if ([result[@"@type"] isEqualToString:@"error"]){
-			[me notifyFileWaiters:fileId path:nil];
-		}
-	}];
+	// The watchdog arms on the first waiter for a file, and re-arms whenever
+	// a fresh waiter lands on a record whose waiters had all expired: the
+	// original timer already fired and cannot expire the newcomer.
+	if (armWatchdog){
+		__weak typeof(self) weakSelf = self;
+		dispatch_after(dispatch_time(DISPATCH_TIME_NOW,
+				(int64_t)(TGFileWaiterTimeoutSeconds * NSEC_PER_SEC)),
+				dispatch_get_main_queue(), ^{
+			[weakSelf expireFileWaiters:fileId];
+		});
 
-	dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(45 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-		[weakSelf notifyFileWaiters:fileId path:nil];
-	});
+		// The sweep is what keeps an abandoned file - a download that never
+		// succeeds and never errors - from holding its record (and its
+		// callbacks) in memory forever.
+		dispatch_after(dispatch_time(DISPATCH_TIME_NOW,
+				(int64_t)((TGFileWaiterTimeoutSeconds
+						+ TGFileWaiterSweepOffset) * NSEC_PER_SEC)),
+				dispatch_get_main_queue(), ^{
+			[weakSelf sweepFileWaiters:fileId];
+		});
+	}
+}
+
+- (void)downloadFile:(NSInteger)fileId completion:(void (^)(NSString *path))completion {
+	// Long-standing callers carried the lowest rank; keep their behaviour,
+	// and let the paths that show something immediately (avatars, visible
+	// grids) ask for more through downloadFile:priority:completion:.
+	[self downloadFile:fileId priority:TGDownloadPriorityBackground
+			 completion:completion];
 }
 
 #pragma mark - network and downloads

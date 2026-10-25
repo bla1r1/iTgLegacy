@@ -415,7 +415,9 @@ static const CGFloat kPhotoSide = 80.0f;
 
 	NSNumber *fileId = [[TGClient shared] photoFileIdForUserId:[me[@"id"] longLongValue]];
 	if (fileId)
-		[[TGClient shared] downloadFile:fileId.integerValue completion:^(NSString *path){
+		[[TGClient shared] downloadFile:fileId.integerValue
+							   priority:TGDownloadPriorityAvatar
+							 completion:^(NSString *path){
 			[TGIcons loadImageAtPath:path into:self.photoView];
 		}];
 

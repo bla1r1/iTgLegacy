@@ -22,6 +22,7 @@ NSString *const TGChatReadOutboxChangedNotification = @"TGChatReadOutboxChangedN
 		s.outbox = [NSMutableArray array];
 		s.pendingRequests = [NSMutableDictionary dictionary];
 		s.fileWaiters = [NSMutableDictionary dictionary];
+		s.fileWaiterPriorities = [NSMutableDictionary dictionary];
 		s.outboxLock = [[NSLock alloc] init];
 	});
 	return s;

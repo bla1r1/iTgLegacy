@@ -22,6 +22,26 @@ static NSDictionary *TGFlattenStory(NSDictionary *story) {
 		fileId = content[@"video"][@"thumbnail"][@"file"][@"id"];
 	}
 
+	// A grid tile draws about 105 pt on edge, so beyond roughly 220 px of
+	// width every extra byte only pads a 512 MB phone's download queue (B2:
+	// the grid used to ask for the largest render of every story). The
+	// smallest size that still covers the tile is the list download; the
+	// full-size id stays beside it for the viewer.
+	NSNumber *thumbId = nil;
+	if ([kind isEqualToString:@"storyContentPhoto"]){
+		NSDictionary *best = nil, *smallest = nil;
+		for (NSDictionary *size in content[@"photo"][@"sizes"]){
+			CGFloat w = [size[@"width"] doubleValue];
+			if (w <= 0)
+				continue;
+			if (!smallest || w < [smallest[@"width"] doubleValue])
+				smallest = size;
+			if (w >= 220.0f && (!best || w < [best[@"width"] doubleValue]))
+				best = size;
+		}
+		thumbId = (best ?: smallest ?: [content[@"photo"][@"sizes"] firstObject])[@"photo"][@"id"];
+	}
+
 	// The video itself, not just its poster frame - without this a video
 	// story could only ever be shown as a still. The smaller alternative is
 	// preferred where the server offers one; this is a 512MB phone.
@@ -43,6 +63,8 @@ static NSDictionary *TGFlattenStory(NSDictionary *story) {
 	} mutableCopy];
 	if (fileId)
 		out[@"photoId"] = fileId;
+	if (thumbId)
+		out[@"thumbPhotoId"] = thumbId;
 	if (videoId)
 		out[@"videoId"] = videoId;
 	if (videoDuration)

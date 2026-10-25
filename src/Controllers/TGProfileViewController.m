@@ -140,7 +140,9 @@ static NSString *TGProfileShortDate(NSNumber *date) {
 	if (!fileId)
 		return;
 	__weak typeof(self) weakSelf = self;
-	[[TGClient shared] downloadFile:fileId.integerValue completion:^(NSString *path){
+	[[TGClient shared] downloadFile:fileId.integerValue
+						   priority:TGDownloadPriorityAvatar
+						 completion:^(NSString *path){
 		[TGIcons loadImageAtPath:path into:weakSelf.avatarView];
 	}];
 }
@@ -208,7 +210,9 @@ static NSString *TGProfileShortDate(NSNumber *date) {
 		// updateUser does not always carry a photo; getUser does.
 		NSNumber *photoId = user[@"profile_photo"][@"small"][@"id"];
 		if (photoId)
-			[[TGClient shared] downloadFile:photoId.integerValue completion:^(NSString *path){
+			[[TGClient shared] downloadFile:photoId.integerValue
+								   priority:TGDownloadPriorityAvatar
+								 completion:^(NSString *path){
 				[TGIcons loadImageAtPath:path into:weakSelf.avatarView];
 			}];
 	}];
@@ -385,10 +389,11 @@ static NSString *TGProfileShortDate(NSNumber *date) {
 		thumb.layer.cornerRadius = 6;
 		cell.imageView.image = [TGIcons avatarWithInitials:@" " size:40
 												  colourId:indexPath.row];
-		NSNumber *fileId = story[@"photoId"];
+		NSNumber *fileId = story[@"thumbPhotoId"] ?: story[@"photoId"];
 		if ([fileId isKindOfClass:NSNumber.class]){
 			__weak UITableView *weakTable = tableView;
 			[[TGClient shared] downloadFile:fileId.integerValue
+								   priority:TGDownloadPriorityOnScreen
 								 completion:^(NSString *path){
 				if (!path.length) return;
 				UIImage *image = [TGIcons decodedImage:[UIImage imageWithContentsOfFile:path]
