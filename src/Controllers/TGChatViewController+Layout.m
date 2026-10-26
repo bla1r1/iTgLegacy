@@ -1,5 +1,6 @@
 #import "TGChatViewControllerInternal.h"
 #import "TGCapabilities.h"
+#import "TGStyle.h"
 
 UIColor *TGSenderColour(int64_t userId) {
 	// Same slot as the sender's placeholder avatar, so the two always match.
@@ -64,7 +65,7 @@ UIColor *TGSenderColour(int64_t userId) {
 }
 
 - (CGFloat)timeWidthFor:(NSDictionary *)m {
-	CGFloat w = TGTextSize([self stampFor:m], [UIFont systemFontOfSize:11], 0).width + 2;
+	CGFloat w = TGTextSize([self stampFor:m], TGFontMicro(), 0).width + 2;
 	if ([m[@"outgoing"] boolValue])
 		w += 18;   // room for the ticks
 	return w;
@@ -79,7 +80,7 @@ UIColor *TGSenderColour(int64_t userId) {
 		return NO;
 
 	CGFloat oneLine = TGTextSize(text,
-			[UIFont systemFontOfSize:[TGTheme shared].messageFontSize], 0).width;
+			TGFontAtSize([TGTheme shared].messageFontSize), 0).width;
 	if (oneLine > kBubbleMaxW - 2 * kPadH)
 		return NO;   // it wraps, so there is no short last line to share
 
@@ -112,7 +113,7 @@ UIColor *TGSenderColour(int64_t userId) {
 					   value:[theme accentColour]
 					   range:NSMakeRange(15, from.length)];
 		[styled addAttribute:NSFontAttributeName
-					   value:[UIFont boldSystemFontOfSize:12]
+					   value:TGFontMetaStrong()
 					   range:NSMakeRange(15, from.length)];
 		cell.forwardLabel.attributedText = styled;
 	} else {
@@ -125,7 +126,7 @@ UIColor *TGSenderColour(int64_t userId) {
 /// Question, the "N voted" line, one row per option, and the stamp.
 - (CGFloat)pollHeightFor:(NSDictionary *)m {
 	NSString *question = m[@"pollQuestion"] ?: @"Poll";
-	CGSize qs = TGTextSize(question, [UIFont boldSystemFontOfSize:15],
+	CGSize qs = TGTextSize(question, TGFontBodyStrong(),
 			kBubbleMaxW - 2 * kPadH);
 	NSArray *options = m[@"pollOptions"];
 	return kPadV + qs.height + 22 + kPollRow * options.count + 18;
@@ -146,7 +147,7 @@ UIColor *TGSenderColour(int64_t userId) {
 	NSString *text = m[@"text"] ?: @"";
 	if (!text.length)
 		return CGSizeZero;
-	return TGTextSizeWithEntities(text, m[@"entities"], [UIFont systemFontOfSize:[TGTheme shared].messageFontSize],
+	return TGTextSizeWithEntities(text, m[@"entities"], TGFontAtSize([TGTheme shared].messageFontSize),
 			kBubbleMaxW - 2 * kPadH);
 }
 
@@ -220,7 +221,7 @@ UIColor *TGSenderColour(int64_t userId) {
 	CGFloat forwarded = [m[@"forward"] length] ? 18.0f : 0.0f;
 	layout.fwdHeight = forwarded;
 	layout.stamp = [self stampFor:m];
-	layout.timeWidth = TGTextSize(layout.stamp, [UIFont systemFontOfSize:11], 0).width;
+	layout.timeWidth = TGTextSize(layout.stamp, TGFontMicro(), 0).width;
 
 	NSString *separator = m[@"separator"];
 	if ([separator isEqualToString:@"unread"]) {
@@ -235,7 +236,7 @@ UIColor *TGSenderColour(int64_t userId) {
 	if (isService) {
 		NSString *who = separator ? nil : [[TGClient shared] nameForUserId:[m[@"senderId"] longLongValue]];
 		NSString *line = who.length ? [NSString stringWithFormat:@"%@ %@", who, m[@"text"]] : (m[@"text"] ?: @"");
-		UIFont *font = [UIFont systemFontOfSize:12];
+		UIFont *font = TGFontMeta();
 		CGFloat textW = MIN(TGTextSize(line, font, 0).width, tableW - 60);
 		CGFloat plateW = textW + 20;
 		// A day plate gets a little more air than an event in the chat.
@@ -259,7 +260,7 @@ UIColor *TGSenderColour(int64_t userId) {
 
 	if (isCall) {
 		NSString *line = m[@"text"] ?: @"Call";
-		CGFloat textW = TGTextSize(line, [UIFont boldSystemFontOfSize:14], 0).width;
+		CGFloat textW = TGTextSize(line, TGFontSubheadStrong(), 0).width;
 		CGFloat width = MIN(kBubbleMaxW, textW + 80);
 		width = MAX(190.0f, width);
 		CGFloat height = 48 + forwarded;
@@ -376,7 +377,7 @@ UIColor *TGSenderColour(int64_t userId) {
 		contentW = 190;
 	CGFloat senderH = senderName.length ? 16.0f : 0.0f;
 	if (senderName.length) {
-		CGFloat senderW = TGTextSize(senderName, [UIFont boldSystemFontOfSize:12], 0).width;
+		CGFloat senderW = TGTextSize(senderName, TGFontMetaStrong(), 0).width;
 		contentW = MAX(contentW, senderW);
 	}
 

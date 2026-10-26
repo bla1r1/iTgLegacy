@@ -24,6 +24,11 @@
 /// way an action sheet sits.
 - (UIView *)addCardOfHeight:(CGFloat)height edgeToEdge:(BOOL)edgeToEdge;
 
+/// How far above the bottom edge the stack rests. Zero normally; a sheet with
+/// a text field in it sets this to the keyboard's height so its card is not
+/// behind the keyboard. Animates with whatever animation block it is set in.
+@property (nonatomic, assign) CGFloat bottomInset;
+
 /// Adds the sheet to the view it was made for and slides the cards up.
 - (void)present;
 

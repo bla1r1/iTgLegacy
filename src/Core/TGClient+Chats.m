@@ -370,6 +370,94 @@ int64_t TGArchiveOrder(NSArray *positions) {
 	}];
 }
 
+/// The unsent message in the composer, kept on Telegram's side so it is there
+/// on the next launch and on every other device. An empty text clears it.
+- (void)setDraft:(NSString *)text
+		  inChat:(int64_t)chatId
+		  thread:(int64_t)threadId
+		 replyTo:(int64_t)replyToId {
+	NSMutableDictionary *request = [@{
+		@"@type"             : @"setChatDraftMessage",
+		@"chat_id"           : @(chatId),
+		@"message_thread_id" : @(threadId),
+	} mutableCopy];
+
+	if (text.length){
+		NSMutableDictionary *draft = [@{
+			@"@type"                : @"draftMessage",
+			@"input_message_text"   : @{
+				@"@type" : @"inputMessageText",
+				@"text"  : @{@"@type" : @"formattedText", @"text" : text},
+			},
+		} mutableCopy];
+		if (replyToId != 0)
+			draft[@"reply_to"] = @{@"@type" : @"inputMessageReplyToMessage",
+								   @"message_id" : @(replyToId)};
+		request[@"draft_message"] = draft;
+	}
+	// With no draft_message at all the draft is cleared, which is what an
+	// empty composer means.
+
+	[self send:request];
+
+	// The chat list shows the draft in place of the last message, and the
+	// update that confirms this takes a round trip.
+	NSMutableDictionary *cached = [self.chatsById[@(chatId)] mutableCopy];
+	if (cached){
+		cached[@"draft"] = text ?: @"";
+		self.chatsById[@(chatId)] = cached;
+		[self rebuildChats];
+	}
+}
+
+/// What was last typed into this chat and not sent, from whichever client
+/// typed it. Empty when there is none.
+- (NSString *)draftForChat:(int64_t)chatId {
+	NSString *draft = self.chatsById[@(chatId)][@"draft"];
+	return [draft isKindOfClass:NSString.class] ? draft : @"";
+}
+
+/// The blue dot you put there yourself. Telegram keeps it per chat, and it
+/// survives until the chat is opened.
+- (void)setChat:(int64_t)chatId markedUnread:(BOOL)unread {
+	[self send:@{
+		@"@type"                : @"toggleChatIsMarkedAsUnread",
+		@"chat_id"              : @(chatId),
+		@"is_marked_as_unread"  : @(unread),
+	}];
+}
+
+/// Clears the @ and the reaction badge on a chat. Reading the messages does
+/// not do it: Telegram counts mentions and reactions separately from unread.
+- (void)readAllMentionsAndReactionsInChat:(int64_t)chatId {
+	[self send:@{@"@type" : @"readAllChatMentions",  @"chat_id" : @(chatId)}];
+	[self send:@{@"@type" : @"readAllChatReactions", @"chat_id" : @(chatId)}];
+}
+
+/// Adds someone to your Telegram contacts. The phone number is what the
+/// server matches on; without one it only renames an existing contact.
+- (void)addContactWithUserId:(int64_t)userId
+				   firstName:(NSString *)firstName
+					lastName:(NSString *)lastName
+					   phone:(NSString *)phone
+				  completion:(void (^)(BOOL ok))completion {
+	[self request:@{
+		@"@type"   : @"addContact",
+		@"contact" : @{
+			@"@type"           : @"contact",
+			@"phone_number"    : phone ?: @"",
+			@"first_name"      : firstName ?: @"",
+			@"last_name"       : lastName ?: @"",
+			@"vcard"           : @"",
+			@"user_id"         : @(userId),
+		},
+		@"share_phone_number" : @NO,
+	} completion:^(NSDictionary *result){
+		if (completion)
+			completion(![result[@"@type"] isEqualToString:@"error"]);
+	}];
+}
+
 - (void)closeChat:(int64_t)chatId {
 	[self send:@{
 		@"@type"   : @"closeChat",
@@ -461,6 +549,10 @@ int64_t TGArchiveOrder(NSArray *positions) {
 	}
 	if (chat[@"unread_count"])
 		info[@"unread"] = chat[@"unread_count"];
+	// The dot you put there yourself, which is not the unread count: a chat
+	// with nothing unread can still be marked, and the menu has to know.
+	if (chat[@"is_marked_as_unread"])
+		info[@"markedUnread"] = chat[@"is_marked_as_unread"];
 	if (chat[@"last_read_outbox_message_id"])
 		info[@"readOutbox"] = chat[@"last_read_outbox_message_id"];
 	if (chat[@"last_read_inbox_message_id"])
@@ -578,6 +670,8 @@ int64_t TGArchiveOrder(NSArray *positions) {
 		info[@"title"] = update[@"title"];
 	if (update[@"unread_count"])
 		info[@"unread"] = update[@"unread_count"];
+	if (update[@"is_marked_as_unread"])
+		info[@"markedUnread"] = update[@"is_marked_as_unread"];
 	if (update[@"last_read_inbox_message_id"])
 		info[@"readInbox"] = update[@"last_read_inbox_message_id"];
 	if (update[@"last_read_outbox_message_id"]){

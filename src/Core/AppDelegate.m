@@ -13,6 +13,7 @@
 #import "TGCallViewController.h"
 #import "TGLoginViewController.h"
 #import <QuartzCore/QuartzCore.h>
+#import "TGAlertSheet.h"
 #include <stdio.h>
 
 @implementation AppDelegate
@@ -223,12 +224,7 @@ static void TGWatchForIncomingCalls(void) {
 - (void)showMessage:(NSString *)msg {
 	if (!msg.length) return;
 	dispatch_async(dispatch_get_main_queue(), ^{
-		UIAlertView *alert = [[UIAlertView alloc] initWithTitle:@"LegacyTG"
-														message:msg
-													   delegate:nil
-											  cancelButtonTitle:@"OK"
-											  otherButtonTitles:nil];
-		[alert show];
+		[TGAlertSheet showMessage:msg title:@"LegacyTG" inView:self.window];
 	});
 }
 

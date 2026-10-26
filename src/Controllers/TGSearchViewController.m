@@ -4,8 +4,8 @@
 #import "TGTheme.h"
 #import "TGIcons.h"
 #import <QuartzCore/QuartzCore.h>
+#import "TGStyle.h"
 
-static const CGFloat kSearchAvatar = 40.0f;
 
 @interface TGSearchViewController () <UISearchBarDelegate>
 @property (nonatomic, strong) UISearchBar *bar;
@@ -155,8 +155,8 @@ static const CGFloat kSearchAvatar = 40.0f;
 			if (!me || !photo)
 				return;
 			UIGraphicsBeginImageContextWithOptions(
-					CGSizeMake(kSearchAvatar, kSearchAvatar), NO, 0);
-			[photo drawInRect:CGRectMake(0, 0, kSearchAvatar, kSearchAvatar)];
+					CGSizeMake(TGMetricListAvatar, TGMetricListAvatar), NO, 0);
+			[photo drawInRect:CGRectMake(0, 0, TGMetricListAvatar, TGMetricListAvatar)];
 			me.avatars[fileId] = UIGraphicsGetImageFromCurrentImageContext();
 			UIGraphicsEndImageContext();
 			[me.tableView reloadData];
@@ -165,7 +165,7 @@ static const CGFloat kSearchAvatar = 40.0f;
 
 	return [TGIcons avatarWithInitials:
 				(title.length ? [title substringToIndex:1].uppercaseString : @"?")
-								  size:kSearchAvatar
+								  size:TGMetricListAvatar
 							  colourId:chatId];
 }
 
@@ -176,7 +176,7 @@ static const CGFloat kSearchAvatar = 40.0f;
 	UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:reuse];
 	if (!cell) {
 		cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:reuse];
-		cell.imageView.layer.cornerRadius = kSearchAvatar / 2;
+		cell.imageView.layer.cornerRadius = TGMetricListAvatar / 2;
 		cell.imageView.clipsToBounds = YES;
 		cell.imageView.layer.shouldRasterize = YES;
 		cell.imageView.layer.rasterizationScale = [UIScreen mainScreen].scale;
@@ -185,12 +185,12 @@ static const CGFloat kSearchAvatar = 40.0f;
 	TGTheme *theme = [TGTheme shared];
 	UIColor *bg = [theme listBackgroundColour];
 	cell.backgroundColor = bg;
-	cell.textLabel.font = [UIFont boldSystemFontOfSize:15];
+	cell.textLabel.font = TGFontBodyStrong();
 	cell.textLabel.textColor = [theme primaryTextColour];
 	cell.textLabel.backgroundColor = bg;
 	cell.textLabel.opaque = YES;
 
-	cell.detailTextLabel.font = [UIFont systemFontOfSize:13];
+	cell.detailTextLabel.font = TGFontCaption();
 	cell.detailTextLabel.textColor = [theme secondaryTextColour];
 	cell.detailTextLabel.backgroundColor = bg;
 	cell.detailTextLabel.opaque = YES;

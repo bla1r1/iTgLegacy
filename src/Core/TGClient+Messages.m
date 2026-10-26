@@ -17,6 +17,23 @@ NSString *TGReactionSummary(NSDictionary *m) {
 	return [parts componentsJoinedByString:@"  "];
 }
 
+/// The emoji of your own reaction on a message, or nil if you have not
+/// reacted. TDLib marks it with is_chosen; a custom emoji has no character to
+/// compare, so it does not count as one that can be toggled.
+NSString *TGMyReactionEmoji(NSDictionary *m) {
+	NSArray *reactions = m[@"interaction_info"][@"reactions"][@"reactions"];
+	if (![reactions isKindOfClass:NSArray.class])
+		return nil;
+	for (NSDictionary *r in reactions){
+		if (![r[@"is_chosen"] boolValue])
+			continue;
+		NSString *emoji = r[@"type"][@"emoji"];
+		if (emoji.length)
+			return emoji;
+	}
+	return nil;
+}
+
 /// Converts camelCase message type name to readable phrase (e.g. "messageVideoChatStarted" -> "Video chat started").
 NSString *TGPhraseFromTypeName(NSString *ctype) {
 	NSString *rest = [ctype hasPrefix:@"message"] ? [ctype substringFromIndex:7] : ctype;
@@ -408,6 +425,12 @@ NSDictionary *TGFlattenMessage(NSDictionary *m) {
 		@"albumId"   : m[@"media_album_id"] ?: @"",
 		// "\U0001F44D 3" per reaction, joined - enough to show under a bubble.
 		@"reactions" : TGReactionSummary(m) ?: @"",
+		// Your own reaction, so the menu can offer to take it off.
+		@"myReaction" : TGMyReactionEmoji(m) ?: @"",
+		// A message TDLib could not get out. It stays in the history with a
+		// sending state that says so, and it is the only kind worth resending.
+		@"failed"    : @([m[@"sending_state"][@"@type"]
+				isEqualToString:@"messageSendingStateFailed"]),
 		// Options of a poll, so tapping one can vote, and the parts the chat
 		// draws around them.
 		@"pollOptions"  : m[@"content"][@"poll"][@"options"] ?: @[],
@@ -825,6 +848,117 @@ NSDictionary *TGFlattenMessage(NSDictionary *m) {
 		@"chat_id"      : @(chatId),
 		@"message_ids"  : messageIds,
 		@"revoke"       : @(revoke),
+	}];
+}
+
+/// "typing...", as the other side shows it. TDLib expects this repeated while
+/// typing goes on; it expires on its own a few seconds after the last one.
+- (void)sendTypingToChat:(int64_t)chatId thread:(int64_t)threadId {
+	[self send:@{
+		@"@type"             : @"sendChatAction",
+		@"chat_id"           : @(chatId),
+		@"message_thread_id" : @(threadId),
+		@"action"            : @{@"@type" : @"chatActionTyping"},
+	}];
+}
+
+/// Stops it at once rather than waiting for it to expire - sent when the
+/// message goes or the field is emptied.
+- (void)cancelTypingInChat:(int64_t)chatId thread:(int64_t)threadId {
+	[self send:@{
+		@"@type"             : @"sendChatAction",
+		@"chat_id"           : @(chatId),
+		@"message_thread_id" : @(threadId),
+		@"action"            : @{@"@type" : @"chatActionCancel"},
+	}];
+}
+
+- (void)removeReaction:(NSString *)emoji
+			 fromMessage:(int64_t)messageId
+				  inChat:(int64_t)chatId {
+	if (!emoji.length)
+		return;
+	[self send:@{
+		@"@type"         : @"removeMessageReaction",
+		@"chat_id"       : @(chatId),
+		@"message_id"    : @(messageId),
+		@"reaction_type" : @{@"@type" : @"reactionTypeEmoji", @"emoji" : emoji},
+	}];
+}
+
+/// Marks a voice note, a video note or a one-time picture as opened. Without
+/// it the sender never sees it played and a self-destructing message never
+/// starts its clock.
+- (void)openContentOfMessage:(int64_t)messageId inChat:(int64_t)chatId {
+	if (!messageId)
+		return;
+	[self send:@{
+		@"@type"      : @"openMessageContent",
+		@"chat_id"    : @(chatId),
+		@"message_id" : @(messageId),
+	}];
+}
+
+- (void)pinMessage:(int64_t)messageId inChat:(int64_t)chatId notify:(BOOL)notify {
+	[self send:@{
+		@"@type"                : @"pinChatMessage",
+		@"chat_id"              : @(chatId),
+		@"message_id"           : @(messageId),
+		@"disable_notification" : @(!notify),
+		@"only_for_self"        : @NO,
+	}];
+}
+
+- (void)unpinMessage:(int64_t)messageId inChat:(int64_t)chatId {
+	[self send:@{
+		@"@type"      : @"unpinChatMessage",
+		@"chat_id"    : @(chatId),
+		@"message_id" : @(messageId),
+	}];
+}
+
+/// The message a reply points at. The history may not hold it - a reply to
+/// something far above, or to a message in another chat - so this asks the
+/// server rather than searching what is loaded.
+- (void)repliedMessageTo:(int64_t)messageId
+				  inChat:(int64_t)chatId
+			  completion:(void (^)(NSDictionary *message))completion {
+	[self request:@{@"@type"      : @"getRepliedMessage",
+					@"chat_id"    : @(chatId),
+					@"message_id" : @(messageId)}
+	   completion:^(NSDictionary *result){
+		if (!completion)
+			return;
+		NSDictionary *parsed = [result[@"id"] longLongValue]
+				? TGFlattenMessage(result) : nil;
+		completion(parsed);
+	}];
+}
+
+/// A t.me link to one message, for Copy Link. Only public chats have one;
+/// the completion gets nil for the rest.
+- (void)linkToMessage:(int64_t)messageId
+			   inChat:(int64_t)chatId
+		   completion:(void (^)(NSString *link))completion {
+	[self request:@{@"@type"      : @"getMessageLink",
+					@"chat_id"    : @(chatId),
+					@"message_id" : @(messageId),
+					@"for_album"  : @NO}
+	   completion:^(NSDictionary *result){
+		if (completion)
+			completion([result[@"link"] isKindOfClass:NSString.class] ? result[@"link"] : nil);
+	}];
+}
+
+/// Sends failed messages again. TDLib keeps them in the history with their
+/// own ids until they go or are deleted.
+- (void)resendMessages:(NSArray *)messageIds inChat:(int64_t)chatId {
+	if (!messageIds.count)
+		return;
+	[self send:@{
+		@"@type"       : @"resendMessages",
+		@"chat_id"     : @(chatId),
+		@"message_ids" : messageIds,
 	}];
 }
 

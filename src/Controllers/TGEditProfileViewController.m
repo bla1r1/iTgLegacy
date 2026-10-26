@@ -3,11 +3,13 @@
 #import "TGTheme.h"
 #import "TGIcons.h"
 #import <QuartzCore/QuartzCore.h>
+#import "TGStyle.h"
+#import "TGAlertSheet.h"
 
 // Profile editing: avatar photo, names, bio, birthday, and username.
 static const CGFloat kPhotoSide = 80.0f;
 
-@interface TGEditProfileViewController () <UITextFieldDelegate, UIActionSheetDelegate,
+@interface TGEditProfileViewController () <UITextFieldDelegate,
 		UIImagePickerControllerDelegate, UINavigationControllerDelegate>
 @property (nonatomic, strong) UITextField *firstField;
 @property (nonatomic, strong) UITextField *lastField;
@@ -18,7 +20,8 @@ static const CGFloat kPhotoSide = 80.0f;
 @property (nonatomic, assign) NSInteger birthMonth;
 @property (nonatomic, assign) NSInteger birthYear;
 @property (nonatomic, assign) BOOL birthdayChanged;
-@property (nonatomic, strong) UIActionSheet *birthdaySheet;
+@property (nonatomic, strong) TGSheet *birthdaySheet;
+@property (nonatomic, strong) UIDatePicker *birthdayPicker;
 @end
 
 @implementation TGEditProfileViewController
@@ -98,7 +101,7 @@ static const CGFloat kPhotoSide = 80.0f;
 - (UITextField *)fieldWithPlaceholder:(NSString *)placeholder text:(NSString *)text {
 	UITextField *field = [[UITextField alloc] initWithFrame:CGRectMake(15, 0, 290, 44)];
 	field.text = [text isKindOfClass:NSString.class] ? text : @"";
-	field.font = [UIFont systemFontOfSize:16];
+	field.font = TGFontRow();
 	field.delegate = self;
 	field.returnKeyType = UIReturnKeyDone;
 	field.keyboardAppearance = [TGTheme shared].isDark ? UIKeyboardAppearanceDark : UIKeyboardAppearanceDefault;
@@ -155,10 +158,9 @@ static const CGFloat kPhotoSide = 80.0f;
 		// A username can be taken, which is the one failure worth reporting.
 		[[TGClient shared] setUsername:username completion:^(BOOL ok){
 			if (!ok){
-				UIAlertView *alert = [[UIAlertView alloc] initWithTitle:@"Username"
-						message:@"That username is not available."
-					   delegate:nil cancelButtonTitle:@"OK" otherButtonTitles:nil];
-				[alert show];
+				[TGAlertSheet showMessage:@"That username is not available."
+									title:@"Username"
+								   inView:[UIApplication sharedApplication].keyWindow];
 			}
 		}];
 	}
@@ -204,18 +206,18 @@ static const CGFloat kPhotoSide = 80.0f;
 }
 
 /// A date picker in a sheet: iOS 7 has no way to put one in a row, and a
-/// birthday is picked once.
+/// birthday is picked once. The card is edge to edge, as a modal sheet is,
+/// with the picker's own toolbar across the top of it.
 - (void)editBirthday {
-	UIActionSheet *sheet = [[UIActionSheet alloc] initWithTitle:nil
-			delegate:self cancelButtonTitle:nil destructiveButtonTitle:nil
-			otherButtonTitles:nil];
-	sheet.actionSheetStyle = UIActionSheetStyleBlackTranslucent;
+	static const CGFloat kBar = 44.0f, kPicker = 216.0f;
+
+	TGSheet *sheet = [TGSheet sheetForView:self.view.window ?: self.view];
+	UIView *card = [sheet addCardOfHeight:kBar + kPicker edgeToEdge:YES];
 
 	UIDatePicker *picker = [[UIDatePicker alloc] initWithFrame:
-			CGRectMake(0, 44, 320, 216)];
+			CGRectMake(0, kBar, card.bounds.size.width, kPicker)];
 	picker.datePickerMode = UIDatePickerModeDate;
 	picker.maximumDate = [NSDate date];
-	picker.tag = 0x8001;
 	if (self.birthDay > 0){
 		NSDateComponents *components = [[NSDateComponents alloc] init];
 		components.day = self.birthDay;
@@ -224,9 +226,10 @@ static const CGFloat kPhotoSide = 80.0f;
 		NSDate *date = [[NSCalendar currentCalendar] dateFromComponents:components];
 		if (date) picker.date = date;
 	}
-	[sheet addSubview:picker];
+	[card addSubview:picker];
 
-	UIToolbar *bar = [[UIToolbar alloc] initWithFrame:CGRectMake(0, 0, 320, 44)];
+	UIToolbar *bar = [[UIToolbar alloc] initWithFrame:
+			CGRectMake(0, 0, card.bounds.size.width, kBar)];
 	bar.items = @[
 		[[UIBarButtonItem alloc] initWithTitle:(self.birthDay > 0 ? @"Remove" : @"Cancel")
 				style:UIBarButtonItemStylePlain target:self action:@selector(clearBirthday)],
@@ -235,30 +238,34 @@ static const CGFloat kPhotoSide = 80.0f;
 		[[UIBarButtonItem alloc] initWithTitle:@"Done"
 				style:UIBarButtonItemStyleDone target:self action:@selector(commitBirthday)],
 	];
-	[sheet addSubview:bar];
+	[card addSubview:bar];
 
-	[sheet showInView:self.view.window ?: self.view];
-	[sheet setBounds:CGRectMake(0, 0, 320, 500)];
+	self.birthdayPicker = picker;
 	self.birthdaySheet = sheet;
+	[sheet present];
 }
 
 - (void)commitBirthday {
-	UIDatePicker *picker = (UIDatePicker *)[self.birthdaySheet viewWithTag:0x8001];
 	NSDateComponents *c = [[NSCalendar currentCalendar]
 			components:(NSDayCalendarUnit | NSMonthCalendarUnit | NSYearCalendarUnit)
-			  fromDate:picker.date];
+			  fromDate:self.birthdayPicker.date];
 	self.birthDay = c.day;
 	self.birthMonth = c.month;
 	self.birthYear = c.year;
 	self.birthdayChanged = YES;
-	[self.birthdaySheet dismissWithClickedButtonIndex:0 animated:YES];
-	[self.tableView reloadData];
+	[self closeBirthdaySheet];
 }
 
 - (void)clearBirthday {
 	self.birthDay = self.birthMonth = self.birthYear = 0;
 	self.birthdayChanged = YES;
-	[self.birthdaySheet dismissWithClickedButtonIndex:0 animated:YES];
+	[self closeBirthdaySheet];
+}
+
+- (void)closeBirthdaySheet {
+	[self.birthdaySheet dismiss];
+	self.birthdaySheet = nil;
+	self.birthdayPicker = nil;
 	[self.tableView reloadData];
 }
 
@@ -289,13 +296,12 @@ static const CGFloat kPhotoSide = 80.0f;
 		return;
 
 	self.photoView.image = scaled;      // show it before the upload finishes
+	__weak typeof(self) weakSelf = self;
 	[[TGClient shared] setProfilePhotoAtPath:path completion:^(BOOL ok){
 		if (ok)
 			return;
-		UIAlertView *alert = [[UIAlertView alloc] initWithTitle:@"Profile Photo"
-				message:@"Telegram refused the picture."
-			   delegate:nil cancelButtonTitle:@"OK" otherButtonTitles:nil];
-		[alert show];
+		[TGAlertSheet showMessage:@"Telegram refused the picture."
+							title:@"Profile Photo" inView:weakSelf.view];
 	}];
 }
 
@@ -349,8 +355,8 @@ static const CGFloat kPhotoSide = 80.0f;
 		UITableViewCell *cell = [[UITableViewCell alloc]
 				initWithStyle:UITableViewCellStyleValue1 reuseIdentifier:nil];
 		[theme styleCell:cell];
-		cell.textLabel.font = [UIFont systemFontOfSize:16];
-		cell.detailTextLabel.font = [UIFont systemFontOfSize:15];
+		cell.textLabel.font = TGFontRow();
+		cell.detailTextLabel.font = TGFontBody();
 		cell.detailTextLabel.textColor = [theme cellDetailColour];
 
 		NSDictionary *me = [TGClient shared].me;
@@ -426,7 +432,7 @@ static const CGFloat kPhotoSide = 80.0f;
 	[change setTitle:(fileId ? @"Change Photo" : @"Set Photo")
 			forState:UIControlStateNormal];
 	[change setTitleColor:[theme accentColour] forState:UIControlStateNormal];
-	change.titleLabel.font = [UIFont systemFontOfSize:16];
+	change.titleLabel.font = TGFontRow();
 	[change addTarget:self action:@selector(changePhoto)
 	 forControlEvents:UIControlEventTouchUpInside];
 	[cell.contentView addSubview:change];

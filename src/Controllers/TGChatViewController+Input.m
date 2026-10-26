@@ -3,6 +3,7 @@
 #import "TGIcons.h"
 #import "UIImage+WebP.h"
 #import "TGAttachSheet.h"
+#import "TGStyle.h"
 
 @implementation TGChatViewController (Input)
 
@@ -43,7 +44,7 @@
 	self.input.leftViewMode = UITextFieldViewModeAlways;
 	self.input.placeholder = @"Message";
 	self.input.textColor = [[TGTheme shared] primaryTextColour];
-	self.input.font = [UIFont systemFontOfSize:15];
+	self.input.font = TGFontBody();
 	self.input.returnKeyType = UIReturnKeySend;
 	self.input.keyboardAppearance = [TGTheme shared].isDark
 			? UIKeyboardAppearanceAlert : UIKeyboardAppearanceDefault;
@@ -101,6 +102,21 @@
 	[self.view addSubview:self.inputBar];
 }
 
+/// "typing..." on the other side. TDLib lets one of these stand for a few
+/// seconds, so one per four is enough to keep it up while typing goes on -
+/// and sending one per keystroke on this radio would be its own problem.
+- (void)reportTyping {
+	if (!self.input.text.length){
+		self.lastTypingReport = 0;
+		return;
+	}
+	NSTimeInterval now = [NSDate timeIntervalSinceReferenceDate];
+	if (now - self.lastTypingReport < 4.0)
+		return;
+	self.lastTypingReport = now;
+	[[TGClient shared] sendTypingToChat:self.chatId thread:self.threadId];
+}
+
 #pragma mark - compose banner
 
 /// Back to composing a plain message: no reply, no edit, no banner. Also
@@ -143,7 +159,7 @@ static const NSInteger kBannerSubtitleTag = 72;
 		UILabel *title = [[UILabel alloc] initWithFrame:
 				CGRectMake(22, 5, width - 66, 17)];
 		title.tag = kBannerTitleTag;
-		title.font = [UIFont boldSystemFontOfSize:13];
+		title.font = TGFontCaptionStrong();
 		title.textColor = [[TGTheme shared] accentColour];
 		title.backgroundColor = [UIColor clearColor];
 		title.autoresizingMask = UIViewAutoresizingFlexibleWidth;
@@ -152,7 +168,7 @@ static const NSInteger kBannerSubtitleTag = 72;
 		UILabel *preview = [[UILabel alloc] initWithFrame:
 				CGRectMake(22, 22, width - 66, 17)];
 		preview.tag = kBannerSubtitleTag;
-		preview.font = [UIFont systemFontOfSize:13];
+		preview.font = TGFontCaption();
 		preview.textColor = [[TGTheme shared] secondaryTextColour];
 		preview.backgroundColor = [UIColor clearColor];
 		preview.autoresizingMask = UIViewAutoresizingFlexibleWidth;
@@ -164,7 +180,7 @@ static const NSInteger kBannerSubtitleTag = 72;
 		[cancel setTitle:@"\u00d7" forState:UIControlStateNormal];
 		[cancel setTitleColor:[[TGTheme shared] secondaryTextColour]
 					 forState:UIControlStateNormal];
-		cancel.titleLabel.font = [UIFont systemFontOfSize:22];
+		cancel.titleLabel.font = TGFontGlyph();
 		[cancel addTarget:self action:@selector(clearComposeState)
 		 forControlEvents:UIControlEventTouchUpInside];
 		[self.composeBanner addSubview:cancel];
@@ -203,6 +219,9 @@ static const NSInteger kBannerSubtitleTag = 72;
 	// the microphone back in the send button's place.
 	self.input.text = @"";
 	[self clearComposeState];
+	// The draft was this text; it has been sent, so it is not a draft now.
+	[[TGClient shared] setDraft:@"" inChat:self.chatId thread:self.threadId replyTo:0];
+	[[TGClient shared] cancelTypingInChat:self.chatId thread:self.threadId];
 
 	// TDLib echoes the message back as an update; refresh shortly after.
 	dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)),
@@ -314,8 +333,6 @@ static const NSInteger kBannerSubtitleTag = 72;
 
 #pragma mark - attachments
 
-static const NSInteger kAttachSheetTag  = 41;
-static const NSInteger kMessageSheetTag = 42;
 
 - (void)attachTapped {
 	[self.input resignFirstResponder];
@@ -335,63 +352,6 @@ static const NSInteger kMessageSheetTag = 42;
 	};
 }
 
-- (void)actionSheet:(UIActionSheet *)sheet clickedButtonAtIndex:(NSInteger)index {
-	if (index == sheet.cancelButtonIndex)
-		return;
-
-	if (sheet.tag == 0xDE1E) {
-		NSArray *ids = self.pendingDeleteMessageIds;
-		self.pendingDeleteMessageIds = nil;
-		if (index == sheet.cancelButtonIndex || !ids.count)
-			return;
-
-		BOOL isSaved = (self.chatId == [[TGClient shared] savedMessagesChatId]);
-		if (isSaved) {
-			if (index == 0) {
-				[self executeDeleteMessages:ids revoke:YES];
-			}
-		} else {
-			if (index == 0) {
-				// Delete for both / Delete for everyone
-				[self executeDeleteMessages:ids revoke:YES];
-			} else if (index == 1) {
-				// Delete for me
-				[self executeDeleteMessages:ids revoke:NO];
-			}
-		}
-		return;
-	}
-
-	if (sheet.tag == kMessageSheetTag){
-		[self runMessageAction:[sheet buttonTitleAtIndex:index]];
-		return;
-	}
-	if (sheet.tag == 0xC047){
-		NSDictionary *m = self.contactActionMessage;
-		NSDictionary *contact = [m[@"contact"] isKindOfClass:NSDictionary.class] ? m[@"contact"] : nil;
-		NSString *phone = contact[@"phoneNumber"] ?: @"";
-		if (!phone.length) {
-			NSArray *parts = [m[@"text"] componentsSeparatedByString:@"\n"];
-			if (parts.count > 1) phone = parts[1];
-		}
-		if (index == 0) {
-			NSString *clean = [[phone componentsSeparatedByCharactersInSet:[[NSCharacterSet characterSetWithCharactersInString:@"+0123456789"] invertedSet]] componentsJoinedByString:@""];
-			if (clean.length)
-				[[UIApplication sharedApplication] openURL:[NSURL URLWithString:[NSString stringWithFormat:@"tel:%@", clean]]];
-		} else if (index == 1) {
-			[self presentAddContactForMessage:m];
-		} else if (index == 2) {
-			[UIPasteboard generalPasteboard].string = phone ?: @"";
-			[TGSnackbar showInView:self.view text:@"Phone number copied" seconds:2 onCommit:^{}];
-		}
-		return;
-	}
-	if (sheet.tag != kAttachSheetTag)
-		return;
-	if (index == 0)      [self pickMedia];
-	else if (index == 1) [self sendCurrentLocation];
-	else                 [self pickContact];
-}
 
 #pragma mark - keyboard
 

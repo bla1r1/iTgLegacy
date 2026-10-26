@@ -1,4 +1,5 @@
 #import "TGIconsInternal.h"
+#import "TGStyle.h"
 
 #pragma mark - avatars
 
@@ -148,8 +149,7 @@ static UIImage *TGGlyphAvatar(CGFloat side, void (^draw)(CGContextRef ctx, CGFlo
 	}
 
 	NSString *text = initials.length ? initials : @"?";
-	UIFont *font = [UIFont fontWithName:@"HelveticaNeue-Medium" size:size * 0.4f]
-			?: [UIFont boldSystemFontOfSize:size * 0.4f];
+	UIFont *font = TGFontMediumAtSize(size * 0.4f);
 	CGSize textSize = [text sizeWithFont:font];
 	[[UIColor whiteColor] set];
 	[text drawAtPoint:CGPointMake((size - textSize.width) / 2,

@@ -1,5 +1,7 @@
 #import "TGChatViewControllerInternal.h"
 #import "TGForwardPicker.h"
+#import "TGStyle.h"
+#import "TGAlertSheet.h"
 
 @implementation TGChatViewController (Selection)
 
@@ -31,7 +33,7 @@
 		self.editDeleteButton = [UIButton buttonWithType:UIButtonTypeCustom];
 		self.editDeleteButton.frame = CGRectMake(14, 6, 140, 36);
 		self.editDeleteButton.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeft;
-		self.editDeleteButton.titleLabel.font = [UIFont systemFontOfSize:16];
+		self.editDeleteButton.titleLabel.font = TGFontRow();
 		[self.editDeleteButton setTitleColor:[[TGTheme shared] destructiveColour] forState:UIControlStateNormal];
 		[self.editDeleteButton setTitle:@"Delete" forState:UIControlStateNormal];
 		[self.editDeleteButton addTarget:self action:@selector(deleteSelectedMessages) forControlEvents:UIControlEventTouchUpInside];
@@ -40,7 +42,7 @@
 		self.editForwardButton = [UIButton buttonWithType:UIButtonTypeCustom];
 		self.editForwardButton.frame = CGRectMake(b.size.width - 154, 6, 140, 36);
 		self.editForwardButton.contentHorizontalAlignment = UIControlContentHorizontalAlignmentRight;
-		self.editForwardButton.titleLabel.font = [UIFont boldSystemFontOfSize:16];
+		self.editForwardButton.titleLabel.font = TGFontRowStrong();
 		[self.editForwardButton setTitleColor:[[TGTheme shared] accentColour] forState:UIControlStateNormal];
 		[self.editForwardButton setTitle:@"Forward" forState:UIControlStateNormal];
 		[self.editForwardButton addTarget:self action:@selector(forwardSelectedMessages) forControlEvents:UIControlEventTouchUpInside];
@@ -138,28 +140,24 @@
 
 - (void)promptDeleteMessages:(NSArray *)ids {
 	if (!ids.count) return;
-	self.pendingDeleteMessageIds = ids;
 
+	// Saved Messages has nobody else to revoke from, so there is one choice
+	// there and two everywhere else. Either way the first one revokes.
 	BOOL isSaved = (self.chatId == [[TGClient shared] savedMessagesChatId]);
-	UIActionSheet *sheet = nil;
-	if (isSaved) {
-		sheet = [[UIActionSheet alloc] initWithTitle:nil
-											delegate:self
-								   cancelButtonTitle:@"Cancel"
-							  destructiveButtonTitle:@"Delete"
-								   otherButtonTitles:nil];
-	} else {
-		NSString *forBothTitle = self.isGroup
-				? @"Delete for Everyone"
-				: [NSString stringWithFormat:@"Delete for me and %@", self.chatTitle.length ? self.chatTitle : @"them"];
-		sheet = [[UIActionSheet alloc] initWithTitle:nil
-											delegate:self
-								   cancelButtonTitle:@"Cancel"
-							  destructiveButtonTitle:forBothTitle
-								   otherButtonTitles:@"Delete for Me", nil];
-	}
-	sheet.tag = 0xDE1E;
-	[sheet showInView:self.view];
+	NSString *forBoth = self.isGroup
+			? @"Delete for Everyone"
+			: [NSString stringWithFormat:@"Delete for me and %@",
+					self.chatTitle.length ? self.chatTitle : @"them"];
+	NSArray *choices = isSaved ? @[@"Delete"] : @[forBoth, @"Delete for Me"];
+
+	__weak typeof(self) weakSelf = self;
+	[TGAlertSheet showChoices:choices
+						title:nil
+			 destructiveIndex:0
+					   inView:self.view
+					 onChoice:^(NSInteger index){
+		[weakSelf executeDeleteMessages:ids revoke:(index == 0)];
+	}];
 }
 
 - (void)deleteSelectedMessages {

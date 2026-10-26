@@ -44,7 +44,6 @@ static const CGFloat kComposeBannerHeight = 44.0f;
 @property (nonatomic, strong) NSMutableDictionary *quotes;       // messageId -> flattened
 @property (nonatomic, strong) NSMutableSet *quotesRequested;
 @property (nonatomic, strong) NSDictionary *actionMessage;   // long-pressed
-@property (nonatomic, strong) NSDictionary *contactActionMessage;
 @property (nonatomic, assign) int64_t replyToId;             // composing a reply
 @property (nonatomic, assign) int64_t editingId;             // editing instead
 @property (nonatomic, strong) UIView *composeBanner;         // "Reply to ..."
@@ -106,6 +105,9 @@ static const CGFloat kComposeBannerHeight = 44.0f;
 @property (nonatomic, strong) NSMutableSet *gifsRequested;
 @property (nonatomic, strong) UILabel *titleNameLabel;
 @property (nonatomic, strong) UILabel *titleSubtitleLabel;
+/// The message the chat has pinned, so the menu offers Unpin on that one and
+/// Pin on every other. Zero when nothing is pinned.
+@property (nonatomic, assign) int64_t pinnedMessageId;
 @property (nonatomic, strong) UIView *pinnedBannerView;
 @property (nonatomic, strong) UIView *pinnedBannerHair;
 @property (nonatomic, assign) BOOL isEditingMessages;
@@ -113,14 +115,20 @@ static const CGFloat kComposeBannerHeight = 44.0f;
 @property (nonatomic, strong) UIView *editToolbar;
 @property (nonatomic, strong) UIButton *editDeleteButton;
 @property (nonatomic, strong) UIButton *editForwardButton;
+/// When "typing..." was last reported, so it is sent at most once every
+/// four seconds while the composer is being typed into.
+@property (nonatomic, assign) NSTimeInterval lastTypingReport;
+
 @property (nonatomic, strong) UIView *savedTitleView;
 @property (nonatomic, strong) UIBarButtonItem *savedRightBarButtonItem;
-@property (nonatomic, strong) NSArray *pendingDeleteMessageIds;
 
 - (void)reload;
 - (void)showPlaybackFailure;
 - (void)applyTheme;
 - (void)inputChanged;
+- (void)reportTyping;
+- (void)loadPinnedMessage;
+- (void)hidePinnedBanner;
 - (void)stopPlayback;
 - (void)stopVideoNote;
 - (void)playVideoNoteAtPath:(NSString *)path row:(NSInteger)row;

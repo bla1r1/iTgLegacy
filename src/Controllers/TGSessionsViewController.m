@@ -1,10 +1,10 @@
 #import "TGSessionsViewController.h"
 #import "TGClient.h"
 #import "TGTheme.h"
+#import "TGAlertSheet.h"
 
-@interface TGSessionsViewController () <UIAlertViewDelegate>
+@interface TGSessionsViewController ()
 @property (nonatomic, strong) NSArray *sessions;
-@property (nonatomic, assign) long long pendingTermination;
 @end
 
 @implementation TGSessionsViewController
@@ -128,22 +128,22 @@
 		return;
 
 	NSDictionary *session = [self othersOnly][indexPath.row];
-	self.pendingTermination = [session[@"id"] longLongValue];
-
-	UIAlertView *alert = [[UIAlertView alloc] initWithTitle:@"Sign out"
-			message:[NSString stringWithFormat:@"Sign %@ out of this account?",
-					session[@"name"]]
-		   delegate:self cancelButtonTitle:@"Cancel" otherButtonTitles:@"Sign out", nil];
-	[alert show];
-}
-
-- (void)alertView:(UIAlertView *)alert clickedButtonAtIndex:(NSInteger)index {
-	if (index == alert.cancelButtonIndex || !self.pendingTermination)
+	int64_t sessionId = [session[@"id"] longLongValue];
+	if (!sessionId)
 		return;
-	[[TGClient shared] terminateSession:self.pendingTermination];
-	self.pendingTermination = 0;
-	// The server needs a moment before the list reflects it.
-	[self performSelector:@selector(refresh) withObject:nil afterDelay:1.0];
+
+	__weak typeof(self) weakSelf = self;
+	[TGAlertSheet showConfirm:[NSString stringWithFormat:
+					@"Sign %@ out of this account?", session[@"name"]]
+						title:@"Sign out"
+					   action:@"Sign out"
+				  destructive:YES
+					   inView:self.view
+					onConfirm:^{
+		[[TGClient shared] terminateSession:sessionId];
+		// The server needs a moment before the list reflects it.
+		[weakSelf performSelector:@selector(refresh) withObject:nil afterDelay:1.0];
+	}];
 }
 
 @end

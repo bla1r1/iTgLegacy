@@ -2,6 +2,7 @@
 // TGMessageLayout.m - Geometry, sizing and layout cache for chat bubbles.
 //
 #import "TGMessageLayout.h"
+#import "TGStyle.h"
 
 UIFont *TGEmojiFontOfSize(CGFloat size) {
 	static BOOL logged = NO;
@@ -64,7 +65,7 @@ NSAttributedString *TGAttributedMessageText(NSString *text, NSArray *entities, U
 	if (!text.length)
 		return nil;
 	if (!baseFont)
-		baseFont = [UIFont systemFontOfSize:15];
+		baseFont = TGFontBody();
 	if (!textColor)
 		textColor = [UIColor blackColor];
 
@@ -85,7 +86,7 @@ NSAttributedString *TGAttributedMessageText(NSString *text, NSArray *entities, U
 		return str;
 
 	CGFloat size = baseFont.pointSize;
-	UIColor *linkColour = [UIColor colorWithRed:0.18f green:0.54f blue:0.92f alpha:1.0f];
+	UIColor *linkColour = TGColourLink();
 
 	for (NSDictionary *ent in entities) {
 		if (![ent isKindOfClass:[NSDictionary class]])
@@ -99,9 +100,9 @@ NSAttributedString *TGAttributedMessageText(NSString *text, NSArray *entities, U
 		NSString *type = ent[@"type"][@"@type"] ?: ent[@"@type"];
 
 		if ([type isEqualToString:@"textEntityTypeBold"] || [type isEqualToString:@"messageEntityBold"]) {
-			[str addAttribute:NSFontAttributeName value:[UIFont boldSystemFontOfSize:size] range:range];
+			[str addAttribute:NSFontAttributeName value:TGFontBoldAtSize(size) range:range];
 		} else if ([type isEqualToString:@"textEntityTypeItalic"] || [type isEqualToString:@"messageEntityItalic"]) {
-			[str addAttribute:NSFontAttributeName value:[UIFont italicSystemFontOfSize:size] range:range];
+			[str addAttribute:NSFontAttributeName value:TGFontItalicAtSize(size) range:range];
 		} else if ([type isEqualToString:@"textEntityTypeUnderline"] || [type isEqualToString:@"messageEntityUnderline"]) {
 			[str addAttribute:NSUnderlineStyleAttributeName value:@(NSUnderlineStyleSingle) range:range];
 		} else if ([type isEqualToString:@"textEntityTypeStrikethrough"] || [type isEqualToString:@"messageEntityStrikethrough"]) {

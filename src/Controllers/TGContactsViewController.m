@@ -4,8 +4,8 @@
 #import "TGIcons.h"
 #import "TGTheme.h"
 #import <QuartzCore/QuartzCore.h>
+#import "TGStyle.h"
 
-static const CGFloat kContactAvatar = 40.0f;
 
 @interface TGContactsViewController ()
 @property (nonatomic, strong) NSArray *users;
@@ -83,8 +83,8 @@ static const CGFloat kContactAvatar = 40.0f;
 				// A cell's own imageView takes the image's size, so a 160px photo
 				// would shove the name off the row. Scale once, on arrival.
 				UIGraphicsBeginImageContextWithOptions(
-						CGSizeMake(kContactAvatar, kContactAvatar), NO, 0);
-				[photo drawInRect:CGRectMake(0, 0, kContactAvatar, kContactAvatar)];
+						CGSizeMake(TGMetricListAvatar, TGMetricListAvatar), NO, 0);
+				[photo drawInRect:CGRectMake(0, 0, TGMetricListAvatar, TGMetricListAvatar)];
 				UIImage *scaled = UIGraphicsGetImageFromCurrentImageContext();
 				UIGraphicsEndImageContext();
 				
@@ -129,12 +129,12 @@ static NSString *TGContactName(NSDictionary *u) {
 	cell.textLabel.backgroundColor = bg;
 	cell.textLabel.opaque = YES;
 	cell.textLabel.text = name;
-	cell.textLabel.font = [UIFont systemFontOfSize:15];
+	cell.textLabel.font = TGFontBody();
 	cell.detailTextLabel.backgroundColor = bg;
 	cell.detailTextLabel.opaque = YES;
 	cell.detailTextLabel.text = [u[@"phone"] length]
 		? [NSString stringWithFormat:@"+%@", u[@"phone"]] : @"";
-	cell.detailTextLabel.font = [UIFont systemFontOfSize:13];
+	cell.detailTextLabel.font = TGFontCaption();
 	cell.detailTextLabel.textColor = [[TGTheme shared] secondaryTextColour];
 	cell.textLabel.textColor = [[TGTheme shared] primaryTextColour];
 	cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
@@ -144,10 +144,10 @@ static NSString *TGContactName(NSDictionary *u) {
 	if (!photo)
 		photo = [TGIcons avatarWithInitials:
 					(name.length ? [name substringToIndex:1].uppercaseString : @"?")
-									   size:kContactAvatar
+									   size:TGMetricListAvatar
 								   colourId:[u[@"id"] longLongValue]];
 	cell.imageView.image = photo;
-	cell.imageView.layer.cornerRadius = kContactAvatar / 2;
+	cell.imageView.layer.cornerRadius = TGMetricListAvatar / 2;
 	cell.imageView.clipsToBounds = YES;
 	cell.imageView.layer.shouldRasterize = YES;
 	cell.imageView.layer.rasterizationScale = [UIScreen mainScreen].scale;

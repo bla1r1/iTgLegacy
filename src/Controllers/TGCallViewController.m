@@ -6,6 +6,7 @@
 #import "TGCapabilities.h"
 #import <QuartzCore/QuartzCore.h>
 #import <CommonCrypto/CommonDigest.h>
+#import "TGStyle.h"
 
 @interface TGCallViewController ()
 @property (nonatomic, assign) int64_t userId;
@@ -33,6 +34,14 @@
 
 @property (nonatomic, strong) NSTimer *ticker;
 @end
+
+// A gradient layer wants CGColorRefs; the palette hands out UIColors.
+static NSArray *TGCallGradient(NSArray *colours) {
+    NSMutableArray *refs = [NSMutableArray arrayWithCapacity:colours.count];
+    for (UIColor *colour in colours)
+        [refs addObject:(id)colour.CGColor];
+    return refs;
+}
 
 @implementation TGCallViewController
 
@@ -67,14 +76,13 @@
     // Gradient Background
     self.bgLayer = [CAGradientLayer layer];
     self.bgLayer.frame = self.view.bounds;
-    self.bgLayer.colors = @[(id)[UIColor colorWithRed:0.43f green:0.38f blue:0.87f alpha:1].CGColor,
-                            (id)[UIColor colorWithRed:0.35f green:0.60f blue:0.95f alpha:1].CGColor];
+    self.bgLayer.colors = TGCallGradient([[TGTheme shared] callGradientColours]);
     [self.view.layer addSublayer:self.bgLayer];
 
     CGRect b = self.view.bounds;
     
     self.emojiLabel = [[UILabel alloc] initWithFrame:CGRectMake(10, 30, b.size.width - 20, 30)];
-    self.emojiLabel.font = [UIFont systemFontOfSize:22];
+    self.emojiLabel.font = TGFontGlyph();
     self.emojiLabel.textAlignment = NSTextAlignmentCenter;
     self.emojiLabel.backgroundColor = [UIColor clearColor];
     [self.view addSubview:self.emojiLabel];
@@ -93,14 +101,14 @@
 
     self.nameLabel = [[UILabel alloc] initWithFrame:CGRectMake(10, 240, b.size.width - 20, 30)];
     self.nameLabel.text = self.peerName;
-    self.nameLabel.font = [UIFont systemFontOfSize:28];
+    self.nameLabel.font = TGFontHero();
     self.nameLabel.textColor = [UIColor whiteColor];
     self.nameLabel.textAlignment = NSTextAlignmentCenter;
     self.nameLabel.backgroundColor = [UIColor clearColor];
     [self.view addSubview:self.nameLabel];
 
     self.statusLabel = [[UILabel alloc] initWithFrame:CGRectMake(10, 275, b.size.width - 20, 20)];
-    self.statusLabel.font = [UIFont systemFontOfSize:15];
+    self.statusLabel.font = TGFontBody();
     self.statusLabel.textColor = [UIColor colorWithWhite:1.0f alpha:0.7f];
     self.statusLabel.textAlignment = NSTextAlignmentCenter;
     self.statusLabel.backgroundColor = [UIColor clearColor];
@@ -123,11 +131,11 @@
     self.micLbl = self.lastCreatedLabel;
     self.endBtn = [self createButtonAtX:canVideo ? (gap*4 + 180) : (gap*3 + 120) y:btnY title:@"End" icon:@"endcall"];
     self.endLbl = self.lastCreatedLabel;
-    self.endBtn.backgroundColor = [UIColor colorWithRed:0.9f green:0.2f blue:0.2f alpha:1];
+    self.endBtn.backgroundColor = [[TGTheme shared] callEndColour];
 
     self.acceptBtn = [self createButtonAtX:(b.size.width / 2) + 35 y:btnY title:@"Accept" icon:@"call"];
     self.acceptLbl = self.lastCreatedLabel;
-    self.acceptBtn.backgroundColor = [UIColor colorWithRed:0.2f green:0.8f blue:0.3f alpha:1];
+    self.acceptBtn.backgroundColor = [[TGTheme shared] callAcceptColour];
     [self.acceptBtn addTarget:self action:@selector(acceptCall) forControlEvents:UIControlEventTouchUpInside];
     
     [self.speakerBtn addTarget:self action:@selector(toggleSpeaker) forControlEvents:UIControlEventTouchUpInside];
@@ -169,14 +177,14 @@
         [btn setImage:glyph forState:UIControlStateNormal];
     } else {
         [btn setTitle:icon forState:UIControlStateNormal];
-        btn.titleLabel.font = [UIFont systemFontOfSize:24];
+        btn.titleLabel.font = TGFontGlyph();
     }
     [self.view addSubview:btn];
     
     UILabel *lbl = [[UILabel alloc] initWithFrame:CGRectMake(x - 10, y + 65, 80, 15)];
     lbl.text = title;
     lbl.textColor = [UIColor whiteColor];
-    lbl.font = [UIFont systemFontOfSize:12];
+    lbl.font = TGFontMeta();
     lbl.textAlignment = NSTextAlignmentCenter;
     lbl.backgroundColor = [UIColor clearColor];
     [self.view addSubview:lbl];
@@ -278,8 +286,7 @@
             break;
         case TGCallStateEstablished:
             [self setStatusPulsing:NO];
-            self.bgLayer.colors = @[(id)[UIColor colorWithRed:0.27f green:0.69f blue:0.55f alpha:1].CGColor,
-                                    (id)[UIColor colorWithRed:0.45f green:0.77f blue:0.43f alpha:1].CGColor];
+            self.bgLayer.colors = TGCallGradient([[TGTheme shared] callGradientColoursConnected]);
             [self setupEmojis];
             break;
         case TGCallStateFailed:
@@ -359,8 +366,7 @@
 /// second before the screen closes shows what happened.
 - (void)windDown {
     [self setStatusPulsing:NO];
-    self.bgLayer.colors = @[(id)[UIColor colorWithRed:0.45f green:0.16f blue:0.16f alpha:1].CGColor,
-                            (id)[UIColor colorWithRed:0.30f green:0.10f blue:0.12f alpha:1].CGColor];
+    self.bgLayer.colors = TGCallGradient([[TGTheme shared] callGradientColoursFailed]);
     [UIView animateWithDuration:0.25 animations:^{
         for (UIView *view in @[self.speakerBtn, self.videoBtn, self.micBtn,
                                self.acceptBtn, self.speakerLbl, self.videoLbl,

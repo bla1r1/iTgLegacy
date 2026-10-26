@@ -141,7 +141,7 @@ static inline NSString *TGBytes(long long bytes) {
 	return [NSString stringWithFormat:@"%.2f GB", bytes / (1024.0 * 1024.0 * 1024.0)];
 }
 
-@interface TGSettingsViewController () <UIActionSheetDelegate, UIAlertViewDelegate,
+@interface TGSettingsViewController () <
 		UIImagePickerControllerDelegate, UINavigationControllerDelegate>
 
 @property (nonatomic, strong) NSArray *sections;

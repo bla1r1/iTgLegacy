@@ -4,8 +4,8 @@
 #import "TGSheet.h"
 #import "TGTheme.h"
 #import <QuartzCore/QuartzCore.h>
+#import "TGStyle.h"
 
-static const CGFloat kMargin     = 8.0f;    ///< gap around a floating card
 static const CGFloat kCorner     = 12.0f;   ///< a floating card, all four
 static const CGFloat kEdgeCorner = 14.0f;   ///< a pinned card, top two
 static const CGFloat kScrim      = 0.4f;
@@ -58,9 +58,9 @@ static TGSheet *sOpenSheet = nil;
 
 - (UIView *)addCardOfHeight:(CGFloat)height edgeToEdge:(BOOL)edgeToEdge {
 	CGFloat width = edgeToEdge ? self.bounds.size.width
-							   : self.bounds.size.width - 2 * kMargin;
+							   : self.bounds.size.width - 2 * TGMetricCardMargin;
 	UIView *card = [[UIView alloc] initWithFrame:CGRectMake(
-			edgeToEdge ? 0 : kMargin, self.bounds.size.height, width, height)];
+			edgeToEdge ? 0 : TGMetricCardMargin, self.bounds.size.height, width, height)];
 	card.backgroundColor = [[TGTheme shared] cardBackgroundColour];
 	if (edgeToEdge){
 		// Only the top corners: the card stands on the screen edge, and a
@@ -86,14 +86,20 @@ static TGSheet *sOpenSheet = nil;
 /// Shown: the stack rests on the bottom edge, each floating card with a gap
 /// under it. Hidden: every card sits just below the screen, where the slide
 /// starts and ends.
+- (void)setBottomInset:(CGFloat)bottomInset {
+	_bottomInset = bottomInset;
+	if (self.superview)
+		[self layoutCardsShown:YES];
+}
+
 - (void)layoutCardsShown:(BOOL)shown {
-	CGFloat y = self.bounds.size.height;
+	CGFloat y = self.bounds.size.height - (shown ? self.bottomInset : 0);
 	for (NSInteger i = (NSInteger)_cards.count - 1; i >= 0; i--){
 		UIView *card = _cards[i];
 		CGRect frame = card.frame;
 		if (shown){
 			if ([_edgeFlags[i] boolValue] == NO)
-				y -= kMargin;
+				y -= TGMetricCardMargin;
 			y -= frame.size.height;
 			frame.origin.y = y;
 		} else {

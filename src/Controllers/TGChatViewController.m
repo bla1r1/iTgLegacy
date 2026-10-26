@@ -28,6 +28,8 @@
 #import "TGBubbleCell.h"
 
 #import "TGChatViewControllerInternal.h"
+#import "TGStyle.h"
+#import "TGAlertSheet.h"
 
 #pragma mark - controller
 
@@ -140,6 +142,17 @@
 	// Captured before opening marks everything read.
 	self.readInboxAtOpen = [[TGClient shared] lastReadInboxForChat:self.chatId];
 	[[TGClient shared] openChat:self.chatId];
+	// Opening clears unread; the @ and the reaction badges are counted apart
+	// from it and stay until they are read in their own right.
+	[[TGClient shared] readAllMentionsAndReactionsInChat:self.chatId];
+
+	// Whatever was typed here last and not sent - here or on another device.
+	NSString *draft = [[TGClient shared] draftForChat:self.chatId];
+	if (draft.length && !self.input.text.length){
+		self.input.text = draft;
+		[self inputChanged];
+	}
+
 	[self reload];
 }
 
@@ -150,7 +163,7 @@
 
 	UILabel *name = [[UILabel alloc] initWithFrame:CGRectMake(0, 1, 200, 20)];
 	name.text = self.chatTitle ?: @"Chat";
-	name.font = [UIFont boldSystemFontOfSize:17];
+	name.font = TGFontHeader();
 	name.textColor = [[TGTheme shared] barTitleColour];
 	name.backgroundColor = [UIColor clearColor];
 	name.textAlignment = NSTextAlignmentCenter;
@@ -162,7 +175,7 @@
 	self.titleNameLabel = name;
 
 	UILabel *subtitle = [[UILabel alloc] initWithFrame:CGRectMake(0, 21, 200, 14)];
-	subtitle.font = [UIFont systemFontOfSize:12];
+	subtitle.font = TGFontMeta();
 	subtitle.textColor = [[TGTheme shared] barSubtitleColour];
 	subtitle.backgroundColor = [UIColor clearColor];
 	subtitle.textAlignment = NSTextAlignmentCenter;
@@ -272,6 +285,14 @@
 	[NSObject cancelPreviousPerformRequestsWithTarget:self];
 
 	if ([self isMovingFromParentViewController]) {
+		// An unsent message is a draft, not something to throw away. Saved
+		// before closeChat so the chat list redraws with it in place.
+		if (self.editingId == 0)
+			[[TGClient shared] setDraft:self.input.text
+								 inChat:self.chatId
+								 thread:self.threadId
+								replyTo:self.replyToId];
+		[[TGClient shared] cancelTypingInChat:self.chatId thread:self.threadId];
 		[[TGClient shared] closeChat:self.chatId];
 		[TGClient shared].onMessage = nil;
 		[TGClient shared].onChatAction = nil;
@@ -505,7 +526,7 @@
 		mute.autoresizingMask = UIViewAutoresizingFlexibleWidth |
 								UIViewAutoresizingFlexibleTopMargin;
 		[mute setTitleColor:[[TGTheme shared] accentColour] forState:UIControlStateNormal];
-		mute.titleLabel.font = [UIFont systemFontOfSize:15];
+		mute.titleLabel.font = TGFontBody();
 		[mute setTitle:(isChannel ? @"Mute channel" : @"Mute chat")
 			  forState:UIControlStateNormal];
 		[mute addTarget:me action:@selector(muteFromChat:)
@@ -584,14 +605,35 @@
 - (void)loadPinnedMessage {
 	__weak typeof(self) weakSelf = self;
 	[[TGClient shared] pinnedMessageForChat:self.chatId completion:^(NSDictionary *m){
+		TGChatViewController *me = weakSelf;
+		me.pinnedMessageId = [m[@"id"] longLongValue];
 		NSString *text = m[@"text"];
-		if (!text.length)
+		if (!text.length){
+			[me hidePinnedBanner];
 			return;
-		[weakSelf showPinnedBanner:text];
+		}
+		[me showPinnedBanner:text];
 	}];
 }
 
+/// Takes the strip away and gives the list back the room it had. Reached
+/// when the pinned message is unpinned from the message menu.
+- (void)hidePinnedBanner {
+	if (!self.pinnedBannerView)
+		return;
+	[self.pinnedBannerView removeFromSuperview];
+	self.pinnedBannerView = nil;
+	self.pinnedBannerHair = nil;
+
+	UIEdgeInsets insets = self.table.contentInset;
+	insets.top = MAX(0, insets.top - 34);
+	self.table.contentInset = insets;
+	self.table.scrollIndicatorInsets = insets;
+}
+
 - (void)showPinnedBanner:(NSString *)text {
+	// One strip at a time: pinning a second message replaces the first.
+	[self hidePinnedBanner];
 	CGRect b = self.view.bounds;
 	TGTheme *theme = [TGTheme shared];
 	UIView *banner = [[UIView alloc] initWithFrame:CGRectMake(0, 0, b.size.width, 34)];
@@ -604,14 +646,14 @@
 
 	UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(16, 2, b.size.width - 24, 14)];
 	label.text = @"Pinned message";
-	label.font = [UIFont boldSystemFontOfSize:11];
+	label.font = TGFontMicroStrong();
 	label.textColor = [theme accentColour];
 	label.backgroundColor = [UIColor clearColor];
 	[banner addSubview:label];
 
 	UILabel *body = [[UILabel alloc] initWithFrame:CGRectMake(16, 16, b.size.width - 24, 16)];
 	body.text = text;
-	body.font = [UIFont systemFontOfSize:13];
+	body.font = TGFontCaption();
 	body.textColor = [theme primaryTextColour];
 	body.backgroundColor = [UIColor clearColor];
 	body.autoresizingMask = UIViewAutoresizingFlexibleWidth;
@@ -695,19 +737,31 @@
 		if (parts.count) name = parts[0];
 	}
 
-	self.contactActionMessage = m;
-	UIActionSheet *sheet = [[UIActionSheet alloc]
-			initWithTitle:name.length ? name : @"Contact"
-				 delegate:self
-		cancelButtonTitle:@"Cancel"
-   destructiveButtonTitle:nil
-		otherButtonTitles:
-			phone.length ? [NSString stringWithFormat:@"Call %@", phone] : @"Call",
-			@"Add to Contacts",
-			@"Copy Phone Number",
-			nil];
-	sheet.tag = 0xC047;
-	[sheet showInView:self.view];
+	__weak typeof(self) weakSelf = self;
+	NSString *dialable = [[phone componentsSeparatedByCharactersInSet:
+			[[NSCharacterSet characterSetWithCharactersInString:@"+0123456789"]
+					invertedSet]] componentsJoinedByString:@""];
+	[TGAlertSheet showChoices:@[phone.length ? [NSString stringWithFormat:@"Call %@", phone]
+											 : @"Call",
+								@"Add to Contacts",
+								@"Copy Phone Number"]
+						title:name.length ? name : @"Contact"
+			 destructiveIndex:-1
+					   inView:self.view
+					 onChoice:^(NSInteger index){
+		TGChatViewController *me = weakSelf;
+		if (index == 0){
+			if (dialable.length)
+				[[UIApplication sharedApplication] openURL:[NSURL URLWithString:
+						[NSString stringWithFormat:@"tel:%@", dialable]]];
+		} else if (index == 1){
+			[me presentAddContactForMessage:m];
+		} else {
+			[UIPasteboard generalPasteboard].string = phone ?: @"";
+			[TGSnackbar showInView:me.view text:@"Phone number copied"
+						   seconds:2 onCommit:^{}];
+		}
+	}];
 }
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
@@ -848,12 +902,7 @@
 }
 
 - (void)showPlaybackFailure {
-	UIAlertView *alert = [[UIAlertView alloc] initWithTitle:@""
-													message:@"Cannot play this audio"
-												   delegate:nil
-										  cancelButtonTitle:@"OK"
-										  otherButtonTitles:nil];
-	[alert show];
+	[TGAlertSheet showMessage:@"Cannot play this audio" title:nil inView:self.view];
 }
 
 #pragma mark - pagination & scroll

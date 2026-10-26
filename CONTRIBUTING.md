@@ -53,6 +53,20 @@ compiles the real `src/` files against the stubs in `tests/`.
   (see the stickers panel note in the checklist) — the fallback is a device
   run through `scripts/devrun.sh`, not a skipped test.
 
+## 2a · One size, one place
+
+Colour comes from `TGTheme+Palette`; type and metrics come from
+`src/Core/TGStyle.h`. A screen asks for the role — `TGFontRow()`,
+`TGFontCaption()`, `TGMetricListAvatar` — and never writes the number. That is
+why the app drifted in the first place: the palette existed and the type scale
+did not, so every screen picked its own size.
+
+`scripts/lint_tokens.sh` runs as the first step of `make -f tests/Makefile
+test` and fails the suite on a point size or a colour written out in a screen.
+A new role goes into `TGStyle.h`; a new colour goes into the palette. The lint
+also holds a ceiling on files still using `UIAlertView`/`UIActionSheet` instead
+of `TGSheet` — lower it as they move over, never raise it.
+
 ## 3 · Where a bug lives
 
 Every reported bug is a row in
@@ -75,8 +89,9 @@ bug closes.
 
 Before a PR counts as ready:
 
-- [ ] `make -f tests/Makefile test` is green (currently 173 passed, 0 failed —
+- [ ] `make -f tests/Makefile test` is green (currently 207 passed, 0 failed —
       raise the bar, never lower it)
+- [ ] `sh scripts/lint_tokens.sh` is clean — no hand-written size or colour
 - [ ] a fix lands with the regression test that failed before it
 - [ ] every behaviour claim is backed by a checklist line or a device log
 - [ ] changed UI is exercised on at least one Vintage/Legacy device if it

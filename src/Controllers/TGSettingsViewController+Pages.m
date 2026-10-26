@@ -1,4 +1,5 @@
 #import "TGSettingsViewControllerInternal.h"
+#import "TGAlertSheet.h"
 
 @implementation TGSettingsViewController (Pages)
 
@@ -109,14 +110,12 @@
 
 		TGSection(nil, nil, @[
 			TGRedRow(@"Log out", ^{
-				UIAlertView *alert = [[UIAlertView alloc]
-						initWithTitle:@"Log out"
-						      message:@"Are you sure you want to log out?"
-						     delegate:weakSelf
-					cancelButtonTitle:@"Cancel"
-					otherButtonTitles:@"Log out", nil];
-				alert.tag = 0;
-				[alert show];
+				[TGAlertSheet showConfirm:@"Are you sure you want to log out?"
+									title:@"Log out"
+								   action:@"Log out"
+							  destructive:YES
+								   inView:weakSelf.view
+								onConfirm:^{ [[TGClient shared] logOut]; }];
 			}),
 		]),
 	];
@@ -154,13 +153,16 @@
 				  @"Undoes every exception you have set on an individual chat, "
 				  @"on every device.",
 				  @[TGRedRow(@"Reset All Notifications", ^{
-			UIAlertView *confirm = [[UIAlertView alloc] initWithTitle:
-					@"Reset All Notifications"
-					message:@"Every per-chat notification exception will be forgotten."
-				   delegate:weakSelf cancelButtonTitle:@"Cancel"
-		  otherButtonTitles:@"Reset", nil];
-			confirm.tag = 61;
-			[confirm show];
+			[TGAlertSheet showConfirm:@"Every per-chat notification exception will "
+									  @"be forgotten."
+								title:@"Reset All Notifications"
+							   action:@"Reset"
+						  destructive:YES
+							   inView:weakSelf.view
+							onConfirm:^{
+				[[TGClient shared] resetAllNotificationSettings];
+				[weakSelf loadForPage];
+			}];
 		})]),
 	];
 }
@@ -207,14 +209,15 @@
 				[[TGClient shared] setOption:@"disable_top_chats" boolValue:!on];
 			}),
 			TGRedRow(@"Delete Synced Contacts", ^{
-				UIAlertView *confirm = [[UIAlertView alloc] initWithTitle:
-						@"Delete Synced Contacts"
-						message:@"The phone numbers this account uploaded to Telegram "
-								@"will be removed."
-					   delegate:weakSelf cancelButtonTitle:@"Cancel"
-			  otherButtonTitles:@"Delete", nil];
-				confirm.tag = 62;
-				[confirm show];
+				[TGAlertSheet showConfirm:@"The phone numbers this account uploaded "
+										  @"to Telegram will be removed."
+									title:@"Delete Synced Contacts"
+								   action:@"Delete"
+							  destructive:YES
+								   inView:weakSelf.view
+								onConfirm:^{
+					[[TGClient shared] clearImportedContacts];
+				}];
 			}),
 		]),
 
@@ -225,16 +228,17 @@
 					? [NSString stringWithFormat:@"if away for %ld months",
 							(long)(weakSelf.accountTtl / 30)]
 					: @"...", ^{
-				UIActionSheet *sheet = [[UIActionSheet alloc]
-						initWithTitle:@"Delete my account if away for"
-							 delegate:weakSelf
-					cancelButtonTitle:nil
-			   destructiveButtonTitle:nil
-					otherButtonTitles:@"1 month", @"3 months",
-									  @"6 months", @"12 months", nil];
-				sheet.cancelButtonIndex = [sheet addButtonWithTitle:@"Cancel"];
-				sheet.tag = 90;
-				[sheet showInView:weakSelf.view];
+				[TGAlertSheet showChoices:@[@"1 month", @"3 months",
+											@"6 months", @"12 months"]
+									title:@"Delete my account if away for"
+						 destructiveIndex:-1
+								   inView:weakSelf.view
+								 onChoice:^(NSInteger index){
+					static const NSInteger months[4] = {1, 3, 6, 12};
+					[[TGClient shared] setAccountTtlDays:months[index] * 30];
+					weakSelf.accountTtl = months[index] * 30;
+					[weakSelf rebuild];
+				}];
 			}),
 		]),
 	];
@@ -256,12 +260,17 @@
 					[NSString stringWithFormat:@"%@ in, %@ out",
 							TGBytes(weakSelf.networkReceived), TGBytes(weakSelf.networkSent)],
 					^{
-				UIAlertView *confirm = [[UIAlertView alloc] initWithTitle:@"Network Usage"
-						message:@"Reset the counters?"
-					   delegate:weakSelf cancelButtonTitle:@"Cancel"
-			  otherButtonTitles:@"Reset", nil];
-				confirm.tag = 63;
-				[confirm show];
+				[TGAlertSheet showConfirm:@"Reset the counters?"
+									title:@"Network Usage"
+								   action:@"Reset"
+							  destructive:NO
+								   inView:weakSelf.view
+								onConfirm:^{
+					[[TGClient shared] resetNetworkStats];
+					weakSelf.networkSent = 0;
+					weakSelf.networkReceived = 0;
+					[weakSelf rebuild];
+				}];
 			}),
 		]),
 
@@ -282,14 +291,15 @@
 
 		TGSection(nil, nil, @[
 			TGRedRow(@"Clear Local Database", ^{
-				UIAlertView *confirm = [[UIAlertView alloc] initWithTitle:
-						@"Clear Local Database"
-						message:@"Cached chats and messages are dropped and fetched "
-								@"again. The session stays."
-					   delegate:weakSelf cancelButtonTitle:@"Cancel"
-			  otherButtonTitles:@"Clear", nil];
-				confirm.tag = 64;
-				[confirm show];
+				[TGAlertSheet showConfirm:@"Cached chats and messages are dropped "
+										  @"and fetched again. The session stays."
+									title:@"Clear Local Database"
+								   action:@"Clear"
+							  destructive:YES
+								   inView:weakSelf.view
+								onConfirm:^{
+					[[TGClient shared] clearLocalDatabase];
+				}];
 			}),
 		]),
 	];
@@ -312,10 +322,9 @@
 				fromFile ? [(NSString *)entry[@"path"] pathExtension] : nil,
 				[current isEqualToString:themeId], ^{
 			if (![[TGTheme shared] selectThemeId:themeId]){
-				UIAlertView *alert = [[UIAlertView alloc] initWithTitle:@"Theme"
-						message:@"This file could not be read as a Telegram theme."
-					   delegate:nil cancelButtonTitle:@"OK" otherButtonTitles:nil];
-				[alert show];
+				[TGAlertSheet showMessage:@"This file could not be read as a "
+										  @"Telegram theme."
+									title:@"Theme" inView:weakSelf.view];
 			}
 			[weakSelf repaint];
 		})];
@@ -568,14 +577,20 @@
 				  @"Resets this app's own preferences - theme, text size, power "
 				  @"saving, auto-download. The session and the messages stay.", @[
 			TGRedRow(@"Reset Local Preferences", ^{
-				UIAlertView *confirm = [[UIAlertView alloc] initWithTitle:
-						@"Reset Local Preferences"
-						message:@"Theme, text size and every switch in Settings go "
-								@"back to their defaults."
-					   delegate:weakSelf cancelButtonTitle:@"Cancel"
-			  otherButtonTitles:@"Reset", nil];
-				confirm.tag = 65;
-				[confirm show];
+				[TGAlertSheet showConfirm:@"Theme, text size and every switch in "
+										  @"Settings go back to their defaults."
+									title:@"Reset Local Preferences"
+								   action:@"Reset"
+							  destructive:YES
+								   inView:weakSelf.view
+								onConfirm:^{
+					NSString *domain = [NSBundle mainBundle].bundleIdentifier;
+					[NSUserDefaults.standardUserDefaults
+							removePersistentDomainForName:domain];
+					[NSUserDefaults.standardUserDefaults synchronize];
+					[weakSelf repaint];
+					[weakSelf toast:@"Preferences reset."];
+				}];
 			}),
 		]),
 	];
@@ -594,9 +609,7 @@
 }
 
 - (void)toast:(NSString *)text {
-	UIAlertView *alert = [[UIAlertView alloc] initWithTitle:nil message:text
-			delegate:nil cancelButtonTitle:@"OK" otherButtonTitles:nil];
-	[alert show];
+	[TGAlertSheet showMessage:text title:nil inView:self.view];
 }
 
 @end

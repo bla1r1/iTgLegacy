@@ -6,6 +6,8 @@
 #import "TGClient.h"
 #import "UIImage+WebP.h"
 #import <QuartzCore/QuartzCore.h>
+#import "TGStyle.h"
+#import "TGAlertSheet.h"
 
 static const CGFloat kStripHeight = 38.0f;   // categories / sets along the top
 static const CGFloat kTabsHeight  = 36.0f;   // Emoji | Stickers | GIFs
@@ -65,7 +67,7 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 	return image;
 }
 
-@interface TGEmojiPanel () <UIScrollViewDelegate, UIAlertViewDelegate>
+@interface TGEmojiPanel () <UIScrollViewDelegate>
 @property (nonatomic, assign) TGEmojiPanelTab tab;
 @property (nonatomic, strong) UIScrollView *strip;
 @property (nonatomic, strong) UIScrollView *grid;
@@ -138,7 +140,7 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 	self.emptyLabel = [[UILabel alloc] initWithFrame:self.grid.frame];
 	self.emptyLabel.autoresizingMask = self.grid.autoresizingMask;
 	self.emptyLabel.textAlignment = NSTextAlignmentCenter;
-	self.emptyLabel.font = [UIFont systemFontOfSize:15];
+	self.emptyLabel.font = TGFontBody();
 	self.emptyLabel.backgroundColor = [UIColor clearColor];
 	self.emptyLabel.numberOfLines = 2;
 	self.emptyLabel.hidden = YES;
@@ -160,7 +162,7 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 		UIButton *button = [UIButton buttonWithType:UIButtonTypeCustom];
 		button.frame = CGRectMake(x + tabW * i, 0, tabW, kTabsHeight);
 		button.tag = (NSInteger)i;
-		button.titleLabel.font = [UIFont boldSystemFontOfSize:14];
+		button.titleLabel.font = TGFontSubheadStrong();
 		button.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleRightMargin;
 		[button setTitle:titles[i] forState:UIControlStateNormal];
 		[button addTarget:self action:@selector(tabTapped:) forControlEvents:UIControlEventTouchUpInside];
@@ -287,7 +289,7 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 		button.backgroundColor = (NSInteger)i == self.stripIndex
 				? [theme actionTileBackgroundColour] : [UIColor clearColor];
 		if (entry[@"title"]){
-			button.titleLabel.font = [UIFont systemFontOfSize:14];
+			button.titleLabel.font = TGFontSubhead();
 			[button setTitle:entry[@"title"] forState:UIControlStateNormal];
 			[button setTitleColor:(NSInteger)i == self.stripIndex ? [theme accentColour]
 																 : [theme secondaryTextColour]
@@ -301,7 +303,7 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 											side:22]
 					forState:UIControlStateNormal];
 		} else {
-			button.titleLabel.font = [UIFont systemFontOfSize:20];
+			button.titleLabel.font = TGFontEmojiSmall();
 			[button setTitle:entry[@"emoji"] forState:UIControlStateNormal];
 		}
 		[button addTarget:self action:@selector(stripTapped:) forControlEvents:UIControlEventTouchUpInside];
@@ -519,7 +521,7 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 					CGRectMake(8, y + 4, w - 16, kHeaderHeight - 6)];
 			header.tag = kHeaderTag;
 			header.text = [section[@"title"] uppercaseString];
-			header.font = [UIFont boldSystemFontOfSize:11];
+			header.font = TGFontMicroStrong();
 			header.textColor = [theme secondaryTextColour];
 			header.backgroundColor = [UIColor clearColor];
 			[self.grid addSubview:header];
@@ -613,7 +615,7 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 
 	id item = self.items[index];
 	if (self.tab == TGEmojiPanelTabEmoji){
-		button.titleLabel.font = [UIFont systemFontOfSize:28];
+		button.titleLabel.font = TGFontEmoji();
 		[button setTitle:item forState:UIControlStateNormal];
 	} else if (self.tab == TGEmojiPanelTabStickers){
 		button.imageEdgeInsets = UIEdgeInsetsMake(6, 6, 6, 6);
@@ -624,7 +626,7 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 		else {
 			// The emoji stands in until the picture arrives - and for good,
 			// for a sticker with no still thumbnail.
-			button.titleLabel.font = [UIFont systemFontOfSize:36];
+			button.titleLabel.font = TGFontEmojiLarge();
 			[button setTitle:item[@"emoji"] forState:UIControlStateNormal];
 		}
 	} else {
@@ -888,27 +890,22 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 #pragma mark - GIF search
 
 /// A text field inside the panel would raise the keyboard the panel is
-/// standing in for, so the query is asked for in an alert.
+/// standing in for, so the query is asked for in a sheet of its own.
 - (void)askForGifSearch {
-	UIAlertView *alert = [[UIAlertView alloc] initWithTitle:@"Search GIFs"
-													message:nil
-												   delegate:self
-										  cancelButtonTitle:@"Cancel"
-										  otherButtonTitles:@"Search", nil];
-	alert.alertViewStyle = UIAlertViewStylePlainTextInput;
-	[alert textFieldAtIndex:0].text = self.gifQuery;
-	[alert show];
-}
-
-- (void)alertView:(UIAlertView *)alertView clickedButtonAtIndex:(NSInteger)index {
-	if (index == alertView.cancelButtonIndex)
-		return;
-	NSString *query = [[alertView textFieldAtIndex:0].text stringByTrimmingCharactersInSet:
-			[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-	self.gifQuery = query.length ? query : nil;
-	self.stripIndex = self.gifQuery ? 1 : 0;
-	[self updateStripHighlight];
-	[self loadItemsForStripIndex:self.stripIndex];
+	__weak typeof(self) weakSelf = self;
+	[TGAlertSheet showInput:@"Search GIFs"
+					message:nil
+				placeholder:@"GIF"
+					   text:self.gifQuery
+					 action:@"Search"
+					 inView:(self.window ?: self)
+				   onSubmit:^(NSString *query){
+		TGEmojiPanel *panel = weakSelf;
+		panel.gifQuery = query.length ? query : nil;
+		panel.stripIndex = panel.gifQuery ? 1 : 0;
+		[panel updateStripHighlight];
+		[panel loadItemsForStripIndex:panel.stripIndex];
+	}];
 }
 
 @end

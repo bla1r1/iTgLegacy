@@ -2,6 +2,8 @@
 #import "TGClient.h"
 #import "TGTheme.h"
 #import <QuartzCore/QuartzCore.h>
+#import "TGStyle.h"
+#import "TGAlertSheet.h"
 
 // Their storage page opens with a ring: the total in the middle, one arc per
 // kind of file, the same colours in the list underneath. A column of numbers
@@ -9,7 +11,7 @@
 static const CGFloat kRingSide  = 150.0f;
 static const CGFloat kRingWidth = 26.0f;
 
-@interface TGStorageViewController () <UIAlertViewDelegate>
+@interface TGStorageViewController ()
 @property (nonatomic, strong) NSArray *categories;   // name / bytes / kinds
 @property (nonatomic, assign) long long total;
 @property (nonatomic, assign) BOOL working;
@@ -92,14 +94,7 @@ static NSString *TGHumanSize(long long bytes) {
 
 /// Telegram's own chart palette, in the order their storage page uses it.
 static UIColor *TGSliceColour(NSUInteger index) {
-	static NSArray *palette = nil;
-	if (!palette)
-		palette = @[[UIColor colorWithRed:0.96f green:0.65f blue:0.14f alpha:1],  // orange
-					[UIColor colorWithRed:0.20f green:0.44f blue:0.93f alpha:1],  // blue
-					[UIColor colorWithRed:0.35f green:0.78f blue:0.98f alpha:1],  // light blue
-					[UIColor colorWithRed:0.42f green:0.35f blue:0.85f alpha:1],  // violet
-					[UIColor colorWithRed:0.29f green:0.80f blue:0.44f alpha:1],  // green
-					[UIColor colorWithRed:0.85f green:0.35f blue:0.35f alpha:1]]; // red
+	NSArray *palette = [[TGTheme shared] chartPalette];
 	return palette[index % palette.count];
 }
 
@@ -147,7 +142,7 @@ static UIColor *TGSliceColour(NSUInteger index) {
 	UILabel *totalLabel = [[UILabel alloc] initWithFrame:
 			CGRectMake(box.origin.x, centre.y - 16, kRingSide, 32)];
 	totalLabel.text = self.loaded ? TGHumanSize(self.total) : @"...";
-	totalLabel.font = [UIFont boldSystemFontOfSize:22];
+	totalLabel.font = TGFontTitle();
 	totalLabel.textAlignment = NSTextAlignmentCenter;
 	totalLabel.textColor = [theme primaryTextColour];
 	totalLabel.backgroundColor = [UIColor clearColor];
@@ -159,7 +154,7 @@ static UIColor *TGSliceColour(NSUInteger index) {
 	caption.text = self.loaded
 			? @"Telegram's cache on this device."
 			: @"Reading the database...";
-	caption.font = [UIFont systemFontOfSize:13];
+	caption.font = TGFontCaption();
 	caption.textAlignment = NSTextAlignmentCenter;
 	caption.textColor = [theme secondaryTextColour];
 	caption.backgroundColor = [UIColor clearColor];
@@ -216,10 +211,10 @@ static UIColor *TGSliceColour(NSUInteger index) {
 									  reuseIdentifier:@"row"];
 	[theme styleCell:cell];
 	cell.imageView.image = nil;
-	cell.textLabel.font = [UIFont systemFontOfSize:16];
+	cell.textLabel.font = TGFontRow();
 	cell.textLabel.textColor = [theme primaryTextColour];
 	cell.textLabel.textAlignment = NSTextAlignmentLeft;
-	cell.detailTextLabel.font = [UIFont systemFontOfSize:15];
+	cell.detailTextLabel.font = TGFontBody();
 	cell.detailTextLabel.textColor = [theme secondaryTextColour];
 	cell.selectionStyle = UITableViewCellSelectionStyleDefault;
 
@@ -267,13 +262,15 @@ static UIColor *TGSliceColour(NSUInteger index) {
 		return;
 
 	if (path.section == 1){
-		UIAlertView *confirm = [[UIAlertView alloc] initWithTitle:@"Clear All Cache"
-				message:[NSString stringWithFormat:
+		__weak typeof(self) weakSelf = self;
+		[TGAlertSheet showConfirm:[NSString stringWithFormat:
 						@"%@ of cached media will be removed from this device.",
 						TGHumanSize(self.total)]
-			   delegate:self cancelButtonTitle:@"Cancel" otherButtonTitles:@"Clear", nil];
-		confirm.tag = 1;
-		[confirm show];
+							title:@"Clear All Cache"
+						   action:@"Clear"
+					  destructive:YES
+						   inView:self.view
+						onConfirm:^{ [weakSelf clearKinds:@[]]; }];  // empty means every type
 		return;
 	}
 
@@ -286,11 +283,6 @@ static UIColor *TGSliceColour(NSUInteger index) {
 	[self clearKinds:category[@"kinds"]];
 }
 
-- (void)alertView:(UIAlertView *)alert clickedButtonAtIndex:(NSInteger)index {
-	if (alert.tag == 1 && index != alert.cancelButtonIndex)
-		[self clearKinds:@[]];      // the empty list means every type
-}
-
 - (void)clearKinds:(NSArray *)kinds {
 	self.working = YES;
 	[self.tableView reloadData];
@@ -299,10 +291,9 @@ static UIColor *TGSliceColour(NSUInteger index) {
 	[[TGClient shared] clearCacheOfTypes:kinds completion:^(long long freed){
 		weakSelf.working = NO;
 		[weakSelf refresh];
-		UIAlertView *alert = [[UIAlertView alloc] initWithTitle:@"Storage"
-				message:[NSString stringWithFormat:@"Freed %@.", TGHumanSize(freed)]
-			   delegate:nil cancelButtonTitle:@"OK" otherButtonTitles:nil];
-		[alert show];
+		[TGAlertSheet showMessage:[NSString stringWithFormat:@"Freed %@.",
+						TGHumanSize(freed)]
+							title:@"Storage" inView:weakSelf.view];
 	}];
 }
 

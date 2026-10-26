@@ -417,6 +417,61 @@ static BOOL TGIsDay(TGTheme *theme) {
 							: [UIColor whiteColor];
 }
 
+#pragma mark - swipe actions
+
+- (UIColor *)archiveActionColour {
+	return rgb(0xA8, 0xB0, 0xBA);
+}
+
+- (UIColor *)muteActionColour {
+	return rgb(0xFF, 0x94, 0x00);
+}
+
+- (UIColor *)recordLockColour {
+	return [UIColor colorWithRed:0x1F / 255.0f green:0x24 / 255.0f
+							blue:0x2E / 255.0f alpha:0.92f];
+}
+
+#pragma mark - the call screen
+
+// The call screen is its own skin - it is not a list on a theme surface - but
+// its colours belong here with the rest of them rather than inside the
+// controller, where nothing else could see or override them.
+- (NSArray *)callGradientColours {
+	return @[rgb(0x6E, 0x61, 0xDE), rgb(0x59, 0x99, 0xF2)];
+}
+
+- (NSArray *)callGradientColoursConnected {
+	return @[rgb(0x45, 0xB0, 0x8C), rgb(0x73, 0xC4, 0x6E)];
+}
+
+- (NSArray *)callGradientColoursFailed {
+	return @[rgb(0x73, 0x29, 0x29), rgb(0x4D, 0x1A, 0x1F)];
+}
+
+- (UIColor *)callEndColour {
+	return rgb(0xE5, 0x33, 0x33);
+}
+
+- (UIColor *)callAcceptColour {
+	return rgb(0x33, 0xCC, 0x4D);
+}
+
+#pragma mark - charts
+
+- (NSArray *)chartPalette {
+	return @[rgb(0xF5, 0xA6, 0x24),   // orange
+			 rgb(0x33, 0x70, 0xED),   // blue
+			 rgb(0x59, 0xC7, 0xFA),   // light blue
+			 rgb(0x6B, 0x59, 0xD9),   // violet
+			 rgb(0x4A, 0xCC, 0x70),   // green
+			 rgb(0xD9, 0x59, 0x59)];  // red
+}
+
+- (UIColor *)giftStarColour {
+	return rgb(0xFF, 0xB3, 0x00);
+}
+
 - (CGFloat)bubbleCornerRadius {
 	// Their bubble is a tail on a softly rounded box, not a capsule.
 	return self.isFlat ? 16.0f : 10.0f;

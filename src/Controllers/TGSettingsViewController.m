@@ -15,6 +15,7 @@
 #import <QuartzCore/QuartzCore.h>
 
 #import "TGSettingsViewControllerInternal.h"
+#import "TGStyle.h"
 
 @implementation TGSettingsViewController
 
@@ -129,7 +130,7 @@
 			CGRectMake(0, 0, self.view.bounds.size.width, 40)];
 	label.text = [NSString stringWithFormat:@"LegacyTG %@ (%@) armv7",
 			info[@"CFBundleShortVersionString"] ?: @"", info[@"CFBundleVersion"] ?: @""];
-	label.font = [UIFont systemFontOfSize:12];
+	label.font = TGFontMeta();
 	label.textAlignment = NSTextAlignmentCenter;
 	label.textColor = [[TGTheme shared] secondaryTextColour];
 	label.backgroundColor = [UIColor clearColor];
@@ -148,7 +149,7 @@
 			kFooterInset, 8, self.tableView.bounds.size.width - 2 * kFooterInset,
 			size.height)];
 	label.text = text;
-	label.font = [UIFont systemFontOfSize:kFooterFont];
+	label.font = TGFontMeta();
 	label.numberOfLines = 0;
 	label.textColor = [[TGTheme shared] secondaryTextColour];
 	label.backgroundColor = [UIColor clearColor];
@@ -310,7 +311,7 @@
 	holder.backgroundColor = [UIColor clearColor];
 	UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(kFooterInset, 10, tableView.bounds.size.width - 2 * kFooterInset, 18)];
 	label.text = text.uppercaseString;
-	label.font = [UIFont systemFontOfSize:12];
+	label.font = TGFontMeta();
 	label.textColor = [[TGTheme shared] sectionHeaderColour];
 	label.backgroundColor = [UIColor clearColor];
 	[holder addSubview:label];
@@ -320,12 +321,11 @@
 /// The footers explain things, so there are a lot of words in them; at UIKit's
 /// default size they were louder than the settings they describe. Drawn here
 /// rather than handed over as a title so the size is ours.
-static const CGFloat kFooterFont   = 12.0f;
 static const CGFloat kFooterInset  = 15.0f;
 
 - (CGSize)footerTextSize:(NSString *)text {
 	CGFloat width = self.tableView.bounds.size.width - 2 * kFooterInset;
-	return [text sizeWithFont:[UIFont systemFontOfSize:kFooterFont]
+	return [text sizeWithFont:TGFontMeta()
 			constrainedToSize:CGSizeMake(MAX(width, 100), 400)
 				lineBreakMode:NSLineBreakByWordWrapping];
 }
@@ -348,7 +348,7 @@ static const CGFloat kFooterInset  = 15.0f;
 		// Glyph, name, and the description wrapped in what is left once the
 		// switch has taken its side.
 		CGFloat width = self.tableView.bounds.size.width - 44 - 62;
-		CGSize size = [(row[TGRowDetail] ?: @"") sizeWithFont:[UIFont systemFontOfSize:13]
+		CGSize size = [(row[TGRowDetail] ?: @"") sizeWithFont:TGFontCaption()
 										   constrainedToSize:CGSizeMake(width, 200)
 											   lineBreakMode:NSLineBreakByWordWrapping];
 		return MAX(52.0f, 30.0f + size.height);
@@ -395,7 +395,7 @@ static const CGFloat kFooterInset  = 15.0f;
 		UILabel *text = [[UILabel alloc] initWithFrame:
 				CGRectMake(9, 0, bubbleW - 46, bubbleH)];
 		text.text = lines[i];
-		text.font = [UIFont systemFontOfSize:MIN(theme.messageFontSize, 14.0f)];
+		text.font = TGFontAtSize(MIN(theme.messageFontSize, 14.0f));
 		text.textColor = [theme primaryTextColour];
 		text.backgroundColor = [UIColor clearColor];
 		text.adjustsFontSizeToFitWidth = YES;
@@ -404,7 +404,7 @@ static const CGFloat kFooterInset  = 15.0f;
 		UILabel *stamp = [[UILabel alloc] initWithFrame:
 				CGRectMake(bubbleW - 38, bubbleH - 16, 30, 12)];
 		stamp.text = @"9:41";
-		stamp.font = [UIFont systemFontOfSize:10];
+		stamp.font = TGFontMicro();
 		stamp.textColor = [theme timeColour];
 		stamp.backgroundColor = [UIColor clearColor];
 		stamp.textAlignment = NSTextAlignmentRight;
@@ -447,12 +447,12 @@ static const CGFloat kFooterInset  = 15.0f;
 	[theme styleCell:cell];
 
 	cell.textLabel.text = row[TGRowTitle];
-	cell.textLabel.font = [UIFont systemFontOfSize:16];
+	cell.textLabel.font = TGFontRow();
 	cell.textLabel.textAlignment = NSTextAlignmentLeft;
 	cell.textLabel.textColor = [kind isEqualToString:TGKindDestructive]
 			? TGRGB(0.8f, 0.1f, 0.1f) : [theme primaryTextColour];
 	cell.detailTextLabel.text = row[TGRowDetail];
-	cell.detailTextLabel.font = [UIFont systemFontOfSize:subtitle ? 13 : 15];
+	cell.detailTextLabel.font = subtitle ? TGFontCaption() : TGFontBody();
 	cell.detailTextLabel.textColor = subtitle
 			? [theme secondaryTextColour] : [theme cellDetailColour];
 
@@ -499,12 +499,12 @@ static const CGFloat kFooterInset  = 15.0f;
 	cell.accessoryType = UITableViewCellAccessoryNone;
 
 	cell.textLabel.text = row[TGRowTitle];
-	cell.textLabel.font = [UIFont systemFontOfSize:16];
+	cell.textLabel.font = TGFontRow();
 	cell.textLabel.textAlignment = NSTextAlignmentLeft;
 	cell.textLabel.textColor = [theme primaryTextColour];
 
 	cell.detailTextLabel.text = row[TGRowDetail];
-	cell.detailTextLabel.font = [UIFont systemFontOfSize:13];
+	cell.detailTextLabel.font = TGFontCaption();
 	cell.detailTextLabel.textColor = [theme secondaryTextColour];
 	cell.detailTextLabel.numberOfLines = 0;      // it is a sentence, not a value
 
@@ -610,7 +610,7 @@ static const CGFloat kFooterInset  = 15.0f;
 	UILabel *nameLabel = [[UILabel alloc] initWithFrame:
 			CGRectMake(10, 18 + side + 10, width - 20, 28)];
 	nameLabel.text = name;
-	nameLabel.font = [UIFont boldSystemFontOfSize:22];
+	nameLabel.font = TGFontTitle();
 	nameLabel.textAlignment = NSTextAlignmentCenter;
 	nameLabel.textColor = [theme primaryTextColour];
 	nameLabel.backgroundColor = [UIColor clearColor];
@@ -621,7 +621,7 @@ static const CGFloat kFooterInset  = 15.0f;
 	phoneLabel.text = (phone.length && username.length)
 			? [NSString stringWithFormat:@"%@ • %@", phone, username]
 			: (phone.length ? phone : username);
-	phoneLabel.font = [UIFont systemFontOfSize:15];
+	phoneLabel.font = TGFontBody();
 	phoneLabel.textAlignment = NSTextAlignmentCenter;
 	phoneLabel.adjustsFontSizeToFitWidth = YES;
 	phoneLabel.textColor = [theme secondaryTextColour];

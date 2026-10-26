@@ -7,7 +7,7 @@
 @interface TGChatViewController : UIViewController
     <UITableViewDataSource, UITableViewDelegate, UITextFieldDelegate,
      UIImagePickerControllerDelegate, UINavigationControllerDelegate,
-     UIActionSheetDelegate, ABUnknownPersonViewControllerDelegate,
+     ABUnknownPersonViewControllerDelegate,
      UIGestureRecognizerDelegate>
 
 @property (nonatomic, assign) int64_t chatId;

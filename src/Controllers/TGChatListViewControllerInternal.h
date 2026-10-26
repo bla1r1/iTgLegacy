@@ -14,7 +14,7 @@
 #import "TGChatCell.h"
 #import <QuartzCore/QuartzCore.h>
 
-@interface TGChatListViewController () <UISearchBarDelegate, UIAlertViewDelegate>
+@interface TGChatListViewController () <UISearchBarDelegate>
 
 @property (nonatomic, strong) NSArray *chats;
 @property (nonatomic, assign) BOOL showsArchive;      // this IS the archive screen
@@ -53,7 +53,7 @@
 - (NSString *)titleForCurrentList;
 - (void)rowHeld:(UILongPressGestureRecognizer *)hold;
 - (void)showActionsForRow:(NSInteger)row;
-- (void)runChatAction:(NSInteger)choice;
+- (void)runChatAction:(NSString *)action;
 - (void)confirmDeleteChat:(int64_t)chatId;
 
 @end

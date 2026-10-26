@@ -1,6 +1,8 @@
 #import "TGProfileViewControllerInternal.h"
 #import "TGGiftViewer.h"
 #import <AVFoundation/AVFoundation.h>
+#import "TGStyle.h"
+#import "TGAlertSheet.h"
 
 /// Only one story is ever open, so the player it needs can live here rather
 /// than as state on a category that cannot hold any.
@@ -129,7 +131,7 @@ static const NSInteger kStoryGridCols  = 3;
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
 	[emoji drawInRect:CGRectMake(side * 0.18f, side * 0.18f, side * 0.64f, side * 0.64f)
-			 withFont:[UIFont boldSystemFontOfSize:side * 0.5f]
+			 withFont:TGFontBoldAtSize(side * 0.5f)
 		lineBreakMode:NSLineBreakByClipping
 		   alignment:NSTextAlignmentCenter];
 #pragma clang diagnostic pop
@@ -354,10 +356,8 @@ static const NSInteger kStoryGridCols  = 3;
 	NSDictionary *story = self.stories[index];
 	NSNumber *fileId = story[@"photoId"];
 	if (![fileId isKindOfClass:NSNumber.class]){
-		UIAlertView *alert = [[UIAlertView alloc] initWithTitle:@"Story"
-				message:@"This story has nothing this app can show."
-			   delegate:nil cancelButtonTitle:@"OK" otherButtonTitles:nil];
-		[alert show];
+		[TGAlertSheet showMessage:@"This story has nothing this app can show."
+							title:@"Story" inView:self.view];
 		return;
 	}
 
@@ -377,7 +377,7 @@ static const NSInteger kStoryGridCols  = 3;
 				16, window.bounds.size.height - 76, window.bounds.size.width - 32, 60)];
 		label.text = caption;
 		label.numberOfLines = 3;
-		label.font = [UIFont systemFontOfSize:14];
+		label.font = TGFontSubhead();
 		label.textColor = [UIColor whiteColor];
 		label.backgroundColor = [UIColor clearColor];
 		[backdrop addSubview:label];
@@ -389,7 +389,7 @@ static const NSInteger kStoryGridCols  = 3;
 				CGRectMake(0, 24, window.bounds.size.width, 18)];
 		note.text = story[@"videoId"] ? @"Loading video..."
 									  : @"Video story - showing the first frame";
-		note.font = [UIFont systemFontOfSize:12];
+		note.font = TGFontMeta();
 		note.textAlignment = NSTextAlignmentCenter;
 		note.textColor = [UIColor colorWithWhite:1 alpha:0.6f];
 		note.backgroundColor = [UIColor clearColor];

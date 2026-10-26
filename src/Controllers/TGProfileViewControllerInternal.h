@@ -18,7 +18,7 @@ static const NSInteger kSectionMembers = 3;
 static const NSInteger kSectionMedia   = 4;
 static const NSInteger kSectionLogout  = 5;
 
-@interface TGProfileViewController () <UIAlertViewDelegate>
+@interface TGProfileViewController ()
 
 @property (nonatomic, strong) NSMutableSet *thumbnailsRequested;
 @property (nonatomic, assign) int64_t chatId;

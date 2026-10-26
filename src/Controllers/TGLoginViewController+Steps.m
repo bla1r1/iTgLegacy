@@ -1,5 +1,6 @@
 #import "TGLoginViewControllerInternal.h"
 #import "TGClient.h"
+#import "TGStyle.h"
 
 @implementation TGLoginViewController (Steps)
 
@@ -36,7 +37,7 @@
     self.prefixSeparator.hidden = NO;
     self.inputField.frame = CGRectMake(78, 0, width - 108, 44);
     self.inputField.textAlignment = NSTextAlignmentLeft;
-    self.inputField.font = [UIFont systemFontOfSize:17];
+    self.inputField.font = TGFontInput();
     self.inputField.placeholder = @"Phone number";
     self.inputField.secureTextEntry = NO;
     self.inputField.keyboardType = UIKeyboardTypePhonePad;
@@ -76,7 +77,7 @@
     }
     self.inputField.frame = CGRectMake(10, 0, width - 50, 44);
     self.inputField.textAlignment = NSTextAlignmentCenter;
-    self.inputField.font = [UIFont boldSystemFontOfSize:22];
+    self.inputField.font = TGFontTitle();
     self.inputField.text = @"";
     self.inputField.returnKeyType = UIReturnKeyGo;
 }
@@ -211,7 +212,7 @@
         self.resendButton.frame = CGRectMake(15, 162, width - 30, 30);
         [self.resendButton setTitleColor:[[TGTheme shared] accentColour] forState:UIControlStateNormal];
         [self.resendButton setTitleColor:[[TGTheme shared] secondaryTextColour] forState:UIControlStateDisabled];
-        self.resendButton.titleLabel.font = [UIFont systemFontOfSize:14];
+        self.resendButton.titleLabel.font = TGFontSubhead();
         [self.resendButton addTarget:self action:@selector(resendButtonTapped) forControlEvents:UIControlEventTouchUpInside];
         [self.scrollView addSubview:self.resendButton];
     } else {
@@ -223,7 +224,7 @@
         self.codeStepQrButton.frame = CGRectMake(15, 196, width - 30, 28);
         [self.codeStepQrButton setTitle:@"Log in with QR Code instead" forState:UIControlStateNormal];
         [self.codeStepQrButton setTitleColor:[[TGTheme shared] accentColour] forState:UIControlStateNormal];
-        self.codeStepQrButton.titleLabel.font = [UIFont boldSystemFontOfSize:14];
+        self.codeStepQrButton.titleLabel.font = TGFontSubheadStrong();
         [self.codeStepQrButton addTarget:self action:@selector(qrCodeButtonTapped) forControlEvents:UIControlEventTouchUpInside];
         [self.scrollView addSubview:self.codeStepQrButton];
     } else {

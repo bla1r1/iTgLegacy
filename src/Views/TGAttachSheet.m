@@ -3,6 +3,7 @@
 #import "TGCapabilities.h"
 #import <AssetsLibrary/AssetsLibrary.h>
 #import <QuartzCore/QuartzCore.h>
+#import "TGStyle.h"
 
 static const CGFloat kRow       = 52.0f;
 static const CGFloat kStrip     = 100.0f;
@@ -76,7 +77,7 @@ static const NSUInteger kRecentPhotos = 24;
 - (UIButton *)rowButtonTitled:(NSString *)title bold:(BOOL)bold frame:(CGRect)frame {
 	UIButton *button = [UIButton buttonWithType:UIButtonTypeCustom];
 	button.frame = frame;
-	button.titleLabel.font = bold ? [UIFont boldSystemFontOfSize:19] : [UIFont systemFontOfSize:19];
+	button.titleLabel.font = bold ? TGFontHeader() : TGFontInput();
 	[button setTitle:title forState:UIControlStateNormal];
 	[button setTitleColor:[[TGTheme shared] accentColour] forState:UIControlStateNormal];
 	[button setTitleColor:[[TGTheme shared] secondaryTextColour] forState:UIControlStateHighlighted];
@@ -123,7 +124,7 @@ static const NSUInteger kRecentPhotos = 24;
 	label.text = text;
 	label.numberOfLines = 2;
 	label.textAlignment = NSTextAlignmentCenter;
-	label.font = [UIFont systemFontOfSize:14];
+	label.font = TGFontSubhead();
 	label.textColor = [[TGTheme shared] secondaryTextColour];
 	label.backgroundColor = [UIColor clearColor];
 	[self.strip addSubview:label];

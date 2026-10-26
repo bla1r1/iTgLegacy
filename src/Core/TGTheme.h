@@ -157,6 +157,28 @@ extern NSString *const TGThemeChangedNotification;
 - (UIColor *)serviceBubbleColour;   ///< the plate behind "X joined the group"
 - (UIColor *)serviceTextColour;
 
+#pragma mark - swipe actions
+
+- (UIColor *)archiveActionColour;   ///< the grey behind Archive on a swiped row
+- (UIColor *)muteActionColour;      ///< the amber behind Mute
+- (UIColor *)recordLockColour;      ///< the dark pill holding the record lock
+
+#pragma mark - the call screen
+
+/// Two colours, top to bottom, behind a call in each of its three moods.
+- (NSArray *)callGradientColours;
+- (NSArray *)callGradientColoursConnected;
+- (NSArray *)callGradientColoursFailed;
+- (UIColor *)callEndColour;
+- (UIColor *)callAcceptColour;
+
+#pragma mark - charts
+
+/// Six colours for the storage ring, in the order its slices are drawn.
+- (NSArray *)chartPalette;
+/// The gold on a gift's star.
+- (UIColor *)giftStarColour;
+
 - (CGFloat)bubbleCornerRadius;
 - (CGFloat)bubbleJoinedCornerRadius; ///< corners where bubbles of one run meet
 - (CGFloat)bubbleBorderWidth;       ///< 0 when flat

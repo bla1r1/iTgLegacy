@@ -6,6 +6,8 @@
 #import <MediaPlayer/MediaPlayer.h>
 #import <AVFoundation/AVFoundation.h>
 #import <QuartzCore/QuartzCore.h>
+#import "TGStyle.h"
+#import "TGAlertSheet.h"
 
 // The chrome sits over the picture rather than beside it, which is what makes
 // the picture the whole screen. Both strips fade out on a tap and come back on
@@ -142,7 +144,7 @@ static const NSInteger kZoomTag = 0x7001;
 
 	self.counterLabel = [[UILabel alloc] initWithFrame:
 			CGRectMake(70, 20, bounds.size.width - 140, 18)];
-	self.counterLabel.font = [UIFont boldSystemFontOfSize:15];
+	self.counterLabel.font = TGFontBodyStrong();
 	self.counterLabel.textAlignment = NSTextAlignmentCenter;
 	self.counterLabel.textColor = [UIColor whiteColor];
 	self.counterLabel.backgroundColor = [UIColor clearColor];
@@ -150,7 +152,7 @@ static const NSInteger kZoomTag = 0x7001;
 
 	self.dateLabel = [[UILabel alloc] initWithFrame:
 			CGRectMake(70, 36, bounds.size.width - 140, 14)];
-	self.dateLabel.font = [UIFont systemFontOfSize:11];
+	self.dateLabel.font = TGFontMicro();
 	self.dateLabel.textAlignment = NSTextAlignmentCenter;
 	self.dateLabel.textColor = [UIColor colorWithWhite:1 alpha:0.7f];
 	self.dateLabel.backgroundColor = [UIColor clearColor];
@@ -159,7 +161,7 @@ static const NSInteger kZoomTag = 0x7001;
 	UIButton *close = [UIButton buttonWithType:UIButtonTypeCustom];
 	close.frame = CGRectMake(4, 18, 62, 30);
 	[close setTitle:@"Done" forState:UIControlStateNormal];
-	close.titleLabel.font = [UIFont systemFontOfSize:15];
+	close.titleLabel.font = TGFontBody();
 	[close addTarget:self action:@selector(dismiss)
 	 forControlEvents:UIControlEventTouchUpInside];
 	[self.topBar addSubview:close];
@@ -171,7 +173,7 @@ static const NSInteger kZoomTag = 0x7001;
 
 	self.captionLabel = [[UILabel alloc] initWithFrame:
 			CGRectMake(12, 4, bounds.size.width - 88, 34)];
-	self.captionLabel.font = [UIFont systemFontOfSize:13];
+	self.captionLabel.font = TGFontCaption();
 	self.captionLabel.numberOfLines = 2;
 	self.captionLabel.textColor = [UIColor whiteColor];
 	self.captionLabel.backgroundColor = [UIColor clearColor];
@@ -180,7 +182,7 @@ static const NSInteger kZoomTag = 0x7001;
 	UIButton *save = [UIButton buttonWithType:UIButtonTypeCustom];
 	save.frame = CGRectMake(bounds.size.width - 74, 4, 68, 34);
 	[save setTitle:@"Save" forState:UIControlStateNormal];
-	save.titleLabel.font = [UIFont systemFontOfSize:15];
+	save.titleLabel.font = TGFontBody();
 	[save addTarget:self action:@selector(saveCurrent)
 	 forControlEvents:UIControlEventTouchUpInside];
 	[self.bottomBar addSubview:save];
@@ -205,7 +207,7 @@ static const NSInteger kZoomTag = 0x7001;
 
 	self.timeLabel = [[UILabel alloc] initWithFrame:
 			CGRectMake(bounds.size.width - 58, 38, 52, 22)];
-	self.timeLabel.font = [UIFont systemFontOfSize:11];
+	self.timeLabel.font = TGFontMicro();
 	self.timeLabel.textColor = [UIColor whiteColor];
 	self.timeLabel.textAlignment = NSTextAlignmentRight;
 	self.timeLabel.backgroundColor = [UIColor clearColor];
@@ -520,10 +522,8 @@ static const NSInteger kZoomTag = 0x7001;
 
 - (void)image:(UIImage *)image didFinishSavingWithError:(NSError *)error
   contextInfo:(void *)contextInfo {
-	UIAlertView *alert = [[UIAlertView alloc] initWithTitle:@""
-			message:(error ? @"Could not save" : @"Saved to Camera Roll")
-		   delegate:nil cancelButtonTitle:@"OK" otherButtonTitles:nil];
-	[alert show];
+	[TGAlertSheet showMessage:(error ? @"Could not save" : @"Saved to Camera Roll")
+						title:nil inView:self];
 }
 
 - (void)dealloc {

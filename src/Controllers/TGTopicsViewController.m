@@ -2,6 +2,7 @@
 #import "TGChatViewController.h"
 #import "TGClient.h"
 #import "TGTheme.h"
+#import "TGStyle.h"
 
 @interface TGTopicsViewController ()
 @property (nonatomic, strong) NSArray *topics;
@@ -77,7 +78,7 @@
 	cell.textLabel.text = unread > 0
 		? [NSString stringWithFormat:@"%@  (%ld)", t[@"name"], (long)unread]
 		: t[@"name"];
-	cell.textLabel.font = [UIFont boldSystemFontOfSize:16];
+	cell.textLabel.font = TGFontRowStrong();
 	cell.textLabel.textColor = [theme primaryTextColour];
 	cell.textLabel.backgroundColor = [theme listBackgroundColour];
 

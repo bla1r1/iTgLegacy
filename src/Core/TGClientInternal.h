@@ -66,6 +66,9 @@ NSDictionary *TGFlattenMessage(NSDictionary *m);
 NSString *TGMessagePreview(NSDictionary *message);
 NSString *TGPhraseFromTypeName(NSString *ctype);
 NSString *TGReactionSummary(NSDictionary *m);
+
+/// The emoji of your own reaction on a message, or nil.
+NSString *TGMyReactionEmoji(NSDictionary *m);
 int64_t TGOrderInList(NSArray *positions, NSString *listType);
 BOOL TGPinnedInMain(NSArray *positions);
 int64_t TGMainListOrder(NSArray *positions);

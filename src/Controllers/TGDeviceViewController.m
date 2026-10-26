@@ -3,8 +3,10 @@
 #import "TGCapabilities.h"
 #import "TGTheme.h"
 #import "TGClient.h"
+#import "TGStyle.h"
+#import "TGAlertSheet.h"
 
-@interface TGDeviceViewController () <UIAlertViewDelegate>
+@interface TGDeviceViewController ()
 @property (nonatomic, strong) NSArray *capabilities;
 @end
 
@@ -80,8 +82,8 @@
 		cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleValue1
 									  reuseIdentifier:@"row"];
 	cell.selectionStyle = UITableViewCellSelectionStyleNone;
-	cell.textLabel.font = [UIFont systemFontOfSize:15];
-	cell.detailTextLabel.font = [UIFont systemFontOfSize:14];
+	cell.textLabel.font = TGFontBody();
+	cell.detailTextLabel.font = TGFontSubhead();
 	[[TGTheme shared] styleCell:cell];
 
 	if (indexPath.section == 0){
@@ -111,7 +113,7 @@
 		// Log out — red, centred, tappable
 		cell.selectionStyle = UITableViewCellSelectionStyleDefault;
 		cell.textLabel.text = @"Log out";
-		cell.textLabel.textColor = [UIColor colorWithRed:1.0f green:0.23f blue:0.18f alpha:1.0f];
+		cell.textLabel.textColor = [[TGTheme shared] destructiveColour];
 		cell.textLabel.textAlignment = NSTextAlignmentCenter;
 		cell.detailTextLabel.text = nil;
 		return cell;
@@ -134,18 +136,12 @@
 	if (indexPath.section != 2)
 		return;
 	// Log out — confirm before doing anything irreversible
-	UIAlertView *alert = [[UIAlertView alloc]
-			initWithTitle:@"Log out"
-			      message:@"Are you sure you want to log out?"
-			     delegate:self
-		cancelButtonTitle:@"Cancel"
-		otherButtonTitles:@"Log out", nil];
-	[alert show];
-}
-
-- (void)alertView:(UIAlertView *)alert clickedButtonAtIndex:(NSInteger)index {
-	if (index != alert.cancelButtonIndex)
-		[[TGClient shared] logOut];
+	[TGAlertSheet showConfirm:@"Are you sure you want to log out?"
+						title:@"Log out"
+					   action:@"Log out"
+				  destructive:YES
+					   inView:self.view
+					onConfirm:^{ [[TGClient shared] logOut]; }];
 }
 
 - (void)tableView:(UITableView *)tableView willDisplayHeaderView:(UIView *)view forSection:(NSInteger)section {

@@ -1,5 +1,6 @@
 #import "TGChatListViewControllerInternal.h"
 #import "TGStatusText.h"
+#import "TGStyle.h"
 
 // Height of the folder pill strip above the chat list (official-style tabs).
 static const CGFloat kFolderTabRow = 40.0f;
@@ -98,7 +99,7 @@ static const CGFloat kFolderTabRow = 40.0f;
 	strip.backgroundColor = [UIColor clearColor];
 	[header addSubview:strip];
 
-	UIFont *font = [UIFont boldSystemFontOfSize:13];
+	UIFont *font = TGFontCaptionStrong();
 	CGFloat x = 8;
 	for (NSInteger i = 0; i <= (NSInteger)folders.count; i++){
 		NSString *title = nil;

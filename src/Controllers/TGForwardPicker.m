@@ -3,8 +3,8 @@
 #import "TGIcons.h"
 #import "TGTheme.h"
 #import <QuartzCore/QuartzCore.h>
+#import "TGStyle.h"
 
-static const CGFloat kForwardAvatar = 40.0f;
 
 @interface TGForwardPicker ()
 @property (nonatomic, strong) NSArray *chats;
@@ -74,8 +74,8 @@ static const CGFloat kForwardAvatar = 40.0f;
 				UIImage *photo = [UIImage imageWithContentsOfFile:path];
 				if (!photo) return;
 
-				UIGraphicsBeginImageContextWithOptions(CGSizeMake(kForwardAvatar, kForwardAvatar), NO, 0);
-				[photo drawInRect:CGRectMake(0, 0, kForwardAvatar, kForwardAvatar)];
+				UIGraphicsBeginImageContextWithOptions(CGSizeMake(TGMetricListAvatar, TGMetricListAvatar), NO, 0);
+				[photo drawInRect:CGRectMake(0, 0, TGMetricListAvatar, TGMetricListAvatar)];
 				UIImage *scaled = UIGraphicsGetImageFromCurrentImageContext();
 				UIGraphicsEndImageContext();
 
@@ -109,13 +109,13 @@ static const CGFloat kForwardAvatar = 40.0f;
 	cell.contentView.backgroundColor = bg;
 
 	cell.textLabel.text = title;
-	cell.textLabel.font = [UIFont systemFontOfSize:15];
+	cell.textLabel.font = TGFontBody();
 	cell.textLabel.textColor = [[TGTheme shared] primaryTextColour];
 	cell.textLabel.backgroundColor = bg;
 	cell.textLabel.opaque = YES;
 
 	cell.detailTextLabel.text = c[@"text"] ?: @"";
-	cell.detailTextLabel.font = [UIFont systemFontOfSize:13];
+	cell.detailTextLabel.font = TGFontCaption();
 	cell.detailTextLabel.textColor = [[TGTheme shared] secondaryTextColour];
 	cell.detailTextLabel.backgroundColor = bg;
 	cell.detailTextLabel.opaque = YES;
@@ -123,17 +123,17 @@ static const CGFloat kForwardAvatar = 40.0f;
 	NSNumber *fileId = c[@"photoFileId"];
 	UIImage *photo = [fileId isKindOfClass:NSNumber.class] ? self.avatars[fileId] : nil;
 	if ([c[@"isSaved"] boolValue])
-		photo = [TGIcons savedMessagesAvatarOfSide:kForwardAvatar];
+		photo = [TGIcons savedMessagesAvatarOfSide:TGMetricListAvatar];
 
 	if (!photo){
 		NSString *initials = title.length ? [title substringToIndex:1].uppercaseString : @"?";
 		photo = [TGIcons avatarWithInitials:initials
-									   size:kForwardAvatar
+									   size:TGMetricListAvatar
 								   colourId:[c[@"id"] longLongValue]];
 	}
 
 	cell.imageView.image = photo;
-	cell.imageView.layer.cornerRadius = kForwardAvatar / 2;
+	cell.imageView.layer.cornerRadius = TGMetricListAvatar / 2;
 	cell.imageView.clipsToBounds = YES;
 	cell.imageView.layer.shouldRasterize = YES;
 	cell.imageView.layer.rasterizationScale = [UIScreen mainScreen].scale;

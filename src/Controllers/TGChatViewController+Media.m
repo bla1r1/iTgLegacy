@@ -2,6 +2,8 @@
 #import "TGThemeFile.h"
 #import "UIImage+WebP.h"
 #import "TGCapabilities.h"
+#import "TGStyle.h"
+#import "TGAlertSheet.h"
 
 @implementation TGChatViewController (Media)
 
@@ -265,7 +267,7 @@
 		self.downloadHUD.center = CGPointMake(self.view.bounds.size.width / 2,
 											  self.view.bounds.size.height / 2);
 		self.downloadHUD.textAlignment = NSTextAlignmentCenter;
-		self.downloadHUD.font = [UIFont boldSystemFontOfSize:15];
+		self.downloadHUD.font = TGFontBodyStrong();
 		self.downloadHUD.textColor = [[TGTheme shared] hudTextColour];
 		self.downloadHUD.backgroundColor = [[TGTheme shared] hudBackgroundColour];
 		self.downloadHUD.layer.cornerRadius = 8;
@@ -314,12 +316,11 @@
 		// whatever built-in theme was in force rather than layering over it.
 		BOOL applied = [[TGTheme shared] selectThemeId:
 				[@"file:" stringByAppendingString:saved.lastPathComponent]];
-		UIAlertView *alert = [[UIAlertView alloc] initWithTitle:@"Theme"
-				message:(applied ? [NSString stringWithFormat:@"%@ applied.",
-						[TGTheme shared].importedName ?: name]
-								 : @"This file could not be read as a Telegram theme.")
-			   delegate:nil cancelButtonTitle:@"OK" otherButtonTitles:nil];
-		[alert show];
+		[TGAlertSheet showMessage:(applied
+						? [NSString stringWithFormat:@"%@ applied.",
+								[TGTheme shared].importedName ?: name]
+						: @"This file could not be read as a Telegram theme.")
+							title:@"Theme" inView:self.view];
 	}];
 }
 

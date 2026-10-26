@@ -1,5 +1,6 @@
 #import "TGChatListViewControllerInternal.h"
 #import "TGCapabilities.h"
+#import "TGAlertSheet.h"
 
 @implementation TGChatListViewController (Actions)
 
@@ -20,11 +21,10 @@
 	// Tapping and getting nothing back reads as a broken button; an account
 	// with no folders has to say so.
 	if (!folders.count){
-		UIAlertView *alert = [[UIAlertView alloc] initWithTitle:@"Folders"
-				message:@"This account has no chat folders. They are set up in "
-						@"Telegram on a desktop or a newer phone, and appear here."
-			   delegate:nil cancelButtonTitle:@"OK" otherButtonTitles:nil];
-		[alert show];
+		[TGAlertSheet showMessage:@"This account has no chat folders. They are set "
+								  @"up in Telegram on a desktop or a newer phone, "
+								  @"and appear here."
+							title:@"Folders" inView:self.view];
 		return;
 	}
 
@@ -100,11 +100,15 @@
 	// A one-to-one chat is only deleted; a group is left as well, and the menu
 	// has to say which of the two is about to happen.
 	BOOL isGroup = [self.actionChat[@"isGroup"] boolValue];
+	BOOL unread = [self.actionChat[@"markedUnread"] boolValue] ||
+				  [self.actionChat[@"unread"] integerValue] > 0;
 	NSArray *items = @[
 		@{@"title" : (pinned ? @"Unpin" : @"Pin"),
 		  @"icon"  : (pinned ? @"unpin" : @"pin")},
 		@{@"title" : (muted ? @"Unmute" : @"Mute"),
 		  @"icon"  : (muted ? @"unmute" : @"mute")},
+		@{@"title" : (unread ? @"Mark as Read" : @"Mark as Unread"),
+		  @"icon"  : @"select"},
 		@{@"title" : (self.showsArchive ? @"Unarchive" : @"Archive"),
 		  @"icon"  : (self.showsArchive ? @"unarchive" : @"archive")},
 		@{@"title" : (isGroup ? @"Delete and Leave" : @"Delete Chat"),
@@ -119,18 +123,32 @@
 	__weak typeof(self) weakSelf = self;
 	[TGPopupMenu showItems:items atPoint:where inView:self.navigationController.view
 				  onChoice:^(NSInteger choice, NSString *title){
-		[weakSelf runChatAction:choice];
+		[weakSelf runChatAction:title];
 	}];
 }
 
-- (void)runChatAction:(NSInteger)choice {
+/// Keyed by what the row said rather than by its position: the menu and the
+/// swipe offer different subsets in a different order, and an index that
+/// means Archive in one of them meant Delete in the other.
+- (void)runChatAction:(NSString *)action {
 	int64_t chatId = [self.actionChat[@"id"] longLongValue];
-	if (choice == 0)
-		[[TGClient shared] setChat:chatId pinned:![self.actionChat[@"isPinned"] boolValue]];
-	else if (choice == 1)
-		[[TGClient shared] setChat:chatId muted:![self.actionChat[@"isMuted"] boolValue]];
-	else if (choice == 2)
+	if (!chatId){
+		self.actionChat = nil;
+		return;
+	}
+
+	if ([action hasSuffix:@"Pin"])
+		[[TGClient shared] setChat:chatId
+							pinned:![self.actionChat[@"isPinned"] boolValue]];
+	else if ([action hasSuffix:@"Mute"])
+		[[TGClient shared] setChat:chatId
+							 muted:![self.actionChat[@"isMuted"] boolValue]];
+	else if ([action hasSuffix:@"Archive"])
 		[[TGClient shared] setChat:chatId archived:!self.showsArchive];
+	else if ([action isEqualToString:@"Mark as Unread"])
+		[[TGClient shared] setChat:chatId markedUnread:YES];
+	else if ([action isEqualToString:@"Mark as Read"])
+		[[TGClient shared] setChat:chatId markedUnread:NO];
 	else
 		[self confirmDeleteChat:chatId];
 	self.actionChat = nil;
@@ -202,24 +220,23 @@
 	BOOL muted = [chat[@"isMuted"] boolValue];
 
 	__weak typeof(self) weakSelf = self;
-	void (^run)(NSInteger) = ^(NSInteger choice){
+	void (^run)(NSString *) = ^(NSString *choice){
 		TGChatListViewController *me = weakSelf;
 		[me.tableView setEditing:NO animated:YES];
 		me.actionChat = chat;
 		[me runChatAction:choice];
 	};
-	// Same choice numbers as the held-row menu: 1 mute, 2 archive, 3 delete.
 	id delete = [rowAction rowActionWithStyle:UITableViewRowActionStyleDestructive
 										title:([chat[@"isGroup"] boolValue] ? @"Leave" : @"Delete")
-									  handler:^(id action, NSIndexPath *path){ run(3); }];
+									  handler:^(id action, NSIndexPath *path){ run(@"Delete"); }];
 	id archive = [rowAction rowActionWithStyle:UITableViewRowActionStyleNormal
 										 title:self.showsArchive ? @"Unarchive" : @"Archive"
-									   handler:^(id action, NSIndexPath *path){ run(2); }];
-	[archive setBackgroundColor:[UIColor colorWithRed:0.66f green:0.69f blue:0.73f alpha:1]];
+									   handler:^(id action, NSIndexPath *path){ run(@"Archive"); }];
+	[archive setBackgroundColor:[[TGTheme shared] archiveActionColour]];
 	id mute = [rowAction rowActionWithStyle:UITableViewRowActionStyleNormal
 									  title:muted ? @"Unmute" : @"Mute"
-									handler:^(id action, NSIndexPath *path){ run(1); }];
-	[mute setBackgroundColor:[UIColor colorWithRed:1.0f green:0.58f blue:0.0f alpha:1]];
+									handler:^(id action, NSIndexPath *path){ run(@"Mute"); }];
+	[mute setBackgroundColor:[[TGTheme shared] muteActionColour]];
 	// Right to left: Delete sits at the edge.
 	return @[delete, archive, mute];
 }

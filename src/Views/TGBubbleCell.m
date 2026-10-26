@@ -5,6 +5,7 @@
 #import "TGTheme.h"
 #import "TGIcons.h"
 #import <AVFoundation/AVFoundation.h>
+#import "TGStyle.h"
 
 @interface TGBubbleCell ()
 @property (nonatomic, strong) AVPlayer *loopPlayer;
@@ -45,12 +46,12 @@
 	self.body = [[UILabel alloc] init];
 	self.body.numberOfLines = 0;
 	self.body.lineBreakMode = NSLineBreakByWordWrapping;
-	self.body.font = [UIFont systemFontOfSize:theme.messageFontSize];
+	self.body.font = TGFontAtSize(theme.messageFontSize);
 	self.body.backgroundColor = [UIColor clearColor];
 	[self.bubble addSubview:self.body];
 
 	self.sender = [[UILabel alloc] init];
-	self.sender.font = [UIFont boldSystemFontOfSize:12];
+	self.sender.font = TGFontMetaStrong();
 	self.sender.lineBreakMode = NSLineBreakByTruncatingTail;
 	self.sender.backgroundColor = [UIColor clearColor];
 	self.sender.hidden = YES;
@@ -90,13 +91,13 @@
 	[self.bubble addSubview:self.quoteBar];
 
 	self.quoteAuthor = [[UILabel alloc] init];
-	self.quoteAuthor.font = [UIFont boldSystemFontOfSize:13];
+	self.quoteAuthor.font = TGFontCaptionStrong();
 	self.quoteAuthor.backgroundColor = [UIColor clearColor];
 	self.quoteAuthor.hidden = YES;
 	[self.bubble addSubview:self.quoteAuthor];
 
 	self.quote = [[UILabel alloc] init];
-	self.quote.font = [UIFont systemFontOfSize:13];
+	self.quote.font = TGFontCaption();
 	self.quote.numberOfLines = 2;
 	self.quote.backgroundColor = [UIColor clearColor];
 	self.quote.hidden = YES;
@@ -105,13 +106,13 @@
 	self.icon = [[UILabel alloc] init];
 	self.icon.textAlignment = NSTextAlignmentCenter;
 	self.icon.textColor = [UIColor whiteColor];
-	self.icon.font = [UIFont boldSystemFontOfSize:17];
+	self.icon.font = TGFontHeader();
 	self.icon.clipsToBounds = YES;
 	self.icon.hidden = YES;
 	[self.bubble addSubview:self.icon];
 
 	self.subtitle = [[UILabel alloc] init];
-	self.subtitle.font = [UIFont systemFontOfSize:13];
+	self.subtitle.font = TGFontCaption();
 	self.subtitle.textColor = [[TGTheme shared] fileMetaColour];
 	self.subtitle.backgroundColor = [UIColor clearColor];
 	self.subtitle.hidden = YES;
@@ -122,13 +123,13 @@
 	[self.bubble addSubview:self.lottie];
 
 	self.forwardLabel = [[UILabel alloc] init];
-	self.forwardLabel.font = [UIFont systemFontOfSize:12];
+	self.forwardLabel.font = TGFontMeta();
 	self.forwardLabel.backgroundColor = [UIColor clearColor];
 	self.forwardLabel.hidden = YES;
 	[self.bubble addSubview:self.forwardLabel];
 
 	self.mediaStamp = [[UILabel alloc] init];
-	self.mediaStamp.font = [UIFont systemFontOfSize:11];
+	self.mediaStamp.font = TGFontMicro();
 	self.mediaStamp.textColor = [UIColor whiteColor];
 	self.mediaStamp.textAlignment = NSTextAlignmentCenter;
 	self.mediaStamp.layer.cornerRadius = 8;
@@ -139,7 +140,7 @@
 	[self.bubble addSubview:self.mediaStamp];
 
 	self.time = [[UILabel alloc] init];
-	self.time.font = [UIFont systemFontOfSize:11];
+	self.time.font = TGFontMicro();
 	self.time.backgroundColor = [UIColor clearColor];
 	self.time.textAlignment = NSTextAlignmentRight;
 	[self.bubble addSubview:self.time];
@@ -153,14 +154,14 @@
 	[self.bubble addSubview:self.contactSeparatorV];
 
 	self.contactCallButton = [UIButton buttonWithType:UIButtonTypeCustom];
-	self.contactCallButton.titleLabel.font = [UIFont systemFontOfSize:14];
+	self.contactCallButton.titleLabel.font = TGFontSubhead();
 	self.contactCallButton.hidden = YES;
 	[self.contactCallButton setTitle:@"Call" forState:UIControlStateNormal];
 	[self.contactCallButton setTitleColor:[theme accentColour] forState:UIControlStateNormal];
 	[self.bubble addSubview:self.contactCallButton];
 
 	self.contactAddButton = [UIButton buttonWithType:UIButtonTypeCustom];
-	self.contactAddButton.titleLabel.font = [UIFont systemFontOfSize:14];
+	self.contactAddButton.titleLabel.font = TGFontSubhead();
 	self.contactAddButton.hidden = YES;
 	[self.contactAddButton setTitle:@"Add" forState:UIControlStateNormal];
 	[self.contactAddButton setTitleColor:[theme accentColour] forState:UIControlStateNormal];
@@ -188,7 +189,7 @@
 	self.collageMoreLabel = [[UILabel alloc] init];
 	self.collageMoreLabel.textAlignment = NSTextAlignmentCenter;
 	self.collageMoreLabel.textColor = [UIColor whiteColor];
-	self.collageMoreLabel.font = [UIFont boldSystemFontOfSize:18];
+	self.collageMoreLabel.font = TGFontHeader();
 	self.collageMoreLabel.backgroundColor = [UIColor colorWithWhite:0.0f alpha:0.55f];
 	self.collageMoreLabel.layer.cornerRadius = 4.0f;
 	self.collageMoreLabel.clipsToBounds = YES;
@@ -358,7 +359,7 @@
 	self.bubble.layer.cornerRadius = [theme bubbleCornerRadius];
 	self.bubble.layer.borderWidth = [theme bubbleBorderWidth];
 	self.bubble.layer.borderColor = [theme bubbleBorderColour].CGColor;
-	self.body.font = [UIFont systemFontOfSize:theme.messageFontSize];
+	self.body.font = TGFontAtSize(theme.messageFontSize);
 	self.body.textColor = [theme primaryTextColour];
 	[self.contactCallButton setTitleColor:[theme accentColour] forState:UIControlStateNormal];
 	[self.contactAddButton setTitleColor:[theme accentColour] forState:UIControlStateNormal];

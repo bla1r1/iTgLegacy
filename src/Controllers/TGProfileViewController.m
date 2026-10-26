@@ -1,4 +1,6 @@
 #import "TGProfileViewControllerInternal.h"
+#import "TGStyle.h"
+#import "TGAlertSheet.h"
 
 /// Flattened messages carry a unix date, not a formatted stamp; the shared
 /// lists want a short one beside each row.
@@ -32,7 +34,7 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
 	[emoji drawInRect:CGRectMake(1, 1, 38, 38)
-			 withFont:[UIFont boldSystemFontOfSize:28]
+			 withFont:TGFontEmoji()
 		lineBreakMode:NSLineBreakByClipping
 		   alignment:NSTextAlignmentCenter];
 #pragma clang diagnostic pop
@@ -143,7 +145,7 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 			CGRectMake(10, 16 + side + 8, width - 20, 26)];
 	nameLabel.autoresizingMask = UIViewAutoresizingFlexibleWidth;
 	nameLabel.text = self.name;
-	nameLabel.font = [UIFont boldSystemFontOfSize:21];
+	nameLabel.font = TGFontTitle();
 	nameLabel.textAlignment = NSTextAlignmentCenter;
 	nameLabel.backgroundColor = [UIColor clearColor];
 	nameLabel.textColor = [[TGTheme shared] primaryTextColour];
@@ -152,7 +154,7 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 	self.statusLabel = [[UILabel alloc] initWithFrame:
 			CGRectMake(10, 16 + side + 34, width - 20, 18)];
 	self.statusLabel.autoresizingMask = UIViewAutoresizingFlexibleWidth;
-	self.statusLabel.font = [UIFont systemFontOfSize:14];
+	self.statusLabel.font = TGFontSubhead();
 	self.statusLabel.textAlignment = NSTextAlignmentCenter;
 	self.statusLabel.textColor = [[TGTheme shared] secondaryTextColour];
 	self.statusLabel.backgroundColor = [UIColor clearColor];
@@ -392,9 +394,9 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 	cell.selectionStyle = UITableViewCellSelectionStyleNone;
 	cell.imageView.image = nil;
 	[[TGTheme shared] styleCell:cell];
-	cell.textLabel.font = [UIFont systemFontOfSize:15];
+	cell.textLabel.font = TGFontBody();
 	cell.textLabel.textColor = [[TGTheme shared] primaryTextColour];
-	cell.detailTextLabel.font = [UIFont systemFontOfSize:13];
+	cell.detailTextLabel.font = TGFontCaption();
 	cell.detailTextLabel.textColor = [[TGTheme shared] secondaryTextColour];
 
 	// The information card: what it is in small grey, the value itself under
@@ -403,10 +405,10 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 	if (indexPath.section == kSectionDetails){
 		NSArray *pair = self.details[indexPath.row];
 		cell.textLabel.text = pair[0];
-		cell.textLabel.font = [UIFont systemFontOfSize:12];
+		cell.textLabel.font = TGFontMeta();
 		cell.textLabel.textColor = [[TGTheme shared] secondaryTextColour];
 		cell.detailTextLabel.text = pair[1];
-		cell.detailTextLabel.font = [UIFont systemFontOfSize:15];
+		cell.detailTextLabel.font = TGFontBody();
 		cell.detailTextLabel.textColor = [[TGTheme shared] accentColour];
 		return cell;
 	}
@@ -418,7 +420,7 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 		NSString *caption = [story[@"caption"] length] ? story[@"caption"]
 				: ([story[@"isVideo"] boolValue] ? @"Video story" : @"Photo story");
 		cell.textLabel.text = caption;
-		cell.textLabel.font = [UIFont systemFontOfSize:15];
+		cell.textLabel.font = TGFontBody();
 		cell.textLabel.textColor = [[TGTheme shared] primaryTextColour];
 
 		static NSDateFormatter *when = nil;
@@ -432,7 +434,7 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 		cell.detailTextLabel.text = [NSString stringWithFormat:@"%@%@",
 				[when stringFromDate:[NSDate dateWithTimeIntervalSince1970:
 						[story[@"date"] doubleValue]]], seen];
-		cell.detailTextLabel.font = [UIFont systemFontOfSize:12];
+		cell.detailTextLabel.font = TGFontMeta();
 		cell.detailTextLabel.textColor = [[TGTheme shared] secondaryTextColour];
 
 		UIImageView *thumb = [[UIImageView alloc] initWithFrame:CGRectMake(0, 0, 40, 40)];
@@ -469,13 +471,13 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 		cell.textLabel.text = (message.length && emoji.length)
 				? [NSString stringWithFormat:@"%@ %@", emoji, message]
 				: (emoji.length ? emoji : @"Gift");
-		cell.textLabel.font = [UIFont systemFontOfSize:15];
+		cell.textLabel.font = TGFontBody();
 		cell.textLabel.textColor = [[TGTheme shared] primaryTextColour];
 		NSString *stars = [NSString stringWithFormat:@"%lu stars",
 				(unsigned long)[gift[@"starCount"] integerValue]];
 		cell.detailTextLabel.text = [NSString stringWithFormat:@"%@ · %@",
 				TGProfileShortDate(gift[@"date"]) ?: @"", stars];
-		cell.detailTextLabel.font = [UIFont systemFontOfSize:12];
+		cell.detailTextLabel.font = TGFontMeta();
 		cell.detailTextLabel.textColor = [[TGTheme shared] secondaryTextColour];
 
 		cell.imageView.image = TGGiftGlyph(emoji);
@@ -503,7 +505,7 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 	if (indexPath.section == kSectionLogout){
 		cell.selectionStyle = UITableViewCellSelectionStyleDefault;
 		cell.textLabel.text = @"Log out";
-		cell.textLabel.textColor = [UIColor colorWithRed:1.0f green:0.23f blue:0.18f alpha:1.0f];
+		cell.textLabel.textColor = [[TGTheme shared] destructiveColour];
 		cell.textLabel.textAlignment = NSTextAlignmentCenter;
 		cell.detailTextLabel.text = nil;
 		cell.imageView.image = nil;
@@ -581,14 +583,12 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 	[tableView deselectRowAtIndexPath:indexPath animated:YES];
 
 	if (indexPath.section == kSectionLogout){
-		UIAlertView *alert = [[UIAlertView alloc]
-				initWithTitle:@"Log out"
-				      message:@"Are you sure you want to log out?"
-				     delegate:self
-			cancelButtonTitle:@"Cancel"
-			otherButtonTitles:@"Log out", nil];
-		alert.tag = 72;
-		[alert show];
+		[TGAlertSheet showConfirm:@"Are you sure you want to log out?"
+							title:@"Log out"
+						   action:@"Log out"
+					  destructive:YES
+						   inView:self.view
+						onConfirm:^{ [[TGClient shared] logOut]; }];
 		return;
 	}
 
@@ -609,7 +609,7 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 							   self.view.bounds.size.height - 70);
 	toast.text = @"Copied";
 	toast.textAlignment = NSTextAlignmentCenter;
-	toast.font = [UIFont systemFontOfSize:14];
+	toast.font = TGFontSubhead();
 	toast.textColor = [[TGTheme shared] hudTextColour];
 	toast.backgroundColor = [[TGTheme shared] hudBackgroundColour];
 	toast.layer.cornerRadius = 6;

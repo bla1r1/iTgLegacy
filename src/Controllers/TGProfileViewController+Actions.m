@@ -1,6 +1,8 @@
 #import "TGProfileViewControllerInternal.h"
 #import "TGCapabilities.h"
 #import "TGStatusText.h"
+#import "TGStyle.h"
+#import "TGAlertSheet.h"
 
 @implementation TGProfileViewController (Actions)
 
@@ -56,7 +58,7 @@
 		UILabel *label = [[UILabel alloc] initWithFrame:
 				CGRectMake(0, kActionTile - 18, tileW, 14)];
 		label.text = tiles[i][1];
-		label.font = [UIFont systemFontOfSize:10];
+		label.font = TGFontMicro();
 		label.textAlignment = NSTextAlignmentCenter;
 		label.textColor = [theme accentColour];
 		label.backgroundColor = [UIColor clearColor];
@@ -114,10 +116,9 @@
 		picker.onPicked = ^(int64_t targetChatId){
 			NSString *phone = weakSelf.phoneNumber;
 			if (!phone.length){
-				UIAlertView *alert = [[UIAlertView alloc] initWithTitle:@"Share contact"
-						message:@"This account does not show its phone number."
-					   delegate:nil cancelButtonTitle:@"OK" otherButtonTitles:nil];
-				[alert show];
+				[TGAlertSheet showMessage:@"This account does not show its phone number."
+									title:@"Share contact"
+								   inView:weakSelf.view];
 				return;
 			}
 			[[TGClient shared] sendContactNamed:name phone:phone toChat:targetChatId];
@@ -128,43 +129,31 @@
 	}
 
 	if ([title isEqualToString:@"Auto-delete messages"]){
-		UIActionSheet *sheet = [[UIActionSheet alloc] initWithTitle:@"Delete messages after"
-														  delegate:self
-												 cancelButtonTitle:nil
-											destructiveButtonTitle:nil
-												 otherButtonTitles:@"Off", @"1 day",
-															   @"1 week", @"1 month", nil];
-		sheet.cancelButtonIndex = [sheet addButtonWithTitle:@"Cancel"];
-		sheet.tag = 70;
-		[sheet showInView:self.view];
+		int64_t chatId = self.chatId;
+		[TGAlertSheet showChoices:@[@"Off", @"1 day", @"1 week", @"1 month"]
+							title:@"Delete messages after"
+				 destructiveIndex:-1
+						   inView:self.view
+						 onChoice:^(NSInteger index){
+			static const NSInteger seconds[4] = {0, 86400, 604800, 2592000};
+			[[TGClient shared] setChat:chatId autoDeleteSeconds:seconds[index]];
+		}];
 		return;
 	}
 
 	if ([title isEqualToString:@"Clear history"]){
-		UIAlertView *confirm = [[UIAlertView alloc] initWithTitle:@"Clear history"
-				message:@"Every message in this chat will be removed for you."
-			   delegate:self cancelButtonTitle:@"Cancel" otherButtonTitles:@"Clear", nil];
-		confirm.tag = 71;
-		[confirm show];
+		int64_t chatId = self.chatId;
+		[TGAlertSheet showConfirm:@"Every message in this chat will be removed for you."
+							title:@"Clear history"
+						   action:@"Clear"
+					  destructive:YES
+						   inView:self.view
+						onConfirm:^{ [[TGClient shared] clearHistoryInChat:chatId]; }];
 		return;
 	}
 
 	[[TGClient shared] setUser:self.userId blocked:!self.blocked];
 	self.blocked = !self.blocked;
-}
-
-- (void)actionSheet:(UIActionSheet *)sheet clickedButtonAtIndex:(NSInteger)index {
-	if (sheet.tag != 70 || index == sheet.cancelButtonIndex)
-		return;
-	static const NSInteger seconds[4] = {0, 86400, 604800, 2592000};
-	[[TGClient shared] setChat:self.chatId autoDeleteSeconds:seconds[index]];
-}
-
-- (void)alertView:(UIAlertView *)alert clickedButtonAtIndex:(NSInteger)index {
-	if (alert.tag == 71 && index != alert.cancelButtonIndex)
-		[[TGClient shared] clearHistoryInChat:self.chatId];
-	else if (alert.tag == 72 && index != alert.cancelButtonIndex)
-		[[TGClient shared] logOut];
 }
 
 @end

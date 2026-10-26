@@ -1,6 +1,7 @@
 #import "TGTheme.h"
 #import "TGThemeFile.h"
 #import "TGThemeInternal.h"
+#import "TGStyle.h"
 
 #define rgb TGThemeRGB
 
@@ -312,8 +313,8 @@ static NSString *TGIdForStyle(TGThemeStyle style) {
 }
 
 - (void)styleCell:(UITableViewCell *)cell {
-	cell.textLabel.font = [UIFont systemFontOfSize:15];
-	cell.detailTextLabel.font = [UIFont systemFontOfSize:15];
+	cell.textLabel.font = TGFontRow();
+	cell.detailTextLabel.font = TGFontBody();
 	cell.detailTextLabel.textColor = [self cellDetailColour];
 
 	UIColor *bg = [self cardBackgroundColour];
@@ -409,7 +410,7 @@ static NSString *TGIdForStyle(TGThemeStyle style) {
 		// its descenders against the hairline.
 		bar.titleTextAttributes = @{
 			NSForegroundColorAttributeName : [self barTitleColour],
-			NSFontAttributeName            : [UIFont boldSystemFontOfSize:16],
+			NSFontAttributeName            : TGFontRowStrong(),
 		};
 	} else {
 		bar.tintColor = [self barColour];

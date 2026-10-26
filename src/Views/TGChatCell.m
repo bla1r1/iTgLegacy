@@ -1,6 +1,7 @@
 #import "TGChatCell.h"
 #import "TGTheme.h"
 #import <QuartzCore/QuartzCore.h>
+#import "TGStyle.h"
 
 static const CGFloat kInset    = 10.0f;   // picture from the left edge, text from the right
 static const CGFloat kTextLeft = kInset + kAvatar + 10.0f;
@@ -19,7 +20,7 @@ static CGSize TGChatCellTextSize(NSString *text, UIFont *font) {
 /// Their titles are a medium weight, not bold; Helvetica Neue has carried one
 /// since iOS 5, and bold is the fallback where it does not.
 static UIFont *TGChatCellTitleFont(void) {
-	return [UIFont fontWithName:@"HelveticaNeue-Medium" size:16] ?: [UIFont boldSystemFontOfSize:16];
+	return TGFontListTitle();
 }
 
 @implementation TGChatCell
@@ -51,20 +52,20 @@ static UIFont *TGChatCellTitleFont(void) {
 	[self.contentView addSubview:self.titleLabel];
 
 	self.previewLabel = [[UILabel alloc] init];
-	self.previewLabel.font = [UIFont systemFontOfSize:15];
+	self.previewLabel.font = TGFontBody();
 	self.previewLabel.textColor = [theme secondaryTextColour];
 	self.previewLabel.numberOfLines = 2;
 	self.previewLabel.lineBreakMode = NSLineBreakByTruncatingTail;
 	[self.contentView addSubview:self.previewLabel];
 
 	self.dateLabel = [[UILabel alloc] init];
-	self.dateLabel.font = [UIFont systemFontOfSize:14];
+	self.dateLabel.font = TGFontSubhead();
 	self.dateLabel.textColor = [theme listDateColour];
 	self.dateLabel.textAlignment = NSTextAlignmentRight;
 	[self.contentView addSubview:self.dateLabel];
 
 	self.badge = [[UILabel alloc] init];
-	self.badge.font = [UIFont boldSystemFontOfSize:13];
+	self.badge.font = TGFontCaptionStrong();
 	self.badge.textColor = [UIColor whiteColor];
 	self.badge.backgroundColor = [theme badgeColour];
 	self.badge.textAlignment = NSTextAlignmentCenter;

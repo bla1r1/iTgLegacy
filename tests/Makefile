@@ -65,7 +65,8 @@ OBJC_SRCS := \
     $(SRC)/Calls/TGCallIce.m \
     $(SRC)/Calls/TGCallReflector.m \
     $(SRC)/Calls/TGCall.mm \
-    $(SRC)/Views/TGMessageLayout.m
+    $(SRC)/Views/TGMessageLayout.m \
+    $(SRC)/Core/TGStyle.m
 
 # Real TGClient sources, compiled only into the second binary: the main
 # binary links a test stub of TGClient instead, which the call tests need.
@@ -110,21 +111,28 @@ TEST_SRCS := \
 CLIENT_TEST_SRCS := \
     $(TESTS)/TGClientChatsTests.m \
     $(TESTS)/TGClientFilesTests.m \
-    $(TESTS)/TGStatusTextTests.m
+    $(TESTS)/TGStatusTextTests.m \
+    $(TESTS)/TGClientDraftsTests.m
 
 TEST_BINARY := $(BUILD)/TGCallTests
 CLIENT_BINARY := $(BUILD)/TGClientTests
 
 # ─── targets ──────────────────────────────────────────────────────────────────
 
-.PHONY: test build clean
+.PHONY: test build clean tokens
+
+# The design-token lint. Cheap, so it runs first: a literal size or colour
+# fails the suite the same way a broken assertion does.
+tokens:
+	@echo "\n════════ Design token lint ════════"
+	@sh $(ROOT)/scripts/lint_tokens.sh
 
 TEST_BINARY_DEPS := $(TESTS)/main.m $(C_SRCS) $(OBJC_SRCS) $(TEST_HELPER_SRCS) $(TEST_SRCS) \
                 $(TESTS)/TGTestRunner.h $(TESTS)/TGCallTestHelpers.h
 CLIENT_BINARY_DEPS := $(TESTS)/main_client.m $(CLIENT_OBJC_SRCS) $(CLIENT_HELPER_SRCS) \
                 $(CLIENT_TEST_SRCS) $(TESTS)/TGTestRunner.h
 
-test: $(TEST_BINARY) $(CLIENT_BINARY)
+test: tokens $(TEST_BINARY) $(CLIENT_BINARY)
 	@echo "\n════════ Running call stack tests ════════"
 	$(TEST_BINARY)
 	@echo "\n════════ Running TGClient regression tests ════════"

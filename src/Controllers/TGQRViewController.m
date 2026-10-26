@@ -4,6 +4,8 @@
 #import "TGTheme.h"
 #import <AVFoundation/AVFoundation.h>
 #import <QuartzCore/QuartzCore.h>
+#import "TGStyle.h"
+#import "TGAlertSheet.h"
 
 @interface TGQRViewController () <AVCaptureMetadataOutputObjectsDelegate>
 @property (nonatomic, strong) AVCaptureSession *session;
@@ -91,7 +93,7 @@
 	self.hint.text = @"Point the camera at a QR code";
 	self.hint.numberOfLines = 2;
 	self.hint.textAlignment = NSTextAlignmentCenter;
-	self.hint.font = [UIFont systemFontOfSize:15];
+	self.hint.font = TGFontBody();
 	self.hint.textColor = [UIColor whiteColor];
 	self.hint.backgroundColor = [UIColor clearColor];
 	[self.view addSubview:self.hint];
@@ -151,9 +153,7 @@
 	NSString *username = [self usernameIn:text];
 	if (!username.length){
 		self.hint.text = text;
-		UIAlertView *alert = [[UIAlertView alloc] initWithTitle:@"QR code"
-				message:text delegate:nil cancelButtonTitle:@"OK" otherButtonTitles:nil];
-		[alert show];
+		[TGAlertSheet showMessage:text title:@"QR code" inView:self.view];
 		self.handled = NO;
 		[self.session startRunning];
 		return;

@@ -1,6 +1,7 @@
 #import "TGChatViewControllerInternal.h"
 #import <QuartzCore/QuartzCore.h>
 #import "TGCapabilities.h"
+#import "TGStyle.h"
 
 @implementation TGChatViewController (Cells)
 
@@ -37,7 +38,7 @@
 		cell.time.text = @"";
 		cell.body.hidden = NO;
 		cell.body.numberOfLines = 1;
-		cell.body.font = [UIFont systemFontOfSize:12];
+		cell.body.font = TGFontMeta();
 		cell.body.textAlignment = NSTextAlignmentCenter;
 		cell.body.textColor = [serviceTheme serviceTextColour];
 		cell.body.text = line;
@@ -45,10 +46,10 @@
 		if ([m[@"separator"] isEqualToString:@"unread"]) {
 			cell.bubble.backgroundColor = [[serviceTheme inputBarColour] colorWithAlphaComponent:0.92f];
 			cell.bubble.layer.cornerRadius = 0;
-			cell.body.font = [UIFont boldSystemFontOfSize:13];
+			cell.body.font = TGFontCaptionStrong();
 			cell.body.textColor = [serviceTheme secondaryTextColour];
 		} else if (m[@"separator"]) {
-			cell.body.font = [UIFont boldSystemFontOfSize:12];
+			cell.body.font = TGFontMetaStrong();
 		}
 		return [self finalizeCell:cell message:m layout:layout isMine:mine];
 	}
@@ -71,14 +72,14 @@
 
 		cell.body.hidden = NO;
 		cell.body.numberOfLines = 0;
-		cell.body.font = [UIFont boldSystemFontOfSize:15];
+		cell.body.font = TGFontBodyStrong();
 		cell.body.textColor = [pollTheme primaryTextColour];
 		cell.body.text = question;
 		CGSize qs = TGTextSize(question, cell.body.font, layout.bubbleFrame.size.width - 2 * kPadH);
 		cell.body.frame = CGRectMake(kPadH, kPadV, layout.bubbleFrame.size.width - 2 * kPadH, qs.height);
 
 		cell.subtitle.hidden = NO;
-		cell.subtitle.font = [UIFont systemFontOfSize:12];
+		cell.subtitle.font = TGFontMeta();
 		cell.subtitle.textColor = [pollTheme secondaryTextColour];
 		cell.subtitle.text = closed ? @"Final results"
 			: [NSString stringWithFormat:@"%@ voted",
@@ -114,14 +115,14 @@
 
 				UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(24, 2, row.bounds.size.width - 66, 20)];
 				label.text = option[@"text"][@"text"] ?: option[@"text"] ?: @"";
-				label.font = [UIFont systemFontOfSize:14];
+				label.font = TGFontSubhead();
 				label.textColor = [pollTheme primaryTextColour];
 				label.backgroundColor = [UIColor clearColor];
 				[row addSubview:label];
 
 				UILabel *percent = [[UILabel alloc] initWithFrame:CGRectMake(row.bounds.size.width - 40, 2, 40, 20)];
 				percent.text = [NSString stringWithFormat:@"%ld%%", (long)share];
-				percent.font = [UIFont systemFontOfSize:13];
+				percent.font = TGFontCaption();
 				percent.textAlignment = NSTextAlignmentRight;
 				percent.textColor = [pollTheme secondaryTextColour];
 				percent.backgroundColor = [UIColor clearColor];
@@ -176,13 +177,13 @@
 
 		cell.body.hidden = NO;
 		cell.body.numberOfLines = 1;
-		cell.body.font = [UIFont boldSystemFontOfSize:14];
+		cell.body.font = TGFontSubheadStrong();
 		cell.body.textColor = missed ? [callTheme destructiveColour] : [callTheme primaryTextColour];
 		cell.body.text = line;
 		cell.body.frame = CGRectMake(kPadH + 24, fwd + 6, textW, 18);
 
 		cell.subtitle.hidden = NO;
-		cell.subtitle.font = [UIFont systemFontOfSize:12];
+		cell.subtitle.font = TGFontMeta();
 		cell.subtitle.textColor = [callTheme secondaryTextColour];
 		cell.subtitle.text = layout.stamp;
 		cell.subtitle.frame = CGRectMake(kPadH + 24, fwd + 26, textW, 14);
@@ -232,13 +233,13 @@
 		CGFloat textX = kPadH + side + 10;
 		cell.body.hidden = NO;
 		cell.body.numberOfLines = 2;
-		cell.body.font = [UIFont systemFontOfSize:15];
+		cell.body.font = TGFontBody();
 		cell.body.textColor = [cardTheme fileNameColour];
 		cell.body.text = first;
 		cell.body.frame = CGRectMake(textX, fwd + kPadV + 8, layout.bubbleFrame.size.width - textX - kPadH, 38);
 
 		cell.subtitle.hidden = NO;
-		cell.subtitle.font = [UIFont systemFontOfSize:13];
+		cell.subtitle.font = TGFontCaption();
 		cell.subtitle.textColor = [cardTheme fileMetaColour];
 		cell.subtitle.text = second;
 		cell.subtitle.frame = CGRectMake(textX, fwd + kPadV + 46, layout.bubbleFrame.size.width - textX - kPadH, 17);
@@ -287,7 +288,7 @@
 		if (words.count > 1 && [words[1] length])
 			initials = [initials stringByAppendingString:[words[1] substringToIndex:1]];
 		cell.icon.text = initials.uppercaseString;
-		cell.icon.font = [UIFont boldSystemFontOfSize:17];
+		cell.icon.font = TGFontHeader();
 		cell.icon.layer.cornerRadius = side / 2;
 		cell.icon.backgroundColor = [cardTheme mediaCircleColour];
 
@@ -295,13 +296,13 @@
 		CGFloat textW = layout.bubbleFrame.size.width - textX - kPadH;
 		cell.body.hidden = NO;
 		cell.body.numberOfLines = 1;
-		cell.body.font = [UIFont boldSystemFontOfSize:15];
+		cell.body.font = TGFontBodyStrong();
 		cell.body.textColor = [cardTheme primaryTextColour];
 		cell.body.text = name;
 		cell.body.frame = CGRectMake(textX, fwd + 8, textW, 18);
 
 		cell.subtitle.hidden = NO;
-		cell.subtitle.font = [UIFont systemFontOfSize:13];
+		cell.subtitle.font = TGFontCaption();
 		cell.subtitle.textColor = [cardTheme fileMetaColour];
 		cell.subtitle.text = phone;
 		cell.subtitle.frame = CGRectMake(textX, fwd + 28, textW, 16);
@@ -378,7 +379,7 @@
 		cell.icon.layer.cornerRadius = 3;
 		cell.icon.backgroundColor = [UIColor colorWithWhite:0.0f alpha:0.45f];
 		cell.icon.textColor = [UIColor whiteColor];
-		cell.icon.font = [UIFont boldSystemFontOfSize:10];
+		cell.icon.font = TGFontPlate();
 		cell.icon.text = @" Apple Maps ";
 		cell.icon.frame = CGRectMake(6, fwd + mapH - 22, 68, 16);
 		[cell.bubble bringSubviewToFront:cell.icon];
@@ -427,14 +428,14 @@
 
 		cell.body.hidden = NO;
 		cell.body.numberOfLines = 1;
-		cell.body.font = [UIFont boldSystemFontOfSize:14];
+		cell.body.font = TGFontSubheadStrong();
 		cell.body.textColor = [locTheme primaryTextColour];
 		cell.body.text = vTitle;
 
 		if (vAddr.length > 0) {
 			cell.subtitle.hidden = NO;
 			cell.subtitle.numberOfLines = 1;
-			cell.subtitle.font = [UIFont systemFontOfSize:12];
+			cell.subtitle.font = TGFontMeta();
 			cell.subtitle.textColor = [locTheme fileMetaColour];
 			cell.subtitle.text = vAddr;
 			cell.body.frame = CGRectMake(kPadH, fwd + mapH + 4, mapW - 2 * kPadH, 18);
@@ -518,7 +519,7 @@
 		NSString *stamp = (layout.stamp.length && ![layout.stamp isEqualToString:@"(null)"]) ? layout.stamp : @"";
 		NSString *stampText = durStr.length ? (stamp.length ? [NSString stringWithFormat:@"%@  %@", durStr, stamp] : durStr) : stamp;
 
-		CGFloat stampW = TGTextSize(stampText, [UIFont systemFontOfSize:11], 0).width + (mine ? 26 : 14);
+		CGFloat stampW = TGTextSize(stampText, TGFontMicro(), 0).width + (mine ? 26 : 14);
 		cell.mediaStamp.hidden = NO;
 		cell.mediaStamp.backgroundColor = [theme mediaStampColour];
 		cell.mediaStamp.text = mine ? [NSString stringWithFormat:@"  %@", stampText] : stampText;
@@ -572,14 +573,14 @@
 		cell.quoteBar.frame = layout.quoteBarFrame;
 
 		cell.quoteAuthor.hidden = NO;
-		cell.quoteAuthor.font = [UIFont boldSystemFontOfSize:13];
+		cell.quoteAuthor.font = TGFontCaptionStrong();
 		cell.quoteAuthor.textColor = [theme accentColour];
 		cell.quoteAuthor.text = layout.quoteAuthor ?: @"Reply";
 		cell.quoteAuthor.frame = layout.quoteAuthorFrame;
 
 		cell.quote.hidden = NO;
 		cell.quote.numberOfLines = 1;
-		cell.quote.font = [UIFont systemFontOfSize:13];
+		cell.quote.font = TGFontCaption();
 		cell.quote.textColor = [theme primaryTextColour];
 		cell.quote.text = layout.quoteText;
 		cell.quote.frame = layout.quoteFrame;
@@ -672,7 +673,7 @@
 			cell.icon.clipsToBounds = YES;
 			cell.icon.backgroundColor = [UIColor colorWithWhite:0.0f alpha:0.45f];
 			cell.icon.textColor = [UIColor whiteColor];
-			cell.icon.font = [UIFont boldSystemFontOfSize:10];
+			cell.icon.font = TGFontPlate();
 			cell.icon.text = [TGCapabilities gifAutoplayWanted] ? @" GIF · tap to play "
 																: @" GIF · autoplay off ";
 			CGSize fits = [cell.icon sizeThatFits:CGSizeMake(layout.picSize.width, 16)];
@@ -734,7 +735,7 @@
 		NSInteger seconds = [m[@"duration"] integerValue];
 		cell.body.hidden = NO;
 		cell.body.numberOfLines = 1;
-		cell.body.font = [UIFont systemFontOfSize:12];
+		cell.body.font = TGFontMeta();
 		cell.body.textColor = [voiceTheme secondaryTextColour];
 		cell.body.text = [NSString stringWithFormat:@"%ld:%02ld",
 				(long)(seconds / 60), (long)(seconds % 60)];
@@ -757,10 +758,10 @@
 	cell.body.hidden = (layout.bodySize.height == 0 || layout.isSticker);
 	cell.body.numberOfLines = 0;
 	cell.body.lineBreakMode = NSLineBreakByWordWrapping;
-	cell.body.font = [UIFont systemFontOfSize:[TGTheme shared].messageFontSize];
+	cell.body.font = TGFontAtSize([TGTheme shared].messageFontSize);
 	NSArray *entities = m[@"entities"];
 	if (entities.count) {
-		cell.body.attributedText = TGAttributedMessageText(m[@"text"], entities, [UIFont systemFontOfSize:[TGTheme shared].messageFontSize], [theme primaryTextColour]);
+		cell.body.attributedText = TGAttributedMessageText(m[@"text"], entities, TGFontAtSize([TGTheme shared].messageFontSize), [theme primaryTextColour]);
 	} else {
 		TGSetBodyText(cell.body, m[@"text"], [theme primaryTextColour]);
 	}
@@ -779,7 +780,7 @@
 			reactions = [[UILabel alloc] init];
 			reactions.tag = 0x9002;
 			reactions.backgroundColor = [UIColor clearColor];
-			reactions.font = [UIFont systemFontOfSize:13];
+			reactions.font = TGFontCaption();
 			[cell.bubble addSubview:reactions];
 		}
 		reactions.hidden = NO;

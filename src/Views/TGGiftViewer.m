@@ -6,6 +6,7 @@
 #import "TGIcons.h"
 #import "TGClient.h"
 #import <QuartzCore/QuartzCore.h>
+#import "TGStyle.h"
 
 static const CGFloat kSide    = 16.0f;   ///< card side margin, as TGAttachSheet pads its rows
 static const CGFloat kRow     = 44.0f;   ///< one attribute row, settings height
@@ -60,7 +61,7 @@ static UIImage *TGGiftArtworkGlyph(NSString *emoji, CGFloat side) {
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
 	[emoji drawInRect:CGRectMake(side * 0.08f, side * 0.08f, side * 0.84f, side * 0.84f)
-			 withFont:[UIFont boldSystemFontOfSize:side * 0.72f]
+			 withFont:TGFontBoldAtSize(side * 0.72f)
 		lineBreakMode:NSLineBreakByClipping
 		   alignment:NSTextAlignmentCenter];
 #pragma clang diagnostic pop
@@ -110,7 +111,7 @@ static NSString *TGGiftStamp(NSNumber *unix) {
 
 	// Heights first: the card is as tall as its contents, the way the
 	// official sheet grows for a gift that carries a note.
-	UIFont *messageFont = [UIFont systemFontOfSize:15];
+	UIFont *messageFont = TGFontBody();
 	CGFloat artSide = floorf(MIN(150, inner * 0.55f));
 	CGFloat messageH = message.length
 			? TGGiftTextHeight(message, messageFont, inner - 24) + 20 : 0;
@@ -133,7 +134,7 @@ static NSString *TGGiftStamp(NSNumber *unix) {
 	[close setTitle:@"✕" forState:UIControlStateNormal];
 	[close setTitleColor:[theme secondaryTextColour] forState:UIControlStateNormal];
 	[close setTitleColor:[theme placeholderColour] forState:UIControlStateHighlighted];
-	close.titleLabel.font = [UIFont systemFontOfSize:15];
+	close.titleLabel.font = TGFontBody();
 	[close addTarget:self action:@selector(dismiss)
 		  forControlEvents:UIControlEventTouchUpInside];
 	[_card addSubview:close];
@@ -174,7 +175,7 @@ static NSString *TGGiftStamp(NSNumber *unix) {
 	UILabel *titleLabel = [[UILabel alloc] initWithFrame:CGRectMake(
 			kSide, titleY, inner, 24)];
 	titleLabel.text = @"Gift";
-	titleLabel.font = [UIFont boldSystemFontOfSize:20];
+	titleLabel.font = TGFontTitle();
 	titleLabel.textColor = [theme primaryTextColour];
 	titleLabel.textAlignment = NSTextAlignmentCenter;
 	titleLabel.backgroundColor = [UIColor clearColor];
@@ -209,7 +210,7 @@ static NSString *TGGiftStamp(NSNumber *unix) {
 	ok.layer.cornerRadius = 12;
 	ok.layer.masksToBounds = YES;
 	[ok setTitle:@"OK" forState:UIControlStateNormal];
-	ok.titleLabel.font = [UIFont boldSystemFontOfSize:17];
+	ok.titleLabel.font = TGFontHeader();
 	[ok setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
 	[ok addTarget:self action:@selector(dismiss)
 		  forControlEvents:UIControlEventTouchUpInside];
@@ -233,7 +234,7 @@ static NSString *TGGiftStamp(NSNumber *unix) {
 		UILabel *name = [[UILabel alloc] initWithFrame:CGRectMake(
 				kSide, y, 100, kRow)];
 		name.text = labels[i];
-		name.font = [UIFont systemFontOfSize:15];
+		name.font = TGFontBody();
 		name.textColor = [theme secondaryTextColour];
 		name.backgroundColor = [UIColor clearColor];
 		[_card addSubview:name];
@@ -253,7 +254,7 @@ static NSString *TGGiftStamp(NSNumber *unix) {
 						   bold:NO
 						 colour:[theme primaryTextColour]];
 		} else if (i == 2){
-			UIFont *font = [UIFont boldSystemFontOfSize:15];
+			UIFont *font = TGFontBodyStrong();
 			NSString *count = [NSString stringWithFormat:@"%ld", (long)stars];
 			CGFloat countW = ceilf(TGGiftTextSize(count, font).width);
 			[self addRightLabel:count
@@ -265,8 +266,7 @@ static NSString *TGGiftStamp(NSNumber *unix) {
 					right - countW - 4 - kStar, y + (kRow - kStar) / 2,
 					kStar, kStar)];
 			star.image = [TGIcons glyphNamed:@"star"
-									  colour:[UIColor colorWithRed:1.0f green:0.70f
-															  blue:0.13f alpha:1.0f]
+									  colour:[[TGTheme shared] giftStarColour]
 										side:kStar];
 			[_card addSubview:star];
 		} else {
@@ -279,8 +279,8 @@ static NSString *TGGiftStamp(NSNumber *unix) {
 						at:(CGPoint)rightCentre
 					  bold:(BOOL)bold
 					colour:(UIColor *)colour {
-	UIFont *font = bold ? [UIFont boldSystemFontOfSize:15]
-						: [UIFont systemFontOfSize:15];
+	UIFont *font = bold ? TGFontBodyStrong()
+						: TGFontBody();
 	CGFloat w = ceilf(TGGiftTextSize(text, font).width) + 1;
 	UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(
 			rightCentre.x - w, rightCentre.y - 10, w, 20)];
@@ -301,7 +301,7 @@ static NSString *TGGiftStamp(NSNumber *unix) {
 	if (!name.length)
 		name = @"Unknown";
 
-	UIFont *font = [UIFont boldSystemFontOfSize:15];
+	UIFont *font = TGFontBodyStrong();
 	CGFloat available = right - kSide - 100 - kAvatar - 6;
 	CGFloat nameW = MIN(ceilf(TGGiftTextSize(name, font).width) + 1, available);
 	UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(

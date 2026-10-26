@@ -188,12 +188,14 @@ APP_SRC_M := \
 	src/Core/TGCapabilities.m \
 	src/Core/TGTheme.m \
 	src/Core/TGTheme+Palette.m \
+	src/Core/TGStyle.m \
 	src/Core/TGThemeFile.m \
 	src/Views/TGIcons.m \
 	src/Views/TGIcons+Menu.m \
 	src/Views/TGIcons+Avatars.m \
 	src/Views/TGPopupMenu.m \
 	src/Views/TGSheet.m \
+	src/Views/TGAlertSheet.m \
 	src/Views/TGGiftViewer.m \
 	src/Views/TGSnackbar.m \
 	src/Controllers/TGSearchViewController.m \

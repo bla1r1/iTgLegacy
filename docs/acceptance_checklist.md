@@ -7,7 +7,13 @@ what appears in the log. Complements `ROADMAP.md`: the roadmap records what
 was attempted; this file records what counts as finished.
 
 Process rules live in [CONTRIBUTING.md](../CONTRIBUTING.md). The open bug
-queue lives in [bug_registry.md](bug_registry.md).
+queue lives in [bug_registry.md](bug_registry.md). What the app cannot do yet,
+and in what order it is worth fixing, lives in
+[feature_backlog.md](feature_backlog.md).
+
+One zone has no checklist row because a script checks it instead: every point
+size and colour in a screen comes from `src/Core/TGStyle.h` or the palette, and
+`scripts/lint_tokens.sh` fails the suite otherwise.
 
 ---
 

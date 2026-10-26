@@ -1,4 +1,5 @@
 #import "TGSettingsViewControllerInternal.h"
+#import "TGAlertSheet.h"
 
 @implementation TGSettingsViewController (Actions)
 
@@ -23,14 +24,13 @@
 		[self toast:@"Multiple accounts are not wired up yet on this build."];
 		return;
 	}
-	UIAlertView *alert = [[UIAlertView alloc] initWithTitle:@"Add Account"
-			message:[NSString stringWithFormat:
+	[TGAlertSheet showMessage:[NSString stringWithFormat:
 					@"A second account needs a second TDLib client and a second "
 					@"copy of the cache. This is a %@ device with %lu MB, and "
 					@"that needs the Full tier - 2 GB or more.",
-					[TGDevice tierName] ?: @"Legacy", (unsigned long)[TGCapabilities memoryMB]]
-		   delegate:nil cancelButtonTitle:@"OK" otherButtonTitles:nil];
-	[alert show];
+					[TGDevice tierName] ?: @"Legacy",
+					(unsigned long)[TGCapabilities memoryMB]]
+						title:@"Add Account" inView:self.view];
 }
 
 - (void)pickProfilePhoto {
@@ -60,10 +60,8 @@
 - (void)openSavedMessages {
 	int64_t chatId = [[TGClient shared] savedMessagesChatId];
 	if (!chatId){
-		UIAlertView *alert = [[UIAlertView alloc] initWithTitle:@"Saved Messages"
-				message:@"This account is still loading."
-			   delegate:nil cancelButtonTitle:@"OK" otherButtonTitles:nil];
-		[alert show];
+		[TGAlertSheet showMessage:@"This account is still loading."
+							title:@"Saved Messages" inView:self.view];
 		return;
 	}
 	[self openChat:chatId title:@"Saved Messages"];
@@ -89,25 +87,23 @@
 					@"above the chat list.", (unsigned long)folders.count]
 			: @"This account has no chat folders. They are set up in Telegram "
 			  @"on a desktop or a newer phone, and appear here.";
-	UIAlertView *alert = [[UIAlertView alloc] initWithTitle:@"Folders"
-			message:message delegate:nil cancelButtonTitle:@"OK" otherButtonTitles:nil];
-	[alert show];
+	[TGAlertSheet showMessage:message title:@"Folders" inView:self.view];
 }
 
 - (void)showPremiumState {
+	__weak typeof(self) weakSelf = self;
 	[[TGClient shared] premiumStateWithCompletion:^(NSString *summary){
-		UIAlertView *alert = [[UIAlertView alloc] initWithTitle:@"Telegram Premium"
-				message:summary.length ? summary
+		[TGAlertSheet showMessage:(summary.length ? summary
 						: @"This account does not have Premium. It is bought in "
-						  @"an official client; what it unlocks works here."
-			   delegate:nil cancelButtonTitle:@"OK" otherButtonTitles:nil];
-		[alert show];
+						  @"an official client; what it unlocks works here.")
+							title:@"Telegram Premium" inView:weakSelf.view];
 	}];
 }
 
 /// Setting a password is a multi-step flow with a recovery address; this screen
 /// reports the state and says where to change it rather than pretending to.
 - (void)showTwoStepState {
+	__weak typeof(self) weakSelf = self;
 	[[TGClient shared] hasPasswordWithCompletion:^(BOOL has, NSString *email){
 		NSString *message = has
 				? [NSString stringWithFormat:@"Two-step verification is on.%@",
@@ -116,9 +112,8 @@
 				: @"Two-step verification is off. It is set up in an official "
 				  @"client; once it is on, this app asks for the password when "
 				  @"signing in.";
-		UIAlertView *alert = [[UIAlertView alloc] initWithTitle:@"Two-Step Verification"
-				message:message delegate:nil cancelButtonTitle:@"OK" otherButtonTitles:nil];
-		[alert show];
+		[TGAlertSheet showMessage:message title:@"Two-Step Verification"
+						   inView:weakSelf.view];
 	}];
 }
 
@@ -128,10 +123,9 @@
 	[[TGClient shared] chatWithUsername:@"BotSupport"
 							 completion:^(int64_t chatId, NSString *title){
 		if (!chatId){
-			UIAlertView *alert = [[UIAlertView alloc] initWithTitle:@"Support"
-					message:@"Support is not reachable from this account right now."
-				   delegate:nil cancelButtonTitle:@"OK" otherButtonTitles:nil];
-			[alert show];
+			[TGAlertSheet showMessage:@"Support is not reachable from this "
+									  @"account right now."
+								title:@"Support" inView:weakSelf.view];
 			return;
 		}
 		[weakSelf openChat:chatId title:(title ?: @"Telegram Support")];
@@ -139,57 +133,72 @@
 }
 
 - (void)askPrivacyRuleAtIndex:(NSUInteger)index {
-	UIActionSheet *sheet = [[UIActionSheet alloc]
-			initWithTitle:[TGSettingsViewController privacyTitles][index]
-				 delegate:self
-		cancelButtonTitle:nil
-   destructiveButtonTitle:nil
-		otherButtonTitles:@"Everybody", @"My Contacts", @"Nobody", nil];
-	sheet.cancelButtonIndex = [sheet addButtonWithTitle:@"Cancel"];
-	sheet.tag = 91 + index;
-	[sheet showInView:self.view];
+	NSString *setting = [TGSettingsViewController privacySettings][index];
+	__weak typeof(self) weakSelf = self;
+	[TGAlertSheet showChoices:@[@"Everybody", @"My Contacts", @"Nobody"]
+						title:[TGSettingsViewController privacyTitles][index]
+			 destructiveIndex:-1
+					   inView:self.view
+					 onChoice:^(NSInteger choice){
+		NSString *value = @[@"everybody", @"contacts", @"nobody"][choice];
+		[[TGClient shared] setPrivacyRule:setting to:value];
+		weakSelf.privacy[setting] = value;
+		[weakSelf rebuild];
+	}];
 }
 
 - (void)chooseAutoNight {
-	UIActionSheet *sheet = [[UIActionSheet alloc] initWithTitle:@"Auto-Night Mode"
-													  delegate:self
-											 cancelButtonTitle:nil
-										destructiveButtonTitle:nil
-											 otherButtonTitles:@"Disabled",
-														   @"22:00 - 07:00",
-														   @"21:00 - 08:00",
-														   @"23:00 - 06:00", nil];
-	sheet.cancelButtonIndex = [sheet addButtonWithTitle:@"Cancel"];
-	sheet.tag = 87;
-	[sheet showInView:self.view];
+	__weak typeof(self) weakSelf = self;
+	[TGAlertSheet showChoices:@[@"Disabled", @"22:00 - 07:00",
+								@"21:00 - 08:00", @"23:00 - 06:00"]
+						title:@"Auto-Night Mode"
+			 destructiveIndex:-1
+					   inView:self.view
+					 onChoice:^(NSInteger index){
+		TGTheme *theme = [TGTheme shared];
+		if (index == 0){
+			theme.autoNight = TGAutoNightOff;
+		} else {
+			static const NSInteger from[3] = {22, 21, 23};
+			static const NSInteger to[3]   = { 7,  8,  6};
+			theme.autoNightFromHour = from[index - 1];
+			theme.autoNightToHour   = to[index - 1];
+			theme.autoNight = TGAutoNightScheduled;
+		}
+		[weakSelf rebuild];
+	}];
 }
 
 /// Four sizes is enough on a 3.5-inch screen; a slider would be finer than
 /// the difference it makes.
 - (void)chooseTextSize {
-	UIActionSheet *sheet = [[UIActionSheet alloc] initWithTitle:@"Message text size"
-													  delegate:self
-											 cancelButtonTitle:nil
-										destructiveButtonTitle:nil
-											 otherButtonTitles:@"13 pt", @"15 pt",
-														   @"17 pt", @"19 pt", nil];
-	sheet.cancelButtonIndex = [sheet addButtonWithTitle:@"Cancel"];
-	sheet.tag = 88;
-	[sheet showInView:self.view];
+	__weak typeof(self) weakSelf = self;
+	[TGAlertSheet showChoices:@[@"13 pt", @"15 pt", @"17 pt", @"19 pt"]
+						title:@"Message text size"
+			 destructiveIndex:-1
+					   inView:self.view
+					 onChoice:^(NSInteger index){
+		[TGTheme shared].messageFontSize = 13.0f + index * 2.0f;
+		[weakSelf rebuild];
+	}];
 }
 
 #pragma mark - wallpaper
 
 - (void)chooseWallpaper {
 	if ([TGTheme shared].wallpaper){
-		UIActionSheet *sheet = [[UIActionSheet alloc] initWithTitle:@"Chat wallpaper"
-														  delegate:self
-												 cancelButtonTitle:nil
-											destructiveButtonTitle:@"Remove"
-												 otherButtonTitles:@"Choose another", nil];
-		sheet.cancelButtonIndex = [sheet addButtonWithTitle:@"Cancel"];
-		sheet.tag = 89;
-		[sheet showInView:self.view];
+		__weak typeof(self) weakSelf = self;
+		[TGAlertSheet showChoices:@[@"Remove", @"Choose another"]
+							title:@"Chat wallpaper"
+				 destructiveIndex:0
+						   inView:self.view
+						 onChoice:^(NSInteger index){
+			if (index == 0)
+				[[TGTheme shared] setWallpaperImage:nil];
+			else
+				[weakSelf presentWallpaperPicker];
+			[weakSelf rebuild];
+		}];
 		return;
 	}
 	[self presentWallpaperPicker];
@@ -253,96 +262,6 @@
 - (void)imagePickerControllerDidCancel:(UIImagePickerController *)picker {
 	self.pickingProfilePhoto = NO;
 	[picker dismissViewControllerAnimated:YES completion:nil];
-}
-
-#pragma mark - sheets and alerts
-
-- (void)actionSheet:(UIActionSheet *)sheet clickedButtonAtIndex:(NSInteger)index {
-	if (index == sheet.cancelButtonIndex)
-		return;
-
-	if (sheet.tag == 87){
-		TGTheme *theme = [TGTheme shared];
-		if (index == 0){
-			theme.autoNight = TGAutoNightOff;
-		} else {
-			static const NSInteger from[3] = {22, 21, 23};
-			static const NSInteger to[3]   = { 7,  8,  6};
-			theme.autoNightFromHour = from[index - 1];
-			theme.autoNightToHour   = to[index - 1];
-			theme.autoNight = TGAutoNightScheduled;
-		}
-		[self rebuild];
-		return;
-	}
-
-	if (sheet.tag == 88){
-		[TGTheme shared].messageFontSize = 13.0f + index * 2.0f;
-		[self rebuild];
-		return;
-	}
-
-	if (sheet.tag == 89){
-		if (index == sheet.destructiveButtonIndex)
-			[[TGTheme shared] setWallpaperImage:nil];
-		else
-			[self presentWallpaperPicker];
-		[self rebuild];
-		return;
-	}
-
-	if (sheet.tag == 90){
-		static const NSInteger months[4] = {1, 3, 6, 12};
-		[[TGClient shared] setAccountTtlDays:months[index] * 30];
-		self.accountTtl = months[index] * 30;
-		[self rebuild];
-		return;
-	}
-
-	if (sheet.tag >= 91){
-		NSInteger row = sheet.tag - 91;
-		NSString *setting = [TGSettingsViewController privacySettings][row];
-		NSString *value = @[@"everybody", @"contacts", @"nobody"][index];
-		[[TGClient shared] setPrivacyRule:setting to:value];
-		self.privacy[setting] = value;
-		[self rebuild];
-	}
-}
-
-- (void)alertView:(UIAlertView *)alert clickedButtonAtIndex:(NSInteger)index {
-	if (index == alert.cancelButtonIndex)
-		return;
-
-	switch (alert.tag){
-		case 61:
-			[[TGClient shared] resetAllNotificationSettings];
-			[self loadForPage];
-			break;
-		case 62:
-			[[TGClient shared] clearImportedContacts];
-			break;
-		case 63:
-			[[TGClient shared] resetNetworkStats];
-			self.networkSent = 0;
-			self.networkReceived = 0;
-			[self rebuild];
-			break;
-		case 64:
-			[[TGClient shared] clearLocalDatabase];
-			break;
-		case 65: {
-			NSString *domain = [NSBundle mainBundle].bundleIdentifier;
-			[NSUserDefaults.standardUserDefaults removePersistentDomainForName:domain];
-			[NSUserDefaults.standardUserDefaults synchronize];
-			[self repaint];
-			[self toast:@"Preferences reset."];
-			break;
-		}
-		default:
-			if ([alert.title isEqualToString:@"Log out"])
-				[[TGClient shared] logOut];
-			break;
-	}
 }
 
 @end

@@ -1,6 +1,8 @@
 #import "TGChatViewControllerInternal.h"
 #import "TGForwardPicker.h"
 #import "TGPopupMenu.h"
+#import "TGStyle.h"
+#import "TGAlertSheet.h"
 
 /// What the reply strip shows on its second line. The rows here are already
 /// flattened, so TGMessagePreview - which reads a raw TDLib content - cannot
@@ -63,15 +65,33 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 	self.actionMessage = m;
 
 	BOOL mine = [m[@"outgoing"] boolValue];
-	NSMutableArray *items = [NSMutableArray arrayWithObjects:
+	int64_t heldId = [m[@"id"] longLongValue];
+	NSString *myReaction = m[@"myReaction"];
+
+	NSMutableArray *items = [NSMutableArray array];
+	// A message that failed has one thing worth doing to it, and it goes first.
+	if ([m[@"failed"] boolValue])
+		[items addObject:@{@"title" : @"Retry", @"icon" : @"reply"}];
+	[items addObjectsFromArray:@[
 			@{@"title" : @"Reply",   @"icon" : @"reply"},
 			@{@"title" : @"Forward", @"icon" : @"forward"},
-			@{@"title" : @"React",   @"icon" : @"react"},
-			@{@"title" : @"Select",  @"icon" : @"select"}, nil];
+	]];
+	// One reaction at a time is what TDLib allows here, so the menu either
+	// offers to put one on or to take yours off - never both.
+	if (myReaction.length)
+		[items addObject:@{@"title" : [NSString stringWithFormat:
+				@"Remove %@", myReaction], @"icon" : @"react"}];
+	else
+		[items addObject:@{@"title" : @"React", @"icon" : @"react"}];
+	[items addObject:@{@"title" : @"Select", @"icon" : @"select"}];
 	if ([m[@"text"] length])
 		[items addObject:@{@"title" : @"Copy", @"icon" : @"copy"}];
 	if (mine && [m[@"text"] length])
 		[items addObject:@{@"title" : @"Edit", @"icon" : @"edit"}];
+	if (![m[@"service"] boolValue])
+		[items addObject:@{@"title" : (heldId == self.pinnedMessageId ? @"Unpin" : @"Pin"),
+						   @"icon" : @"pin"}];
+	[items addObject:@{@"title" : @"Copy Link", @"icon" : @"copy"}];
 	// A sticker you are holding is a sticker you may want to keep.
 	if ([m[@"kind"] isEqualToString:@"messageSticker"] && TGStickerFileId(m) > 0)
 		[items addObject:@{@"title" : @"Add to Favourites", @"icon" : @"pin"}];
@@ -122,8 +142,40 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 		[self enterEditMode];
 		[self toggleMessageSelection:messageId];
 
+	} else if ([action isEqualToString:@"Retry"]){
+		[[TGClient shared] resendMessages:@[@(messageId)] inChat:self.chatId];
+
+	} else if ([action hasPrefix:@"Remove "]){
+		[[TGClient shared] removeReaction:m[@"myReaction"]
+							  fromMessage:messageId
+								   inChat:self.chatId];
+		[self reload];
+
 	} else if ([action hasPrefix:@"React"]){
-		[[TGClient shared] reactTo:messageId inChat:self.chatId emoji:@"\U0001F44D"];
+		[self askReactionForMessage:messageId];
+
+	} else if ([action isEqualToString:@"Pin"]){
+		[[TGClient shared] pinMessage:messageId inChat:self.chatId notify:NO];
+		[self performSelector:@selector(loadPinnedMessage) withObject:nil afterDelay:0.6];
+
+	} else if ([action isEqualToString:@"Unpin"]){
+		[[TGClient shared] unpinMessage:messageId inChat:self.chatId];
+		self.pinnedMessageId = 0;
+		[self hidePinnedBanner];
+
+	} else if ([action isEqualToString:@"Copy Link"]){
+		__weak typeof(self) weakSelf = self;
+		[[TGClient shared] linkToMessage:messageId inChat:self.chatId
+							  completion:^(NSString *link){
+			TGChatViewController *me = weakSelf;
+			if (!link.length){
+				[TGSnackbar showInView:me.view text:@"This chat has no public link"
+							   seconds:2 onCommit:nil];
+				return;
+			}
+			[UIPasteboard generalPasteboard].string = link;
+			[TGSnackbar showInView:me.view text:@"Link copied" seconds:2 onCommit:nil];
+		}];
 
 	} else if ([action isEqualToString:@"Copy"]){
 		[UIPasteboard generalPasteboard].string = m[@"text"];
@@ -144,6 +196,23 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 		[self promptDeleteMessages:@[@(messageId)]];
 	}
 	self.actionMessage = nil;
+}
+
+/// Their six, in their order. One reaction at a time is all this screen
+/// offers; picking a second replaces the first on Telegram's side.
+- (void)askReactionForMessage:(int64_t)messageId {
+	NSArray *emoji = @[@"\U0001F44D", @"\U0001F44E", @"\U00002764",
+					   @"\U0001F525", @"\U0001F389", @"\U0001F62D"];
+	__weak typeof(self) weakSelf = self;
+	[TGAlertSheet showChoices:emoji
+						title:@"React"
+			 destructiveIndex:-1
+					   inView:self.view
+					 onChoice:^(NSInteger index){
+		TGChatViewController *me = weakSelf;
+		[[TGClient shared] reactTo:messageId inChat:me.chatId emoji:emoji[index]];
+		[me reload];
+	}];
 }
 
 #pragma mark - attachments
@@ -329,10 +398,8 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 
 - (void)image:(UIImage *)image didFinishSavingWithError:(NSError *)error
   contextInfo:(void *)contextInfo {
-	UIAlertView *alert = [[UIAlertView alloc] initWithTitle:@""
-			message:(error ? @"Could not save" : @"Saved to Camera Roll")
-		   delegate:nil cancelButtonTitle:@"OK" otherButtonTitles:nil];
-	[alert show];
+	[TGAlertSheet showMessage:(error ? @"Could not save" : @"Saved to Camera Roll")
+						title:nil inView:self.view];
 }
 
 /// Simple full-screen viewer: black backdrop, tap anywhere to dismiss.
@@ -371,7 +438,7 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 	UILabel *hint = [[UILabel alloc] initWithFrame:
 			CGRectMake(0, backdrop.bounds.size.height - 34, backdrop.bounds.size.width, 20)];
 	hint.text = @"Hold to save";
-	hint.font = [UIFont systemFontOfSize:12];
+	hint.font = TGFontMeta();
 	hint.textAlignment = NSTextAlignmentCenter;
 	hint.textColor = [UIColor colorWithWhite:1 alpha:0.6f];
 	hint.backgroundColor = [UIColor clearColor];

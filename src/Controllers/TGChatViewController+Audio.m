@@ -2,6 +2,7 @@
 #import "TGVoiceRecorder.h"
 #import "TGVoiceDecoder.h"
 #import "TGMusicPlayer.h"
+#import "TGStyle.h"
 
 static CGPoint sTouchStart;
 static CGFloat sDragDeltaX;
@@ -17,6 +18,7 @@ static BOOL sIsCancelled;
 /// Send takes the microphone's place once there is something to send, and
 /// the two cross over with a quick scale rather than blinking.
 - (void)inputChanged {
+	[self reportTyping];
 	BOOL hasText = self.input.text.length > 0;
 	UIButton *coming = hasText ? self.sendButton : self.micButton;
 	UIButton *going = hasText ? self.micButton : self.sendButton;
@@ -74,7 +76,7 @@ static BOOL sIsCancelled;
 
 		self.recordClock = [[UILabel alloc] initWithFrame:
 				CGRectMake(32, (kInputHeight - 20) / 2, 62, 20)];
-		self.recordClock.font = [UIFont systemFontOfSize:16];
+		self.recordClock.font = TGFontRow();
 		self.recordClock.textColor = [theme primaryTextColour];
 		self.recordClock.backgroundColor = [UIColor clearColor];
 		[self.recordPanel addSubview:self.recordClock];
@@ -82,7 +84,7 @@ static BOOL sIsCancelled;
 		self.recordCancelSlideLabel = [[UILabel alloc] initWithFrame:
 				CGRectMake(100, (kInputHeight - 20) / 2, bar.size.width - 180, 20)];
 		self.recordCancelSlideLabel.text = @"‹ Slide to cancel";
-		self.recordCancelSlideLabel.font = [UIFont systemFontOfSize:15];
+		self.recordCancelSlideLabel.font = TGFontBody();
 		self.recordCancelSlideLabel.textColor = [theme secondaryTextColour];
 		self.recordCancelSlideLabel.backgroundColor = [UIColor clearColor];
 		self.recordCancelSlideLabel.autoresizingMask = UIViewAutoresizingFlexibleWidth;
@@ -93,7 +95,7 @@ static BOOL sIsCancelled;
 		self.recordCancelButton.frame = CGRectMake((bar.size.width - 100) / 2, (kInputHeight - 32) / 2, 100, 32);
 		[self.recordCancelButton setTitle:@"Cancel" forState:UIControlStateNormal];
 		[self.recordCancelButton setTitleColor:[theme accentColour] forState:UIControlStateNormal];
-		self.recordCancelButton.titleLabel.font = [UIFont systemFontOfSize:16];
+		self.recordCancelButton.titleLabel.font = TGFontRow();
 		[self.recordCancelButton addTarget:self action:@selector(recordCancel) forControlEvents:UIControlEventTouchUpInside];
 		self.recordCancelButton.hidden = YES;
 		[self.recordPanel addSubview:self.recordCancelButton];
@@ -158,7 +160,7 @@ static BOOL sIsCancelled;
 		CGFloat pillX = bar.origin.x + bar.size.width - pillW - 12.0f;
 		CGFloat pillY = bar.origin.y - pillH - 10.0f;
 		UIView *pill = [[UIView alloc] initWithFrame:CGRectMake(pillX, pillY, pillW, pillH)];
-		pill.backgroundColor = [UIColor colorWithRed:0.12f green:0.14f blue:0.18f alpha:0.92f];
+		pill.backgroundColor = [[TGTheme shared] recordLockColour];
 		pill.layer.cornerRadius = pillW / 2.0f; // Rounded rice grain capsule
 		pill.clipsToBounds = YES;
 
@@ -171,7 +173,7 @@ static BOOL sIsCancelled;
 
 		UILabel *arrow = [[UILabel alloc] initWithFrame:CGRectMake(0, 34, pillW, 18)];
 		arrow.text = @"▲";
-		arrow.font = [UIFont boldSystemFontOfSize:11];
+		arrow.font = TGFontMicroStrong();
 		arrow.textColor = [UIColor colorWithWhite:0.75f alpha:1.0f];
 		arrow.textAlignment = NSTextAlignmentCenter;
 		arrow.backgroundColor = [UIColor clearColor];
@@ -359,6 +361,13 @@ static BOOL sIsCancelled;
 - (void)playVideoNoteAtPath:(NSString *)path row:(NSInteger)row {
 	[self stopVideoNote];
 
+	if (row >= 0 && row < (NSInteger)self.messages.count){
+		NSDictionary *played = self.messages[row];
+		if (![played[@"outgoing"] boolValue])
+			[[TGClient shared] openContentOfMessage:[played[@"id"] longLongValue]
+											 inChat:self.chatId];
+	}
+
 	CGFloat side = 178.0f;
 	CGRect inTable = [self.table rectForRowAtIndexPath:
 			[NSIndexPath indexPathForRow:row inSection:0]];
@@ -467,7 +476,7 @@ static BOOL sIsCancelled;
 
 		self.playerLabel = [[UILabel alloc] initWithFrame:
 				CGRectMake(40, 8, b.size.width - 128, 20)];
-		self.playerLabel.font = [UIFont systemFontOfSize:14];
+		self.playerLabel.font = TGFontSubhead();
 		self.playerLabel.backgroundColor = [UIColor clearColor];
 		self.playerLabel.autoresizingMask = UIViewAutoresizingFlexibleWidth;
 		[self.playerBar addSubview:self.playerLabel];
@@ -475,7 +484,7 @@ static BOOL sIsCancelled;
 		UIButton *close = [UIButton buttonWithType:UIButtonTypeCustom];
 		close.frame = CGRectMake(b.size.width - 38, 4, 34, 28);
 		[close setTitle:@"×" forState:UIControlStateNormal];
-		close.titleLabel.font = [UIFont systemFontOfSize:24];
+		close.titleLabel.font = TGFontGlyph();
 		close.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
 		[close addTarget:self action:@selector(stopPlayback)
 		forControlEvents:UIControlEventTouchUpInside];
@@ -485,7 +494,7 @@ static BOOL sIsCancelled;
 
 		self.playerSpeed = [UIButton buttonWithType:UIButtonTypeCustom];
 		self.playerSpeed.frame = CGRectMake(b.size.width - 82, 4, 42, 28);
-		self.playerSpeed.titleLabel.font = [UIFont systemFontOfSize:13];
+		self.playerSpeed.titleLabel.font = TGFontCaption();
 		self.playerSpeed.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
 		[self.playerSpeed setTitle:@"1x" forState:UIControlStateNormal];
 		[self.playerSpeed setTitleColor:[[TGTheme shared] accentColour]
@@ -599,7 +608,7 @@ static BOOL sIsCancelled;
 
 		self.musicPrevious = [UIButton buttonWithType:UIButtonTypeCustom];
 		self.musicPrevious.frame = CGRectMake(width - 120, 4, 28, 28);
-		self.musicPrevious.titleLabel.font = [UIFont systemFontOfSize:18];
+		self.musicPrevious.titleLabel.font = TGFontGlyphSmall();
 		[self.musicPrevious setTitle:@"◀" forState:UIControlStateNormal];
 		self.musicPrevious.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
 		[self.musicPrevious addTarget:self action:@selector(musicPreviousTapped)
@@ -608,7 +617,7 @@ static BOOL sIsCancelled;
 
 		self.musicNext = [UIButton buttonWithType:UIButtonTypeCustom];
 		self.musicNext.frame = CGRectMake(width - 92, 4, 28, 28);
-		self.musicNext.titleLabel.font = [UIFont systemFontOfSize:18];
+		self.musicNext.titleLabel.font = TGFontGlyphSmall();
 		[self.musicNext setTitle:@"▶" forState:UIControlStateNormal];
 		self.musicNext.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
 		[self.musicNext addTarget:self action:@selector(musicNextTapped)
@@ -795,6 +804,12 @@ static BOOL sIsCancelled;
 	NSNumber *docId = m[@"docId"];
 	if (![docId isKindOfClass:NSNumber.class])
 		return;
+
+	// Telling Telegram it was played is what turns the sender's dot blue, and
+	// nothing else does it - reading the chat does not count as listening.
+	if (![m[@"outgoing"] boolValue])
+		[[TGClient shared] openContentOfMessage:[m[@"id"] longLongValue]
+										 inChat:self.chatId];
 
 	// Tapping the one already playing is how you stop it; without this the
 	// only way out was to leave the chat.

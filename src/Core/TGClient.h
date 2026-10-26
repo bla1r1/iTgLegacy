@@ -202,6 +202,11 @@ typedef NS_ENUM(NSInteger, TGDownloadPriority) {
 /// Mute forever, or unmute.
 - (void)setChat:(int64_t)chatId muted:(BOOL)muted;
 
+/// Pin a message to the top of the chat, or take it down again. `notify`
+/// posts the "pinned a message" service message the way their clients do.
+- (void)pinMessage:(int64_t)messageId inChat:(int64_t)chatId notify:(BOOL)notify;
+- (void)unpinMessage:(int64_t)messageId inChat:(int64_t)chatId;
+
 /// Everything a profile shows that the plain user record does not carry:
 /// "bio", "commonGroups" (NSNumber), "birthday" (NSString, empty when unset),
 /// "canCall" and "canVideoCall" (NSNumber BOOL).
@@ -302,6 +307,24 @@ typedef NS_ENUM(NSInteger, TGDownloadPriority) {
 /// Move a chat into the archive, or back out of it.
 - (void)setChat:(int64_t)chatId archived:(BOOL)archived;
 
+/// The unsent message in the composer, kept on Telegram's side so it is
+/// there on the next launch and on every other device. Empty text clears it.
+- (void)setDraft:(NSString *)text
+		  inChat:(int64_t)chatId
+		  thread:(int64_t)threadId
+		 replyTo:(int64_t)replyToId;
+
+/// What was last typed into this chat and not sent, by any client of this
+/// account. Empty when there is none.
+- (NSString *)draftForChat:(int64_t)chatId;
+
+/// The blue dot you put there yourself; it survives until the chat is opened.
+- (void)setChat:(int64_t)chatId markedUnread:(BOOL)unread;
+
+/// Clears the @ and the reaction badge. Reading the messages does not: those
+/// two counts are kept apart from unread.
+- (void)readAllMentionsAndReactionsInChat:(int64_t)chatId;
+
 /// Informs TDLib that chat is opened or closed, freeing background resources.
 - (void)openChat:(int64_t)chatId;
 - (void)closeChat:(int64_t)chatId;
@@ -379,6 +402,34 @@ typedef NS_ENUM(NSInteger, TGDownloadPriority) {
 /// React to a message with an emoji, as the current user.
 - (void)reactTo:(int64_t)messageId inChat:(int64_t)chatId emoji:(NSString *)emoji;
 
+/// Takes your own reaction back off. Nothing happens if it was not there.
+- (void)removeReaction:(NSString *)emoji
+		   fromMessage:(int64_t)messageId
+				inChat:(int64_t)chatId;
+
+/// "typing...", as the other side sees it. Repeat it while typing goes on;
+/// it expires a few seconds after the last one. Cancel sends the stop.
+- (void)sendTypingToChat:(int64_t)chatId thread:(int64_t)threadId;
+- (void)cancelTypingInChat:(int64_t)chatId thread:(int64_t)threadId;
+
+/// Marks a voice note, a video note or a one-time picture as opened, so the
+/// sender's ticks say it was played.
+- (void)openContentOfMessage:(int64_t)messageId inChat:(int64_t)chatId;
+
+/// Sends failed messages again, by the ids they kept while failing.
+- (void)resendMessages:(NSArray *)messageIds inChat:(int64_t)chatId;
+
+/// The message a reply points at, fetched from the server - the history on
+/// screen may not reach back far enough to hold it. nil when it is gone.
+- (void)repliedMessageTo:(int64_t)messageId
+				  inChat:(int64_t)chatId
+			  completion:(void (^)(NSDictionary *message))completion;
+
+/// A t.me link to one message, or nil for a chat that has no public link.
+- (void)linkToMessage:(int64_t)messageId
+			   inChat:(int64_t)chatId
+		   completion:(void (^)(NSString *link))completion;
+
 - (void)deleteMessage:(int64_t)messageId inChat:(int64_t)chatId;
 - (void)deleteMessages:(NSArray *)messageIds inChat:(int64_t)chatId;
 - (void)deleteMessages:(NSArray *)messageIds inChat:(int64_t)chatId revoke:(BOOL)revoke;
@@ -404,6 +455,14 @@ typedef NS_ENUM(NSInteger, TGDownloadPriority) {
 /// Resolve an address-book phone number to a Telegram user, or nil.
 /// Same dictionary shape as -contactsWithCompletion:.
 - (void)userForPhone:(NSString *)phone completion:(void (^)(NSDictionary *user))completion;
+
+/// Adds someone to your Telegram contacts. The phone number is what the
+/// server matches on.
+- (void)addContactWithUserId:(int64_t)userId
+				   firstName:(NSString *)firstName
+					lastName:(NSString *)lastName
+					   phone:(NSString *)phone
+				  completion:(void (^)(BOOL ok))completion;
 
 #pragma mark - storage
 

@@ -2,6 +2,7 @@
 #import "TGTheme.h"
 #import "TGIcons.h"
 #import <QuartzCore/QuartzCore.h>
+#import "TGStyle.h"
 
 // Their menu at 360dp: a 200 wide card of 48 rows, a 24 glyph inset 24 from
 // the left, the label at 16. Scaled to 320pt.
@@ -101,7 +102,7 @@ static TGPopupMenu *sOpenMenu = nil;
 				kMenuInset + kMenuGlyph + 14, 0, kMenuWidth - kMenuInset - kMenuGlyph - 22,
 				kMenuRow)];
 		label.text = item[@"title"];
-		label.font = [UIFont systemFontOfSize:15];
+		label.font = TGFontBody();
 		label.backgroundColor = [UIColor clearColor];
 		label.textColor = destructive
 				? [theme destructiveColour]

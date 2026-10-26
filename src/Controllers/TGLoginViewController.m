@@ -1,4 +1,5 @@
 #import "TGLoginViewControllerInternal.h"
+#import "TGStyle.h"
 
 @implementation TGLoginViewController
 
@@ -66,7 +67,7 @@
     self.subtitleLabel = [[UILabel alloc] initWithFrame:CGRectMake(20, 14, width - 40, 34)];
     self.subtitleLabel.text = @"Please confirm your country code\nand enter your phone number.";
     self.subtitleLabel.backgroundColor = [UIColor clearColor];
-    self.subtitleLabel.font = [UIFont systemFontOfSize:14];
+    self.subtitleLabel.font = TGFontSubhead();
     self.subtitleLabel.textAlignment = NSTextAlignmentCenter;
     self.subtitleLabel.numberOfLines = 2;
     [self.scrollView addSubview:self.subtitleLabel];
@@ -81,7 +82,7 @@
     // Country code prefix
     self.phonePrefixField = [[UITextField alloc] initWithFrame:CGRectMake(10, 0, 56, 44)];
     self.phonePrefixField.text = @"+380";
-    self.phonePrefixField.font = [UIFont boldSystemFontOfSize:17];
+    self.phonePrefixField.font = TGFontHeader();
     self.phonePrefixField.keyboardType = UIKeyboardTypePhonePad;
     self.phonePrefixField.returnKeyType = UIReturnKeyNext;
     self.phonePrefixField.textAlignment = NSTextAlignmentCenter;
@@ -96,7 +97,7 @@
     // Phone number input field
     self.inputField = [[UITextField alloc] initWithFrame:CGRectMake(78, 0, width - 108, 44)];
     self.inputField.placeholder = @"Phone number";
-    self.inputField.font = [UIFont systemFontOfSize:17];
+    self.inputField.font = TGFontInput();
     self.inputField.keyboardType = UIKeyboardTypePhonePad;
     self.inputField.returnKeyType = UIReturnKeyGo;
     self.inputField.clearButtonMode = UITextFieldViewModeWhileEditing;
@@ -110,7 +111,7 @@
     self.actionButton.layer.cornerRadius = 8.0f;
     self.actionButton.clipsToBounds = YES;
     [self.actionButton setTitle:@"Next" forState:UIControlStateNormal];
-    self.actionButton.titleLabel.font = [UIFont boldSystemFontOfSize:16];
+    self.actionButton.titleLabel.font = TGFontRowStrong();
     [self.actionButton addTarget:self action:@selector(actionButtonTapped) forControlEvents:UIControlEventTouchUpInside];
 
     // Skeuomorphic button gloss layer
@@ -134,14 +135,14 @@
     self.qrCodeButton = [UIButton buttonWithType:UIButtonTypeCustom];
     self.qrCodeButton.frame = CGRectMake(15, 154, width - 30, 30);
     [self.qrCodeButton setTitle:@"Log in with QR Code" forState:UIControlStateNormal];
-    self.qrCodeButton.titleLabel.font = [UIFont systemFontOfSize:15];
+    self.qrCodeButton.titleLabel.font = TGFontBody();
     [self.qrCodeButton addTarget:self action:@selector(qrCodeButtonTapped) forControlEvents:UIControlEventTouchUpInside];
     [self.scrollView addSubview:self.qrCodeButton];
 
     // Theme Switcher Section
     self.themeSectionLabel = [[UILabel alloc] initWithFrame:CGRectMake(20, 190, width - 40, 16)];
     self.themeSectionLabel.text = @"THEME";
-    self.themeSectionLabel.font = [UIFont boldSystemFontOfSize:11];
+    self.themeSectionLabel.font = TGFontMicroStrong();
     self.themeSectionLabel.textAlignment = NSTextAlignmentCenter;
     self.themeSectionLabel.backgroundColor = [UIColor clearColor];
     [self.scrollView addSubview:self.themeSectionLabel];

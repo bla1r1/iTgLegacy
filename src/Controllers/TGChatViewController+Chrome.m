@@ -6,6 +6,7 @@
 #import "TGChatViewControllerInternal.h"
 #import <QuartzCore/QuartzCore.h>
 #import "TGStatusText.h"
+#import "TGStyle.h"
 
 static const CGFloat kJumpSide = 40.0f;
 
@@ -100,7 +101,7 @@ static NSInteger TGDayNumber(NSTimeInterval stamp) {
 	TGTheme *theme = [TGTheme shared];
 
 	self.floatingDate = [[UILabel alloc] init];
-	self.floatingDate.font = [UIFont boldSystemFontOfSize:13];
+	self.floatingDate.font = TGFontCaptionStrong();
 	self.floatingDate.textAlignment = NSTextAlignmentCenter;
 	self.floatingDate.layer.cornerRadius = 11;
 	self.floatingDate.clipsToBounds = YES;
@@ -121,7 +122,7 @@ static NSInteger TGDayNumber(NSTimeInterval stamp) {
 	[self.view addSubview:self.jumpButton];
 
 	self.jumpBadge = [[UILabel alloc] init];
-	self.jumpBadge.font = [UIFont boldSystemFontOfSize:12];
+	self.jumpBadge.font = TGFontMetaStrong();
 	self.jumpBadge.textColor = [UIColor whiteColor];
 	self.jumpBadge.textAlignment = NSTextAlignmentCenter;
 	self.jumpBadge.layer.cornerRadius = 9;

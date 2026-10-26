@@ -1,5 +1,6 @@
 #import "TGPlaceholderViewController.h"
 #import "TGTheme.h"
+#import "TGStyle.h"
 
 @implementation TGPlaceholderViewController
 
@@ -14,7 +15,7 @@
 	label.numberOfLines = 0;
 	label.textAlignment = NSTextAlignmentCenter;
 	label.textColor = [[TGTheme shared] secondaryTextColour];
-	label.font = [UIFont systemFontOfSize:16];
+	label.font = TGFontRow();
 	
 	[self.view addSubview:label];
 }

@@ -2,6 +2,7 @@
 #import "TGTheme.h"
 #import "TGIcons.h"
 #import <QuartzCore/QuartzCore.h>
+#import "TGStyle.h"
 
 // Their snackbar at 360dp: a 48 tall plate inset 8, a 24 countdown ring at 16
 // from the left, the wording at 15, UNDO on the right in blue.
@@ -91,7 +92,7 @@ static TGSnackbar *sOpenBar = nil;
 
 	_count = [[UILabel alloc] initWithFrame:ring];
 	_count.textAlignment = NSTextAlignmentCenter;
-	_count.font = [UIFont systemFontOfSize:12];
+	_count.font = TGFontMeta();
 	_count.textColor = [[TGTheme shared] snackbarTextColour];
 	_count.backgroundColor = [UIColor clearColor];
 	_count.text = [NSString stringWithFormat:@"%ld", (long)_left];
@@ -100,7 +101,7 @@ static TGSnackbar *sOpenBar = nil;
 	UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(
 			46, 0, self.bounds.size.width - 46 - 76, kBarHeight)];
 	label.text = text;
-	label.font = [UIFont systemFontOfSize:15];
+	label.font = TGFontBody();
 	label.textColor = [[TGTheme shared] snackbarTextColour];
 	label.backgroundColor = [UIColor clearColor];
 	label.autoresizingMask = UIViewAutoresizingFlexibleWidth;
@@ -112,7 +113,7 @@ static TGSnackbar *sOpenBar = nil;
 	[undo setTitle:@"UNDO" forState:UIControlStateNormal];
 	[undo setTitleColor:[[TGTheme shared] accentColour]
 			   forState:UIControlStateNormal];
-	undo.titleLabel.font = [UIFont boldSystemFontOfSize:14];
+	undo.titleLabel.font = TGFontSubheadStrong();
 	undo.titleEdgeInsets = UIEdgeInsetsMake(0, 14, 0, 0);
 	[undo addTarget:self action:@selector(undoTapped)
    forControlEvents:UIControlEventTouchUpInside];
