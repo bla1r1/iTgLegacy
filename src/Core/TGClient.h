@@ -266,6 +266,9 @@ typedef NS_ENUM(NSInteger, TGDownloadPriority) {
 /// search. Entries are the same chat dictionaries the chat list holds.
 - (void)topChatsWithCompletion:(void (^)(NSArray *chats))completion;
 
+/// The chats opened most recently - the other half of an empty search.
+- (void)recentlyOpenedChatsWithCompletion:(void (^)(NSArray *chats))completion;
+
 /// Opening a chat from search puts it in the recently-found list.
 - (void)rememberFoundChat:(int64_t)chatId;
 /// Takes someone out of the frequent-contacts ranking.
@@ -360,6 +363,12 @@ typedef NS_ENUM(NSInteger, TGDownloadPriority) {
 /// Sign every other device out in one stroke - the sessions screen keeps the
 /// per-device version.
 - (void)terminateAllOtherSessions:(void (^)(BOOL ok))completion;
+
+/// The code Telegram emails when a recovery address is given. Until it goes
+/// through, the old address - or none - is still the one in force.
+- (void)checkRecoveryEmailCode:(NSString *)code
+					completion:(void (^)(BOOL ok))completion;
+- (void)resendRecoveryEmailCode;
 
 /// The end of the road: reason is what Telegram's form asks about, the
 /// password only when two-step verification is on.
@@ -554,6 +563,16 @@ typedef NS_ENUM(NSInteger, TGDownloadPriority) {
 /// Vote in a poll. `optionIds` are indexes into the poll's options.
 - (void)votePoll:(int64_t)messageId inChat:(int64_t)chatId options:(NSArray *)optionIds;
 
+/// Telegram's own static map of a place, as a PNG, answered as a local path
+/// once it is down - or nil, which on this device is ordinary. The drawn card
+/// is what a caller falls back to.
+- (void)mapThumbnailForLatitude:(double)latitude
+					  longitude:(double)longitude
+						  width:(NSInteger)width
+						 height:(NSInteger)height
+						 inChat:(int64_t)chatId
+					 completion:(void (^)(NSString *path))completion;
+
 /// Reports messages in a supergroup as spam. Reads the chat first: the
 /// request wants the supergroup's own id, which a chat id is not.
 - (void)reportSpamMessages:(NSArray *)messageIds
@@ -576,6 +595,13 @@ typedef NS_ENUM(NSInteger, TGDownloadPriority) {
                      inChat:(int64_t)chatId
                 completion:(void (^)(NSArray *voters, BOOL end))completion;
 
+/// The poll's vote statistics as one graph: the entries carry "json" (the
+/// chart data as a JSON string) and "zoom". nil when the answer is an
+/// error, which is how a poll without statistics everywhere says so.
+- (void)pollVoteStatisticsOfMessage:(int64_t)messageId
+							 inChat:(int64_t)chatId
+						 completion:(void (^)(NSDictionary *graph))completion;
+
 /// An option added after the poll went out, for polls that allow it.
 - (void)addPollOption:(NSString *)text
             toMessage:(int64_t)messageId
@@ -591,6 +617,13 @@ typedef NS_ENUM(NSInteger, TGDownloadPriority) {
 
 /// Every poll in the chat read up on, so the fresh-vote badge is gone.
 - (void)readAllChatPollVotes:(int64_t)chatId;
+
+/// Reports a reaction the flattening named - `sender` is the MessageSender
+/// dict it carried, and TDLib files the report against whoever added it.
+- (void)reportReactionBySender:(NSDictionary *)sender
+					 ofMessage:(int64_t)messageId
+						 inChat:(int64_t)chatId
+					 completion:(void (^)(BOOL ok))completion;
 
 /// React to a message with an emoji, as the current user.
 - (void)reactTo:(int64_t)messageId inChat:(int64_t)chatId emoji:(NSString *)emoji;
@@ -882,6 +915,27 @@ typedef NS_ENUM(NSInteger, TGDownloadPriority) {
 /// nearly always passed around. NO when the link carries no server and port.
 - (BOOL)addProxyFromLink:(NSString *)link
 			  completion:(void (^)(NSInteger proxyId))completion;
+
+/// Changes one in place, keeping its position and whether it is in use -
+/// which removing and re-adding did not.
+- (void)editProxy:(NSInteger)proxyId
+		   server:(NSString *)server
+			 port:(NSInteger)port
+			 kind:(NSString *)kind
+		 username:(NSString *)username
+		 password:(NSString *)password
+		   secret:(NSString *)secret
+		   enable:(BOOL)enable
+	   completion:(void (^)(BOOL ok))completion;
+
+/// Whether a proxy can carry Telegram, which a ping does not say.
+- (void)testProxyAtServer:(NSString *)server
+					 port:(NSInteger)port
+					 kind:(NSString *)kind
+				 username:(NSString *)username
+				 password:(NSString *)password
+				   secret:(NSString *)secret
+			   completion:(void (^)(BOOL works))completion;
 
 - (void)enableProxy:(NSInteger)proxyId;
 /// Back to a direct connection; there is no id in this one.

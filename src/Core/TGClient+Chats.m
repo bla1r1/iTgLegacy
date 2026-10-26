@@ -642,6 +642,25 @@ int64_t TGArchiveOrder(NSArray *positions) {
 	}];
 }
 
+/// The chats opened most recently, which is the other half of what their
+/// search shows when nothing is typed: who you talk to most, and where you
+/// were last. Entries are the chat dictionaries the list already holds.
+- (void)recentlyOpenedChatsWithCompletion:(void (^)(NSArray *chats))completion {
+	__weak typeof(self) weakSelf = self;
+	[self request:@{@"@type" : @"getRecentlyOpenedChats", @"limit" : @(12)}
+	   completion:^(NSDictionary *result){
+		TGClient *me = weakSelf;
+		NSMutableArray *out = [NSMutableArray array];
+		for (NSNumber *chatId in result[@"chat_ids"]){
+			NSDictionary *info = me.chatsById[chatId];
+			if (info)
+				[out addObject:info];
+		}
+		if (completion)
+			completion(out);
+	}];
+}
+
 /// Opening a chat from search puts it in the recently-found list, which is
 /// what their search shows before anything is typed.
 - (void)rememberFoundChat:(int64_t)chatId {
@@ -989,9 +1008,14 @@ static NSDictionary *TGFolderObject(NSString *name, NSString *icon,
 		info[@"readInbox"] = chat[@"last_read_inbox_message_id"];
 
 	NSString *chatType = chat[@"type"][@"@type"];
-	if (chatType)
+	if (chatType){
 		info[@"isGroup"] = @(![chatType isEqualToString:@"chatTypePrivate"] &&
 							 ![chatType isEqualToString:@"chatTypeSecret"]);
+		// Secrets speak their own dialect to the server, and the search is
+		// the one request that has to know: searchSecretMessages is the
+		// only spelling TDLib answers there.
+		info[@"isSecret"] = @([chatType isEqualToString:@"chatTypeSecret"]);
+	}
 
 	// A forum keeps several threads in one chat, so it opens on a topic list
 	// rather than a merged stream. The flag is on the supergroup, not here:

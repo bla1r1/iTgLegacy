@@ -676,6 +676,30 @@ static NSArray *TGPacksFrom(NSDictionary *target) {
 
 /// Every other device signs off in one request. This one is never its own
 /// victim - terminateAllOtherSessions answers for the rest only.
+/// A new recovery address is not in force until the code Telegram emails to
+/// it is entered. Until then the old address - or none - still stands, which
+/// is why the flow has to offer this rather than stopping at "we wrote".
+- (void)checkRecoveryEmailCode:(NSString *)code
+					completion:(void (^)(BOOL ok))completion {
+	if (!code.length){
+		if (completion) completion(NO);
+		return;
+	}
+	[self request:@{@"@type" : @"checkRecoveryEmailAddressCode", @"code" : code}
+	   completion:^(NSDictionary *result){
+		if (!completion)
+			return;
+		// Still carrying a pattern means the code did not take.
+		BOOL stillWaiting = [result[@"recovery_email_address_code_info"]
+				[@"email_address_pattern"] length] > 0;
+		completion([result[@"@type"] isEqualToString:@"passwordState"] && !stillWaiting);
+	}];
+}
+
+- (void)resendRecoveryEmailCode {
+	[self send:@{@"@type" : @"resendRecoveryEmailAddressCode"}];
+}
+
 - (void)terminateAllOtherSessions:(void (^)(BOOL))completion {
 	[self request:@{@"@type" : @"terminateAllOtherSessions"}
 	   completion:^(NSDictionary *result){

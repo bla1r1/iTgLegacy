@@ -1260,4 +1260,147 @@ static void answerG(TGClient *c, NSDictionary *answer) {
 	XCTAssertEqualObjects(r[@"password"], @"");
 }
 
+#pragma mark - search reaching into secret chats
+
+/// TDLib refuses a non-empty query to searchChatMessages inside a secret
+/// chat - searchSecretMessages is the one spelling it answers - so the
+/// search has to know what kind of chat it is standing in.
+- (void)testSearchInChat_ASecretChatAsksItsOwnSpelling {
+	TGClient *c = G();
+	[c handleUpdate:@{@"@type" : @"updateNewChat",
+			@"chat" : @{@"id" : @(-556),
+						@"title" : @"Vault",
+						@"type" : @{@"@type" : @"chatTypeSecret",
+									@"secret_chat_id" : @(9),
+									@"user_id" : @(5)}}}];
+
+	[c searchInChat:-556 query:@"one time code" completion:nil];
+	NSDictionary *r = lastG(c, @"searchSecretMessages");
+	XCTAssertTrue([r isKindOfClass:NSDictionary.class]);
+	XCTAssertEqual([r[@"chat_id"] longLongValue], -556LL);
+	XCTAssertEqualObjects(r[@"query"], @"one time code");
+	XCTAssertEqualObjects(r[@"offset"], @"");
+	XCTAssertEqual(countG(c, @"searchChatMessages"), (NSUInteger)0);
+}
+
+/// The regular chats go on asking searchChatMessages exactly as before -
+/// from the last message, oldest-limit, the shape the table reads back.
+- (void)testSearchInChat_PlainChatsKeepTheirUsualSpelling {
+	TGClient *c = G();
+	[c handleUpdate:@{@"@type" : @"updateNewChat",
+			@"chat" : @{@"id" : @(777),
+						@"title" : @"Walkers",
+						@"type" : @{@"@type" : @"chatTypeSupergroup",
+									@"supergroup_id" : @(4)}}}];
+
+	[c searchInChat:777 query:@"map" completion:nil];
+	NSDictionary *r = lastG(c, @"searchChatMessages");
+	XCTAssertEqualObjects(r[@"@type"], @"searchChatMessages");
+	XCTAssertEqual([r[@"chat_id"] longLongValue], 777LL);
+	XCTAssertEqualObjects(r[@"query"], @"map");
+	XCTAssertEqual(countG(c, @"searchSecretMessages"), (NSUInteger)0);
+}
+
+#pragma mark - the poll's vote statistics
+
+/// Statistics are one request answered with one graph: the chart JSON goes
+/// back as the sheet's lines, the shape argued about with a real chart
+/// body, and a broken answer reads as "no statistics" rather than a crash.
+- (void)testPollVoteStatistics_TheGraphBackAsItCame {
+	TGClient *c = G();
+	__block NSDictionary *graph = nil;
+	[c pollVoteStatisticsOfMessage:140 inChat:-70 completion:^(NSDictionary *found){
+		graph = found;
+	}];
+	NSDictionary *r = lastG(c, @"getPollVoteStatistics");
+	XCTAssertEqual([r[@"chat_id"] longLongValue], -70LL);
+	XCTAssertEqual([r[@"message_id"] longLongValue], 140LL);
+	XCTAssertFalse([r[@"is_dark"] boolValue]);
+
+	answerG(c, @{@"@type" : @"pollVoteStatistics",
+				 @"vote_graph" : @{@"@type" : @"statisticalGraphData",
+								   @"json_data" : @"{\"columns\":[[\"Answer A\",5],[\"Answer B\",7]]}",
+								   @"zoom_token" : @"zoom9"}});
+	XCTAssertEqualObjects(graph[@"json"],
+			@"{\"columns\":[[\"Answer A\",5],[\"Answer B\",7]]}");
+	XCTAssertEqualObjects(graph[@"zoom"], @"zoom9");
+}
+
+/// An error answer is "not there yet" to the sheet, not a block - the
+/// completion still runs with nil, the way the other broken answers read.
+- (void)testPollVoteStatistics_AnErrorAnswerReadsAsAbsent {
+	TGClient *c = G();
+	__block NSDictionary *graph = nil;
+	__block BOOL ran = NO;
+	[c pollVoteStatisticsOfMessage:140 inChat:-70 completion:^(NSDictionary *found){
+		graph = found; ran = YES;
+	}];
+	answerG(c, @{@"@type" : @"error", @"code" : @400,
+				 @"message" : @"statistics unavailable"});
+	XCTAssertTrue(ran, @"the completion runs on a broken answer too");
+	XCTAssertNil(graph, @"nil, not zeroed - the sheet says 'not there yet'");
+}
+
+
+#pragma mark - a reaction filed against the one who put it there
+
+/// TDLib wants the sender, not the message alone: the report names whoever
+/// lit the reaction through the MessageSender the flattening carried up.
+- (void)testReportReaction_TheSenderGoesWithTheMessage {
+	TGClient *c = G();
+	NSDictionary *sender = @{@"@type" : @"messageSenderUser",
+							 @"user_id" : @(6)};
+	__block BOOL ok = NO;
+	[c reportReactionBySender:sender
+					ofMessage:140
+						 inChat:-70
+				   completion:^(BOOL done){ ok = done; }];
+	NSDictionary *r = lastG(c, @"reportMessageReactions");
+	XCTAssertTrue([r isKindOfClass:NSDictionary.class]);
+	XCTAssertEqual([r[@"chat_id"] longLongValue], -70LL);
+	XCTAssertEqual([r[@"message_id"] longLongValue], 140LL);
+	XCTAssertEqual([r[@"sender_id"][@"user_id"] integerValue], 6);
+
+	// A sender nobody decided on fires nothing: there is no who to name.
+	[c reportReactionBySender:nil ofMessage:140 inChat:-70
+		 completion:^(BOOL done){}];
+	XCTAssertEqual(countG(c, @"reportMessageReactions"), (NSUInteger)1);
+}
+
+/// A message with a named reactor reads the parts the menu needs: who said
+/// it, what emoji it was, and a MessageSender ready to travel.
+- (void)testReactionReport_TheFlatteningCarriesWhoAndWhat {
+	NSDictionary *raw = @{@"@type" : @"message", @"id" : @140,
+			@"date" : @1234,
+			@"content" : @{@"@type" : @"messageText",
+						   @"text" : @{@"@type" : @"formattedText",
+									   @"text" : @"hi"}},
+			@"interaction_info" : @{@"@type" : @"messageInteractionInfo",
+					@"reactions" : @{@"@type" : @"messageReactions",
+							@"reactions" : @[@{@"@type" : @"messageReaction",
+									@"type" : @{@"@type" : @"reactionTypeEmoji",
+												@"emoji" : @"angry"},
+									@"total_count" : @2,
+									@"recent_sender_ids" : @[@{@"@type" : @"messageSenderUser",
+															   @"user_id" : @(6)}]}]}}};
+	NSDictionary *flat = TGFlattenMessage(raw);
+	NSDictionary *rep = flat[@"reactionReport"];
+	XCTAssertTrue([rep isKindOfClass:NSDictionary.class],
+				  @"a reaction with a named reactor is reportable");
+	XCTAssertEqualObjects(rep[@"emoji"], @"angry");
+	XCTAssertEqual([rep[@"userId"] integerValue], 6);
+	XCTAssertTrue([rep[@"name"] isKindOfClass:NSString.class],
+				  @"the menu names the reactor, empty fall back is a string");
+	XCTAssertTrue([rep[@"sender"] isKindOfClass:NSDictionary.class],
+				  @"the sender dict goes to the wire as TDLib sent it");
+
+	NSDictionary *bare = TGFlattenMessage(@{@"@type" : @"message",
+			@"id" : @141, @"date" : @1234,
+			@"content" : @{@"@type" : @"messageText",
+						   @"text" : @{@"@type" : @"formattedText",
+									   @"text" : @"hi"}}});
+	XCTAssertTrue([bare[@"reactionReport"] isKindOfClass:NSNull.class],
+				  @"no reactions, nothing to report");
+}
+
 @end

@@ -92,6 +92,55 @@ static NSDictionary *TGProxyObject(NSString *server, NSInteger port, NSString *k
 	}];
 }
 
+/// Changes a proxy in place rather than removing and re-adding it, which is
+/// what the page used to do - and which lost its position in the list and
+/// whether it was the one in use.
+- (void)editProxy:(NSInteger)proxyId
+		   server:(NSString *)server
+			 port:(NSInteger)port
+			 kind:(NSString *)kind
+		 username:(NSString *)username
+		 password:(NSString *)password
+		   secret:(NSString *)secret
+		   enable:(BOOL)enable
+	   completion:(void (^)(BOOL ok))completion {
+	if (!proxyId || !server.length || port <= 0 || port > 65535){
+		if (completion) completion(NO);
+		return;
+	}
+	[self request:@{
+		@"@type"    : @"editProxy",
+		@"proxy_id" : @(proxyId),
+		@"proxy"    : TGProxyObject(server, port, kind, username, password, secret),
+		@"enable"   : @(enable),
+		@"comment"  : @"",
+	} completion:^(NSDictionary *result){
+		if (completion)
+			completion([result[@"@type"] isEqualToString:@"addedProxy"]);
+	}];
+}
+
+/// Whether a proxy can actually carry Telegram, which a ping does not say: a
+/// handshake can answer while the proxy refuses to pass the data centre.
+- (void)testProxyAtServer:(NSString *)server
+					 port:(NSInteger)port
+					 kind:(NSString *)kind
+				 username:(NSString *)username
+				 password:(NSString *)password
+				   secret:(NSString *)secret
+			   completion:(void (^)(BOOL works))completion {
+	[self request:@{
+		@"@type"   : @"testProxy",
+		@"proxy"   : TGProxyObject(server, port, kind, username, password, secret),
+		// Any data centre will do for a reachability answer; 1 always exists.
+		@"dc_id"   : @(1),
+		@"timeout" : @(10.0),
+	} completion:^(NSDictionary *result){
+		if (completion)
+			completion([result[@"@type"] isEqualToString:@"ok"]);
+	}];
+}
+
 - (void)enableProxy:(NSInteger)proxyId {
 	[self send:@{@"@type" : @"enableProxy", @"proxy_id" : @(proxyId)}];
 }

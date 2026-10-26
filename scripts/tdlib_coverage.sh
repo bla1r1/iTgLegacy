@@ -24,8 +24,13 @@ trap 'rm -rf "$TMP"' EXIT
 
 awk '/^---functions---/{f=1;next} f && /^[a-z][a-zA-Z0-9_]* /{print $1}' "$TL" \
     | sort -u > "$TMP/all"
-grep -rhoE '@"@type"[[:space:]]*:[[:space:]]*@"[a-zA-Z0-9_]+"' "$ROOT/src" --include='*.m' \
-    | grep -oE '[a-zA-Z0-9_]+"$' | tr -d '"' | sort -u > "$TMP/named"
+# Both branches of a ternary count: a request sent as
+# `favourite ? @"addFavoriteSticker" : @"removeFavoriteSticker"` calls
+# whichever branch the run takes. Every string literal is taken and the
+# intersection with td_api names does the narrowing, since @"@type" was
+# never a good anchor once ternaries moved in.
+grep -rhoE '@"[a-zA-Z0-9_]+"' "$ROOT/src" --include='*.m' \
+    | tr -d ' @"' | sort -u > "$TMP/named"
 comm -12 "$TMP/all" "$TMP/named" > "$TMP/used"
 comm -23 "$TMP/all" "$TMP/named" > "$TMP/gap"
 

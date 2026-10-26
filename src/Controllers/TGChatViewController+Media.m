@@ -56,6 +56,11 @@
 	return card;
 }
 
+/// The drawn card goes up first so the bubble has something at once, and
+/// Telegram's own picture of the place replaces it when it arrives. The card
+/// is not a placeholder to be ashamed of - on a device with no connection it
+/// is the whole answer - but it shows roads that are not there, and the real
+/// thumbnail shows where the pin actually is.
 - (void)fetchMissingMaps {
 	for (NSDictionary *m in self.messages){
 		NSNumber *lat = m[@"lat"], *lon = m[@"lon"];
@@ -66,6 +71,27 @@
 			continue;
 		self.maps[key] = [self mapCardForLatitude:lat.doubleValue
 										longitude:lon.doubleValue];
+
+		// One request per message, ever: mapsRequested outlives the drawn
+		// card, so a chat scrolled past and back does not ask again.
+		if ([self.mapsRequested containsObject:key])
+			continue;
+		[self.mapsRequested addObject:key];
+
+		__weak typeof(self) weakSelf = self;
+		[[TGClient shared] mapThumbnailForLatitude:lat.doubleValue
+										 longitude:lon.doubleValue
+											 width:220
+											height:130
+											inChat:self.chatId
+										completion:^(NSString *path){
+			TGChatViewController *me = weakSelf;
+			UIImage *real = path.length ? [UIImage imageWithContentsOfFile:path] : nil;
+			if (!me || !real)
+				return;          // the card stays, which is the right answer
+			me.maps[key] = real;
+			[me reloadTableDebounced];
+		}];
 	}
 }
 

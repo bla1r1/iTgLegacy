@@ -14,8 +14,12 @@ sh scripts/tdlib_coverage.sh --relevant # what is missing and worth having
 sh scripts/tdlib_coverage.sh --skipped  # what is missing on purpose
 ```
 
-As of 2026-10-26: **1076 functions declared, 190 called (17%)**. Of the 886
-never called, the script counts 501 out of scope and 385 wanted.
+As of 2026-10-26: **1076 functions declared, 197 called (18%)**. Of the 879
+never called, the script counts 501 out of scope and 378 wanted.
+
+The counter reads every string literal in src and intersects it with the
+td_api names, so both branches of a ternary'd request count, not just
+the first spelling the regex used to see.
 
 Two things this is not. It is not a to-do list in priority order below the
 tier — within a tier, pick by what the owner reaches for. And it is not a
@@ -129,7 +133,10 @@ Groups, folders and the write half of screens the app already shows read-only.
   keys exchanged, closed - live in updates
   (`getSecretChat` through `updateSecretChat`), "pending" and "closed"
   hide the composer, and holding the header offers the end of it
-  (`closeSecretChat`, warned to be final). Open: `searchSecretMessages`
+  (`closeSecretChat`, warned to be final). Search wired too:
+  `searchInChat` asks `searchSecretMessages` inside a secret chat and
+  `searchChatMessages` elsewhere, so the in-chat search bar reaches the
+  self-destructing history without a second screen
 - **Stickers, the rest of them** — **done** for the panel's own needs: the
   sticker search reads the installed sets first and then every public one
   (`getStickers`, `searchStickers`), sets are found by name
@@ -158,8 +165,11 @@ Groups, folders and the write half of screens the app already shows read-only.
   crowd: who voted one answer lists through `getPollVoters`, an answer is
   added after the fact by `addPollOption` when the poll allows it, and one
   is taken out by `deletePollOption` after a confirm. The fresh-vote badge
-  clears when the chat is opened (`readAllChatPollVotes`). Open: poll
-  statistics
+  clears when the chat is opened (`readAllChatPollVotes`). Statistics
+  wired too: `getPollVoteStatistics` behind the message menu's "Poll
+  Statistics" - the vote graph TDLib hands over as a JSON chart read into
+  the sheet, falling back to the options' own share when the chart is not
+  a spelling this file reads
 - **Live location** — **done**. The attach sheet's Location row now asks
   what kind of pin: a fixed one, or a live one for 15 minutes, an hour,
   or eight. The live share is one `sendMessage` answered with the
@@ -167,7 +177,12 @@ Groups, folders and the write half of screens the app already shows read-only.
   while the GPS keeps talking; the message menu takes a live pin of your
   own off the map with the same request whose period says zero. Walking
   away from the chat stops watching the GPS.
-  Open: `searchChatRecentLocationMessages`, `getMapThumbnailFile`
+  A location bubble now shows Telegram's own picture of the place
+  (`getMapThumbnailFile`): the drawn card goes up first so the bubble has
+  something at once, and the real thumbnail replaces it when it lands - on
+  a device with no connection the card is the whole answer, which is why
+  it stays rather than becoming a placeholder. Open:
+  `searchChatRecentLocationMessages`
 - **Profile and account** — **done**. Tapping an avatar opens the photo
   history, where a swipe takes one off the account
   (`getUserProfilePhotos`, `deleteProfilePhoto`); Privacy and Security
@@ -178,8 +193,11 @@ Groups, folders and the write half of screens the app already shows read-only.
   Delete Account Now asks why and then for the password
   (`deleteAccount`); Active Sessions grew a red row that signs out every
   other device (`terminateAllOtherSessions`). `getGroupsInCommon` is at
-  the profile. Open: `checkRecoveryEmailAddressCode` - the letter is
-  followed in a browser rather than in the app
+  the profile. A new recovery address is confirmed in the app rather than
+  in a browser: the code Telegram emails is asked for, refused codes can
+  be sent again, and until one goes through the flow says the old address
+  still stands (`checkRecoveryEmailAddressCode`,
+  `resendRecoveryEmailAddressCode`)
 - **Saved Messages** — not worth building, and here is why: Saved Messages
   is a chat, so the chat search already searches it through
   `searchChatMessages`. What `searchSavedMessages` adds over that is
@@ -191,8 +209,12 @@ Groups, folders and the write half of screens the app already shows read-only.
 - **Proxies** — **done**. Settings → Proxy lists them, switches between them
   and direct, checks one answers, and takes a t.me/proxy or tg://proxy link
   or a bare host:port: `getProxies`, `addProxy`, `enableProxy`,
-  `disableProxy`, `removeProxy`, `pingProxy`. Still open: `editProxy` (a
-  proxy is removed and re-added instead) and `testProxy`
+  `disableProxy`, `removeProxy`, `pingProxy`. A proxy's address is changed
+  in place rather than by removing and re-adding it, which lost its place
+  in the list and whether it was in use (`editProxy`), and Check It Works
+  asks both questions - whether it answers at all, and whether it will
+  carry Telegram, which is the failure a ping alone calls success
+  (`testProxy`, then `pingProxy` for the number)
 - **Download manager** — **done**. Settings → Downloads is the list Telegram
   keeps, with the running count on the root page: a held row pauses or
   cancels the pending half and removes an entry (its file with it, if
@@ -206,14 +228,19 @@ Groups, folders and the write half of screens the app already shows read-only.
   Spam, on its own or with the sender blocked from replying and their
   messages removed (`reportSupergroupSpam`, which reads the supergroup's
   own id off the chat because a chat id is not it, and
-  `blockMessageSenderFromReplies`). `removeChatActionBar` is in the client,
-  with no action bar on screen to dismiss yet. Open:
-  `reportMessageReactions`
-- **Recents** — **done**. Search opens on the people this account talks to
-  most rather than on a blank table (`getTopChats`), and opening a chat from
-  search puts it in the recently-found list (`addRecentlyFoundChat`).
-  `removeTopChat` is in the client, with no "remove from this list" gesture
-  on the row yet. Open: `getRecentlyOpenedChats`, `searchRecentlyFoundChats`
+  (`blockMessageSenderFromReplies`). `removeChatActionBar` is in the
+  client, with no action bar on screen to dismiss yet. Reactions report
+  too: a message whose reaction names a reactor offers "Report Reaction"
+  (`reportMessageReactions`), the MessageSender of the latest named
+  reactor carried up through the flattening, one confirm behind the menu
+- **Recents** — **done**. Search opens on two sections rather than on a
+  blank table: the people this account talks to most (`getTopChats`) and
+  where it was last (`getRecentlyOpenedChats`), the second with anything
+  already in the first left out of it. Opening a chat from search puts it in
+  the recently-found list (`addRecentlyFoundChat`). `removeTopChat` is in
+  the client, with no "remove from this list" gesture on the row yet.
+  `searchRecentlyFoundChats` searches only that list, which the chat search
+  above it already covers - not worth its own path
 
 ## Tier 2 — wanted, nobody is blocked
 

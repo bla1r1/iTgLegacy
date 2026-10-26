@@ -1024,9 +1024,10 @@ static NSString *TGChatNameForId(NSNumber *chatId) {
 			proxy[@"server"] ?: @"?", proxy[@"port"] ?: @0];
 	__weak typeof(self) weakSelf = self;
 
-	[TGAlertSheet showChoices:@[@"Use This Proxy", @"Check It Answers", @"Remove"]
+	[TGAlertSheet showChoices:@[@"Use This Proxy", @"Check It Works",
+								@"Change Address", @"Remove"]
 						title:name
-			 destructiveIndex:2
+			 destructiveIndex:3
 					   inView:self.view
 					 onChoice:^(NSInteger index){
 		TGSettingsViewController *me = weakSelf;
@@ -1034,20 +1035,80 @@ static NSString *TGChatNameForId(NSNumber *chatId) {
 			[[TGClient shared] enableProxy:proxyId];
 			[me loadForPage];
 		} else if (index == 1){
-			[[TGClient shared] pingProxyAtServer:proxy[@"server"]
-											port:[proxy[@"port"] integerValue]
-											kind:proxy[@"kind"]
-										username:nil password:nil secret:nil
-									  completion:^(double seconds){
-				[me toast:seconds >= 0
-						? [NSString stringWithFormat:@"%@ answered in %.0f ms",
-								name, seconds * 1000.0]
-						: [NSString stringWithFormat:@"%@ did not answer", name]];
-			}];
+			[me checkProxy:proxy named:name];
+		} else if (index == 2){
+			[me editProxyAddress:proxy named:name];
 		} else {
 			[[TGClient shared] removeProxy:proxyId];
 			[me loadForPage];
 		}
+	}];
+}
+
+/// Two questions, not one: whether it answers at all, and whether it will
+/// carry Telegram. A proxy that completes a handshake and then refuses the
+/// data centre is the failure a ping alone calls success.
+- (void)checkProxy:(NSDictionary *)proxy named:(NSString *)name {
+	__weak typeof(self) weakSelf = self;
+	NSString *server = proxy[@"server"];
+	NSInteger port = [proxy[@"port"] integerValue];
+	NSString *kind = proxy[@"kind"];
+
+	[[TGClient shared] testProxyAtServer:server port:port kind:kind
+								username:nil password:nil secret:nil
+							  completion:^(BOOL works){
+		TGSettingsViewController *me = weakSelf;
+		if (!works){
+			[me toast:[NSString stringWithFormat:
+					@"%@ will not carry Telegram.", name]];
+			return;
+		}
+		[[TGClient shared] pingProxyAtServer:server port:port kind:kind
+									username:nil password:nil secret:nil
+								  completion:^(double seconds){
+			[me toast:seconds >= 0
+					? [NSString stringWithFormat:@"%@ works - %.0f ms",
+							name, seconds * 1000.0]
+					: [NSString stringWithFormat:@"%@ works", name]];
+		}];
+	}];
+}
+
+/// Editing in place rather than removing and adding again, which lost the
+/// proxy's position in the list and whether it was the one in use.
+- (void)editProxyAddress:(NSDictionary *)proxy named:(NSString *)name {
+	NSInteger proxyId = [proxy[@"id"] integerValue];
+	BOOL wasEnabled = [proxy[@"enabled"] boolValue];
+	NSString *kind = proxy[@"kind"];
+	__weak typeof(self) weakSelf = self;
+
+	[TGAlertSheet showInput:@"Change Address"
+					message:@"host:port. The kind of proxy stays as it is."
+				placeholder:@"1.2.3.4:1080"
+					   text:name
+					 action:@"Save"
+					 inView:self.view
+				   onSubmit:^(NSString *text){
+		TGSettingsViewController *me = weakSelf;
+		NSArray *parts = [text componentsSeparatedByString:@":"];
+		NSInteger port = parts.count > 1 ? [parts[1] integerValue] : 0;
+		if (parts.count < 2 || port <= 0){
+			[me toast:@"A proxy needs a host and a port."];
+			return;
+		}
+		[[TGClient shared] editProxy:proxyId
+							  server:parts[0]
+								port:port
+								kind:kind
+							username:nil password:nil secret:nil
+							  enable:wasEnabled
+						  completion:^(BOOL ok){
+			if (!ok){
+				[me toast:@"Telegram refused that address."];
+				return;
+			}
+			[me loadForPage];
+		}];
 	}];
 }
 

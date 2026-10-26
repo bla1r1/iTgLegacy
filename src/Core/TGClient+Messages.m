@@ -323,6 +323,7 @@ NSDictionary *TGFlattenMessage(NSDictionary *m) {
 			@"voters"    : poll[@"can_get_voters"] ?: @NO,
 			@"open"      : @(![poll[@"is_closed"] boolValue]),
 			@"deletable" : @(deletable),
+			@"stats"     : poll[@"can_get_poll_vote_statistics"] ?: @NO,
 		};
 
 	} else if ([ctype isEqualToString:@"messageLocation"]){
@@ -428,6 +429,34 @@ NSDictionary *TGFlattenMessage(NSDictionary *m) {
 	else if ([originType isEqualToString:@"messageOriginChat"])
 		forwardFrom = origin[@"author_signature"] ?: @"a chat";
 
+	// The one reactor the message menu can name for a report: the latest
+	// sender of the first reaction group that hands its senders over, user
+	// senders only - a channel campaign is a chat-admin problem, not a
+	// per-reaction report.
+	NSDictionary *reactionReport = nil;
+	NSArray *reactionGroups = m[@"interaction_info"][@"reactions"][@"reactions"];
+	for (NSDictionary *group in reactionGroups){
+		if (![group isKindOfClass:NSDictionary.class])
+			continue;
+		NSArray *senders = group[@"recent_sender_ids"];
+		NSDictionary *send = [senders isKindOfClass:NSArray.class]
+				? senders.firstObject : nil;
+		NSInteger reactionUserId = [send isKindOfClass:NSDictionary.class]
+				? [send[@"user_id"] longLongValue] : 0;
+		if (!reactionUserId)
+			continue;
+		NSString *who = [[TGClient shared] nameForUserId:reactionUserId]
+				?: @"someone";
+		NSString *emoji = group[@"type"][@"emoji"];
+		reactionReport = @{
+			@"emoji"  : emoji.length ? emoji : @"\U00002B50",
+			@"userId" : @(reactionUserId),
+			@"sender" : send,
+			@"name"   : who,
+		};
+		break;
+	}
+
 	return @{
 		@"id"        : m[@"id"] ?: @(0),
 		@"text"      : text,
@@ -453,6 +482,7 @@ NSDictionary *TGFlattenMessage(NSDictionary *m) {
 		@"reactions" : TGReactionSummary(m) ?: @"",
 		// Your own reaction, so the menu can offer to take it off.
 		@"myReaction" : TGMyReactionEmoji(m) ?: @"",
+		@"reactionReport" : reactionReport ?: [NSNull null],
 		// A message TDLib could not get out. It stays in the history with a
 		// sending state that says so, and it is the only kind worth resending.
 		@"failed"    : @([m[@"sending_state"][@"@type"]
@@ -464,6 +494,7 @@ NSDictionary *TGFlattenMessage(NSDictionary *m) {
 		@"pollTotal"    : m[@"content"][@"poll"][@"total_voter_count"] ?: @0,
 		@"pollClosed"   : m[@"content"][@"poll"][@"is_closed"] ?: @NO,
 		@"pollVoters"   : (pollInfo[@"voters"] ?: @NO),
+		@"pollStats"    : (pollInfo[@"stats"] ?: @NO),
 		@"pollOpen"     : (pollInfo[@"open"] ?: @NO),
 		@"pollDeletable": (pollInfo[@"deletable"] ?: @NO),
 		@"pollAnonymous": m[@"content"][@"poll"][@"is_anonymous"] ?: @YES,
@@ -545,13 +576,17 @@ NSDictionary *TGFlattenMessage(NSDictionary *m) {
 
 - (void)searchInChat:(int64_t)chatId query:(NSString *)query
           completion:(void (^)(NSArray *))completion {
+	// A secret chat answers its own spelling: searchChatMessages refuses
+	// a non-empty query there, searchSecretMessages is the one TDLib takes.
+	NSDictionary *info = self.chatsById[@(chatId)];
+	BOOL secret = [info[@"isSecret"] boolValue];
 	__weak typeof(self) weakSelf = self;
 	[self request:@{
-		@"@type"           : @"searchChatMessages",
+		@"@type"           : secret ? @"searchSecretMessages"
+									: @"searchChatMessages",
 		@"chat_id"         : @(chatId),
 		@"query"           : query ?: @"",
-		@"from_message_id" : @(0),
-		@"offset"          : @(0),
+		@"offset"          : secret ? @"" : @(0),
 		@"limit"           : @(50),
 	} completion:^(NSDictionary *result){
 		TGClient *me = weakSelf;
@@ -1172,6 +1207,29 @@ NSDictionary *TGFlattenMessage(NSDictionary *m) {
 	}];
 }
 
+- (void)pollVoteStatisticsOfMessage:(int64_t)messageId
+							 inChat:(int64_t)chatId
+						 completion:(void (^)(NSDictionary *graph))completion {
+	__weak typeof(self) weakSelf = self;
+	[self request:@{
+		@"@type"      : @"getPollVoteStatistics",
+		@"chat_id"    : @(chatId),
+		@"message_id" : @(messageId),
+		// The sheet has no theme of its own: the chat lists its colours and
+		// the graph data is the same numbers either way.
+		@"is_dark"    : @NO,
+	} completion:^(NSDictionary *result){
+		TGClient *me = weakSelf;
+		NSDictionary *graph = nil;
+		NSString *json = result[@"vote_graph"][@"json_data"];
+		if ([json isKindOfClass:NSString.class] && json.length) {
+			graph = @{@"json" : json,
+					  @"zoom" : result[@"vote_graph"][@"zoom_token"] ?: @""};
+		}
+		if (completion) completion(graph);
+	}];
+}
+
 /// An option added after the poll went out, for polls that allow it. The
 /// option is a line of text in the same shaped envelope an input poll
 /// carries.
@@ -1226,6 +1284,28 @@ NSDictionary *TGFlattenMessage(NSDictionary *m) {
 	}];
 }
 
+/// Reports a reaction as harassment: TDLib names the sender, not the
+/// message alone - the fire brigade wants to know who lit the fire.
+/// `sender` is the MessageSender the flattening carried up untouched.
+- (void)reportReactionBySender:(NSDictionary *)sender
+					 ofMessage:(int64_t)messageId
+						 inChat:(int64_t)chatId
+					 completion:(void (^)(BOOL ok))completion {
+	if (![sender isKindOfClass:NSDictionary.class]){
+		if (completion) completion(NO);
+		return;
+	}
+	[self request:@{
+		@"@type"      : @"reportMessageReactions",
+		@"chat_id"    : @(chatId),
+		@"message_id" : @(messageId),
+		@"sender_id"  : sender,
+	} completion:^void (NSDictionary *result){
+		if (completion)
+			completion([result[@"@type"] isEqualToString:@"ok"]);
+	}];
+}
+
 /// Reports messages in a supergroup as spam. It takes the supergroup's own
 /// id, not the chat id - a chat id for a supergroup is the negative of it
 /// with a prefix, so this reads the chat first rather than doing arithmetic
@@ -1270,6 +1350,52 @@ NSDictionary *TGFlattenMessage(NSDictionary *m) {
 		@"delete_message"     : @(deleteMessages),
 		@"delete_all_messages": @(deleteMessages),
 		@"report_spam"        : @(reportSpam),
+	}];
+}
+
+/// Telegram's own static map of a place, as a PNG. The completion gets a
+/// local path, or nil when there is no answer - which on this device is
+/// ordinary: the thumbnail is a download like any other, and a chat opened
+/// on a slow connection or with none will not have it.
+///
+/// `scale` is left at 1 deliberately. A retina plate is four times the bytes
+/// for a card 220 points wide on a screen that has 320 of them.
+- (void)mapThumbnailForLatitude:(double)latitude
+					  longitude:(double)longitude
+						  width:(NSInteger)width
+						 height:(NSInteger)height
+						 inChat:(int64_t)chatId
+					 completion:(void (^)(NSString *path))completion {
+	// Their own bounds; a request outside them is refused rather than clamped.
+	NSInteger wanted = MAX(16, MIN(1024, width));
+	NSInteger tall   = MAX(16, MIN(1024, height));
+
+	__weak typeof(self) weakSelf = self;
+	[self request:@{
+		@"@type"    : @"getMapThumbnailFile",
+		@"location" : @{@"@type"     : @"location",
+						@"latitude"  : @(latitude),
+						@"longitude" : @(longitude)},
+		@"zoom"     : @(16),
+		@"width"    : @(wanted),
+		@"height"   : @(tall),
+		@"scale"    : @(1),
+		@"chat_id"  : @(chatId),
+	} completion:^(NSDictionary *result){
+		TGClient *me = weakSelf;
+		NSNumber *fileId = result[@"id"];
+		if (!me || ![fileId isKindOfClass:NSNumber.class]){
+			if (completion) completion(nil);
+			return;
+		}
+		// The answer is a file record, not the picture: it still has to come
+		// down, and a thumbnail already in the cache answers at once.
+		NSString *local = result[@"local"][@"path"];
+		if ([result[@"local"][@"is_downloading_completed"] boolValue] && local.length){
+			if (completion) completion(local);
+			return;
+		}
+		[me downloadFile:fileId.integerValue completion:completion];
 	}];
 }
 

@@ -28,6 +28,65 @@ static NSString *TGComposePreview(NSDictionary *m) {
 	return spaced;
 }
 
+/// The poll's vote graph as lines this OS can draw in a sheet. TDLib hands
+/// statisticalGraphData over as a JSON chart: one columns entry per series,
+/// its first element naming the answer, the rest counting the votes each
+/// bucket took. Whatever the chart says the reader cannot hold falls back
+/// to the options' own share the bubble already knows, so the sheet is
+/// honest even when the graph arrives in a spelling this file never saw.
+static NSString *TGPollGraphLines(NSString *json, NSArray *options) {
+	NSData *data = [json dataUsingEncoding:NSUTF8StringEncoding];
+	NSDictionary *chart = data.length
+			? [NSJSONSerialization JSONObjectWithData:data
+					options:NSJSONReadingAllowFragments error:nil] : nil;
+	NSArray *columns = [chart isKindOfClass:NSDictionary.class]
+			? chart[@"columns"] : nil;
+	NSArray *labels = [chart isKindOfClass:NSDictionary.class]
+			? (chart[@"labels"] ?: chart[@"x"]) : nil;
+
+	NSMutableString *out = [NSMutableString string];
+	if ([columns isKindOfClass:NSArray.class] && columns.count){
+		for (NSUInteger i = 1; i < columns.count; i++){
+			NSArray *series = [columns[i] isKindOfClass:NSArray.class]
+					? columns[i] : nil;
+			if (!series || !series.count)
+				continue;
+			NSString *name = [series[0] isKindOfClass:NSString.class]
+					? series[0]
+					: [NSString stringWithFormat:@"Answer %lu",
+							(unsigned long)i];
+			NSInteger votes = 0;
+			for (NSUInteger j = 1; j < series.count; j++)
+				votes += (NSInteger)[series[j] doubleValue];
+			NSString *title = nil;
+			NSInteger k = (NSInteger)i - 1;
+			if (k >= 0 && k < (NSInteger)options.count){
+				NSDictionary *option = options[k];
+				title = option[@"text"][@"text"] ?: option[@"text"];
+			}
+			NSString *who = [title isKindOfClass:NSString.class] && title.length
+					? title : name;
+			[out appendFormat:@"%@ · %ld votes\n", who, (long)votes];
+		}
+		if ([labels isKindOfClass:NSArray.class] && labels.count)
+			[out appendFormat:@"\n%lu time slices", (unsigned long)labels.count];
+		return out.length ? out : nil;
+	}
+
+	// The chart said nothing this reader could hold: the options' own
+	// percentages from the bubble, which are the same story told plainer.
+	for (NSDictionary *option in options){
+		NSString *title = option[@"text"][@"text"] ?: option[@"text"] ?: @"?";
+		NSString *counts = option[@"voter_count"]
+				? [NSString stringWithFormat:@" · %ld votes",
+						(long)[option[@"voter_count"] integerValue]]
+				: @"";
+		[out appendFormat:@"%@%@ · %ld%%\n", title, counts,
+				(long)[option[@"vote_percentage"] integerValue]];
+	}
+	return out.length ? out : nil;
+}
+
 /// The sticker's own file, whichever shape the message carries it in: a .tgs
 /// rides as the document, a .webp as the picture.
 static NSInteger TGStickerFileId(NSDictionary *m) {
@@ -104,6 +163,8 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 	if ([m[@"pollOptions"] count]){
 		if ([m[@"pollClosed"] boolValue] || [m[@"pollVoters"] boolValue])
 			[items addObject:@{@"title" : @"Poll Voters", @"icon" : @"select"}];
+		if ([m[@"pollStats"] boolValue])
+			[items addObject:@{@"title" : @"Poll Statistics", @"icon" : @"data"}];
 		if (mine && [m[@"pollOpen"] boolValue])
 			[items addObject:@{@"title" : @"Add Option", @"icon" : @"edit"}];
 		if (mine && [m[@"pollOpen"] boolValue] && [m[@"pollDeletable"] boolValue])
@@ -118,6 +179,12 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 	// anywhere to go: reportSupergroupSpam wants a supergroup behind it.
 	if (!mine && self.isGroup)
 		[items addObject:@{@"title" : @"Report Spam", @"icon" : @"privacy",
+						   @"destructive" : @YES}];
+	// A reaction the flattening could name - the person, not only the
+	// emoji - is one confirm away from the report TDLib asks for.
+	NSDictionary *reactionReport = m[@"reactionReport"];
+	if (reactionReport && ![reactionReport isKindOfClass:NSNull.class] && !mine)
+		[items addObject:@{@"title" : @"Report Reaction", @"icon" : @"privacy",
 						   @"destructive" : @YES}];
 	if (mine)
 		[items addObject:@{@"title" : @"Delete", @"icon" : @"delete",
@@ -268,6 +335,36 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 			}];
 		}];
 
+	} else if ([action isEqualToString:@"Poll Statistics"]){
+		// The graph of votes gathered in as the poll ran. TDLib hands the
+		// chart over as a JSON string; whatever it holds, the sheet reads
+		// every column it recognises into a line per option, worst case a
+		// sentence instead of a chart.
+		int64_t pollChatId = self.chatId;
+		__weak typeof(self) weakSelf = self;
+		[[TGClient shared] pollVoteStatisticsOfMessage:messageId
+												inChat:pollChatId
+											completion:^(NSDictionary *graph){
+			TGChatViewController *me = weakSelf;
+			if (!me)
+				return;
+			if (!graph){
+				[TGAlertSheet showMessage:@"Statistics are not there yet."
+									title:@"Poll Statistics"
+								   inView:me.view];
+				return;
+			}
+					NSString *lines = TGPollGraphLines(graph[@"json"],
+					m[@"pollOptions"]);
+			NSString *body = [lines isKindOfClass:NSString.class] && lines.length
+					? lines
+					: @"Statistics came back as numbers this page cannot "
+					@"read. The options' own share still shows in the poll.";
+			[TGAlertSheet showMessage:body
+								title:m[@"pollQuestion"] ?: @"Poll Statistics"
+								   inView:me.view];
+		}];
+
 	} else if ([action isEqualToString:@"Add Option"]){
 		// A poll that grew after the fact: the line asked for, sent, and the
 		// message re-answered by the update the client does not watch for.
@@ -351,6 +448,45 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 									   completion:^(BOOL ok){
 				[TGSnackbar showInView:me.view
 								  text:(ok ? @"Reported" : @"Telegram refused that")
+							   seconds:2 onCommit:nil];
+			}];
+		}];
+
+	} else if ([action isEqualToString:@"Report Reaction"]){
+		// The flattening decided who is being reported: the latest reactor
+		// the message named, with the emoji it put on this bubble.
+		NSDictionary *choice = m[@"reactionReport"];
+		if (![choice isKindOfClass:NSDictionary.class])
+			return;
+		int64_t reactionChatId = self.chatId;
+		NSString *who = nil;
+		if ([choice[@"name"] isKindOfClass:NSString.class]){
+			NSString *name = choice[@"name"];
+			who = name.length ? name : @"someone";
+		} else {
+			who = @"someone";
+		}
+		__weak typeof(self) weakSelf = self;
+		NSString *note = [NSString stringWithFormat:
+				@"The %@ reaction by %@ is reported. Telegram's moderators "
+				@"see the message and the reaction.",
+				choice[@"emoji"] ?: @"", who];
+		[TGAlertSheet showConfirm:note
+							title:@"Report Reaction"
+						   action:@"Report"
+					  destructive:YES
+						   inView:self.view
+						onConfirm:^{
+			[[TGClient shared] reportReactionBySender:choice[@"sender"]
+											ofMessage:messageId
+												inChat:reactionChatId
+										 completion:^(BOOL ok){
+				TGChatViewController *me = weakSelf;
+				if (!me)
+					return;
+				[TGSnackbar showInView:me.view
+								  text:(ok ? @"Reaction reported"
+										   : @"Telegram refused that")
 							   seconds:2 onCommit:nil];
 			}];
 		}];

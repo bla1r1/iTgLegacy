@@ -254,14 +254,52 @@
 					[[TGClient shared] setRecoveryEmailAddress:current
 															to:address
 													completion:^(BOOL ok){
-						[TGAlertSheet showMessage:(ok
-								? @"Telegram has written to it. Follow the "
-								  @"letter to finish."
-								: @"Telegram refused that address.")
-											title:@"Recovery Address"
-										   inView:me.view];
+						if (!ok){
+							[TGAlertSheet showMessage:@"Telegram refused that address."
+												title:@"Recovery Address"
+											   inView:me.view];
+							return;
+						}
+						// The address is not in force until the code sent to
+						// it is entered, so the flow has to ask for it rather
+						// than stopping at "we have written".
+						[me askRecoveryEmailCodeFor:address];
 					}];
 				}];
+			}];
+		}];
+	}];
+}
+
+/// The code Telegram emails to a new recovery address. Cancelling leaves the
+/// old address standing, which is said rather than left to be discovered.
+- (void)askRecoveryEmailCodeFor:(NSString *)address {
+	__weak typeof(self) weakSelf = self;
+	[TGAlertSheet showInput:@"Confirm Address"
+					message:[NSString stringWithFormat:
+							@"Telegram sent a code to %@. Until it is entered, "
+							@"the address is not in use.", address]
+				placeholder:@"Code"
+					   text:nil
+					 action:@"Confirm"
+					 inView:self.view
+				   onSubmit:^(NSString *code){
+		TGSettingsViewController *me = weakSelf;
+		[[TGClient shared] checkRecoveryEmailCode:code completion:^(BOOL ok){
+			if (ok){
+				[TGAlertSheet showMessage:[NSString stringWithFormat:
+								@"%@ is now the recovery address.", address]
+									title:@"Recovery Address" inView:me.view];
+				return;
+			}
+			[TGAlertSheet showChoices:@[@"Send It Again"]
+								title:@"Recovery Address"
+							  message:@"That code was refused."
+					 destructiveIndex:-1
+							   inView:me.view
+							 onChoice:^(NSInteger index){
+				[[TGClient shared] resendRecoveryEmailCode];
+				[me askRecoveryEmailCodeFor:address];
 			}];
 		}];
 	}];

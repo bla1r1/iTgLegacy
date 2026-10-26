@@ -193,6 +193,9 @@ static inline NSString *TGBytes(long long bytes) {
 - (void)removeChatFromFolder:(NSInteger)folderId named:(NSString *)title;
 - (void)runFolderActionFor:(NSDictionary *)folder;
 - (void)runProxyActionFor:(NSDictionary *)proxy;
+- (void)checkProxy:(NSDictionary *)proxy named:(NSString *)name;
+- (void)editProxyAddress:(NSDictionary *)proxy named:(NSString *)name;
+- (void)askRecoveryEmailCodeFor:(NSString *)address;
 - (void)runDownloadActionFor:(NSDictionary *)download;
 - (void)showPremiumState;
 - (void)showTwoStepState;

@@ -14,6 +14,8 @@
 /// Who this account talks to most, shown before anything is typed - their
 /// search opens on this rather than on a blank screen.
 @property (nonatomic, strong) NSArray *frequent;
+/// Where this account was last, under the frequent list.
+@property (nonatomic, strong) NSArray *recent;
 @property (nonatomic, strong) NSMutableDictionary *avatars;
 @property (nonatomic, strong) NSMutableSet *avatarsRequested;
 @end
@@ -99,12 +101,36 @@
 		me.frequent = chats ?: @[];
 		[me.tableView reloadData];
 	}];
+	[[TGClient shared] recentlyOpenedChatsWithCompletion:^(NSArray *chats){
+		TGSearchViewController *me = weakSelf;
+		if (!me || me.bar.text.length)
+			return;
+		// What is already in the people row is not worth a second row.
+		NSMutableSet *shown = [NSMutableSet set];
+		for (NSDictionary *chat in me.frequent)
+			if (chat[@"id"])
+				[shown addObject:chat[@"id"]];
+		NSMutableArray *rest = [NSMutableArray array];
+		for (NSDictionary *chat in (chats ?: @[]))
+			if (![shown containsObject:chat[@"id"]])
+				[rest addObject:chat];
+		me.recent = rest;
+		[me.tableView reloadData];
+	}];
 }
 
 /// True while the search is empty, which is when the frequent list is what
 /// the table shows.
 - (BOOL)showsFrequent {
-	return !self.bar.text.length && self.frequent.count > 0;
+	return !self.bar.text.length &&
+		   (self.frequent.count > 0 || self.recent.count > 0);
+}
+
+/// While the search is empty the two sections are the people and the places,
+/// so a row is read out of whichever list its section stands for.
+- (NSDictionary *)emptyStateRowAt:(NSIndexPath *)indexPath {
+	NSArray *list = indexPath.section == 0 ? self.frequent : self.recent;
+	return indexPath.row < (NSInteger)list.count ? list[indexPath.row] : nil;
 }
 
 #pragma mark - searching
@@ -113,7 +139,7 @@
 	if (!query.length) {
 		self.chatHits = @[];
 		self.messageHits = @[];
-		// Back to the frequent list rather than to nothing.
+		// Back to the people and the places rather than to nothing.
 		[self loadFrequentChats];
 		[self.tableView reloadData];
 		return;
@@ -147,13 +173,14 @@
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
 	if ([self showsFrequent])
-		return section == 0 ? self.frequent.count : 0;
+		return section == 0 ? self.frequent.count : self.recent.count;
 	return section == 0 ? self.chatHits.count : self.messageHits.count;
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
 	if ([self showsFrequent])
-		return section == 0 ? @"People" : nil;
+		return section == 0 ? (self.frequent.count ? @"People" : nil)
+							: (self.recent.count ? @"Recent" : nil);
 	if (section == 0)
 		return self.chatHits.count ? @"Chats" : nil;
 	return self.messageHits.count ? @"Messages" : nil;
@@ -226,7 +253,7 @@
 	cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
 
 	if ([self showsFrequent]) {
-		NSDictionary *c = self.frequent[indexPath.row];
+		NSDictionary *c = [self emptyStateRowAt:indexPath];
 		cell.textLabel.text = c[@"title"];
 		cell.detailTextLabel.text = c[@"previewText"];
 		cell.imageView.image = [self avatarForChat:[c[@"id"] longLongValue]
@@ -264,7 +291,7 @@
 	[self.bar resignFirstResponder];
 
 	BOOL fromFrequent = [self showsFrequent];
-	NSDictionary *row = fromFrequent ? self.frequent[indexPath.row]
+	NSDictionary *row = fromFrequent ? [self emptyStateRowAt:indexPath]
 			: (indexPath.section == 0 ? self.chatHits[indexPath.row]
 									  : self.messageHits[indexPath.row]);
 	int64_t chatId = [((fromFrequent || indexPath.section == 0)
