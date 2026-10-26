@@ -81,16 +81,16 @@ static NSArray *TGCallGradient(NSArray *colours) {
 
     CGRect b = self.view.bounds;
     
-    self.emojiLabel = [[UILabel alloc] initWithFrame:CGRectMake(10, 30, b.size.width - 20, 30)];
+    self.emojiLabel = [[UILabel alloc] initWithFrame:CGRectMake(TGMetricPadMedium, 30, b.size.width - TGDoubled(TGMetricPadMedium), 30)];
     self.emojiLabel.font = TGFontGlyph();
     self.emojiLabel.textAlignment = NSTextAlignmentCenter;
     self.emojiLabel.backgroundColor = [UIColor clearColor];
     [self.view addSubview:self.emojiLabel];
 
-    CGFloat side = 120;
+    CGFloat side = TGMetricCallAvatarSide;
     self.avatarView = [[UIImageView alloc] initWithFrame:
-            CGRectMake((b.size.width - side) / 2, 100, side, side)];
-    self.avatarView.layer.cornerRadius = side / 2;
+            CGRectMake(TGCenteredOrigin(b.size.width, side), 100, side, side)];
+    self.avatarView.layer.cornerRadius = TGHalf(side);
     self.avatarView.clipsToBounds = YES;
     self.avatarView.layer.shouldRasterize = YES;
     self.avatarView.layer.rasterizationScale = [UIScreen mainScreen].scale;
@@ -99,7 +99,7 @@ static NSArray *TGCallGradient(NSArray *colours) {
                                                    size:side colourId:self.userId];
     [self.view addSubview:self.avatarView];
 
-    self.nameLabel = [[UILabel alloc] initWithFrame:CGRectMake(10, 240, b.size.width - 20, 30)];
+    self.nameLabel = [[UILabel alloc] initWithFrame:CGRectMake(TGMetricPadMedium, 240, b.size.width - TGDoubled(TGMetricPadMedium), 30)];
     self.nameLabel.text = self.peerName;
     self.nameLabel.font = TGFontHero();
     self.nameLabel.textColor = [UIColor whiteColor];
@@ -107,33 +107,33 @@ static NSArray *TGCallGradient(NSArray *colours) {
     self.nameLabel.backgroundColor = [UIColor clearColor];
     [self.view addSubview:self.nameLabel];
 
-    self.statusLabel = [[UILabel alloc] initWithFrame:CGRectMake(10, 275, b.size.width - 20, 20)];
+    self.statusLabel = [[UILabel alloc] initWithFrame:CGRectMake(TGMetricPadMedium, 275, b.size.width - TGDoubled(TGMetricPadMedium), 20)];
     self.statusLabel.font = TGFontBody();
-    self.statusLabel.textColor = [UIColor colorWithWhite:1.0f alpha:0.7f];
+    self.statusLabel.textColor = [[TGTheme shared] callSubtitleColour];
     self.statusLabel.textAlignment = NSTextAlignmentCenter;
     self.statusLabel.backgroundColor = [UIColor clearColor];
     [self.view addSubview:self.statusLabel];
 
-    CGFloat btnY = b.size.height - 130;
+    CGFloat btnY = b.size.height - TGMetricCallButtonsBottomOffset;
     BOOL canVideo = [TGCapabilities canEncodeVideoCall];
     CGFloat btnCount = canVideo ? 4 : 3;
-    CGFloat gap = (b.size.width - (60 * btnCount)) / (btnCount + 1);
+    CGFloat gap = (b.size.width - (TGMetricCallButtonSide * btnCount)) / (btnCount + 1);
     
     self.speakerBtn = [self createButtonAtX:gap y:btnY title:@"Speaker" icon:@"unmute"];
     self.speakerLbl = self.lastCreatedLabel;
-    self.videoBtn = [self createButtonAtX:canVideo ? (gap*2 + 60) : -100 y:btnY title:@"Video" icon:@"video"];
+    self.videoBtn = [self createButtonAtX:canVideo ? (gap*2 + TGMetricCallButtonSide) : -100 y:btnY title:@"Video" icon:@"video"];
     self.videoLbl = self.lastCreatedLabel;
     if (!canVideo) {
         self.videoBtn.hidden = YES;
         self.videoLbl.hidden = YES;
     }
-    self.micBtn = [self createButtonAtX:canVideo ? (gap*3 + 120) : (gap*2 + 60) y:btnY title:@"Mute" icon:@"microphone"];
+    self.micBtn = [self createButtonAtX:canVideo ? (gap*3 + TGDoubled(TGMetricCallButtonSide)) : (gap*2 + TGMetricCallButtonSide) y:btnY title:@"Mute" icon:@"microphone"];
     self.micLbl = self.lastCreatedLabel;
     self.endBtn = [self createButtonAtX:canVideo ? (gap*4 + 180) : (gap*3 + 120) y:btnY title:@"End" icon:@"endcall"];
     self.endLbl = self.lastCreatedLabel;
     self.endBtn.backgroundColor = [[TGTheme shared] callEndColour];
 
-    self.acceptBtn = [self createButtonAtX:(b.size.width / 2) + 35 y:btnY title:@"Accept" icon:@"call"];
+    self.acceptBtn = [self createButtonAtX:TGHalf(b.size.width) + 35 y:btnY title:@"Accept" icon:@"call"];
     self.acceptLbl = self.lastCreatedLabel;
     self.acceptBtn.backgroundColor = [[TGTheme shared] callAcceptColour];
     [self.acceptBtn addTarget:self action:@selector(acceptCall) forControlEvents:UIControlEventTouchUpInside];
@@ -162,11 +162,11 @@ static NSArray *TGCallGradient(NSArray *colours) {
 - (UIButton *)createButtonAtX:(CGFloat)x y:(CGFloat)y title:(NSString *)title icon:(NSString *)icon {
     UIButton *btn = [UIButton buttonWithType:UIButtonTypeCustom];
     btn.frame = CGRectMake(x, y, 60, 60);
-    btn.layer.cornerRadius = 30;
+    btn.layer.cornerRadius = TGHalf(TGMetricCallButtonSide);
     btn.clipsToBounds = YES;
     btn.layer.shouldRasterize = YES;
     btn.layer.rasterizationScale = [UIScreen mainScreen].scale;
-    btn.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.2];
+    btn.backgroundColor = [[TGTheme shared] callControlColour];
     // Drawn glyphs rather than emoji: iOS 7's font has no colour glyph for
     // some of these, and the ones it does have do not match the rest of the
     // iconography.
@@ -201,7 +201,7 @@ static NSArray *TGCallGradient(NSArray *colours) {
 
 - (void)updateLayoutForCallActive:(BOOL)active {
     CGRect b = self.view.bounds;
-    CGFloat btnY = b.size.height - 130;
+    CGFloat btnY = b.size.height - TGMetricCallButtonsBottomOffset;
     if (!self.outgoing && !active && [TGCall shared].state == TGCallStatePending) {
         self.speakerBtn.hidden = YES;
         self.speakerLbl.hidden = YES;
@@ -212,13 +212,13 @@ static NSArray *TGCallGradient(NSArray *colours) {
         
         self.acceptBtn.hidden = NO;
         self.acceptLbl.hidden = NO;
-        self.acceptBtn.frame = CGRectMake((b.size.width / 2) + 35, btnY, 60, 60);
-        self.acceptLbl.frame = CGRectMake((b.size.width / 2) + 25, btnY + 65, 80, 15);
+        self.acceptBtn.frame = CGRectMake(TGHalf(b.size.width) + 35, btnY, TGMetricCallButtonSide, TGMetricCallButtonSide);
+        self.acceptLbl.frame = CGRectMake(TGHalf(b.size.width) + 25, btnY + TGMetricCallLabelGap, TGMetricCallLabelWidth, TGMetricCallLabelHeight);
         
         self.endBtn.hidden = NO;
         self.endLbl.hidden = NO;
-        self.endBtn.frame = CGRectMake((b.size.width / 2) - 95, btnY, 60, 60);
-        self.endLbl.frame = CGRectMake((b.size.width / 2) - 105, btnY + 65, 80, 15);
+        self.endBtn.frame = CGRectMake(TGHalf(b.size.width) - 95, btnY, TGMetricCallButtonSide, TGMetricCallButtonSide);
+        self.endLbl.frame = CGRectMake(TGHalf(b.size.width) - 105, btnY + TGMetricCallLabelGap, TGMetricCallLabelWidth, TGMetricCallLabelHeight);
         self.endLbl.text = @"Decline";
     } else {
         BOOL canVideo = [TGCapabilities canEncodeVideoCall];
@@ -226,35 +226,35 @@ static NSArray *TGCallGradient(NSArray *colours) {
         self.acceptLbl.hidden = YES;
         
         if (canVideo) {
-            CGFloat gap = (b.size.width - (60 * 4)) / 5;
+            CGFloat gap = (b.size.width - (TGMetricCallButtonSide * 4)) / 5;
             self.speakerBtn.hidden = NO;
             self.speakerLbl.hidden = NO;
-            self.speakerBtn.frame = CGRectMake(gap, btnY, 60, 60);
-            self.speakerLbl.frame = CGRectMake(gap - 10, btnY + 65, 80, 15);
+            self.speakerBtn.frame = CGRectMake(gap, btnY, TGMetricCallButtonSide, TGMetricCallButtonSide);
+            self.speakerLbl.frame = CGRectMake(gap - 10, btnY + TGMetricCallLabelGap, TGMetricCallLabelWidth, TGMetricCallLabelHeight);
             
             self.videoBtn.hidden = NO;
             self.videoLbl.hidden = NO;
-            self.videoBtn.frame = CGRectMake(gap*2 + 60, btnY, 60, 60);
-            self.videoLbl.frame = CGRectMake(gap*2 + 50, btnY + 65, 80, 15);
+            self.videoBtn.frame = CGRectMake(gap*2 + TGMetricCallButtonSide, btnY, TGMetricCallButtonSide, TGMetricCallButtonSide);
+            self.videoLbl.frame = CGRectMake(gap*2 + 50, btnY + TGMetricCallLabelGap, TGMetricCallLabelWidth, TGMetricCallLabelHeight);
             
             self.micBtn.hidden = NO;
             self.micLbl.hidden = NO;
-            self.micBtn.frame = CGRectMake(gap*3 + 120, btnY, 60, 60);
-            self.micLbl.frame = CGRectMake(gap*3 + 110, btnY + 65, 80, 15);
+            self.micBtn.frame = CGRectMake(gap*3 + TGDoubled(TGMetricCallButtonSide), btnY, TGMetricCallButtonSide, TGMetricCallButtonSide);
+            self.micLbl.frame = CGRectMake(gap*3 + 110, btnY + TGMetricCallLabelGap, TGMetricCallLabelWidth, TGMetricCallLabelHeight);
             
             self.endBtn.hidden = NO;
             self.endLbl.hidden = NO;
-            self.endBtn.frame = CGRectMake(gap*4 + 180, btnY, 60, 60);
-            self.endLbl.frame = CGRectMake(gap*4 + 170, btnY + 65, 80, 15);
+            self.endBtn.frame = CGRectMake(gap*4 + 180, btnY, TGMetricCallButtonSide, TGMetricCallButtonSide);
+            self.endLbl.frame = CGRectMake(gap*4 + 170, btnY + TGMetricCallLabelGap, TGMetricCallLabelWidth, TGMetricCallLabelHeight);
         } else {
-            CGFloat gap = (b.size.width - (60 * 3)) / 4;
+            CGFloat gap = (b.size.width - (TGMetricCallButtonSide * 3)) / 4;
             self.videoBtn.hidden = YES;
             self.videoLbl.hidden = YES;
             
             self.speakerBtn.hidden = NO;
             self.speakerLbl.hidden = NO;
-            self.speakerBtn.frame = CGRectMake(gap, btnY, 60, 60);
-            self.speakerLbl.frame = CGRectMake(gap - 10, btnY + 65, 80, 15);
+            self.speakerBtn.frame = CGRectMake(gap, btnY, TGMetricCallButtonSide, TGMetricCallButtonSide);
+            self.speakerLbl.frame = CGRectMake(gap - 10, btnY + TGMetricCallLabelGap, TGMetricCallLabelWidth, TGMetricCallLabelHeight);
             
             self.micBtn.hidden = NO;
             self.micLbl.hidden = NO;
@@ -336,13 +336,13 @@ static NSArray *TGCallGradient(NSArray *colours) {
     static BOOL speakerOn = NO;
     speakerOn = !speakerOn;
     [[TGCall shared] setSpeaker:speakerOn];
-    self.speakerBtn.backgroundColor = speakerOn ? [UIColor colorWithWhite:1.0 alpha:0.4] : [UIColor colorWithWhite:1.0 alpha:0.2];
+    self.speakerBtn.backgroundColor = speakerOn ? [[TGTheme shared] callControlActiveColour] : [[TGTheme shared] callControlColour];
 }
 
 - (void)toggleMute {
     BOOL muted = ![TGCall shared].muted;
     [[TGCall shared] setMuted:muted];
-    self.micBtn.backgroundColor = muted ? [UIColor colorWithWhite:1.0 alpha:0.4] : [UIColor colorWithWhite:1.0 alpha:0.2];
+    self.micBtn.backgroundColor = muted ? [[TGTheme shared] callControlActiveColour] : [[TGTheme shared] callControlColour];
 }
 
 - (void)end {
@@ -350,10 +350,10 @@ static NSArray *TGCallGradient(NSArray *colours) {
     // the screen just sits there and the tap looks like it was missed.
     self.statusLabel.text = @"Ending...";
     [self setStatusPulsing:NO];
-    [UIView animateWithDuration:0.12 animations:^{
-        self.endBtn.transform = CGAffineTransformMakeScale(0.86f, 0.86f);
+    [UIView animateWithDuration:TGAnimationDurationFast animations:^{
+        self.endBtn.transform = CGAffineTransformMakeScale(TGTransformScaleButtonActive, TGTransformScaleButtonActive);
     } completion:^(BOOL done){
-        [UIView animateWithDuration:0.12 animations:^{
+        [UIView animateWithDuration:TGAnimationDurationFast animations:^{
             self.endBtn.transform = CGAffineTransformIdentity;
         }];
     }];
@@ -367,12 +367,12 @@ static NSArray *TGCallGradient(NSArray *colours) {
 - (void)windDown {
     [self setStatusPulsing:NO];
     self.bgLayer.colors = TGCallGradient([[TGTheme shared] callGradientColoursFailed]);
-    [UIView animateWithDuration:0.25 animations:^{
+    [UIView animateWithDuration:TGAnimationDurationMedium animations:^{
         for (UIView *view in @[self.speakerBtn, self.videoBtn, self.micBtn,
                                self.acceptBtn, self.speakerLbl, self.videoLbl,
                                self.micLbl, self.acceptLbl])
-            view.alpha = 0;
-        self.endBtn.alpha = 0.5f;
+            view.alpha = TGAlphaTransparent;
+        self.endBtn.alpha = TGAlphaDimmed;
     }];
 }
 
@@ -381,14 +381,14 @@ static NSArray *TGCallGradient(NSArray *colours) {
 - (void)setStatusPulsing:(BOOL)pulsing {
     if (!pulsing){
         [self.statusLabel.layer removeAnimationForKey:@"pulse"];
-        self.statusLabel.alpha = 1;
+        self.statusLabel.alpha = TGAlphaOpaque;
         return;
     }
     if ([self.statusLabel.layer animationForKey:@"pulse"])
         return;
     CABasicAnimation *fade = [CABasicAnimation animationWithKeyPath:@"opacity"];
-    fade.fromValue = @1.0f;
-    fade.toValue = @0.45f;
+    fade.fromValue = @(TGAlphaOpaque);
+    fade.toValue = @(TGAlphaDisabled);
     fade.duration = 0.9;
     fade.autoreverses = YES;
     fade.repeatCount = HUGE_VALF;

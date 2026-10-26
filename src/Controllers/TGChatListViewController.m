@@ -4,7 +4,7 @@
 #import "TGAlertSheet.h"
 
 // Height of the folder pill strip above the chat list (official-style tabs).
-static const CGFloat kFolderTabRow = 40.0f;
+static const CGFloat kFolderTabRow = TGMetricFolderTabRow;
 
 @implementation TGChatListViewController
 
@@ -121,7 +121,7 @@ static const CGFloat kFolderTabRow = 40.0f;
 		[pill setTitle:label forState:UIControlStateNormal];
 		pill.titleLabel.font = font;
 		pill.titleLabel.lineBreakMode = NSLineBreakByTruncatingTail;
-		pill.layer.cornerRadius = 13;
+		pill.layer.cornerRadius = TGHalf(kFolderTabRow - TGDoubled(TGMetricPadMedium));
 		if (active){
 			[pill setBackgroundColor:[[TGTheme shared] accentColour]];
 			[pill setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
@@ -129,7 +129,7 @@ static const CGFloat kFolderTabRow = 40.0f;
 			[pill setBackgroundColor:[[TGTheme shared] cardBackgroundColour]];
 			[pill setTitleColor:[[TGTheme shared] primaryTextColour]
 					   forState:UIControlStateNormal];
-			pill.layer.borderWidth = 0.5f;
+			pill.layer.borderWidth = TGMetricHairline;
 			pill.layer.borderColor = [[TGTheme shared] separatorColour].CGColor;
 		}
 		[pill addTarget:self action:@selector(folderTabTapped:)
@@ -171,11 +171,11 @@ static const CGFloat kFolderTabRow = 40.0f;
 
 	if (gesture.state == UIGestureRecognizerStateBegan){
 		CGPoint here = [gesture locationInView:pill];
-		self.folderDragOffset = here.x - pill.bounds.size.width / 2.0f;
+		self.folderDragOffset = here.x - TGHalf(pill.bounds.size.width);
 		self.folderDragFrame = pill.frame;
 		strip.scrollEnabled = NO;
-		pill.transform = CGAffineTransformMakeScale(1.08f, 1.08f);
-		pill.alpha = 0.85f;
+		pill.transform = CGAffineTransformMakeScale(TGTransformScalePillActive, TGTransformScalePillActive);
+		pill.alpha = TGAlphaPillInactive;
 	}
 	else if (gesture.state == UIGestureRecognizerStateChanged){
 		CGPoint here = [gesture locationInView:strip];
@@ -183,8 +183,8 @@ static const CGFloat kFolderTabRow = 40.0f;
 		// over, and the finger's x is in the visible half of it.
 		CGFloat x_in_content = here.x - strip.contentOffset.x
 				- self.folderDragOffset;
-		CGFloat first = 8, last = strip.contentSize.width
-				- self.folderDragFrame.size.width - 8;
+		CGFloat first = TGMetricPad, last = strip.contentSize.width
+				- self.folderDragFrame.size.width - TGMetricPad;
 		if (x_in_content < first) x_in_content = first;
 		if (x_in_content > last)  x_in_content = last;
 		pill.frame = CGRectMake(x_in_content, self.folderDragFrame.origin.y,
@@ -195,7 +195,7 @@ static const CGFloat kFolderTabRow = 40.0f;
 			 gesture.state == UIGestureRecognizerStateCancelled){
 		strip.scrollEnabled = YES;
 		pill.transform = CGAffineTransformIdentity;
-		pill.alpha = 1.0f;
+		pill.alpha = TGAlphaOpaque;
 
 		BOOL cancelled = gesture.state == UIGestureRecognizerStateCancelled;
 		if (cancelled){
@@ -426,7 +426,7 @@ static const CGFloat kFolderTabRow = 40.0f;
 	if (self.tableView.contentSize.height <= self.tableView.bounds.size.height)
 		return;
 	CGFloat y = self.tableView.contentOffset.y;
-	if (y > 0.5f && fabs(y - previousHeight) > 0.5f)
+	if (y > TGMetricHairline && fabs(y - previousHeight) > TGMetricHairline)
 		return;
 	self.tableView.contentOffset = CGPointMake(0, self.parkOffset);
 }
@@ -852,6 +852,13 @@ static NSString *TGChatDate(NSTimeInterval unix) {
 	vc.isGroup = [c[@"isGroup"] boolValue];
 	vc.hidesBottomBarWhenPushed = YES;
 	[self.navigationController pushViewController:vc animated:YES];
+}
+
+/// The system's caption is grey on grey over a dark list, which is what
+/// this screen had: every other list styles its own.
+- (void)tableView:(UITableView *)tableView willDisplayHeaderView:(UIView *)view
+	   forSection:(NSInteger)section {
+	[[TGTheme shared] styleSectionHeader:view];
 }
 
 @end

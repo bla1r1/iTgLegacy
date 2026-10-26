@@ -9,17 +9,18 @@
 
 /// Renders an offline stylized map card with pin for location messages.
 - (UIImage *)mapCardForLatitude:(double)lat longitude:(double)lon {
-	CGSize size = CGSizeMake(220, 130);
+	CGSize size = CGSizeMake(TGMetricMapCardWidth, TGMetricMapCardHeight);
 	UIGraphicsBeginImageContextWithOptions(size, YES, 0);
 	CGContextRef ctx = UIGraphicsGetCurrentContext();
+	TGTheme *theme = [TGTheme shared];
 
 	// paper
-	CGContextSetRGBFillColor(ctx, 0.90f, 0.91f, 0.87f, 1.0f);
+	CGContextSetFillColorWithColor(ctx, [theme mapPaperColour].CGColor);
 	CGContextFillRect(ctx, CGRectMake(0, 0, size.width, size.height));
 
 	// a few roads, placed from the coordinates so different places differ
-	CGContextSetRGBStrokeColor(ctx, 1.0f, 1.0f, 1.0f, 1.0f);
-	CGContextSetLineWidth(ctx, 6);
+	CGContextSetStrokeColorWithColor(ctx, [theme mapRoadColour].CGColor);
+	CGContextSetLineWidth(ctx, TGMetricCornerMedium);
 	double seed = fabs(lat * 1000 + lon * 1000);
 	for (int i = 0; i < 3; i++){
 		double y = 20 + fmod(seed * (i + 3), 90);
@@ -34,21 +35,21 @@
 	}
 
 	// greenery
-	CGContextSetRGBFillColor(ctx, 0.78f, 0.86f, 0.74f, 1.0f);
+	CGContextSetFillColorWithColor(ctx, [theme mapGreeneryColour].CGColor);
 	CGContextFillEllipseInRect(ctx, CGRectMake(fmod(seed, 120), fmod(seed, 60), 70, 44));
 
 	// the pin, centred
-	CGPoint p = CGPointMake(size.width / 2, size.height / 2);
-	CGContextSetRGBFillColor(ctx, 0.0f, 0.0f, 0.0f, 0.25f);
+	CGPoint p = CGPointMake(TGHalf(size.width), TGHalf(size.height));
+	CGContextSetFillColorWithColor(ctx, [theme mapPinShadowColour].CGColor);
 	CGContextFillEllipseInRect(ctx, CGRectMake(p.x - 7, p.y + 6, 14, 5));
-	CGContextSetRGBFillColor(ctx, 0.85f, 0.15f, 0.15f, 1.0f);
+	CGContextSetFillColorWithColor(ctx, [theme mapPinColour].CGColor);
 	CGContextFillEllipseInRect(ctx, CGRectMake(p.x - 8, p.y - 16, 16, 16));
 	CGContextMoveToPoint(ctx, p.x - 5, p.y - 4);
 	CGContextAddLineToPoint(ctx, p.x + 5, p.y - 4);
 	CGContextAddLineToPoint(ctx, p.x, p.y + 8);
 	CGContextClosePath(ctx);
 	CGContextFillPath(ctx);
-	CGContextSetRGBFillColor(ctx, 1, 1, 1, 1);
+	CGContextSetFillColorWithColor(ctx, [theme mapRoadColour].CGColor);
 	CGContextFillEllipseInRect(ctx, CGRectMake(p.x - 3, p.y - 11, 6, 6));
 
 	UIImage *card = UIGraphicsGetImageFromCurrentImageContext();
@@ -317,13 +318,13 @@
 
 	if (!self.downloadHUD){
 		self.downloadHUD = [[UILabel alloc] initWithFrame:CGRectMake(0, 0, 110, 40)];
-		self.downloadHUD.center = CGPointMake(self.view.bounds.size.width / 2,
-											  self.view.bounds.size.height / 2);
+		self.downloadHUD.center = CGPointMake(TGHalf(self.view.bounds.size.width),
+											  TGHalf(self.view.bounds.size.height));
 		self.downloadHUD.textAlignment = NSTextAlignmentCenter;
 		self.downloadHUD.font = TGFontBodyStrong();
 		self.downloadHUD.textColor = [[TGTheme shared] hudTextColour];
 		self.downloadHUD.backgroundColor = [[TGTheme shared] hudBackgroundColour];
-		self.downloadHUD.layer.cornerRadius = 8;
+		self.downloadHUD.layer.cornerRadius = TGMetricCornerControl;
 		self.downloadHUD.clipsToBounds = YES;
 	}
 	self.downloadHUD.text = @"0%";

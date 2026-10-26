@@ -81,10 +81,10 @@ UIColor *TGSenderColour(int64_t userId) {
 
 	CGFloat oneLine = TGTextSize(text,
 			TGFontAtSize([TGTheme shared].messageFontSize), 0).width;
-	if (oneLine > kBubbleMaxW - 2 * kPadH)
+	if (oneLine > kBubbleMaxW - TGDoubled(kPadH))
 		return NO;   // it wraps, so there is no short last line to share
 
-	return (oneLine + 6 + [self timeWidthFor:m]) <= (kBubbleMaxW - 2 * kPadH);
+	return (oneLine + 6 + [self timeWidthFor:m]) <= (kBubbleMaxW - TGDoubled(kPadH));
 }
 
 /// Configures forwarded message attribution header and returns its height.
@@ -100,7 +100,7 @@ UIColor *TGSenderColour(int64_t userId) {
 
 	TGTheme *theme = [TGTheme shared];
 	cell.forwardLabel.hidden = NO;
-	cell.forwardLabel.frame = CGRectMake(kPadH, kPadV, width - 2 * kPadH, 16);
+	cell.forwardLabel.frame = CGRectMake(kPadH, kPadV, width - TGDoubled(kPadH), 16);
 
 	NSString *line = [NSString stringWithFormat:@"Forwarded from %@", from];
 	if ([cell.forwardLabel respondsToSelector:@selector(setAttributedText:)]){
@@ -127,7 +127,7 @@ UIColor *TGSenderColour(int64_t userId) {
 - (CGFloat)pollHeightFor:(NSDictionary *)m {
 	NSString *question = m[@"pollQuestion"] ?: @"Poll";
 	CGSize qs = TGTextSize(question, TGFontBodyStrong(),
-			kBubbleMaxW - 2 * kPadH);
+			kBubbleMaxW - TGDoubled(kPadH));
 	NSArray *options = m[@"pollOptions"];
 	return kPadV + qs.height + 22 + kPollRow * options.count + 18;
 }
@@ -148,7 +148,7 @@ UIColor *TGSenderColour(int64_t userId) {
 	if (!text.length)
 		return CGSizeZero;
 	return TGTextSizeWithEntities(text, m[@"entities"], TGFontAtSize([TGTheme shared].messageFontSize),
-			kBubbleMaxW - 2 * kPadH);
+			kBubbleMaxW - TGDoubled(kPadH));
 }
 
 - (UIImage *)imageFor:(NSDictionary *)m {
@@ -170,13 +170,13 @@ UIColor *TGSenderColour(int64_t userId) {
 		h = [m[@"mediaHeight"] floatValue];
 	} else if ([m[@"photoId"] isKindOfClass:NSNumber.class]) {
 		w = kImageMax;
-		h = kImageMax * 0.75f;
+		h = kImageMax * TGMetricMediaRatioLandscape;
 	}
 	if (w <= 0 || h <= 0)
 		return CGSizeZero;
 
 	CGFloat scale = MIN(kImageMax / w, kImageMax / h);
-	scale = MIN(scale, 1.0f);
+	scale = MIN(scale, TGMetricScaleFull);
 	return CGSizeMake(floorf(w * scale), floorf(h * scale));
 }
 
@@ -189,7 +189,7 @@ UIColor *TGSenderColour(int64_t userId) {
 
 	TGMessageLayout *layout = [[TGMessageLayout alloc] init];
 	CGFloat tableW = self.table.bounds.size.width;
-	if (tableW <= 0) tableW = 320.0f;
+	if (tableW <= 0) tableW = TGMetricScreenWidth;
 
 	BOOL mine = [m[@"outgoing"] boolValue];
 	NSString *kind = m[@"kind"];
@@ -222,7 +222,7 @@ UIColor *TGSenderColour(int64_t userId) {
 	layout.isLocation = isLocation;
 	layout.isAlbum = isAlbum;
 
-	CGFloat forwarded = [m[@"forward"] length] ? 18.0f : 0.0f;
+	CGFloat forwarded = [m[@"forward"] length] ? TGMetricQuoteForwardLine : TGMetricZero;
 	layout.fwdHeight = forwarded;
 	layout.stamp = [self stampFor:m];
 	layout.timeWidth = TGTextSize(layout.stamp, TGFontMicro(), 0).width;
@@ -245,7 +245,7 @@ UIColor *TGSenderColour(int64_t userId) {
 		CGFloat plateW = textW + 20;
 		// A day plate gets a little more air than an event in the chat.
 		CGFloat top = separator ? 7 : 4;
-		layout.bubbleFrame = CGRectMake((tableW - plateW) / 2, top, plateW, 21);
+		layout.bubbleFrame = CGRectMake(TGCenteredOrigin(tableW, plateW), top, plateW, 21);
 		layout.bodyFrame = CGRectMake(0, 2, plateW, 17);
 		layout.rowHeight = separator ? 36 : 30;
 		if (msgId) self.layoutCache[msgId] = layout;
@@ -266,7 +266,7 @@ UIColor *TGSenderColour(int64_t userId) {
 		NSString *line = m[@"text"] ?: @"Call";
 		CGFloat textW = TGTextSize(line, TGFontSubheadStrong(), 0).width;
 		CGFloat width = MIN(kBubbleMaxW, textW + 80);
-		width = MAX(190.0f, width);
+		width = MAX(kBubbleMaxW - 56, width);
 		CGFloat height = 48 + forwarded;
 		CGFloat x = mine ? (tableW - width - 8) : 8;
 		layout.bubbleFrame = CGRectMake(x, 3, width, height);
@@ -277,10 +277,10 @@ UIColor *TGSenderColour(int64_t userId) {
 
 	if (isDoc) {
 		CGFloat width = 225;
-		CGFloat height = kFileTile + 2 * kPadV + forwarded;
+		CGFloat height = kFileTile + TGDoubled(kPadV) + forwarded;
 		CGFloat x = mine ? (tableW - width - 8) : 8;
 		layout.bubbleFrame = CGRectMake(x, 3, width, height);
-		layout.rowHeight = kFileTile + 2 * kPadV + 6 + forwarded;
+		layout.rowHeight = kFileTile + TGDoubled(kPadV) + 6 + forwarded;
 		if (msgId) self.layoutCache[msgId] = layout;
 		return layout;
 	}
@@ -332,30 +332,30 @@ UIColor *TGSenderColour(int64_t userId) {
 		return layout;
 	}
 
-	CGFloat collageW = 220.0f;
-	CGFloat collageH = 0.0f;
+	CGFloat collageW = TGMetricCollageWidth;
+	CGFloat collageH = TGMetricZero;
 	NSMutableArray *itemFrames = [NSMutableArray array];
 
 	if (isAlbum) {
 		NSArray *items = m[@"albumMessages"];
 		NSUInteger count = items.count;
-		CGFloat gap = 2.0f;
-		CGFloat halfW = (collageW - gap) / 2.0f;
+		CGFloat gap = TGMetricCollageGap;
+		CGFloat halfW = TGHalf(collageW - gap);
 
 		if (count <= 2) {
-			collageH = 135.0f;
+			collageH = TGMetricCollageHeightDual;
 			[itemFrames addObject:[NSValue valueWithCGRect:CGRectMake(0, 0, halfW, collageH)]];
 			[itemFrames addObject:[NSValue valueWithCGRect:CGRectMake(halfW + gap, 0, halfW, collageH)]];
 		} else if (count == 3) {
-			CGFloat topH = 120.0f;
-			CGFloat botH = 88.0f;
+			CGFloat topH = TGMetricCollageTopHeight;
+			CGFloat botH = TGMetricCollageBottomHeight;
 			collageH = topH + gap + botH;
 			[itemFrames addObject:[NSValue valueWithCGRect:CGRectMake(0, 0, collageW, topH)]];
 			[itemFrames addObject:[NSValue valueWithCGRect:CGRectMake(0, topH + gap, halfW, botH)]];
 			[itemFrames addObject:[NSValue valueWithCGRect:CGRectMake(halfW + gap, topH + gap, halfW, botH)]];
 		} else {
-			CGFloat halfH = 104.0f;
-			collageH = halfH * 2.0f + gap;
+			CGFloat halfH = TGMetricCollageQuadHeight;
+			collageH = TGDoubled(halfH) + gap;
 			[itemFrames addObject:[NSValue valueWithCGRect:CGRectMake(0, 0, halfW, halfH)]];
 			[itemFrames addObject:[NSValue valueWithCGRect:CGRectMake(halfW + gap, 0, halfW, halfH)]];
 			[itemFrames addObject:[NSValue valueWithCGRect:CGRectMake(0, halfH + gap, halfW, halfH)]];
@@ -379,16 +379,16 @@ UIColor *TGSenderColour(int64_t userId) {
 		contentW = MAX(contentW, body.width + 6 + timeW);
 	if (isVoice)
 		contentW = 190;
-	CGFloat senderH = senderName.length ? 16.0f : 0.0f;
+	CGFloat senderH = senderName.length ? TGMetricSenderLineHeight : TGMetricZero;
 	if (senderName.length) {
 		CGFloat senderW = TGTextSize(senderName, TGFontMetaStrong(), 0).width;
 		contentW = MAX(contentW, senderW);
 	}
 
-	CGFloat bubbleW = MAX(contentW + 2 * kPadH, timeW + 2 * kPadH + 8);
-	bubbleW = MIN(bubbleW, kBubbleMaxW + 2 * kPadH);
+	CGFloat bubbleW = MAX(contentW + TGDoubled(kPadH), timeW + TGDoubled(kPadH) + 8);
+	bubbleW = MIN(bubbleW, kBubbleMaxW + TGDoubled(kPadH));
 	BOOL stampOnPicture = [self stampSitsOnPictureFor:m];
-	CGFloat bubbleH = kPadV * 2 + senderH + (inlineStamp || stampOnPicture ? 0 : 14) +
+	CGFloat bubbleH = TGDoubled(kPadV) + senderH + (inlineStamp || stampOnPicture ? 0 : 14) +
 			[self decorationHeightFor:m] +
 			(isAlbum ? (collageH + (body.height ? 4 : 0)) : (pic.height ? pic.height + 4 : 0)) + body.height;
 	if (isVoice)
@@ -400,8 +400,8 @@ UIColor *TGSenderColour(int64_t userId) {
 	if (senderName.length) {
 		x += kAvatarSide + 4 + kTailWidth;   // the tail hangs between picture and bubble
 		layout.senderName = senderName;
-		layout.senderFrame = CGRectMake(kPadH, kPadV, bubbleW - 2 * kPadH, 14);
-		CGFloat avatarY = MAX(2.0f, top + bubbleH - kAvatarSide);
+		layout.senderFrame = CGRectMake(kPadH, kPadV, bubbleW - TGDoubled(kPadH), 14);
+		CGFloat avatarY = MAX(TGMetricPadTiny, top + bubbleH - kAvatarSide);
 		layout.senderAvatarFrame = CGRectMake(8, avatarY, kAvatarSide, kAvatarSide);
 	}
 
@@ -418,11 +418,11 @@ UIColor *TGSenderColour(int64_t userId) {
 	CGFloat y = kPadV + senderH + forwarded;
 	if (quoted) {
 		layout.quoteBarFrame = CGRectMake(kPadH, y, 2, 34);
-		layout.quoteAuthorFrame = CGRectMake(kPadH + 8, y, bubbleW - 2 * kPadH - 10, 16);
-		layout.quoteFrame = CGRectMake(kPadH + 8, y + 17, bubbleW - 2 * kPadH - 10, 17);
+		layout.quoteAuthorFrame = CGRectMake(kPadH + 8, y, bubbleW - TGDoubled(kPadH) - 10, 16);
+		layout.quoteFrame = CGRectMake(kPadH + 8, y + 17, bubbleW - TGDoubled(kPadH) - 10, 17);
 		y += 38;
 	}
-	CGFloat innerW = bubbleW - 2 * kPadH;
+	CGFloat innerW = bubbleW - TGDoubled(kPadH);
 	if (isAlbum) {
 		CGFloat cW = (body.height > 0) ? innerW : collageW;
 		layout.collageFrame = CGRectMake(kPadH, y, cW, collageH);
@@ -440,7 +440,7 @@ UIColor *TGSenderColour(int64_t userId) {
 		}
 		y += pic.height + 4;
 	}
-	layout.bodyFrame = CGRectMake(kPadH, y, bubbleW - 2 * kPadH, body.height);
+	layout.bodyFrame = CGRectMake(kPadH, y, bubbleW - TGDoubled(kPadH), body.height);
 	CGFloat stampY = inlineStamp ? (y + body.height - 14) : (bubbleH - kPadV - 13);
 	CGFloat tickW = mine ? 18 : 0;
 	layout.timeFrame = CGRectMake(bubbleW - timeW - kPadH, stampY, timeW - tickW, 12);

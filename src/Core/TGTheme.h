@@ -91,6 +91,11 @@ extern NSString *const TGThemeChangedNotification;
 /// grouped tables draw white cells otherwise.
 - (void)styleCell:(UITableViewCell *)cell;
 
+/// A table's section caption. Seven screens did this by hand and five left
+/// the system's, which on a dark theme is grey on grey - so the same caption
+/// was two colours depending on which list it was over.
+- (void)styleSectionHeader:(UIView *)headerView;
+
 /// Apply the bar styling to a navigation bar.
 - (void)styleNavigationBar:(UINavigationBar *)bar;
 /// Same for the tab bar, which an imported theme should not leave behind.
@@ -107,6 +112,7 @@ extern NSString *const TGThemeChangedNotification;
 - (UIColor *)barSubtitleColour;     ///< subtitle in chat navigation header
 - (UIColor *)barButtonColour;       ///< buttons/items in navigation bar
 - (UIColor *)accentColour;          ///< buttons, links, unread badges
+- (UIColor *)onAccentColour;        ///< text and icons rendered over accentColour / badges
 - (UIColor *)destructiveColour;     ///< delete actions, red alerts
 - (UIColor *)hudBackgroundColour;   ///< background for HUD/toasts
 - (UIColor *)hudTextColour;         ///< text inside HUD/toasts
@@ -142,10 +148,15 @@ extern NSString *const TGThemeChangedNotification;
 - (UIColor *)fileNameColour;        ///< the file name in a document block
 - (UIColor *)fileMetaColour;        ///< "6.5 KB PNG" under it
 - (UIColor *)mediaStampColour;      ///< the plate carrying the time over a picture
+- (UIColor *)mediaOverlayColour;    ///< translucent badge/plate over media
+- (UIColor *)mediaViewerBackdropColour; ///< full-screen media viewer black background
+- (UIColor *)scrimColour;           ///< backdrop dimming behind modal sheets and alerts
+- (UIColor *)menuWashColour;        ///< subtle wash behind contextual popup menu
 
 #pragma mark - chat list
 
 - (UIColor *)badgeColour;           ///< unread count
+- (UIColor *)badgeTextColour;       ///< text inside unread badge
 - (UIColor *)mutedBadgeColour;      ///< the same count in a muted chat
 - (UIColor *)typingColour;          ///< "typing..." in place of the preview
 - (UIColor *)onlineColour;          ///< the dot on an avatar
@@ -155,7 +166,16 @@ extern NSString *const TGThemeChangedNotification;
 #pragma mark - service messages
 
 - (UIColor *)serviceBubbleColour;   ///< the plate behind "X joined the group"
+- (UIColor *)unreadSeparatorColour; ///< unread messages banner plate
 - (UIColor *)serviceTextColour;
+
+#pragma mark - map preview
+
+- (UIColor *)mapPaperColour;
+- (UIColor *)mapRoadColour;
+- (UIColor *)mapGreeneryColour;
+- (UIColor *)mapPinColour;
+- (UIColor *)mapPinShadowColour;
 
 #pragma mark - swipe actions
 
@@ -171,6 +191,8 @@ extern NSString *const TGThemeChangedNotification;
 - (NSArray *)callGradientColoursFailed;
 - (UIColor *)callEndColour;
 - (UIColor *)callAcceptColour;
+- (UIColor *)callControlColour;     ///< translucent button background on call screen
+- (UIColor *)callControlActiveColour;
 
 #pragma mark - charts
 
@@ -178,6 +200,19 @@ extern NSString *const TGThemeChangedNotification;
 - (NSArray *)chartPalette;
 /// The gold on a gift's star.
 - (UIColor *)giftStarColour;
+
+#pragma mark - skeuomorphic and depth effects
+
+/// Top glossy highlight shine on iOS 6 buttons.
+- (UIColor *)skeuoShineColour;
+/// Etched light drop shadow under text in iOS 6 style.
+- (UIColor *)etchedTextShadowColour;
+/// Dark text shadow under embossed navigation titles.
+- (UIColor *)navBarTextShadowColour;
+/// Highlighted tint for action buttons.
+- (UIColor *)buttonHighlightColour;
+/// Subtitle text colour on call screen.
+- (UIColor *)callSubtitleColour;
 
 - (CGFloat)bubbleCornerRadius;
 - (CGFloat)bubbleJoinedCornerRadius; ///< corners where bubbles of one run meet

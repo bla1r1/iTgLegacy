@@ -8,12 +8,12 @@
 #import <QuartzCore/QuartzCore.h>
 #import "TGStyle.h"
 
-static const CGFloat kSide    = 16.0f;   ///< card side margin, as TGAttachSheet pads its rows
-static const CGFloat kRow     = 44.0f;   ///< one attribute row, settings height
-static const CGFloat kButton  = 48.0f;
-static const CGFloat kClose   = 30.0f;
-static const CGFloat kAvatar  = 22.0f;
-static const CGFloat kStar    = 15.0f;
+static const CGFloat kSide    = TGMetricMarginLarge;   ///< card side margin, as TGAttachSheet pads its rows
+static const CGFloat kRow     = TGMetricRow;
+static const CGFloat kButton  = TGMetricButtonHeight;
+static const CGFloat kClose   = TGMetricCloseSide;
+static const CGFloat kAvatar  = TGMetricGiftAvatar;
+static const CGFloat kStar    = TGMetricGiftStar;
 
 /// sizeWithFont: is gone from iOS 7 on, and sizeWithAttributes: does not
 /// exist before it - TGChatCell picks between them the same way.
@@ -60,8 +60,10 @@ static UIImage *TGGiftArtworkGlyph(NSString *emoji, CGFloat side) {
 	UIGraphicsBeginImageContextWithOptions(CGSizeMake(side, side), NO, 0);
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
-	[emoji drawInRect:CGRectMake(side * 0.08f, side * 0.08f, side * 0.84f, side * 0.84f)
-			 withFont:TGFontBoldAtSize(side * 0.72f)
+	CGFloat inset = side * TGMetricEmojiArtworkInsetRatio;
+	CGFloat emojiSize = side * TGMetricEmojiArtworkSizeRatio;
+	[emoji drawInRect:CGRectMake(inset, inset, emojiSize, emojiSize)
+			 withFont:TGFontBoldAtSize(side - inset * TGMetricEmojiArtworkFontInsetRatio)
 		lineBreakMode:NSLineBreakByClipping
 		   alignment:NSTextAlignmentCenter];
 #pragma clang diagnostic pop
@@ -102,8 +104,8 @@ static NSString *TGGiftStamp(NSNumber *unix) {
 
 - (void)buildWithGift:(NSDictionary *)gift {
 	TGTheme *theme = [TGTheme shared];
-	CGFloat width = self.bounds.size.width ?: 320;
-	CGFloat inner = width - 2 * kSide;
+	CGFloat width = self.bounds.size.width ?: TGMetricScreenWidth;
+	CGFloat inner = width - TGDoubled(kSide);
 
 	NSString *emoji = gift[@"emoji"] ?: @"";
 	NSString *message = gift[@"message"];
@@ -112,7 +114,7 @@ static NSString *TGGiftStamp(NSNumber *unix) {
 	// Heights first: the card is as tall as its contents, the way the
 	// official sheet grows for a gift that carries a note.
 	UIFont *messageFont = TGFontBody();
-	CGFloat artSide = floorf(MIN(150, inner * 0.55f));
+	CGFloat artSide = floorf(MIN(TGMetricGiftArtMaxSide, inner * TGMetricGiftArtRatio));
 	CGFloat messageH = message.length
 			? TGGiftTextHeight(message, messageFont, inner - 24) + 20 : 0;
 
@@ -128,10 +130,13 @@ static NSString *TGGiftStamp(NSNumber *unix) {
 
 	UIButton *close = [UIButton buttonWithType:UIButtonTypeCustom];
 	close.frame = CGRectMake(kSide, y, kClose, kClose);
-	close.layer.cornerRadius = kClose / 2;
+	close.layer.cornerRadius = TGHalf(kClose);
 	close.layer.masksToBounds = YES;
 	close.backgroundColor = [theme fileTileColour];
-	[close setTitle:@"✕" forState:UIControlStateNormal];
+	[close setImage:[TGIcons glyphNamed:@"close"
+								 colour:[[TGTheme shared] secondaryTextColour]
+								   side:16]
+		   forState:UIControlStateNormal];
 	[close setTitleColor:[theme secondaryTextColour] forState:UIControlStateNormal];
 	[close setTitleColor:[theme placeholderColour] forState:UIControlStateHighlighted];
 	close.titleLabel.font = TGFontBody();
@@ -140,7 +145,7 @@ static NSString *TGGiftStamp(NSNumber *unix) {
 	[_card addSubview:close];
 
 	UIImageView *art = [[UIImageView alloc] initWithFrame:CGRectMake(
-			(width - artSide) / 2, artY, artSide, artSide)];
+			TGCenteredOrigin(width, artSide), artY, artSide, artSide)];
 	art.contentMode = UIViewContentModeScaleAspectFit;
 	art.image = TGGiftArtworkGlyph(emoji, artSide);
 	art.clipsToBounds = YES;
@@ -189,7 +194,7 @@ static NSString *TGGiftStamp(NSNumber *unix) {
 		UIView *note = [[UIView alloc] initWithFrame:CGRectMake(
 				kSide, messageY, inner, messageH)];
 		note.backgroundColor = [theme serviceBubbleColour];
-		note.layer.cornerRadius = 12;
+		note.layer.cornerRadius = TGMetricCornerCard;
 		note.layer.masksToBounds = YES;
 		[_card addSubview:note];
 
@@ -207,7 +212,7 @@ static NSString *TGGiftStamp(NSNumber *unix) {
 	UIButton *ok = [UIButton buttonWithType:UIButtonTypeCustom];
 	ok.frame = CGRectMake(kSide, okY, inner, kButton);
 	ok.backgroundColor = [theme accentColour];
-	ok.layer.cornerRadius = 12;
+	ok.layer.cornerRadius = TGMetricCornerCard;
 	ok.layer.masksToBounds = YES;
 	[ok setTitle:@"OK" forState:UIControlStateNormal];
 	ok.titleLabel.font = TGFontHeader();
@@ -225,7 +230,7 @@ static NSString *TGGiftStamp(NSNumber *unix) {
 			   gift:(NSDictionary *)gift
 			  stars:(NSInteger)stars {
 	TGTheme *theme = [TGTheme shared];
-	CGFloat inner = width - 2 * kSide;
+	CGFloat inner = width - TGDoubled(kSide);
 	NSArray *labels = @[@"From", @"Date", @"Value"];
 
 	for (NSInteger i = 0; i < (NSInteger)labels.count; i++){
@@ -241,7 +246,7 @@ static NSString *TGGiftStamp(NSNumber *unix) {
 
 		if (i > 0){
 			UIView *hair = [[UIView alloc] initWithFrame:CGRectMake(
-					kSide, y - 0.5f, inner, 0.5f)];
+					kSide, y - TGMetricHairline, inner, TGMetricHairline)];
 			hair.backgroundColor = [theme separatorColour];
 			[_card addSubview:hair];
 		}
@@ -250,7 +255,7 @@ static NSString *TGGiftStamp(NSNumber *unix) {
 		CGFloat right = width - kSide;
 		if (i == 1){
 			[self addRightLabel:TGGiftStamp(gift[@"date"])
-							 at:CGPointMake(right, y + kRow / 2)
+							 at:CGPointMake(right, y + TGHalf(kRow))
 						   bold:NO
 						 colour:[theme primaryTextColour]];
 		} else if (i == 2){
@@ -258,12 +263,12 @@ static NSString *TGGiftStamp(NSNumber *unix) {
 			NSString *count = [NSString stringWithFormat:@"%ld", (long)stars];
 			CGFloat countW = ceilf(TGGiftTextSize(count, font).width);
 			[self addRightLabel:count
-							 at:CGPointMake(right, y + kRow / 2)
+							 at:CGPointMake(right, y + TGHalf(kRow))
 						   bold:YES
 						 colour:[theme primaryTextColour]];
 			// Telegram Stars are gold wherever they appear, theme or not.
 			UIImageView *star = [[UIImageView alloc] initWithFrame:CGRectMake(
-					right - countW - 4 - kStar, y + (kRow - kStar) / 2,
+					right - countW - 4 - kStar, y + TGCenteredOrigin(kRow, kStar),
 					kStar, kStar)];
 			star.image = [TGIcons glyphNamed:@"star"
 									  colour:[[TGTheme shared] giftStarColour]
@@ -305,7 +310,7 @@ static NSString *TGGiftStamp(NSNumber *unix) {
 	CGFloat available = right - kSide - 100 - kAvatar - 6;
 	CGFloat nameW = MIN(ceilf(TGGiftTextSize(name, font).width) + 1, available);
 	UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(
-			right - nameW, y + kRow / 2 - 10, nameW, 20)];
+			right - nameW, y + TGHalf(kRow) - 10, nameW, 20)];
 	label.text = name;
 	label.font = font;
 	label.textColor = [[TGTheme shared] accentColour];
@@ -315,9 +320,9 @@ static NSString *TGGiftStamp(NSNumber *unix) {
 	[_card addSubview:label];
 
 	UIImageView *face = [[UIImageView alloc] initWithFrame:CGRectMake(
-			right - nameW - 6 - kAvatar, y + (kRow - kAvatar) / 2,
+			right - nameW - 6 - kAvatar, y + TGCenteredOrigin(kRow, kAvatar),
 			kAvatar, kAvatar)];
-	face.layer.cornerRadius = kAvatar / 2;
+	face.layer.cornerRadius = TGHalf(kAvatar);
 	face.clipsToBounds = YES;
 	NSString *first = [name substringToIndex:1].uppercaseString;
 	face.image = [TGIcons avatarWithInitials:first size:kAvatar colourId:userId];

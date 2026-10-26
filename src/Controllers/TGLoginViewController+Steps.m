@@ -2,6 +2,29 @@
 #import "TGClient.h"
 #import "TGStyle.h"
 
+/// Every step is the same vertical stack: instructions, a field, a button,
+/// maybe a link or two, then the theme picker. Each one used to carry its own
+/// column of offsets - 56/108/154/190/210 here, 64/116/162/196/230/250 next
+/// door - so the four steps drifted a few points apart from each other for
+/// no reason anybody chose.
+///
+/// These two put a thing where the cursor is and answer where the next thing
+/// goes, so the rhythm is one piece of code rather than four columns.
+static CGFloat TGStackPlace(UIView *view, CGFloat y, CGFloat height,
+                            CGFloat width, CGFloat gutter) {
+    if (view)
+        view.frame = CGRectMake(gutter, y, width - TGDoubled(gutter), height);
+    return y + height + TGMetricStackStep;
+}
+
+/// The same, for the thing that starts a new group - the theme picker under
+/// everything else - which gets the larger step above it.
+static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
+                                 CGFloat width, CGFloat gutter) {
+    return TGStackPlace(view, y + TGMetricStackGroup - TGMetricStackStep,
+                        height, width, gutter);
+}
+
 @implementation TGLoginViewController (Steps)
 
 - (void)showPhoneStep {
@@ -24,18 +47,23 @@
 
     CGFloat width = self.view.bounds.size.width;
     self.inputContainer.hidden = NO;
-    self.inputContainer.frame = CGRectMake(15, 56, width - 30, 44);
+    CGFloat y = TGMetricStackTop + TGMetricLoginSubtitleHeight + TGMetricStackStep;
+    y = TGStackPlace(self.inputContainer, y, TGMetricRow, width, TGMetricGutter);
     self.actionButton.hidden = NO;
-    self.actionButton.frame = CGRectMake(15, 108, width - 30, 42);
+    y = TGStackPlace(self.actionButton, y, TGMetricRow, width, TGMetricGutter);
     self.inputField.hidden = NO;
     self.qrCodeButton.hidden = NO;
-    self.qrCodeButton.frame = CGRectMake(15, 154, width - 30, 30);
+    y = TGStackPlace(self.qrCodeButton, y, TGMetricLoginLinkHeight,
+                     width, TGMetricGutter);
     if (self.qrImageView) {
         self.qrImageView.hidden = YES;
     }
     self.phonePrefixField.hidden = NO;
     self.prefixSeparator.hidden = NO;
-    self.inputField.frame = CGRectMake(78, 0, width - 108, 44);
+    CGFloat fieldX = TGMetricPadMedium + TGMetricLoginPrefixWidth + TGMetricPadMedium;
+    self.inputField.frame = CGRectMake(fieldX, 0,
+            width - TGDoubled(TGMetricGutter) - fieldX - TGMetricPadMedium,
+            TGMetricRow);
     self.inputField.textAlignment = NSTextAlignmentLeft;
     self.inputField.font = TGFontInput();
     self.inputField.placeholder = @"Phone number";
@@ -54,12 +82,16 @@
         self.codeStepQrButton = nil;
     }
 
-    self.themeSectionLabel.frame = CGRectMake(20, 190, width - 40, 16);
-    self.themeSegmentedControl.frame = CGRectMake(15, 210, width - 30, 30);
+    y = TGStackPlaceGroup(self.themeSectionLabel, y, TGMetricMarginLarge,
+                          width, TGMetricGutterLarge);
+    y = TGStackPlace(self.themeSegmentedControl, y - TGMetricStackStep +
+                     TGMetricPadSmall, TGMetricLoginLinkHeight,
+                     width, TGMetricGutter);
     self.themeSectionLabel.hidden = NO;
     self.themeSegmentedControl.hidden = NO;
 
-    self.scrollView.contentSize = CGSizeMake(width, 256);
+    self.scrollView.contentSize = CGSizeMake(width,
+            y - TGMetricStackStep + TGMetricMarginLarge);
     [self applyTheme];
     [self.inputField becomeFirstResponder];
 }
@@ -75,7 +107,9 @@
     if (self.qrImageView) {
         self.qrImageView.hidden = YES;
     }
-    self.inputField.frame = CGRectMake(10, 0, width - 50, 44);
+    self.inputField.frame = CGRectMake(TGMetricPadMedium, 0,
+            width - TGDoubled(TGMetricGutter) - TGDoubled(TGMetricPadMedium),
+            TGMetricRow);
     self.inputField.textAlignment = NSTextAlignmentCenter;
     self.inputField.font = TGFontTitle();
     self.inputField.text = @"";
@@ -119,27 +153,35 @@
         action:@selector(showPhoneStep)];
 
     CGFloat width = self.view.bounds.size.width;
-    CGFloat qrSize = MIN(width - 80, 180.0f);
+    CGFloat qrSize = MIN(width - 80, TGMetricLoginQRSize);
+    CGFloat qrX = TGCenteredOrigin(width, qrSize);
     if (!self.qrImageView) {
-        self.qrImageView = [[UIImageView alloc] initWithFrame:CGRectMake((width - qrSize) / 2.0f, 64, qrSize, qrSize)];
+        self.qrImageView = [[UIImageView alloc] initWithFrame:
+                CGRectMake(qrX, TGMetricStackQRTop, qrSize, qrSize)];
         self.qrImageView.backgroundColor = [UIColor whiteColor];
-        self.qrImageView.layer.cornerRadius = 8.0f;
-        self.qrImageView.layer.borderWidth = 0.5f;
+        self.qrImageView.layer.cornerRadius = TGMetricCornerControl;
+        self.qrImageView.layer.borderWidth = TGMetricHairline;
         self.qrImageView.clipsToBounds = YES;
         [self.scrollView addSubview:self.qrImageView];
     } else {
-        self.qrImageView.frame = CGRectMake((width - qrSize) / 2.0f, 64, qrSize, qrSize);
+        self.qrImageView.frame = CGRectMake(qrX, TGMetricStackQRTop, qrSize, qrSize);
     }
     self.qrImageView.layer.borderColor = [[TGTheme shared] separatorColour].CGColor;
     self.qrImageView.hidden = NO;
     self.qrImageView.image = [self generateQRCodeForString:link size:qrSize];
 
-    self.themeSectionLabel.frame = CGRectMake(20, 64 + qrSize + 16, width - 40, 16);
-    self.themeSegmentedControl.frame = CGRectMake(15, 64 + qrSize + 36, width - 30, 30);
+    CGFloat qrY = TGStackPlaceGroup(nil, TGMetricStackQRTop + qrSize,
+                                    0, width, TGMetricGutterLarge);
+    qrY = TGStackPlace(self.themeSectionLabel, qrY - TGMetricStackStep,
+                       TGMetricMarginLarge, width, TGMetricGutterLarge);
+    qrY = TGStackPlace(self.themeSegmentedControl,
+                       qrY - TGMetricStackStep + TGMetricPadSmall,
+                       TGMetricLoginLinkHeight, width, TGMetricGutter);
     self.themeSectionLabel.hidden = NO;
     self.themeSegmentedControl.hidden = NO;
 
-    self.scrollView.contentSize = CGSizeMake(width, 64 + qrSize + 80);
+    self.scrollView.contentSize = CGSizeMake(width,
+            qrY - TGMetricStackStep + TGMetricMarginLarge);
     [self applyTheme];
 }
 
@@ -194,10 +236,14 @@
 
     CGFloat width = self.view.bounds.size.width;
     [self useSingleFieldLayout];
-    self.inputContainer.frame = CGRectMake(15, 64, width - 30, 44);
+    CGFloat codeY = TGMetricStackTop + TGMetricLoginSubtitleHeight +
+                    TGMetricStackGroup;
+    codeY = TGStackPlace(self.inputContainer, codeY, TGMetricRow,
+                         width, TGMetricGutter);
     self.inputField.placeholder = @"Code";
     self.inputField.keyboardType = UIKeyboardTypeNumberPad;
-    self.actionButton.frame = CGRectMake(15, 116, width - 30, 42);
+    codeY = TGStackPlace(self.actionButton, codeY, TGMetricRow,
+                         width, TGMetricGutter);
     [self.actionButton setTitle:@"Submit Code" forState:UIControlStateNormal];
     self.nextItem.title = @"Done";
 
@@ -209,34 +255,46 @@
 
     if (!self.resendButton) {
         self.resendButton = [UIButton buttonWithType:UIButtonTypeCustom];
-        self.resendButton.frame = CGRectMake(15, 162, width - 30, 30);
+        self.resendButton.frame = CGRectMake(TGMetricGutter, codeY,
+                width - TGDoubled(TGMetricGutter), TGMetricLoginLinkHeight);
         [self.resendButton setTitleColor:[[TGTheme shared] accentColour] forState:UIControlStateNormal];
         [self.resendButton setTitleColor:[[TGTheme shared] secondaryTextColour] forState:UIControlStateDisabled];
         self.resendButton.titleLabel.font = TGFontSubhead();
         [self.resendButton addTarget:self action:@selector(resendButtonTapped) forControlEvents:UIControlEventTouchUpInside];
         [self.scrollView addSubview:self.resendButton];
     } else {
-        self.resendButton.frame = CGRectMake(15, 162, width - 30, 30);
+        self.resendButton.frame = CGRectMake(TGMetricGutter, codeY,
+                width - TGDoubled(TGMetricGutter), TGMetricLoginLinkHeight);
     }
 
     if (!self.codeStepQrButton) {
         self.codeStepQrButton = [UIButton buttonWithType:UIButtonTypeCustom];
-        self.codeStepQrButton.frame = CGRectMake(15, 196, width - 30, 28);
+        self.codeStepQrButton.frame = CGRectMake(TGMetricGutter,
+                codeY + TGMetricLoginLinkHeight + TGMetricPadSmall,
+                width - TGDoubled(TGMetricGutter), TGMetricLoginLinkHeight);
         [self.codeStepQrButton setTitle:@"Log in with QR Code instead" forState:UIControlStateNormal];
         [self.codeStepQrButton setTitleColor:[[TGTheme shared] accentColour] forState:UIControlStateNormal];
         self.codeStepQrButton.titleLabel.font = TGFontSubheadStrong();
         [self.codeStepQrButton addTarget:self action:@selector(qrCodeButtonTapped) forControlEvents:UIControlEventTouchUpInside];
         [self.scrollView addSubview:self.codeStepQrButton];
     } else {
-        self.codeStepQrButton.frame = CGRectMake(15, 196, width - 30, 28);
+        self.codeStepQrButton.frame = CGRectMake(TGMetricGutter,
+                codeY + TGMetricLoginLinkHeight + TGMetricPadSmall,
+                width - TGDoubled(TGMetricGutter), TGMetricLoginLinkHeight);
     }
 
-    self.themeSectionLabel.frame = CGRectMake(20, 230, width - 40, 16);
-    self.themeSegmentedControl.frame = CGRectMake(15, 250, width - 30, 30);
+    // Past the two links, whichever of them is showing.
+    codeY += TGDoubled(TGMetricLoginLinkHeight) + TGMetricPadSmall;
+    codeY = TGStackPlaceGroup(self.themeSectionLabel, codeY,
+                              TGMetricMarginLarge, width, TGMetricGutterLarge);
+    codeY = TGStackPlace(self.themeSegmentedControl,
+                         codeY - TGMetricStackStep + TGMetricPadSmall,
+                         TGMetricLoginLinkHeight, width, TGMetricGutter);
     self.themeSectionLabel.hidden = NO;
     self.themeSegmentedControl.hidden = NO;
 
-    self.scrollView.contentSize = CGSizeMake(width, 296);
+    self.scrollView.contentSize = CGSizeMake(width,
+            codeY - TGMetricStackStep + TGMetricMarginLarge);
 
     [self.resendTimer invalidate];
     self.resendTimer = nil;
@@ -322,7 +380,8 @@
     CGFloat width = self.view.bounds.size.width;
     [self useSingleFieldLayout];
     // The terms can run long, so the field sits under whatever they took.
-    CGSize room = CGSizeMake(width - 40, 10000);
+    CGSize room = CGSizeMake(width - TGDoubled(TGMetricGutterLarge),
+                             TGMetricTextMeasureHeight);
     CGFloat subtitleH = 40;
     if ([self.subtitleLabel.text respondsToSelector:
             @selector(boundingRectWithSize:options:attributes:context:)]){
@@ -331,21 +390,23 @@
              attributes:@{NSFontAttributeName : self.subtitleLabel.font}
                 context:nil].size.height);
     }
-    self.subtitleLabel.frame = CGRectMake(20, 8, width - 40, subtitleH);
+    self.subtitleLabel.frame = CGRectMake(TGMetricGutterLarge, TGMetricPad,
+            width - TGDoubled(TGMetricGutterLarge), subtitleH);
 
     CGFloat y = 16 + subtitleH;
-    self.inputContainer.frame = CGRectMake(15, y, width - 30, 44);
+    y = TGStackPlace(self.inputContainer, y, TGMetricRow, width, TGMetricGutter);
     self.inputField.placeholder = @"First name";
     self.inputField.secureTextEntry = NO;
     self.inputField.keyboardType = UIKeyboardTypeDefault;
     self.inputField.autocapitalizationType = UITextAutocapitalizationTypeWords;
-    self.actionButton.frame = CGRectMake(15, y + 52, width - 30, 42);
+    y = TGStackPlace(self.actionButton, y, TGMetricRow, width, TGMetricGutter);
     [self.actionButton setTitle:@"Create Account" forState:UIControlStateNormal];
     self.nextItem.title = @"Done";
 
     self.themeSectionLabel.hidden = YES;
     self.themeSegmentedControl.hidden = YES;
-    self.scrollView.contentSize = CGSizeMake(width, y + 110);
+    self.scrollView.contentSize = CGSizeMake(width,
+            y - TGMetricStackStep + TGMetricMarginLarge);
 
     [self applyTheme];
     [self.inputField becomeFirstResponder];
@@ -376,20 +437,28 @@
 
     CGFloat width = self.view.bounds.size.width;
     [self useSingleFieldLayout];
-    self.inputContainer.frame = CGRectMake(15, 56, width - 30, 44);
+    CGFloat passY = TGMetricStackTop + TGMetricLoginSubtitleHeight +
+                    TGMetricStackStep;
+    passY = TGStackPlace(self.inputContainer, passY, TGMetricRow,
+                         width, TGMetricGutter);
     self.inputField.placeholder = @"Password";
     self.inputField.secureTextEntry = YES;
     self.inputField.keyboardType = UIKeyboardTypeDefault;
-    self.actionButton.frame = CGRectMake(15, 108, width - 30, 42);
+    passY = TGStackPlace(self.actionButton, passY, TGMetricRow,
+                         width, TGMetricGutter);
     [self.actionButton setTitle:@"Submit Password" forState:UIControlStateNormal];
     self.nextItem.title = @"Done";
 
-    self.themeSectionLabel.frame = CGRectMake(20, 160, width - 40, 16);
-    self.themeSegmentedControl.frame = CGRectMake(15, 180, width - 30, 30);
+    passY = TGStackPlaceGroup(self.themeSectionLabel, passY,
+                              TGMetricMarginLarge, width, TGMetricGutterLarge);
+    passY = TGStackPlace(self.themeSegmentedControl,
+                         passY - TGMetricStackStep + TGMetricPadSmall,
+                         TGMetricLoginLinkHeight, width, TGMetricGutter);
     self.themeSectionLabel.hidden = NO;
     self.themeSegmentedControl.hidden = NO;
 
-    self.scrollView.contentSize = CGSizeMake(width, 226);
+    self.scrollView.contentSize = CGSizeMake(width,
+            passY - TGMetricStackStep + TGMetricMarginLarge);
 
     [self applyTheme];
     [self.inputField becomeFirstResponder];

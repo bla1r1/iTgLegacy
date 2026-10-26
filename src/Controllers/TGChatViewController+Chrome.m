@@ -9,7 +9,7 @@
 #import "TGStatusText.h"
 #import "TGStyle.h"
 
-static const CGFloat kJumpSide = 40.0f;
+static const CGFloat kJumpSide = TGMetricJumpSide;
 
 @implementation TGChatViewController (Chrome)
 
@@ -104,7 +104,7 @@ static NSInteger TGDayNumber(NSTimeInterval stamp) {
 	self.floatingDate = [[UILabel alloc] init];
 	self.floatingDate.font = TGFontCaptionStrong();
 	self.floatingDate.textAlignment = NSTextAlignmentCenter;
-	self.floatingDate.layer.cornerRadius = 11;
+	self.floatingDate.layer.cornerRadius = TGHalf(TGMetricFloatingDateHeight);
 	self.floatingDate.clipsToBounds = YES;
 	self.floatingDate.alpha = 0;
 	self.floatingDate.userInteractionEnabled = NO;
@@ -112,11 +112,11 @@ static NSInteger TGDayNumber(NSTimeInterval stamp) {
 
 	self.jumpButton = [UIButton buttonWithType:UIButtonTypeCustom];
 	self.jumpButton.frame = CGRectMake(0, 0, kJumpSide, kJumpSide);
-	self.jumpButton.layer.cornerRadius = kJumpSide / 2;
+	self.jumpButton.layer.cornerRadius = TGHalf(kJumpSide);
 	self.jumpButton.layer.shadowColor = [UIColor blackColor].CGColor;
-	self.jumpButton.layer.shadowOpacity = 0.18f;
-	self.jumpButton.layer.shadowRadius = 2;
-	self.jumpButton.layer.shadowOffset = CGSizeMake(0, 1);
+	self.jumpButton.layer.shadowOpacity = TGMetricShadowButtonOpacity;
+	self.jumpButton.layer.shadowRadius = TGMetricShadowButtonRadius;
+	self.jumpButton.layer.shadowOffset = TGMetricShadowOffsetEtched;
 	self.jumpButton.hidden = YES;
 	[self.jumpButton addTarget:self action:@selector(jumpTapped)
 			  forControlEvents:UIControlEventTouchUpInside];
@@ -126,7 +126,7 @@ static NSInteger TGDayNumber(NSTimeInterval stamp) {
 	self.jumpBadge.font = TGFontMetaStrong();
 	self.jumpBadge.textColor = [UIColor whiteColor];
 	self.jumpBadge.textAlignment = NSTextAlignmentCenter;
-	self.jumpBadge.layer.cornerRadius = 9;
+	self.jumpBadge.layer.cornerRadius = TGHalf(TGMetricJumpBadgeHeight);
 	self.jumpBadge.clipsToBounds = YES;
 	self.jumpBadge.hidden = YES;
 	[self.jumpButton addSubview:self.jumpBadge];
@@ -141,7 +141,7 @@ static UIImage *TGJumpChevron(UIColor *colour) {
 	UIGraphicsBeginImageContextWithOptions(size, NO, 0);
 	CGContextRef ctx = UIGraphicsGetCurrentContext();
 	CGContextSetStrokeColorWithColor(ctx, colour.CGColor);
-	CGContextSetLineWidth(ctx, 2.0f);
+	CGContextSetLineWidth(ctx, TGMetricBorderThick);
 	CGContextSetLineCap(ctx, kCGLineCapRound);
 	CGContextSetLineJoin(ctx, kCGLineJoinRound);
 	CGContextMoveToPoint(ctx, 2, 2);
@@ -176,24 +176,26 @@ static UIImage *TGJumpChevron(UIColor *colour) {
 		[self.view bringSubviewToFront:self.composeBanner];
 		bottom = MIN(bottom, CGRectGetMinY(self.composeBanner.frame));
 	}
-	self.jumpButton.frame = CGRectMake(CGRectGetMaxX(table) - kJumpSide - 8,
-									   bottom - kJumpSide - 10, kJumpSide, kJumpSide);
+	self.jumpButton.frame = CGRectMake(CGRectGetMaxX(table) - kJumpSide - TGMetricJumpMarginRight,
+									   bottom - kJumpSide - TGMetricJumpMarginBottom, kJumpSide, kJumpSide);
 	CGSize badge = [self.jumpBadge sizeThatFits:CGSizeMake(60, 18)];
-	CGFloat bw = MAX(18, ceilf(badge.width) + 10);
-	self.jumpBadge.frame = CGRectMake((kJumpSide - bw) / 2, -9, bw, 18);
+	CGFloat bw = MAX(18, ceilf(badge.width) + TGMetricPadMedium);
+	self.jumpBadge.frame = CGRectMake(TGCenteredOrigin(kJumpSide, bw),
+			TGMetricBadgeOffsetTop, bw, TGMetricJumpBadgeHeight);
 	// The badge pokes out above the button.
 	self.jumpButton.clipsToBounds = NO;
 
 	CGSize date = [self.floatingDate sizeThatFits:CGSizeMake(table.size.width, 22)];
-	CGFloat dw = ceilf(date.width) + 20;
-	CGFloat top = self.pinnedBannerView.hidden || !self.pinnedBannerView ? 0 : CGRectGetMaxY(self.pinnedBannerView.frame);
-	self.floatingDate.frame = CGRectMake((table.size.width - dw) / 2, top + 8, dw, 22);
+	CGFloat dw = ceilf(date.width) + TGMetricGutterLarge;
+	CGFloat top = self.pinnedBannerView.hidden || !self.pinnedBannerView ? TGMetricZero : CGRectGetMaxY(self.pinnedBannerView.frame);
+	self.floatingDate.frame = CGRectMake(TGCenteredOrigin(table.size.width, dw), top + TGMetricFloatingDateTopOffset, dw,
+			TGMetricFloatingDateHeight);
 }
 
 - (BOOL)isNearBottom {
 	UIScrollView *s = self.table;
 	CGFloat fromBottom = s.contentSize.height - (s.contentOffset.y + s.bounds.size.height);
-	return fromBottom < s.bounds.size.height * 0.5f;
+	return fromBottom < TGHalf(s.bounds.size.height);
 }
 
 - (void)updateJumpButton {
@@ -204,7 +206,7 @@ static UIImage *TGJumpChevron(UIColor *colour) {
 		self.jumpButton.hidden = NO;
 		self.jumpButton.alpha = 0;
 	}
-	[UIView animateWithDuration:0.18 animations:^{
+	[UIView animateWithDuration:TGAnimationDurationFast animations:^{
 		self.jumpButton.alpha = show ? 1 : 0;
 	} completion:^(BOOL finished){
 		if (!show){
@@ -253,7 +255,7 @@ static UIImage *TGJumpChevron(UIColor *colour) {
 	if (self.table.isDragging || self.table.isDecelerating){
 		[self updateFloatingDate];
 		if (self.floatingDate.alpha < 1){
-			[UIView animateWithDuration:0.15 animations:^{ self.floatingDate.alpha = 1; }];
+			[UIView animateWithDuration:TGAnimationDurationFast animations:^{ self.floatingDate.alpha = 1; }];
 		}
 		[NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(fadeFloatingDate) object:nil];
 	}
@@ -265,7 +267,7 @@ static UIImage *TGJumpChevron(UIColor *colour) {
 }
 
 - (void)fadeFloatingDate {
-	[UIView animateWithDuration:0.3 animations:^{ self.floatingDate.alpha = 0; }];
+	[UIView animateWithDuration:TGAnimationDurationSlow animations:^{ self.floatingDate.alpha = 0; }];
 }
 
 - (void)scrollViewDidEndDragging:(UIScrollView *)scrollView willDecelerate:(BOOL)decelerate {
@@ -280,7 +282,7 @@ static UIImage *TGJumpChevron(UIColor *colour) {
 
 #pragma mark - swipe to reply
 
-static const CGFloat kReplyPull = 56.0f;   // how far a bubble travels before it counts
+static const CGFloat kReplyPull = TGMetricReplyPull;   // how far a bubble travels before it counts
 
 - (void)installSwipeToReply {
 	UIPanGestureRecognizer *pan = [[UIPanGestureRecognizer alloc]
@@ -301,7 +303,7 @@ static const CGFloat kReplyPull = 56.0f;   // how far a bubble travels before it
 		return NO;
 	UIPanGestureRecognizer *pan = (UIPanGestureRecognizer *)gesture;
 	CGPoint v = [pan velocityInView:self.table];
-	if (v.x >= 0 || fabs(v.x) < fabs(v.y) * 1.5f)
+	if (v.x >= 0 || fabs(v.x) < fabs(v.y) * TGDampingReplySwipeSlope)
 		return NO;
 	NSIndexPath *path = [self.table indexPathForRowAtPoint:[pan locationInView:self.table]];
 	if (!path || path.row >= (NSInteger)self.messages.count)
@@ -322,14 +324,14 @@ static const CGFloat kReplyPull = 56.0f;   // how far a bubble travels before it
 		if (!self.replyHint){
 			CGFloat side = 30;
 			self.replyHint = [[UIImageView alloc] initWithFrame:CGRectMake(0, 0, side, side)];
-			self.replyHint.layer.cornerRadius = side / 2;
+			self.replyHint.layer.cornerRadius = TGHalf(side);
 			self.replyHint.contentMode = UIViewContentModeCenter;
 		}
 		TGTheme *theme = [TGTheme shared];
 		self.replyHint.backgroundColor = [theme serviceBubbleColour];
 		self.replyHint.image = [TGIcons glyphNamed:@"reply" colour:[theme serviceTextColour] side:20];
-		self.replyHint.alpha = 0;
-		self.replyHint.center = CGPointMake(cell.bounds.size.width - 24, cell.bounds.size.height / 2);
+		self.replyHint.alpha = TGAlphaTransparent;
+		self.replyHint.center = CGPointMake(cell.bounds.size.width - 24, TGHalf(cell.bounds.size.height));
 		[cell addSubview:self.replyHint];
 		return;
 	}
@@ -339,20 +341,20 @@ static const CGFloat kReplyPull = 56.0f;   // how far a bubble travels before it
 		return;
 	CGFloat dx = MIN(0, [pan translationInView:self.table].x);
 	// Past the threshold it resists, the way theirs does.
-	CGFloat shown = dx > -kReplyPull ? dx : -kReplyPull + (dx + kReplyPull) * 0.25f;
+	CGFloat shown = dx > -kReplyPull ? dx : -kReplyPull + (dx + kReplyPull) * TGDampingRubberband;
 
 	if (pan.state == UIGestureRecognizerStateChanged){
 		cell.contentView.transform = CGAffineTransformMakeTranslation(shown, 0);
 		self.replyHint.alpha = MIN(1, -dx / kReplyPull);
-		self.replyHint.transform = CGAffineTransformMakeScale(0.6f + 0.4f * self.replyHint.alpha,
-															  0.6f + 0.4f * self.replyHint.alpha);
+		CGFloat scale = TGTransformScaleReplyMin + TGTransformScaleReplyRange * self.replyHint.alpha;
+		self.replyHint.transform = CGAffineTransformMakeScale(scale, scale);
 		return;
 	}
 
 	BOOL commit = pan.state == UIGestureRecognizerStateEnded && dx <= -kReplyPull;
 	NSInteger row = self.replySwipeRow;
 	self.replySwipeCell = nil;
-	[UIView animateWithDuration:0.2 animations:^{
+	[UIView animateWithDuration:TGAnimationDurationNormal animations:^{
 		cell.contentView.transform = CGAffineTransformIdentity;
 		self.replyHint.alpha = 0;
 	} completion:^(BOOL finished){

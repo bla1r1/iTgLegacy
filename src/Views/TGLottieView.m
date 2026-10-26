@@ -1,4 +1,5 @@
 #import "TGLottieView.h"
+#import "TGStyle.h"
 #include <zlib.h>
 
 #pragma mark - gunzip
@@ -195,8 +196,8 @@ static double TGScalarAt(NSDictionary *prop, double frame, double fallback) {
 	CGFloat scale = MIN(self.bounds.size.width / self.canvas.width,
 						self.bounds.size.height / self.canvas.height);
 	CGContextTranslateCTM(ctx,
-			(self.bounds.size.width - self.canvas.width * scale) / 2,
-			(self.bounds.size.height - self.canvas.height * scale) / 2);
+			TGCenteredOrigin(self.bounds.size.width, self.canvas.width * scale),
+			TGCenteredOrigin(self.bounds.size.height, self.canvas.height * scale));
 	CGContextScaleCTM(ctx, scale, scale);
 
 	// Lottie paints the last layer first.

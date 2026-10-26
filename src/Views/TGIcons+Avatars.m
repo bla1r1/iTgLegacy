@@ -43,7 +43,7 @@ static UIImage *TGGlyphAvatar(CGFloat side, void (^draw)(CGContextRef ctx, CGFlo
 	if (cached) return cached;
 
 	UIImage *img = TGGlyphAvatar(side, ^(CGContextRef ctx, CGFloat s){
-		CGFloat w = s * 0.46f, x = (s - w) / 2;
+		CGFloat w = s * 0.46f, x = TGHalf(s - w);
 		CGContextFillRect(ctx, CGRectMake(x, s * 0.32f, w, s * 0.10f));
 		CGContextFillRect(ctx, CGRectMake(x + s * 0.03f, s * 0.44f,
 										  w - s * 0.06f, s * 0.24f));
@@ -232,7 +232,7 @@ static UIImage *TGGlyphAvatar(CGFloat side, void (^draw)(CGContextRef ctx, CGFlo
 	UIGraphicsBeginImageContextWithOptions(CGSizeMake(w, h), NO, scale);
 	CGContextRef ctx = UIGraphicsGetCurrentContext();
 
-	CGFloat cx = w / 2.0f;
+	CGFloat cx = TGHalf(w);
 	CGFloat cy = 12.0f;
 	CGFloat r = 10.0f;
 	CGFloat tipX = cx;

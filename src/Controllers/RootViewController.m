@@ -11,9 +11,10 @@
 #import "TGIcons.h"
 #import "TGTheme.h"
 #import "TGMusicPlayer.h"
+#import "TGStyle.h"
 
-/// Compact 32pt navigation bar to maximize vertical space on 3.5" displays.
-static const CGFloat kCompactBarHeight = 32.0f;
+/// Compact navigation bar to maximize vertical space on 3.5" displays.
+static const CGFloat kCompactBarHeight = TGMetricCompactBarHeight;
 
 @interface TGCompactNavigationBar : UINavigationBar
 @end

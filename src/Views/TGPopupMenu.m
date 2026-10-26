@@ -5,11 +5,11 @@
 #import "TGStyle.h"
 
 // Their menu at 360dp: a 200 wide card of 48 rows, a 24 glyph inset 24 from
-// the left, the label at 16. Scaled to 320pt.
-static const CGFloat kMenuWidth  = 178.0f;
-static const CGFloat kMenuRow    = 43.0f;
-static const CGFloat kMenuGlyph  = 22.0f;
-static const CGFloat kMenuInset  = 14.0f;
+// the left, the label at 16. Scaled to 320pt with design tokens.
+static const CGFloat kMenuWidth  = TGMetricMenuWidth;
+static const CGFloat kMenuRow    = TGMetricMenuRow;
+static const CGFloat kMenuGlyph  = TGMetricMenuGlyph;
+static const CGFloat kMenuInset  = TGMetricMenuInset;
 
 static TGPopupMenu *sOpenMenu = nil;
 
@@ -43,11 +43,11 @@ static TGPopupMenu *sOpenMenu = nil;
 
 	// Grown from the corner nearest the message, which is what makes it read
 	// as coming out of the thing you held rather than appearing over it.
-	menu->_card.transform = CGAffineTransformMakeScale(0.85f, 0.85f);
-	menu->_card.alpha = 0;
-	[UIView animateWithDuration:0.15 animations:^{
+	menu->_card.transform = CGAffineTransformMakeScale(TGTransformScaleMenuInitial, TGTransformScaleMenuInitial);
+	menu->_card.alpha = TGAlphaTransparent;
+	[UIView animateWithDuration:TGAnimationDurationFast animations:^{
 		menu->_card.transform = CGAffineTransformIdentity;
-		menu->_card.alpha = 1;
+		menu->_card.alpha = TGAlphaOpaque;
 	}];
 }
 
@@ -57,23 +57,35 @@ static TGPopupMenu *sOpenMenu = nil;
 
 	// A wash rather than a black scrim: their menu dims the chat only slightly,
 	// so you can still see the message you are acting on.
-	self.backgroundColor = [UIColor colorWithWhite:0.0f alpha:0.12f];
+	self.backgroundColor = [theme menuWashColour];
 
 	CGFloat height = kMenuRow * items.count;
-	CGFloat x = MIN(MAX(8, point.x - kMenuWidth / 2), self.bounds.size.width - kMenuWidth - 8);
+	CGFloat x = MIN(MAX(TGMetricPad, point.x - TGHalf(kMenuWidth)), self.bounds.size.width - kMenuWidth - TGMetricPad);
 	// Above the point when there is no room below it.
-	CGFloat y = point.y + 8;
-	if (y + height > self.bounds.size.height - 8)
-		y = MAX(8, point.y - height - 8);
+	CGFloat y = point.y + TGMetricPad;
+	if (y + height > self.bounds.size.height - TGMetricPad)
+		y = MAX(TGMetricPad, point.y - height - TGMetricPad);
 
 	_card = [[UIView alloc] initWithFrame:CGRectMake(x, y, kMenuWidth, height)];
-	_card.backgroundColor = [theme cardBackgroundColour];
-	_card.layer.cornerRadius = 7;
+	_card.backgroundColor = [UIColor clearColor];
+	_card.layer.cornerRadius = TGMetricCornerCard;
 	_card.layer.shadowColor = [UIColor blackColor].CGColor;
-	_card.layer.shadowOpacity = 0.22f;
-	_card.layer.shadowRadius = 8;
-	_card.layer.shadowOffset = CGSizeMake(0, 3);
+	_card.layer.shadowOpacity = TGMetricShadowMenuOpacity;
+	_card.layer.shadowRadius = TGMetricShadowMenuRadius;
+	_card.layer.shadowOffset = TGMetricShadowOffsetMenu;
 	[self addSubview:_card];
+
+	// iOS 6 precision container with modern Telegram clipping: keeps button
+	// tap highlights strictly within the card's rounded corners, and renders
+	// the crisp hairline border.
+	UIView *body = [[UIView alloc] initWithFrame:_card.bounds];
+	body.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+	body.backgroundColor = [theme cardBackgroundColour];
+	body.layer.cornerRadius = TGMetricCornerCard;
+	body.layer.masksToBounds = YES;
+	body.layer.borderColor = [theme separatorColour].CGColor;
+	body.layer.borderWidth = TGMetricHairline;
+	[_card addSubview:body];
 
 	for (NSUInteger i = 0; i < items.count; i++){
 		NSDictionary *item = items[i];
@@ -85,12 +97,12 @@ static TGPopupMenu *sOpenMenu = nil;
 		row.tag = (NSInteger)i;
 		[row addTarget:self action:@selector(rowTapped:)
 		  forControlEvents:UIControlEventTouchUpInside];
-		[_card addSubview:row];
+		[body addSubview:row];
 
 		UIImage *glyph = [TGIcons menuGlyphNamed:item[@"icon"]];
 		if (glyph){
 			UIImageView *icon = [[UIImageView alloc] initWithFrame:CGRectMake(
-					kMenuInset, (kMenuRow - kMenuGlyph) / 2, kMenuGlyph, kMenuGlyph)];
+					kMenuInset, TGCenteredOrigin(kMenuRow, kMenuGlyph), kMenuGlyph, kMenuGlyph)];
 			icon.image = glyph;
 			icon.contentMode = UIViewContentModeScaleAspectFit;
 			icon.tintColor = destructive ? [theme destructiveColour]
@@ -102,7 +114,7 @@ static TGPopupMenu *sOpenMenu = nil;
 				kMenuInset + kMenuGlyph + 14, 0, kMenuWidth - kMenuInset - kMenuGlyph - 22,
 				kMenuRow)];
 		label.text = item[@"title"];
-		label.font = TGFontBody();
+		label.font = TGFontRow();
 		label.backgroundColor = [UIColor clearColor];
 		label.textColor = destructive
 				? [theme destructiveColour]
@@ -111,9 +123,9 @@ static TGPopupMenu *sOpenMenu = nil;
 
 		if (i + 1 < items.count){
 			UIView *hair = [[UIView alloc] initWithFrame:CGRectMake(
-					kMenuInset, kMenuRow * (i + 1) - 0.5f, kMenuWidth - kMenuInset, 0.5f)];
+					kMenuInset, kMenuRow * (i + 1) - TGMetricHairline, kMenuWidth - kMenuInset, TGMetricHairline)];
 			hair.backgroundColor = [theme separatorColour];
-			[_card addSubview:hair];
+			[body addSubview:hair];
 		}
 	}
 }

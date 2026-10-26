@@ -71,7 +71,7 @@
 
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
 	// Photos sit one to a row, at the size the avatar behind them is drawn.
-	return 180.0f;
+	return TGMetricProfilePhotoRow;
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
@@ -82,19 +82,20 @@
 									  reuseIdentifier:@"TGProfilePhoto"];
 		cell.selectionStyle = UITableViewCellSelectionStyleNone;
 
+		CGFloat side = TGMetricProfilePhotoSide;
+		CGFloat x = TGCenteredOrigin(UIScreen.mainScreen.bounds.size.width, side);
 		UIImageView *image = [[UIImageView alloc] initWithFrame:
-				CGRectMake((UIScreen.mainScreen.bounds.size.width - 100) / 2.0f,
-						   20, 100, 100)];
+				CGRectMake(x, 20, side, side)];
 		image.tag = 1;
-		image.layer.cornerRadius = 50;
+		image.layer.cornerRadius = TGHalf(side);
 		image.clipsToBounds = YES;
 		image.contentMode = UIViewContentModeScaleAspectFill;
 		image.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin |
 				UIViewAutoresizingFlexibleRightMargin;
 		[cell.contentView addSubview:image];
 
-		UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(10, 130,
-				UIScreen.mainScreen.bounds.size.width - 20, 16)];
+		UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(TGMetricPadMedium, 130,
+				UIScreen.mainScreen.bounds.size.width - TGDoubled(TGMetricPadMedium), 16)];
 		label.tag = 2;
 		label.font = TGFontMeta();
 		label.textAlignment = NSTextAlignmentCenter;
@@ -110,7 +111,7 @@
 			(long)(indexPath.row + 1), (unsigned long)self.photos.count];
 
 	NSInteger fileId = [photo[@"fileId"] integerValue];
-	image.image = [TGIcons avatarWithInitials:@"?" size:100
+	image.image = [TGIcons avatarWithInitials:@"?" size:TGMetricProfilePhotoSide
 									 colourId:[photo[@"photoId"] longLongValue]];
 	if (fileId)
 		[[TGClient shared] downloadFile:fileId

@@ -6,11 +6,10 @@
 #import <QuartzCore/QuartzCore.h>
 #import "TGStyle.h"
 
-static const CGFloat kCorner     = 12.0f;   ///< a floating card, all four
-static const CGFloat kEdgeCorner = 14.0f;   ///< a pinned card, top two
-static const CGFloat kScrim      = 0.4f;
-static const NSTimeInterval kIn  = 0.25;
-static const NSTimeInterval kOut = 0.2;
+static const CGFloat kCorner     = TGMetricCornerCard;   ///< a floating card, all four
+static const CGFloat kEdgeCorner = TGMetricCornerCard; ///< a pinned card, top two
+static const NSTimeInterval kIn  = TGAnimationDurationMedium;
+static const NSTimeInterval kOut = TGAnimationDurationNormal;
 
 // One sheet at a time, the way TGPopupMenu keeps its menu.
 static TGSheet *sOpenSheet = nil;
@@ -46,7 +45,7 @@ static TGSheet *sOpenSheet = nil;
 
 	_backdrop = [[UIView alloc] initWithFrame:self.bounds];
 	_backdrop.autoresizingMask = self.autoresizingMask;
-	_backdrop.backgroundColor = [UIColor colorWithWhite:0 alpha:kScrim];
+	_backdrop.backgroundColor = [[TGTheme shared] scrimColour];
 	_backdrop.alpha = 0;
 	// The cards sit above the backdrop, so a tap that lands on one never
 	// reaches this recognizer and only the dimmed area closes the sheet.
@@ -58,7 +57,7 @@ static TGSheet *sOpenSheet = nil;
 
 - (UIView *)addCardOfHeight:(CGFloat)height edgeToEdge:(BOOL)edgeToEdge {
 	CGFloat width = edgeToEdge ? self.bounds.size.width
-							   : self.bounds.size.width - 2 * TGMetricCardMargin;
+							   : self.bounds.size.width - TGDoubled(TGMetricCardMargin);
 	UIView *card = [[UIView alloc] initWithFrame:CGRectMake(
 			edgeToEdge ? 0 : TGMetricCardMargin, self.bounds.size.height, width, height)];
 	card.backgroundColor = [[TGTheme shared] cardBackgroundColour];
@@ -76,6 +75,8 @@ static TGSheet *sOpenSheet = nil;
 	} else {
 		card.layer.cornerRadius = kCorner;
 		card.clipsToBounds = YES;
+		card.layer.borderColor = [[TGTheme shared] separatorColour].CGColor;
+		card.layer.borderWidth = TGMetricHairline;
 	}
 	[_cards addObject:card];
 	[_edgeFlags addObject:@(edgeToEdge)];

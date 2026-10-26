@@ -1,5 +1,6 @@
 #import "TGSettingsViewControllerInternal.h"
 #import "TGAlertSheet.h"
+#import "TGStyle.h"
 
 @implementation TGSettingsViewController (Actions)
 
@@ -406,7 +407,7 @@
 			 destructiveIndex:-1
 					   inView:self.view
 					 onChoice:^(NSInteger index){
-		[TGTheme shared].messageFontSize = 13.0f + index * 2.0f;
+		[TGTheme shared].messageFontSize = TGFontMessageBaseSize + index * TGFontMessageStep;
 		[weakSelf rebuild];
 	}];
 }
@@ -467,10 +468,10 @@
 - (void)uploadProfilePhoto:(UIImage *)image {
 	UIImage *scaled = [TGIcons decodedImage:image
 								fittingSize:CGSizeMake(640, 640)
-									   fill:NO scale:1.0f];
+									   fill:NO scale:TGMetricScaleFull];
 	NSString *path = [NSTemporaryDirectory()
 			stringByAppendingPathComponent:@"profile-photo.jpg"];
-	if (![UIImageJPEGRepresentation(scaled, 0.9f) writeToFile:path atomically:YES]){
+	if (![UIImageJPEGRepresentation(scaled, TGCompressionQualityStandard) writeToFile:path atomically:YES]){
 		[self toast:@"Could not prepare the picture."];
 		return;
 	}

@@ -2,24 +2,25 @@
 // TGMessageLayout.h - Geometry, sizing and layout cache for chat bubbles.
 //
 #import <UIKit/UIKit.h>
+#import "TGStyle.h"
 
-static const CGFloat kBubbleMaxW  = 246.0f;   // text width; the bubble is ~83% of the screen
-static const CGFloat kPadH        = 10.0f;
-static const CGFloat kAvatarSide  = 28.0f;   // sender avatar in groups
-static const CGFloat kPadV        = 7.0f;
-static const CGFloat kImageMax    = 200.0f;
-static const CGFloat kSendSide    = 36.0f;   // the round send button
-static const CGFloat kFileTile    = 71.0f;
-static const CGFloat kFileDisc    = 37.0f;
-static const CGFloat kTrackArt    = 44.0f;   // album cover on a track bubble
-static const CGFloat kTrackDisc   = 28.0f;   // the play arrow over it
-static const CGFloat kTrackRow    = 60.0f;   // the whole bubble, which is fixed
-static const CGFloat kPlayerBarHeight = 48.0f;  // the strip under the header
-static const CGFloat kPlayerArt   = 36.0f;   // its album cover
-static const CGFloat kMediaRadius = 6.0f;
-static const CGFloat kPollRow     = 30.0f;
-static const CGFloat kTailWidth   = 6.0f;    // the hook on the last bubble of a run
-static const CGFloat kTailHeight  = 13.0f;
+static const CGFloat kBubbleMaxW      = TGMetricBubbleMaxW;   // text width; the bubble is ~83% of the screen
+static const CGFloat kPadH            = TGMetricBubblePadH;
+static const CGFloat kAvatarSide      = TGMetricGroupAvatarSide;   // sender avatar in groups
+static const CGFloat kPadV            = TGMetricBubblePadV;
+static const CGFloat kImageMax        = TGMetricImageMax;
+static const CGFloat kSendSide        = TGMetricSendSide;   // the round send button
+static const CGFloat kFileTile        = TGMetricFileTile;
+static const CGFloat kFileDisc        = TGMetricFileDisc;
+static const CGFloat kTrackArt        = TGMetricTrackArt;   // album cover on a track bubble
+static const CGFloat kTrackDisc       = TGMetricTrackDisc;   // the play arrow over it
+static const CGFloat kTrackRow        = TGMetricTrackRow;   // the whole bubble, which is fixed
+static const CGFloat kPlayerBarHeight = TGMetricPlayerBarHeight;  // the strip under the header
+static const CGFloat kPlayerArt       = TGMetricPlayerArt;   // its album cover
+static const CGFloat kMediaRadius     = TGMetricCornerMedium;
+static const CGFloat kPollRow         = TGMetricPollRow;
+static const CGFloat kTailWidth       = TGMetricBubbleTailWidth;    // the hook on the last bubble of a run
+static const CGFloat kTailHeight      = TGMetricBubbleTailHeight;
 
 UIFont *TGEmojiFontOfSize(CGFloat size);
 BOOL TGIsEmojiScalar(UTF32Char c);

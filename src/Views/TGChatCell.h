@@ -1,9 +1,10 @@
 #import <UIKit/UIKit.h>
+#import "TGStyle.h"
 
 // Their iOS chat list: a 60pt picture and up to two lines of preview, so a
 // row is read without opening it.
-static const CGFloat kRowHeight = 76.0f;
-static const CGFloat kAvatar    = 60.0f;
+static const CGFloat kRowHeight = TGMetricChatRow;
+static const CGFloat kAvatar    = TGMetricChatAvatar;
 
 @interface TGChatCell : UITableViewCell
 

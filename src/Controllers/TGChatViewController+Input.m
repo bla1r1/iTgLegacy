@@ -23,7 +23,7 @@
 	hair.autoresizingMask = UIViewAutoresizingFlexibleWidth;
 	[self.inputBar addSubview:hair];
 
-	CGFloat sendY = (kInputHeight - kSendSide) / 2;
+	CGFloat sendY = TGCenteredOrigin(kInputHeight, kSendSide);
 
 	UIButton *attach = [UIButton buttonWithType:UIButtonTypeCustom];
 	attach.frame = CGRectMake(4, sendY, 34, kSendSide);
@@ -38,8 +38,8 @@
 	self.input.borderStyle = UITextBorderStyleNone;
 	self.input.background = nil;
 	self.input.backgroundColor = [[TGTheme shared] listBackgroundColour];
-	self.input.layer.cornerRadius = (kInputHeight - 14) / 2;
-	self.input.layer.borderWidth = 1.0f;
+	self.input.layer.cornerRadius = TGHalf(kInputHeight - TGMetricPadLarge);
+	self.input.layer.borderWidth = TGMetricBorderWidth;
 	self.input.layer.borderColor = [[TGTheme shared] separatorColour].CGColor;
 	self.input.layer.shouldRasterize = YES;
 	self.input.layer.rasterizationScale = scale;
@@ -59,7 +59,7 @@
 	self.sendButton.frame = CGRectMake(b.size.width - kSendSide - 6, sendY,
 									   kSendSide, kSendSide);
 	self.sendButton.backgroundColor = [[TGTheme shared] accentColour];
-	self.sendButton.layer.cornerRadius = kSendSide / 2;
+	self.sendButton.layer.cornerRadius = TGHalf(kSendSide);
 	self.sendButton.layer.shouldRasterize = YES;
 	self.sendButton.layer.rasterizationScale = scale;
 	[self.sendButton setImage:[TGIcons send] forState:UIControlStateNormal];
@@ -228,7 +228,7 @@ static const NSInteger kBannerSubtitleTag = 72;
 		[self.composeBanner addSubview:stripe];
 
 		UILabel *title = [[UILabel alloc] initWithFrame:
-				CGRectMake(22, 5, width - 66, 17)];
+				CGRectMake(22, 5, width - TGMetricComposeBannerTextMarginRight, 17)];
 		title.tag = kBannerTitleTag;
 		title.font = TGFontCaptionStrong();
 		title.textColor = [[TGTheme shared] accentColour];
@@ -237,7 +237,7 @@ static const NSInteger kBannerSubtitleTag = 72;
 		[self.composeBanner addSubview:title];
 
 		UILabel *preview = [[UILabel alloc] initWithFrame:
-				CGRectMake(22, 22, width - 66, 17)];
+				CGRectMake(22, 22, width - TGMetricComposeBannerTextMarginRight, 17)];
 		preview.tag = kBannerSubtitleTag;
 		preview.font = TGFontCaption();
 		preview.textColor = [[TGTheme shared] secondaryTextColour];
@@ -246,12 +246,12 @@ static const NSInteger kBannerSubtitleTag = 72;
 		[self.composeBanner addSubview:preview];
 
 		UIButton *cancel = [UIButton buttonWithType:UIButtonTypeCustom];
-		cancel.frame = CGRectMake(width - 44, 0, 44, kComposeBannerHeight);
+		cancel.frame = CGRectMake(width - TGMetricRow, 0, TGMetricRow, kComposeBannerHeight);
 		cancel.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
-		[cancel setTitle:@"\u00d7" forState:UIControlStateNormal];
-		[cancel setTitleColor:[[TGTheme shared] secondaryTextColour]
-					 forState:UIControlStateNormal];
-		cancel.titleLabel.font = TGFontGlyph();
+		[cancel setImage:[TGIcons glyphNamed:@"close"
+									  colour:[[TGTheme shared] secondaryTextColour]
+										side:16]
+				forState:UIControlStateNormal];
 		[cancel addTarget:self action:@selector(clearComposeState)
 		 forControlEvents:UIControlEventTouchUpInside];
 		[self.composeBanner addSubview:cancel];
@@ -264,9 +264,9 @@ static const NSInteger kBannerSubtitleTag = 72;
 	title.text   = text;
 	preview.text = subtitle ?: @"";
 	// One line centres itself; two share the strip.
-	CGFloat half = kComposeBannerHeight / 2;
+	CGFloat half = TGHalf(kComposeBannerHeight);
 	title.frame = CGRectMake(22, subtitle.length ? 5 : half - 9,
-							 self.composeBanner.bounds.size.width - 66, 17);
+							 self.composeBanner.bounds.size.width - TGMetricComposeBannerTextMarginRight, 17);
 
 	self.composeBanner.hidden = NO;
 	[self layoutChrome];
@@ -367,7 +367,7 @@ static const NSInteger kBannerSubtitleTag = 72;
 /// The date the composer's text waits for. Done reads the picker, clears
 /// the field and sends the held-back send in one move.
 - (void)holdScheduledSheet {
-	static const CGFloat kBar = 44.0f, kPicker = 216.0f;
+	static const CGFloat kBar = TGMetricRow, kPicker = TGMetricPickerHeight;
 
 	TGSheet *sheet = [TGSheet sheetForView:self.view.window ?: self.view];
 	UIView *card = [sheet addCardOfHeight:kBar + kPicker edgeToEdge:YES];
@@ -424,7 +424,7 @@ static const NSInteger kBannerSubtitleTag = 72;
 	if (![self stickerPanelShown])
 		return;
 	CGRect b = self.view.bounds;
-	[UIView animateWithDuration:0.2 animations:^{
+	[UIView animateWithDuration:TGAnimationDurationNormal animations:^{
 		CGRect f = self.stickerPanel.frame;
 		f.origin.y = b.size.height;
 		self.stickerPanel.frame = f;
@@ -464,7 +464,7 @@ static const NSInteger kBannerSubtitleTag = 72;
 	self.stickerPanel.frame = CGRectMake(0, b.size.height, b.size.width, height);
 	self.stickerPanel.hidden = NO;
 	[self.view bringSubviewToFront:self.stickerPanel];
-	[UIView animateWithDuration:0.25 animations:^{
+	[UIView animateWithDuration:TGAnimationDurationMedium animations:^{
 		self.stickerPanel.frame = CGRectMake(0, b.size.height - height, b.size.width, height);
 	}];
 	[self shiftForKeyboardHeight:height];
@@ -553,7 +553,7 @@ static const NSInteger kBannerSubtitleTag = 72;
 
 - (void)shiftForKeyboardHeight:(CGFloat)height {
 	CGRect b = self.view.bounds;
-	[UIView animateWithDuration:0.25 animations:^{
+	[UIView animateWithDuration:TGAnimationDurationMedium animations:^{
 		self.inputBar.frame = CGRectMake(0, b.size.height - kInputHeight - height,
 				b.size.width, kInputHeight);
 		self.table.frame = CGRectMake(0, 0, b.size.width,

@@ -65,8 +65,15 @@
     }
     [self.view addSubview:self.scrollView];
 
+    // The stack, added up rather than written out. Every y below is the one
+    // before it plus a step, which is what makes the rhythm one value.
+    CGFloat inner = width - TGDoubled(TGMetricGutter);
+    CGFloat wide  = width - TGDoubled(TGMetricGutterLarge);
+    CGFloat y = TGMetricStackTop;
+
     // Clean native iOS 7 subtitle / instructions
-    self.subtitleLabel = [[UILabel alloc] initWithFrame:CGRectMake(20, 14, width - 40, 34)];
+    self.subtitleLabel = [[UILabel alloc] initWithFrame:
+            CGRectMake(TGMetricGutterLarge, y, wide, TGMetricLoginSubtitleHeight)];
     self.subtitleLabel.text = @"Please confirm your country code\nand enter your phone number.";
     self.subtitleLabel.backgroundColor = [UIColor clearColor];
     self.subtitleLabel.font = TGFontSubhead();
@@ -75,14 +82,17 @@
     [self.scrollView addSubview:self.subtitleLabel];
 
     // Grouped input container
-    self.inputContainer = [[UIView alloc] initWithFrame:CGRectMake(15, 56, width - 30, 44)];
-    self.inputContainer.layer.cornerRadius = 8.0f;
-    self.inputContainer.layer.borderWidth = 0.5f;
+    y += TGMetricLoginSubtitleHeight + TGMetricStackStep;
+    self.inputContainer = [[UIView alloc] initWithFrame:
+            CGRectMake(TGMetricGutter, y, inner, TGMetricRow)];
+    self.inputContainer.layer.cornerRadius = TGMetricCornerControl;
+    self.inputContainer.layer.borderWidth = TGMetricHairline;
     self.inputContainer.clipsToBounds = YES;
     [self.scrollView addSubview:self.inputContainer];
 
     // Country code prefix
-    self.phonePrefixField = [[UITextField alloc] initWithFrame:CGRectMake(10, 0, 56, 44)];
+    self.phonePrefixField = [[UITextField alloc] initWithFrame:
+            CGRectMake(TGMetricPadMedium, 0, TGMetricLoginPrefixWidth, TGMetricRow)];
     self.phonePrefixField.text = @"+380";
     self.phonePrefixField.font = TGFontHeader();
     self.phonePrefixField.keyboardType = UIKeyboardTypePhonePad;
@@ -93,11 +103,16 @@
     [self.inputContainer addSubview:self.phonePrefixField];
 
     // Hairline vertical separator between prefix and phone number
-    self.prefixSeparator = [[UIView alloc] initWithFrame:CGRectMake(68, 7, 0.5f, 30)];
+    self.prefixSeparator = [[UIView alloc] initWithFrame:CGRectMake(
+            TGMetricPadMedium + TGMetricLoginPrefixWidth + TGMetricPadTiny,
+            TGMetricBubblePadV, TGMetricHairline,
+            TGMetricRow - TGDoubled(TGMetricBubblePadV))];
     [self.inputContainer addSubview:self.prefixSeparator];
 
     // Phone number input field
-    self.inputField = [[UITextField alloc] initWithFrame:CGRectMake(78, 0, width - 108, 44)];
+    CGFloat fieldX = TGMetricPadMedium + TGMetricLoginPrefixWidth + TGMetricPadMedium;
+    self.inputField = [[UITextField alloc] initWithFrame:
+            CGRectMake(fieldX, 0, inner - fieldX - TGMetricPadMedium, TGMetricRow)];
     self.inputField.placeholder = @"Phone number";
     self.inputField.font = TGFontInput();
     self.inputField.keyboardType = UIKeyboardTypePhonePad;
@@ -109,19 +124,23 @@
 
     // Action button ("Next")
     self.actionButton = [UIButton buttonWithType:UIButtonTypeCustom];
-    self.actionButton.frame = CGRectMake(15, 108, width - 30, 42);
-    self.actionButton.layer.cornerRadius = 8.0f;
+    y += TGMetricRow + TGMetricStackStep;
+    // One control height, not 44 for the field and 42 for the button under it.
+    self.actionButton.frame = CGRectMake(TGMetricGutter, y, inner, TGMetricRow);
+    self.actionButton.layer.cornerRadius = TGMetricCornerControl;
     self.actionButton.clipsToBounds = YES;
     [self.actionButton setTitle:@"Next" forState:UIControlStateNormal];
     self.actionButton.titleLabel.font = TGFontRowStrong();
     [self.actionButton addTarget:self action:@selector(actionButtonTapped) forControlEvents:UIControlEventTouchUpInside];
 
     // Skeuomorphic button gloss layer
-    self.skeuoBtnLayer = tgGloss(CGRectMake(0, 0, width - 30, 42), tgRGB(92, 156, 210), tgRGB(38, 92, 148));
+    self.skeuoBtnLayer = tgGloss(CGRectMake(0, 0, inner, TGMetricRow),
+            tgRGB(92, 156, 210), tgRGB(38, 92, 148));
     [self.actionButton.layer insertSublayer:self.skeuoBtnLayer atIndex:0];
 
-    self.skeuoShineView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, width - 30, 21)];
-    self.skeuoShineView.backgroundColor = [UIColor colorWithWhite:1.0f alpha:0.18f];
+    self.skeuoShineView = [[UIView alloc] initWithFrame:
+            CGRectMake(0, 0, inner, TGHalf(TGMetricRow))];
+    self.skeuoShineView.backgroundColor = [[TGTheme shared] skeuoShineColour];
     self.skeuoShineView.userInteractionEnabled = NO;
     [self.actionButton addSubview:self.skeuoShineView];
 
@@ -129,20 +148,25 @@
 
     // Activity spinner inside action button
     self.spinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleWhite];
-    self.spinner.center = CGPointMake((width - 30) / 2.0f, 21.0f);
+    self.spinner.center = CGPointMake(TGHalf(inner), TGHalf(TGMetricRow));
     self.spinner.hidesWhenStopped = YES;
     [self.actionButton addSubview:self.spinner];
 
     // Log in with QR Code button
     self.qrCodeButton = [UIButton buttonWithType:UIButtonTypeCustom];
-    self.qrCodeButton.frame = CGRectMake(15, 154, width - 30, 30);
+    y += TGMetricRow + TGMetricStackStep;
+    self.qrCodeButton.frame = CGRectMake(TGMetricGutter, y, inner,
+                                         TGMetricLoginLinkHeight);
     [self.qrCodeButton setTitle:@"Log in with QR Code" forState:UIControlStateNormal];
     self.qrCodeButton.titleLabel.font = TGFontBody();
     [self.qrCodeButton addTarget:self action:@selector(qrCodeButtonTapped) forControlEvents:UIControlEventTouchUpInside];
     [self.scrollView addSubview:self.qrCodeButton];
 
     // Theme Switcher Section
-    self.themeSectionLabel = [[UILabel alloc] initWithFrame:CGRectMake(20, 190, width - 40, 16)];
+    // A new group, so the larger step.
+    y += TGMetricLoginLinkHeight + TGMetricStackGroup;
+    self.themeSectionLabel = [[UILabel alloc] initWithFrame:
+            CGRectMake(TGMetricGutterLarge, y, wide, TGMetricMarginLarge)];
     self.themeSectionLabel.text = @"THEME";
     self.themeSectionLabel.font = TGFontMicroStrong();
     self.themeSectionLabel.textAlignment = NSTextAlignmentCenter;
@@ -150,11 +174,14 @@
     [self.scrollView addSubview:self.themeSectionLabel];
 
     self.themeSegmentedControl = [[UISegmentedControl alloc] initWithItems:@[@"Classic", @"Day", @"Night", @"Night Blue"]];
-    self.themeSegmentedControl.frame = CGRectMake(15, 210, width - 30, 30);
+    y += TGMetricMarginLarge + TGMetricPadSmall;
+    self.themeSegmentedControl.frame = CGRectMake(TGMetricGutter, y, inner,
+                                                  TGMetricLoginLinkHeight);
     [self.themeSegmentedControl addTarget:self action:@selector(themeSegmentChanged:) forControlEvents:UIControlEventValueChanged];
     [self.scrollView addSubview:self.themeSegmentedControl];
 
-    self.scrollView.contentSize = CGSizeMake(width, 256);
+    y += TGMetricLoginLinkHeight + TGMetricMarginLarge;
+    self.scrollView.contentSize = CGSizeMake(width, y);
     self.currentStep = TGLoginStepPhone;
 
     dispatch_async(dispatch_get_main_queue(), ^{
@@ -185,8 +212,8 @@
 
     // Labels
     self.subtitleLabel.textColor = [theme secondaryTextColour];
-    self.subtitleLabel.shadowColor = !theme.isFlat ? [UIColor colorWithWhite:1.0f alpha:0.7f] : [UIColor clearColor];
-    self.subtitleLabel.shadowOffset = CGSizeMake(0, 1);
+    self.subtitleLabel.shadowColor = [theme etchedTextShadowColour];
+    self.subtitleLabel.shadowOffset = TGMetricShadowOffsetEtched;
     self.themeSectionLabel.textColor = [theme secondaryTextColour];
 
     // Input container & fields
@@ -211,13 +238,13 @@
         self.skeuoBtnLayer.hidden = NO;
         self.skeuoShineView.hidden = NO;
         self.actionButton.backgroundColor = [UIColor clearColor];
-        self.actionButton.layer.borderWidth = 1.0f;
+        self.actionButton.layer.borderWidth = TGMetricBorderWidth;
         self.actionButton.layer.borderColor = tgRGB(26, 66, 102).CGColor;
     } else {
         self.skeuoBtnLayer.hidden = YES;
         self.skeuoShineView.hidden = YES;
         self.actionButton.backgroundColor = [theme accentColour];
-        self.actionButton.layer.borderWidth = 0.0f;
+        self.actionButton.layer.borderWidth = TGMetricBorderNone;
     }
     [self.actionButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
 
@@ -266,10 +293,10 @@
     self.actionButton.enabled = !busy;
     self.nextItem.enabled = !busy;
     if (busy) {
-        self.actionButton.titleLabel.alpha = 0.0f;
+        self.actionButton.titleLabel.alpha = TGAlphaTransparent;
         [self.spinner startAnimating];
     } else {
-        self.actionButton.titleLabel.alpha = 1.0f;
+        self.actionButton.titleLabel.alpha = TGAlphaOpaque;
         [self.spinner stopAnimating];
     }
 }
@@ -328,7 +355,7 @@
     CGRect kbFrame = [[info objectForKey:UIKeyboardFrameEndUserInfoKey] CGRectValue];
     CGFloat kbHeight = kbFrame.size.height;
 
-    UIEdgeInsets contentInsets = UIEdgeInsetsMake(0, 0, kbHeight + 10, 0);
+    UIEdgeInsets contentInsets = UIEdgeInsetsMake(0, 0, kbHeight + TGMetricPadMedium, 0);
     self.scrollView.contentInset = contentInsets;
     self.scrollView.scrollIndicatorInsets = contentInsets;
 }

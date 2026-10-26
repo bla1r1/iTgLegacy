@@ -37,14 +37,14 @@ static BOOL sIsCancelled;
 		going.hidden = YES;
 		return;
 	}
-	CGAffineTransform small = CGAffineTransformMakeScale(0.3f, 0.3f);
+	CGAffineTransform small = CGAffineTransformMakeScale(TGTransformScaleSmall, TGTransformScaleSmall);
 	coming.hidden = NO;
-	coming.alpha = 0;
+	coming.alpha = TGAlphaTransparent;
 	coming.transform = small;
-	[UIView animateWithDuration:0.16 animations:^{
-		coming.alpha = 1;
+	[UIView animateWithDuration:TGAnimationDurationFast animations:^{
+		coming.alpha = TGAlphaOpaque;
 		coming.transform = CGAffineTransformIdentity;
-		going.alpha = 0;
+		going.alpha = TGAlphaTransparent;
 		going.transform = small;
 	} completion:^(BOOL finished){
 		// Settle on whatever the text says now; it may have changed again
@@ -76,20 +76,20 @@ static BOOL sIsCancelled;
 		[self.recordPanel addSubview:hair];
 
 		self.recordDot = [[UIView alloc] initWithFrame:
-				CGRectMake(14, (kInputHeight - 9) / 2, 9, 9)];
+				CGRectMake(14, TGCenteredOrigin(kInputHeight, 9), 9, 9)];
 		self.recordDot.backgroundColor = [theme destructiveColour];
-		self.recordDot.layer.cornerRadius = 4.5f;
+		self.recordDot.layer.cornerRadius = TGHalf(TGMetricRecordDotSide);
 		[self.recordPanel addSubview:self.recordDot];
 
 		self.recordClock = [[UILabel alloc] initWithFrame:
-				CGRectMake(32, (kInputHeight - 20) / 2, 62, 20)];
+				CGRectMake(32, TGCenteredOrigin(kInputHeight, 20), 62, 20)];
 		self.recordClock.font = TGFontRow();
 		self.recordClock.textColor = [theme primaryTextColour];
 		self.recordClock.backgroundColor = [UIColor clearColor];
 		[self.recordPanel addSubview:self.recordClock];
 
 		self.recordCancelSlideLabel = [[UILabel alloc] initWithFrame:
-				CGRectMake(100, (kInputHeight - 20) / 2, bar.size.width - 180, 20)];
+				CGRectMake(100, TGCenteredOrigin(kInputHeight, 20), bar.size.width - 180, 20)];
 		self.recordCancelSlideLabel.text = @"‹ Slide to cancel";
 		self.recordCancelSlideLabel.font = TGFontBody();
 		self.recordCancelSlideLabel.textColor = [theme secondaryTextColour];
@@ -99,7 +99,7 @@ static BOOL sIsCancelled;
 
 		// Cancel text button for locked mode (centered, like TG Desktop / Mobile)
 		self.recordCancelButton = [UIButton buttonWithType:UIButtonTypeCustom];
-		self.recordCancelButton.frame = CGRectMake((bar.size.width - 100) / 2, (kInputHeight - 32) / 2, 100, 32);
+		self.recordCancelButton.frame = CGRectMake(TGCenteredOrigin(bar.size.width, 100), TGCenteredOrigin(kInputHeight, 32), 100, 32);
 		[self.recordCancelButton setTitle:@"Cancel" forState:UIControlStateNormal];
 		[self.recordCancelButton setTitleColor:[theme accentColour] forState:UIControlStateNormal];
 		self.recordCancelButton.titleLabel.font = TGFontRow();
@@ -109,9 +109,9 @@ static BOOL sIsCancelled;
 
 		// Circular Send button for locked mode (right side, like TG Desktop / Mobile)
 		self.recordSendButton = [UIButton buttonWithType:UIButtonTypeCustom];
-		self.recordSendButton.frame = CGRectMake(bar.size.width - 44, (kInputHeight - 34) / 2, 34, 34);
+		self.recordSendButton.frame = CGRectMake(bar.size.width - TGMetricRow, TGCenteredOrigin(kInputHeight, TGMetricCallControlSide), TGMetricCallControlSide, TGMetricCallControlSide);
 		self.recordSendButton.backgroundColor = [theme accentColour];
-		self.recordSendButton.layer.cornerRadius = 17.0f;
+		self.recordSendButton.layer.cornerRadius = TGHalf(TGMetricCallControlSide);
 		self.recordSendButton.layer.masksToBounds = YES;
 		[self.recordSendButton setImage:[TGIcons send] forState:UIControlStateNormal];
 		self.recordSendButton.tintColor = [UIColor whiteColor];
@@ -122,20 +122,20 @@ static BOOL sIsCancelled;
 		[self.recordPanel addSubview:self.recordSendButton];
 
 		// Classic halo and disc (original design)
-		CGFloat halo = kInputHeight + 12, disc = 44;
+		CGFloat halo = TGMetricRecordHaloSide, disc = TGMetricRow;
 		UIView *ring = [[UIView alloc] initWithFrame:
-				CGRectMake(bar.size.width - halo + 4, (kInputHeight - halo) / 2, halo, halo)];
+				CGRectMake(bar.size.width - halo + TGMetricPadSmall, TGCenteredOrigin(kInputHeight, halo), halo, halo)];
 		ring.backgroundColor = [theme accentColour];
-		ring.alpha = 0.25f;
-		ring.layer.cornerRadius = halo / 2;
+		ring.alpha = TGAlphaRingTrack;
+		ring.layer.cornerRadius = TGHalf(TGMetricRecordHaloSide);
 		ring.tag = 0x81C1;
 		ring.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
 		[self.recordPanel addSubview:ring];
 
 		UIImageView *button = [[UIImageView alloc] initWithFrame:CGRectMake(
-				CGRectGetMidX(ring.frame) - disc / 2, (kInputHeight - disc) / 2, disc, disc)];
+				CGRectGetMidX(ring.frame) - TGHalf(disc), TGCenteredOrigin(kInputHeight, disc), disc, disc)];
 		button.backgroundColor = [theme accentColour];
-		button.layer.cornerRadius = disc / 2;
+		button.layer.cornerRadius = TGHalf(TGMetricRow);
 		button.image = [TGIcons microphoneOfSide:disc colour:[UIColor whiteColor]];
 		button.tag = 0x81C2;
 		button.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
@@ -149,50 +149,52 @@ static BOOL sIsCancelled;
 	self.recordSendButton.hidden = YES;
 	self.recordCancelSlideLabel.hidden = NO;
 	self.recordCancelSlideLabel.transform = CGAffineTransformIdentity;
-	self.recordCancelSlideLabel.alpha = 1.0f;
+	self.recordCancelSlideLabel.alpha = TGAlphaOpaque;
 	[self.recordPanel viewWithTag:0x81C1].hidden = NO;
 	[self.recordPanel viewWithTag:0x81C2].hidden = NO;
-	self.recordDot.frame = CGRectMake(14, (kInputHeight - 9) / 2, 9, 9);
-	self.recordClock.frame = CGRectMake(32, (kInputHeight - 20) / 2, 62, 20);
+	self.recordDot.frame = CGRectMake(TGMetricPadLarge,
+			TGCenteredOrigin(kInputHeight, TGMetricRecordDotSide),
+			TGMetricRecordDotSide, TGMetricRecordDotSide);
+	self.recordClock.frame = CGRectMake(32, TGCenteredOrigin(kInputHeight, 20), 62, 20);
 
 	self.recordPanel.frame = bar;
 	self.recordClock.text = @"0:00,0";
-	self.recordDot.alpha = 1.0f;
+	self.recordDot.alpha = TGAlphaOpaque;
 	self.recordPanel.userInteractionEnabled = NO;
 	[self.view addSubview:self.recordPanel];
 
 	// The "Rice Grain" lock capsule directly above mic button (Image 2)
 	if (!self.recordLockView) {
-		CGFloat pillW = 32.0f, pillH = 62.0f;
-		CGFloat pillX = bar.origin.x + bar.size.width - pillW - 12.0f;
-		CGFloat pillY = bar.origin.y - pillH - 10.0f;
+		CGFloat pillW = TGMetricVoicePillWidth, pillH = TGMetricVoicePillHeight;
+		CGFloat pillX = bar.origin.x + bar.size.width - pillW - TGMetricSectionHeaderEmpty;
+		CGFloat pillY = bar.origin.y - pillH - TGMetricPadMedium;
 		UIView *pill = [[UIView alloc] initWithFrame:CGRectMake(pillX, pillY, pillW, pillH)];
 		pill.backgroundColor = [[TGTheme shared] recordLockColour];
-		pill.layer.cornerRadius = pillW / 2.0f; // Rounded rice grain capsule
+		pill.layer.cornerRadius = TGHalf(pillW); // Rounded rice grain capsule
 		pill.clipsToBounds = YES;
 
 		UIImageView *lockIcon = [[UIImageView alloc] initWithFrame:
-				CGRectMake((pillW - 18) / 2, 8, 18, 18)];
+				CGRectMake(TGCenteredOrigin(pillW, 18), TGMetricPad, 18, 18)];
 		lockIcon.image = [TGIcons lockOfSide:18
-									  colour:[UIColor colorWithWhite:0.92f alpha:1.0f]];
+									  colour:[UIColor whiteColor]];
 		lockIcon.backgroundColor = [UIColor clearColor];
 		[pill addSubview:lockIcon];
 
-		UILabel *arrow = [[UILabel alloc] initWithFrame:CGRectMake(0, 34, pillW, 18)];
-		arrow.text = @"▲";
-		arrow.font = TGFontMicroStrong();
-		arrow.textColor = [UIColor colorWithWhite:0.75f alpha:1.0f];
-		arrow.textAlignment = NSTextAlignmentCenter;
+		UIImageView *arrow = [[UIImageView alloc] initWithFrame:
+				CGRectMake(TGCenteredOrigin(pillW, 16), 36, 16, 16)];
+		arrow.image = [TGIcons glyphNamed:@"chevronUp"
+									  colour:[[TGTheme shared] secondaryTextColour]
+										side:16];
 		arrow.backgroundColor = [UIColor clearColor];
 		[pill addSubview:arrow];
 
 		self.recordLockView = pill;
 	}
-	self.recordLockView.alpha = 0.0f;
+	self.recordLockView.alpha = TGAlphaTransparent;
 	self.recordLockView.transform = CGAffineTransformMakeTranslation(0, 10);
 	[self.view addSubview:self.recordLockView];
-	[UIView animateWithDuration:0.2 animations:^{
-		self.recordLockView.alpha = 1.0f;
+	[UIView animateWithDuration:TGAnimationDurationNormal animations:^{
+		self.recordLockView.alpha = TGAlphaOpaque;
 		self.recordLockView.transform = CGAffineTransformIdentity;
 	}];
 }
@@ -206,7 +208,7 @@ static BOOL sIsCancelled;
 	sIsCancelled = NO;
 	sDragDeltaX = 0;
 	self.recordCancelSlideLabel.transform = CGAffineTransformIdentity;
-	self.recordCancelSlideLabel.alpha = 1.0f;
+	self.recordCancelSlideLabel.alpha = TGAlphaOpaque;
 }
 
 - (void)lockRecording {
@@ -215,8 +217,8 @@ static BOOL sIsCancelled;
 	self.table.scrollEnabled = YES;
 	self.recordPanel.userInteractionEnabled = YES;
 
-	[UIView animateWithDuration:0.2 animations:^{
-		self.recordLockView.alpha = 0.0f;
+	[UIView animateWithDuration:TGAnimationDurationNormal animations:^{
+		self.recordLockView.alpha = TGAlphaTransparent;
 		self.recordLockView.transform = CGAffineTransformMakeTranslation(0, -15);
 	} completion:^(BOOL finished) {
 		[self.recordLockView removeFromSuperview];
@@ -239,7 +241,7 @@ static BOOL sIsCancelled;
 	if (touch) {
 		sTouchStart = [touch locationInView:self.view];
 	} else {
-		sTouchStart = CGPointMake(self.view.bounds.size.width - 25, CGRectGetMidY(self.inputBar.frame));
+		sTouchStart = CGPointMake(self.view.bounds.size.width - TGMetricVoiceDragDeadzone, CGRectGetMidY(self.inputBar.frame));
 	}
 	self.table.scrollEnabled = NO;
 	[self recordStart];
@@ -251,7 +253,7 @@ static BOOL sIsCancelled;
 		return;
 
 	// Released while dragged towards cancel -> cancel
-	if (sDragDeltaX >= 25.0f) {
+	if (sDragDeltaX >= TGMetricVoiceDragDeadzone) {
 		[self recordCancel];
 		return;
 	}
@@ -277,26 +279,26 @@ static BOOL sIsCancelled;
 		sDragDeltaX = deltaX;
 
 		// 1. Slide UP into the rice grain to lock
-		if (deltaY >= 35.0f || pt.y <= CGRectGetMinY(self.inputBar.frame) - 20.0f) {
+		if (deltaY >= TGMetricVoiceLockDistance || pt.y <= CGRectGetMinY(self.inputBar.frame) - TGMetricVoiceLockMargin) {
 			[self lockRecording];
 			return;
-		} else if (deltaY > 0.0f && self.recordLockView) {
-			CGFloat shift = -MIN(deltaY * 0.4f, 12.0f);
+		} else if (deltaY > TGMetricZero && self.recordLockView) {
+			CGFloat shift = -MIN(deltaY * TGDampingVoiceLock, TGMetricVoiceLockMaxShift);
 			self.recordLockView.transform = CGAffineTransformMakeTranslation(0, shift);
 		}
 
 		// 2. Slide LEFT to cancel
-		if (deltaX >= 45.0f) {
+		if (deltaX >= TGMetricVoiceSlideCancelDistance) {
 			sIsCancelled = YES;
 			[self recordCancel];
 			return;
-		} else if (deltaX > 0.0f) {
-			CGFloat shift = MIN(deltaX * 0.7f, 40.0f);
+		} else if (deltaX > TGMetricZero) {
+			CGFloat shift = MIN(deltaX * TGDampingVoiceCancel, TGMetricVoiceSlideMaxShift);
 			self.recordCancelSlideLabel.transform = CGAffineTransformMakeTranslation(-shift, 0);
-			self.recordCancelSlideLabel.alpha = MAX(0.1f, 1.0f - (deltaX / 45.0f));
+			self.recordCancelSlideLabel.alpha = MAX(TGAlphaVoiceCancelMin, TGAlphaOpaque - (deltaX / TGMetricVoiceSlideCancelDistance));
 		} else {
 			self.recordCancelSlideLabel.transform = CGAffineTransformIdentity;
-			self.recordCancelSlideLabel.alpha = 1.0f;
+			self.recordCancelSlideLabel.alpha = TGAlphaOpaque;
 		}
 	}
 }
@@ -320,12 +322,12 @@ static BOOL sIsCancelled;
 	// Shows tenths of seconds smoothly updated every 100ms
 	self.recordClock.text = [NSString stringWithFormat:@"%ld:%02ld,%ld",
 			(long)(d / 60), (long)((NSInteger)d % 60), (long)((NSInteger)(d * 10) % 10)];
-	self.recordDot.alpha = ((NSInteger)(d * 2) % 2 == 0) ? 1.0f : 0.25f;
+	self.recordDot.alpha = ((NSInteger)(d * 2) % 2 == 0) ? TGAlphaOpaque : TGAlphaRingTrack;
 
 	if (!sIsLocked) {
 		UIView *ring = [self.recordPanel viewWithTag:0x81C1];
 		if (ring) {
-			CGFloat pulse = 1.0f + 0.08f * fabsf(sinf((float)d * 3.14159f));
+			CGFloat pulse = TGAlphaOpaque + TGAnimationPulseAmplitude * fabsf(sinf((float)d * (float)M_PI));
 			ring.transform = CGAffineTransformMakeScale(pulse, pulse);
 		}
 	}
@@ -375,7 +377,7 @@ static BOOL sIsCancelled;
 											 inChat:self.chatId];
 	}
 
-	CGFloat side = 178.0f;
+	CGFloat side = TGMetricRoundVideoSide;
 	CGRect inTable = [self.table rectForRowAtIndexPath:
 			[NSIndexPath indexPathForRow:row inSection:0]];
 	NSDictionary *m = self.messages[row];
@@ -384,7 +386,7 @@ static BOOL sIsCancelled;
 
 	UIView *circle = [[UIView alloc] initWithFrame:
 			CGRectMake(x, inTable.origin.y + 3, side, side)];
-	circle.layer.cornerRadius = side / 2;
+	circle.layer.cornerRadius = TGHalf(TGMetricImageMax);
 	circle.clipsToBounds = YES;
 	circle.layer.masksToBounds = YES;
 	circle.backgroundColor = [UIColor blackColor];
@@ -406,8 +408,8 @@ static BOOL sIsCancelled;
 	// Add progress ring
 	self.videoNoteProgressLayer = [CAShapeLayer layer];
 	self.videoNoteProgressLayer.frame = circle.bounds;
-	self.videoNoteProgressLayer.path = [UIBezierPath bezierPathWithArcCenter:CGPointMake(side/2, side/2)
-																	  radius:side/2 - 2
+	self.videoNoteProgressLayer.path = [UIBezierPath bezierPathWithArcCenter:CGPointMake(TGHalf(side), TGHalf(side))
+																	  radius:TGHalf(side) - 2
 																  startAngle:-M_PI_2
 																	endAngle:M_PI_2 * 3
 																   clockwise:YES].CGPath;
@@ -479,11 +481,11 @@ static BOOL sIsCancelled;
 		// Album art where their player has it. A voice note has none, and
 		// the view simply stays hidden for one.
 		self.playerArtwork = [[UIImageView alloc] initWithFrame:
-				CGRectMake(8, (kPlayerBarHeight - kPlayerArt) / 2 - 1,
+				CGRectMake(8, TGCenteredOrigin(kPlayerBarHeight, kPlayerArt) - 1,
 						   kPlayerArt, kPlayerArt)];
 		self.playerArtwork.contentMode = UIViewContentModeScaleAspectFill;
 		self.playerArtwork.clipsToBounds = YES;
-		self.playerArtwork.layer.cornerRadius = 3;
+		self.playerArtwork.layer.cornerRadius = TGMetricCornerSmall;
 		self.playerArtwork.hidden = YES;
 		[self.playerBar addSubview:self.playerArtwork];
 
@@ -542,8 +544,10 @@ static BOOL sIsCancelled;
 		[self.playerBar addSubview:self.playerSpeed];
 
 		self.playerClose = [UIButton buttonWithType:UIButtonTypeCustom];
-		[self.playerClose setTitle:@"×" forState:UIControlStateNormal];
-		self.playerClose.titleLabel.font = TGFontGlyph();
+		[self.playerClose setImage:[TGIcons glyphNamed:@"close"
+											colour:[theme secondaryTextColour]
+											  side:16]
+						  forState:UIControlStateNormal];
 		self.playerClose.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
 		[self.playerClose addTarget:self action:@selector(stopPlayback)
 				   forControlEvents:UIControlEventTouchUpInside];
@@ -565,9 +569,10 @@ static BOOL sIsCancelled;
 		// A 2pt line is nothing to aim at, so the whole strip is the target
 		// and the thumb says where the finger landed.
 		self.playerThumb = [[UIView alloc] initWithFrame:
-				CGRectMake(-4, kPlayerBarHeight - 5, 8, 8)];
+				CGRectMake(-TGMetricPadSmall, kPlayerBarHeight - TGMetricPadSmall - 1,
+						   TGMetricPlayerThumbSide, TGMetricPlayerThumbSide)];
 		self.playerThumb.backgroundColor = [theme accentColour];
-		self.playerThumb.layer.cornerRadius = 4;
+		self.playerThumb.layer.cornerRadius = TGHalf(TGMetricPlayerThumbSide);
 		[self.playerBar addSubview:self.playerThumb];
 
 		[self.playerBar addGestureRecognizer:[[UITapGestureRecognizer alloc]
@@ -604,7 +609,7 @@ static BOOL sIsCancelled;
 /// both and the queue is what a track needs.
 - (void)layoutPlayerBarForMusic:(BOOL)music {
 	CGFloat width = self.playerBar.bounds.size.width;
-	CGFloat mid = (kPlayerBarHeight - 28) / 2 - 1;
+	CGFloat mid = TGCenteredOrigin(kPlayerBarHeight, 28) - 1;
 
 	self.playerArtwork.hidden = !music;
 	CGFloat textX;
@@ -793,7 +798,7 @@ static NSString *TGClockText(NSTimeInterval position, NSTimeInterval duration) {
 	}
 
 	CGFloat x = [gesture locationInView:wave].x;
-	CGFloat fraction = MIN(MAX(x / MAX(1.0f, wave.bounds.size.width), 0.0f), 1.0f);
+	CGFloat fraction = MIN(MAX(x / MAX(TGMetricScaleFull, wave.bounds.size.width), TGAlphaTransparent), TGAlphaOpaque);
 	self.voicePlayer.currentTime = fraction * self.voicePlayer.duration;
 	[self playbackTick];
 }
@@ -840,17 +845,17 @@ static NSString *TGClockText(NSTimeInterval position, NSTimeInterval duration) {
 	if (!self.voicePlayer)
 		return;
 	float rate = self.voicePlayer.rate;
-	float next = (rate < 1.25f) ? 1.5f : ((rate < 1.75f) ? 2.0f : 1.0f);
+	float next = (rate < TGPlaybackSpeedThresholdFast) ? TGPlaybackSpeedFast : ((rate < TGPlaybackSpeedThresholdDouble) ? TGPlaybackSpeedDouble : TGPlaybackSpeedNormal);
 	self.voicePlayer.rate = next;
-	[self.playerSpeed setTitle:(next == 1.0f ? @"1x" :
-			(next == 1.5f ? @"1.5x" : @"2x")) forState:UIControlStateNormal];
+	[self.playerSpeed setTitle:(next == TGPlaybackSpeedNormal ? @"1x" :
+			(next == TGPlaybackSpeedFast ? @"1.5x" : @"2x")) forState:UIControlStateNormal];
 }
 
 /// Tapping anywhere along the strip's line jumps there.
 - (void)playerBarScrubbed:(UIGestureRecognizer *)gesture {
 	CGFloat width = self.playerBar.bounds.size.width;
 	CGFloat fraction = MIN(MAX([gesture locationInView:self.playerBar].x /
-			MAX(1.0f, width), 0.0f), 1.0f);
+			MAX(TGMetricScaleFull, width), TGAlphaTransparent), TGAlphaOpaque);
 	if ([TGMusicPlayer shared].current)
 		[[TGMusicPlayer shared] seekToFraction:fraction];
 	else if (self.voicePlayer)

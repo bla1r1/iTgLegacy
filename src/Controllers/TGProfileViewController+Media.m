@@ -104,7 +104,7 @@ static AVPlayerLayer *sStoryLayer = nil;
 		   [kind isEqualToString:@"gifts"];
 }
 
-static const CGFloat kStoryGridGap     = 2.0f;
+static const CGFloat kStoryGridGap     = TGMetricCollageGap;
 static const NSInteger kStoryGridCols  = 3;
 
 /// Edge to edge, like the media strip: the tile is whatever is left after the
@@ -130,8 +130,9 @@ static const NSInteger kStoryGridCols  = 3;
 	UIGraphicsBeginImageContextWithOptions(CGSizeMake(side, side), NO, 0);
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
-	[emoji drawInRect:CGRectMake(side * 0.18f, side * 0.18f, side * 0.64f, side * 0.64f)
-			 withFont:TGFontBoldAtSize(side * 0.5f)
+	CGFloat inset = side * TGMetricEmojiArtworkInsetRatio * 2;
+	[emoji drawInRect:CGRectMake(inset, inset, side - inset * 2, side - inset * 2)
+			 withFont:TGFontBoldAtSize(TGHalf(side))
 		lineBreakMode:NSLineBreakByClipping
 		   alignment:NSTextAlignmentCenter];
 #pragma clang diagnostic pop
@@ -211,7 +212,7 @@ static const NSInteger kStoryGridCols  = 3;
 					? [name substringToIndex:1].uppercaseString : @"?";
 			UIButton *face = [UIButton buttonWithType:UIButtonTypeCustom];
 			face.frame = CGRectMake(4, 4, 26, 26);
-			face.layer.cornerRadius = 13;
+			face.layer.cornerRadius = TGMetricCornerCard;
 			face.layer.masksToBounds = YES;
 			face.enabled = NO;
 			[face setImage:[TGIcons avatarWithInitials:first size:26
@@ -343,7 +344,7 @@ static const NSInteger kStoryGridCols  = 3;
 	[self.tableView reloadData];
 	CGFloat maxY = self.tableView.contentSize.height - self.tableView.bounds.size.height;
 	maxY = MAX(0, maxY);
-	if (offset.y > maxY + 0.5f || offset.y < mediaTop - self.tableView.bounds.size.height)
+	if (offset.y > maxY + TGMetricHairline || offset.y < mediaTop - self.tableView.bounds.size.height)
 		offset.y = mediaTop;
 	offset.y = MIN(MAX(offset.y, 0), maxY);
 	[self.tableView setContentOffset:offset animated:NO];
@@ -374,7 +375,8 @@ static const NSInteger kStoryGridCols  = 3;
 	NSString *caption = story[@"caption"];
 	if (caption.length){
 		UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(
-				16, window.bounds.size.height - 76, window.bounds.size.width - 32, 60)];
+				TGMetricMarginLarge, window.bounds.size.height - TGMetricStoryCaptionBottomOffset,
+				window.bounds.size.width - TGDoubled(TGMetricMarginLarge), TGMetricStoryCaptionHeight)];
 		label.text = caption;
 		label.numberOfLines = 3;
 		label.font = TGFontSubhead();
@@ -391,7 +393,7 @@ static const NSInteger kStoryGridCols  = 3;
 									  : @"Video story - showing the first frame";
 		note.font = TGFontMeta();
 		note.textAlignment = NSTextAlignmentCenter;
-		note.textColor = [UIColor colorWithWhite:1 alpha:0.6f];
+		note.textColor = [[TGTheme shared] secondaryTextColour];
 		note.backgroundColor = [UIColor clearColor];
 		[backdrop addSubview:note];
 	}
@@ -400,7 +402,7 @@ static const NSInteger kStoryGridCols  = 3;
 	[backdrop addGestureRecognizer:[[UITapGestureRecognizer alloc]
 			initWithTarget:self action:@selector(closeStory:)]];
 	[window addSubview:backdrop];
-	[UIView animateWithDuration:0.2 animations:^{ backdrop.alpha = 1; }];
+	[UIView animateWithDuration:TGAnimationDurationNormal animations:^{ backdrop.alpha = 1; }];
 
 	[[TGClient shared] downloadFile:fileId.integerValue completion:^(NSString *path){
 		[TGIcons loadImageAtPath:path into:picture];
@@ -469,7 +471,7 @@ static const NSInteger kStoryGridCols  = 3;
 - (void)closeStory:(UITapGestureRecognizer *)tap {
 	[self stopStoryPlayback];
 	UIView *backdrop = tap.view;
-	[UIView animateWithDuration:0.2 animations:^{ backdrop.alpha = 0; }
+	[UIView animateWithDuration:TGAnimationDurationNormal animations:^{ backdrop.alpha = 0; }
 					 completion:^(BOOL done){ [backdrop removeFromSuperview]; }];
 }
 

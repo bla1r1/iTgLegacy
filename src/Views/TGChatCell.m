@@ -3,8 +3,8 @@
 #import <QuartzCore/QuartzCore.h>
 #import "TGStyle.h"
 
-static const CGFloat kInset    = 10.0f;   // picture from the left edge, text from the right
-static const CGFloat kTextLeft = kInset + kAvatar + 10.0f;
+static const CGFloat kInset    = TGMetricPadMedium;   // picture from the left edge, text from the right
+static const CGFloat kTextLeft = kInset + kAvatar + TGMetricPadMedium;
 
 static CGSize TGChatCellTextSize(NSString *text, UIFont *font) {
 	if (!text.length || !font) return CGSizeZero;
@@ -36,8 +36,8 @@ static UIFont *TGChatCellTitleFont(void) {
 	self.backgroundColor = [theme listBackgroundColour];
 	self.contentView.backgroundColor = [theme listBackgroundColour];
 
-	self.avatar = [[UIImageView alloc] initWithFrame:CGRectMake(kInset, (kRowHeight - kAvatar) / 2, kAvatar, kAvatar)];
-	self.avatar.layer.cornerRadius = kAvatar / 2;
+	self.avatar = [[UIImageView alloc] initWithFrame:CGRectMake(kInset, TGCenteredOrigin(kRowHeight, kAvatar), kAvatar, kAvatar)];
+	self.avatar.layer.cornerRadius = TGHalf(kAvatar);
 	self.avatar.clipsToBounds = YES;
 	self.avatar.layer.shouldRasterize = YES;
 	self.avatar.layer.rasterizationScale = scale;
@@ -69,7 +69,7 @@ static UIFont *TGChatCellTitleFont(void) {
 	self.badge.textColor = [UIColor whiteColor];
 	self.badge.backgroundColor = [theme badgeColour];
 	self.badge.textAlignment = NSTextAlignmentCenter;
-	self.badge.layer.cornerRadius = 10;
+	self.badge.layer.cornerRadius = TGHalf(TGMetricChatBadgeHeight);
 	self.badge.clipsToBounds = YES;
 	self.badge.layer.shouldRasterize = YES;
 	self.badge.layer.rasterizationScale = scale;
@@ -78,10 +78,10 @@ static UIFont *TGChatCellTitleFont(void) {
 
 	CGFloat dot = 15;
 	self.onlineDot = [[UIView alloc] initWithFrame:
-			CGRectMake(kInset + kAvatar - dot, (kRowHeight - kAvatar) / 2 + kAvatar - dot, dot, dot)];
+			CGRectMake(kInset + kAvatar - dot, TGCenteredOrigin(kRowHeight, kAvatar) + kAvatar - dot, dot, dot)];
 	self.onlineDot.backgroundColor = [theme onlineColour];
-	self.onlineDot.layer.cornerRadius = dot / 2;
-	self.onlineDot.layer.borderWidth = 2;
+	self.onlineDot.layer.cornerRadius = TGHalf(dot);
+	self.onlineDot.layer.borderWidth = TGMetricBorderThick;
 	self.onlineDot.layer.borderColor = [theme listBackgroundColour].CGColor;
 	self.onlineDot.layer.shouldRasterize = YES;
 	self.onlineDot.layer.rasterizationScale = scale;
@@ -141,10 +141,10 @@ static UIFont *TGChatCellTitleFont(void) {
 	// and the title taking whatever is left.
 	CGSize date = TGChatCellTextSize(self.dateLabel.text, self.dateLabel.font);
 	self.dateLabel.frame = CGRectMake(right - ceilf(date.width), 11, ceilf(date.width), 18);
-	CGFloat titleRight = CGRectGetMinX(self.dateLabel.frame) - 6;
+	CGFloat titleRight = CGRectGetMinX(self.dateLabel.frame) - TGMetricChatCellDateGap;
 	if (!self.tick.hidden) {
-		self.tick.frame = CGRectMake(titleRight - 15, 16, 15, 9);
-		titleRight -= 19;
+		self.tick.frame = CGRectMake(titleRight - TGMetricMediaStampCheckWidth, 16, TGMetricMediaStampCheckWidth, TGMetricMediaStampCheckHeight);
+		titleRight -= (TGMetricMediaStampCheckWidth + 4);
 	}
 
 	CGFloat muteW = self.muteIcon.hidden ? 0 : 20;
@@ -160,7 +160,8 @@ static UIFont *TGChatCellTitleFont(void) {
 	if (!self.badge.hidden) {
 		CGSize s = TGChatCellTextSize(self.badge.text, self.badge.font);
 		CGFloat bw = MAX(20, ceilf(s.width) + 12);
-		self.badge.frame = CGRectMake(right - bw, 42, bw, 20);
+		self.badge.frame = CGRectMake(right - bw, TGMetricChatBadgeTop, bw,
+								  TGMetricChatBadgeHeight);
 		previewRight = right - bw - 8;
 	} else if (!self.pin.hidden) {
 		self.pin.frame = CGRectMake(right - 16, 44, 16, 16);
@@ -170,7 +171,7 @@ static UIFont *TGChatCellTitleFont(void) {
 	CGSize fit = [self.previewLabel sizeThatFits:CGSizeMake(previewW, 40)];
 	self.previewLabel.frame = CGRectMake(kTextLeft, 32, previewW, MIN(ceilf(fit.height), 38));
 
-	CGFloat hair = 1.0f / [UIScreen mainScreen].scale;
+	CGFloat hair = TGMetricHairline;
 	self.separator.frame = CGRectMake(kTextLeft, h - hair, w - kTextLeft, hair);
 }
 

@@ -171,8 +171,8 @@
 	name.backgroundColor = [UIColor clearColor];
 	name.textAlignment = NSTextAlignmentCenter;
 	if (![TGTheme shared].isFlat){
-		name.shadowColor = [UIColor colorWithWhite:0.0f alpha:0.4f];
-		name.shadowOffset = CGSizeMake(0, -1);
+		name.shadowColor = [[TGTheme shared] navBarTextShadowColour];
+		name.shadowOffset = TGMetricShadowOffsetNav;
 	}
 	[header addSubview:name];
 	self.titleNameLabel = name;
@@ -481,7 +481,7 @@
 	CGFloat side = 37;
 	UIButton *button = [UIButton buttonWithType:UIButtonTypeCustom];
 	button.frame = CGRectMake(0, 0, side, side);
-	button.layer.cornerRadius = side / 2;
+	button.layer.cornerRadius = TGHalf(side);
 	button.clipsToBounds = YES;
 	[button addTarget:self action:@selector(openProfile)
 	 forControlEvents:UIControlEventTouchUpInside];
@@ -599,8 +599,8 @@
 						  atScrollPosition:UITableViewScrollPositionMiddle
 								  animated:YES];
 		UITableViewCell *cell = [self.table cellForRowAtIndexPath:path];
-		cell.contentView.alpha = 0.3f;
-		[UIView animateWithDuration:0.6 animations:^{ cell.contentView.alpha = 1.0f; }];
+		cell.contentView.alpha = TGAlphaHighlight;
+		[UIView animateWithDuration:TGAnimationDurationHighlight animations:^{ cell.contentView.alpha = TGAlphaOpaque; }];
 		return YES;
 	}
 	return NO;
@@ -671,14 +671,14 @@
 	stripe.backgroundColor = [theme accentColour];
 	[banner addSubview:stripe];
 
-	UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(16, 2, b.size.width - 24, 14)];
+	UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(TGMetricMarginLarge, 2, b.size.width - TGMetricPinnedBannerTextPadRight, 14)];
 	label.text = @"Pinned message";
 	label.font = TGFontMicroStrong();
 	label.textColor = [theme accentColour];
 	label.backgroundColor = [UIColor clearColor];
 	[banner addSubview:label];
 
-	UILabel *body = [[UILabel alloc] initWithFrame:CGRectMake(16, 16, b.size.width - 24, 16)];
+	UILabel *body = [[UILabel alloc] initWithFrame:CGRectMake(TGMetricMarginLarge, 16, b.size.width - TGMetricPinnedBannerTextPadRight, 16)];
 	body.text = text;
 	body.font = TGFontCaption();
 	body.textColor = [theme primaryTextColour];

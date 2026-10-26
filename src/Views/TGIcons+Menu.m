@@ -23,7 +23,11 @@ void TGIconsClearSettingsIconCache(void) {
 				// the profile's action tiles
 				@"call", @"video", @"search", @"more",
 				// the call screen
-				@"endcall", @"recent", @"star", nil];
+				@"endcall", @"recent", @"star",
+				// the dismiss cross and the record lock's arrow, which were
+				// drawn with characters in four places and came out as four
+				// different shapes
+				@"close", @"chevronUp", nil];
 	// An unknown name has to answer nil, not a blank square: a row with no
 	// glyph is better than a row with a hole where one should be.
 	if (![known containsObject:name])
@@ -31,12 +35,29 @@ void TGIconsClearSettingsIconCache(void) {
 
 	NSString *key = [@"menu-" stringByAppendingString:name];
 	return [self iconNamed:key draw:^(CGContextRef ctx, CGFloat s){
-		CGContextSetLineWidth(ctx, 1.8f);
+		CGContextSetLineWidth(ctx, TGIconStroke);
 		CGContextSetLineCap(ctx, kCGLineCapRound);
 		CGContextSetLineJoin(ctx, kCGLineJoinRound);
 		CGFloat m = s * 0.18f;              // margin, so every glyph shares a box
 
-		if ([name isEqualToString:@"reply"]){
+		if ([name isEqualToString:@"close"]){
+			// Three screens drew this with a character - U+00D7, the same
+			// again as a literal, and U+2715 - so one button was three
+			// shapes at three weights depending on where it was.
+			CGFloat c = s * 0.3f;
+			CGContextMoveToPoint(ctx, c, c);
+			CGContextAddLineToPoint(ctx, s - c, s - c);
+			CGContextMoveToPoint(ctx, s - c, c);
+			CGContextAddLineToPoint(ctx, c, s - c);
+			CGContextStrokePath(ctx);
+
+		} else if ([name isEqualToString:@"chevronUp"]){
+			CGContextMoveToPoint(ctx, s * 0.3f, s * 0.58f);
+			CGContextAddLineToPoint(ctx, s / 2, s * 0.38f);
+			CGContextAddLineToPoint(ctx, s * 0.7f, s * 0.58f);
+			CGContextStrokePath(ctx);
+
+		} else if ([name isEqualToString:@"reply"]){
 			// an arrow turning back on itself (reply left)
 			CGContextMoveToPoint(ctx, m + 5, s * 0.30f);
 			CGContextAddLineToPoint(ctx, m, s * 0.45f);

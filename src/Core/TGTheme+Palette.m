@@ -1,4 +1,5 @@
 #import "TGThemeInternal.h"
+#import "TGStyle.h"
 
 #define rgb TGThemeRGB
 
@@ -123,6 +124,10 @@ static BOOL TGIsDay(TGTheme *theme) {
 	if (self.isDarkStyle) return TG_BLUE_LIGHT4;
 	if (TGIsDay(self)) return TG_IOS_BLUE;
 	return self.isFlat ? TG_BLUE_LIGHT4 : TG_BLUE_DARK4;
+}
+
+- (UIColor *)onAccentColour {
+	return [UIColor whiteColor];
 }
 
 - (UIColor *)destructiveColour {
@@ -347,6 +352,22 @@ static BOOL TGIsDay(TGTheme *theme) {
 	return [UIColor colorWithWhite:0.0f alpha:0.35f];
 }
 
+- (UIColor *)mediaOverlayColour {
+	return [UIColor colorWithWhite:0.0f alpha:0.50f];
+}
+
+- (UIColor *)mediaViewerBackdropColour {
+	return [UIColor blackColor];
+}
+
+- (UIColor *)scrimColour {
+	return [UIColor colorWithWhite:0.0f alpha:0.40f];
+}
+
+- (UIColor *)menuWashColour {
+	return [UIColor colorWithWhite:0.0f alpha:0.12f];
+}
+
 #pragma mark - chat list
 
 - (UIColor *)badgeColour {
@@ -355,6 +376,10 @@ static BOOL TGIsDay(TGTheme *theme) {
 	if (TGIsNightBlue(self)) return TG_NB_BADGE;
 	if (TGIsDay(self)) return TG_IOS_BLUE;
 	return TG_BLUE_MEDIUM8;
+}
+
+- (UIColor *)badgeTextColour {
+	return [UIColor whiteColor];
 }
 
 - (UIColor *)mutedBadgeColour {
@@ -412,9 +437,35 @@ static BOOL TGIsDay(TGTheme *theme) {
 							: [UIColor colorWithWhite:0.0f alpha:0.30f];
 }
 
+- (UIColor *)unreadSeparatorColour {
+	return [[self inputBarColour] colorWithAlphaComponent:0.92f];
+}
+
 - (UIColor *)serviceTextColour {
 	return self.isDarkStyle ? [UIColor colorWithWhite:1.0f alpha:0.85f]
 							: [UIColor whiteColor];
+}
+
+#pragma mark - map preview
+
+- (UIColor *)mapPaperColour {
+	return [UIColor colorWithRed:0.90f green:0.91f blue:0.87f alpha:1.0f];
+}
+
+- (UIColor *)mapRoadColour {
+	return [UIColor whiteColor];
+}
+
+- (UIColor *)mapGreeneryColour {
+	return [UIColor colorWithRed:0.78f green:0.86f blue:0.74f alpha:1.0f];
+}
+
+- (UIColor *)mapPinColour {
+	return [UIColor colorWithRed:0.85f green:0.15f blue:0.15f alpha:1.0f];
+}
+
+- (UIColor *)mapPinShadowColour {
+	return [UIColor colorWithWhite:0.0f alpha:0.25f];
 }
 
 #pragma mark - swipe actions
@@ -457,6 +508,14 @@ static BOOL TGIsDay(TGTheme *theme) {
 	return rgb(0x33, 0xCC, 0x4D);
 }
 
+- (UIColor *)callControlColour {
+	return [UIColor colorWithWhite:1.0f alpha:0.20f];
+}
+
+- (UIColor *)callControlActiveColour {
+	return [UIColor colorWithWhite:1.0f alpha:0.40f];
+}
+
 #pragma mark - charts
 
 - (NSArray *)chartPalette {
@@ -472,22 +531,42 @@ static BOOL TGIsDay(TGTheme *theme) {
 	return rgb(0xFF, 0xB3, 0x00);
 }
 
+- (UIColor *)skeuoShineColour {
+	return [UIColor colorWithWhite:1.0f alpha:0.18f];
+}
+
+- (UIColor *)etchedTextShadowColour {
+	return !self.isFlat ? [UIColor colorWithWhite:1.0f alpha:0.7f] : [UIColor clearColor];
+}
+
+- (UIColor *)navBarTextShadowColour {
+	return [UIColor colorWithWhite:0.0f alpha:0.4f];
+}
+
+- (UIColor *)buttonHighlightColour {
+	return [[self accentColour] colorWithAlphaComponent:0.4f];
+}
+
+- (UIColor *)callSubtitleColour {
+	return [[UIColor whiteColor] colorWithAlphaComponent:0.75f];
+}
+
 - (CGFloat)bubbleCornerRadius {
 	// Their bubble is a tail on a softly rounded box, not a capsule.
-	return self.isFlat ? 16.0f : 10.0f;
+	return self.isFlat ? TGMetricCornerBubbleFlat : TGMetricCornerBubbleSkeuo;
 }
 
 - (CGFloat)bubbleJoinedCornerRadius {
 	// Where two bubbles of one run meet, the corners nearly square off so the
 	// run reads as one block.
-	return 5.0f;
+	return TGMetricCornerBubbleJoined;
 }
 
 - (CGFloat)bubbleBorderWidth {
 	// A drawn edge is what makes a skeuomorphic bubble sit on the surface. A
 	// flat one is the shape and nothing else, which is what the header has
 	// always said this returns.
-	return self.isFlat ? 0.0f : 1.0f;
+	return self.isFlat ? TGMetricBorderNone : TGMetricBorderWidth;
 }
 
 @end

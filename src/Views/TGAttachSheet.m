@@ -5,9 +5,9 @@
 #import <QuartzCore/QuartzCore.h>
 #import "TGStyle.h"
 
-static const CGFloat kRow       = 52.0f;
-static const CGFloat kStrip     = 100.0f;
-static const CGFloat kThumb     = 86.0f;
+static const CGFloat kRow       = TGMetricActionRow;
+static const CGFloat kStrip     = TGMetricAttachStrip;
+static const CGFloat kThumb     = TGMetricAttachThumb;
 static const NSUInteger kRecentPhotos = 24;
 
 @interface TGAttachSheet ()
@@ -59,7 +59,7 @@ static const NSUInteger kRecentPhotos = 24;
 
 	for (NSUInteger i = 0; i < titles.count; i++){
 		if (y > 0){
-			UIView *hair = [[UIView alloc] initWithFrame:CGRectMake(0, y, w, 0.5f)];
+			UIView *hair = [[UIView alloc] initWithFrame:CGRectMake(0, y, w, TGMetricHairline)];
 			hair.backgroundColor = [theme separatorColour];
 			[self.card addSubview:hair];
 		}
@@ -155,13 +155,13 @@ static const NSUInteger kRecentPhotos = 24;
 		return;
 	}
 	CGFloat x = 7;
-	CGFloat y = (kStrip - kThumb) / 2;
+	CGFloat y = TGCenteredOrigin(kStrip, kThumb);
 	for (NSUInteger i = 0; i < self.assets.count; i++){
 		ALAsset *asset = self.assets[i];
 		UIButton *button = [UIButton buttonWithType:UIButtonTypeCustom];
 		button.frame = CGRectMake(x, y, kThumb, kThumb);
 		button.tag = (NSInteger)i;
-		button.layer.cornerRadius = 6;
+		button.layer.cornerRadius = TGMetricCornerMedium;
 		button.clipsToBounds = YES;
 		button.imageView.contentMode = UIViewContentModeScaleAspectFill;
 		CGImageRef thumb = asset.thumbnail;
@@ -185,23 +185,23 @@ static const NSUInteger kRecentPhotos = 24;
 	UILabel *tick = (UILabel *)[button viewWithTag:0x5101];
 	if (position <= 0){
 		[tick removeFromSuperview];
-		button.alpha = 1.0f;
+		button.alpha = TGAlphaOpaque;
 		return;
 	}
 	if (!tick){
 		tick = [[UILabel alloc] initWithFrame:CGRectMake(
-				button.bounds.size.width - 22, 4, 18, 18)];
+				button.bounds.size.width - TGMetricAttachTick - TGMetricPadSmall, TGMetricPadSmall, TGMetricAttachTick, TGMetricAttachTick)];
 		tick.tag = 0x5101;
 		tick.textAlignment = NSTextAlignmentCenter;
 		tick.font = TGFontMicroStrong();
 		tick.textColor = [UIColor whiteColor];
 		tick.backgroundColor = [[TGTheme shared] accentColour];
-		tick.layer.cornerRadius = 9;
+		tick.layer.cornerRadius = TGHalf(TGMetricAttachTick);
 		tick.clipsToBounds = YES;
 		[button addSubview:tick];
 	}
 	tick.text = [NSString stringWithFormat:@"%ld", (long)position];
-	button.alpha = 0.75f;
+	button.alpha = TGAlphaSecondary;
 }
 
 /// Renumbers every tile after one is ticked or unticked, so the numbers

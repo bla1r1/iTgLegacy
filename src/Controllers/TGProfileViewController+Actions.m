@@ -97,21 +97,21 @@
 
 	CGFloat width = header.bounds.size.width;
 	CGFloat gap = 6, margin = 10;
-	CGFloat tileW = (width - 2 * margin - gap * (tiles.count - 1)) / tiles.count;
+	CGFloat tileW = (width - TGDoubled(margin) - gap * (tiles.count - 1)) / tiles.count;
 	TGTheme *theme = [TGTheme shared];
 
 	for (NSUInteger i = 0; i < tiles.count; i++){
 		UIButton *tile = [UIButton buttonWithType:UIButtonTypeCustom];
 		tile.frame = CGRectMake(margin + i * (tileW + gap), y, tileW, kActionTile);
 		tile.backgroundColor = [theme actionTileBackgroundColour];
-		tile.layer.cornerRadius = 8;
+		tile.layer.cornerRadius = TGMetricCornerControl;
 		tile.tag = i;
 		[tile addTarget:self action:@selector(actionTileTapped:)
 	   forControlEvents:UIControlEventTouchUpInside];
 		[header addSubview:tile];
 
 		UIImageView *glyph = [[UIImageView alloc] initWithFrame:
-				CGRectMake((tileW - 22) / 2, 8, 22, 22)];
+				CGRectMake(TGCenteredOrigin(tileW, 22), 8, 22, 22)];
 		glyph.image = [TGIcons menuGlyphNamed:tiles[i][0]];
 		glyph.contentMode = UIViewContentModeScaleAspectFit;
 		glyph.tintColor = [theme accentColour];
@@ -320,7 +320,7 @@
 		[items addObject:@{@"title" : (self.blocked ? @"Unblock" : @"Block"),
 						   @"icon" : @"privacy", @"destructive" : @YES}];
 
-	CGPoint where = [tile convertPoint:CGPointMake(tile.bounds.size.width / 2,
+	CGPoint where = [tile convertPoint:CGPointMake(TGHalf(tile.bounds.size.width),
 												   tile.bounds.size.height)
 								toView:self.navigationController.view];
 	__weak typeof(self) weakSelf = self;
@@ -850,10 +850,10 @@
 		return;
 	UIImage *scaled = [TGIcons decodedImage:image
 								fittingSize:CGSizeMake(640, 640)
-									   fill:NO scale:1.0f];
+									   fill:NO scale:TGMetricScaleFull];
 	NSString *path = [NSTemporaryDirectory()
 			stringByAppendingPathComponent:@"group-photo.jpg"];
-	if (![UIImageJPEGRepresentation(scaled, 0.9f) writeToFile:path atomically:YES]){
+	if (![UIImageJPEGRepresentation(scaled, TGCompressionQualityStandard) writeToFile:path atomically:YES]){
 		[TGAlertSheet showMessage:@"Could not prepare the picture."
 							title:@"Group Photo" inView:self.view];
 		return;

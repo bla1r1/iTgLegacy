@@ -334,6 +334,14 @@ static NSString *TGIdForStyle(TGThemeStyle style) {
 	cell.selectedBackgroundView = selected;
 }
 
+- (void)styleSectionHeader:(UIView *)headerView {
+	if (![headerView isKindOfClass:UITableViewHeaderFooterView.class])
+		return;
+	UITableViewHeaderFooterView *header = (UITableViewHeaderFooterView *)headerView;
+	header.textLabel.textColor = [self sectionHeaderColour];
+	header.textLabel.font = TGFontCaption();
+}
+
 - (void)styleTabBar:(UITabBar *)bar {
 	if (!bar)
 		return;

@@ -29,7 +29,7 @@
 
 	self.title = @"Scheduled Messages";
 	self.messages = @[];
-	self.tableView.rowHeight = 52;
+	self.tableView.rowHeight = TGMetricPersonRow;
 	[self applyTheme];
 	[self reload];
 
@@ -182,7 +182,7 @@ static NSString *TGTimeUntil(NSTimeInterval sendDate) {
 /// The date a waiting message moves to. The picker's own bar closes it; a
 /// refusal is heard rather than assumed, which is why this is a request.
 - (void)pickDateFor:(int64_t)messageId {
-	static const CGFloat kBar = 44.0f, kPicker = 216.0f;
+	static const CGFloat kBar = TGMetricRow, kPicker = TGMetricPickerHeight;
 
 	TGSheet *sheet = [TGSheet sheetForView:self.view.window ?: self.view];
 	UIView *card = [sheet addCardOfHeight:kBar + kPicker edgeToEdge:YES];
@@ -232,6 +232,13 @@ static NSString *TGTimeUntil(NSTimeInterval sendDate) {
 		[TGAlertSheet showMessage:say title:nil inView:weakSelf.view];
 		[weakSelf reload];
 	}];
+}
+
+/// The system's caption is grey on grey over a dark list, which is what
+/// this screen had: every other list styles its own.
+- (void)tableView:(UITableView *)tableView willDisplayHeaderView:(UIView *)view
+	   forSection:(NSInteger)section {
+	[[TGTheme shared] styleSectionHeader:view];
 }
 
 @end

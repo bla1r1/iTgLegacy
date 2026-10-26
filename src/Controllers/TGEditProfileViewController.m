@@ -7,7 +7,7 @@
 #import "TGAlertSheet.h"
 
 // Profile editing: avatar photo, names, bio, birthday, and username.
-static const CGFloat kPhotoSide = 80.0f;
+static const CGFloat kPhotoSide = TGMetricProfileAvatar;
 
 @interface TGEditProfileViewController () <UITextFieldDelegate,
 		UIImagePickerControllerDelegate, UINavigationControllerDelegate>
@@ -110,11 +110,9 @@ static const CGFloat kPhotoSide = 80.0f;
 	return field;
 }
 
-- (void)tableView:(UITableView *)tableView willDisplayHeaderView:(UIView *)view forSection:(NSInteger)section {
-	if ([view isKindOfClass:[UITableViewHeaderFooterView class]]) {
-		UITableViewHeaderFooterView *header = (UITableViewHeaderFooterView *)view;
-		header.textLabel.textColor = [[TGTheme shared] sectionHeaderColour];
-	}
+- (void)tableView:(UITableView *)tableView willDisplayHeaderView:(UIView *)view
+	   forSection:(NSInteger)section {
+	[[TGTheme shared] styleSectionHeader:view];
 }
 
 - (void)tableView:(UITableView *)tableView willDisplayFooterView:(UIView *)view forSection:(NSInteger)section {
@@ -209,7 +207,7 @@ static const CGFloat kPhotoSide = 80.0f;
 /// birthday is picked once. The card is edge to edge, as a modal sheet is,
 /// with the picker's own toolbar across the top of it.
 - (void)editBirthday {
-	static const CGFloat kBar = 44.0f, kPicker = 216.0f;
+	static const CGFloat kBar = TGMetricRow, kPicker = TGMetricPickerHeight;
 
 	TGSheet *sheet = [TGSheet sheetForView:self.view.window ?: self.view];
 	UIView *card = [sheet addCardOfHeight:kBar + kPicker edgeToEdge:YES];
@@ -289,10 +287,10 @@ static const CGFloat kPhotoSide = 80.0f;
 		return;
 
 	UIImage *scaled = [TGIcons decodedImage:image
-								fittingSize:CGSizeMake(640, 640) fill:NO scale:1.0f];
+								fittingSize:CGSizeMake(640, 640) fill:NO scale:TGMetricScaleFull];
 	NSString *path = [NSTemporaryDirectory()
 			stringByAppendingPathComponent:@"profile-photo.jpg"];
-	if (![UIImageJPEGRepresentation(scaled, 0.9f) writeToFile:path atomically:YES])
+	if (![UIImageJPEGRepresentation(scaled, TGCompressionQualityStandard) writeToFile:path atomically:YES])
 		return;
 
 	self.photoView.image = scaled;      // show it before the upload finishes
@@ -338,7 +336,7 @@ static const CGFloat kPhotoSide = 80.0f;
 }
 
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)path {
-	return path.section == 0 ? kPhotoSide + 46 : 44;
+	return path.section == 0 ? TGMetricEditProfileHeaderRow : TGMetricRow;
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView
@@ -388,7 +386,7 @@ static const CGFloat kPhotoSide = 80.0f;
 	if (path.section == 1) field = path.row == 0 ? self.firstField : self.lastField;
 	else                   field = self.bioField;
 
-	field.frame = CGRectMake(15, 0, tableView.bounds.size.width - 30, 44);
+	field.frame = CGRectMake(TGMetricGutter, 0, tableView.bounds.size.width - TGDoubled(TGMetricGutter), TGMetricRow);
 	field.textColor = [theme primaryTextColour];
 	[cell.contentView addSubview:field];
 	return cell;
@@ -407,8 +405,8 @@ static const CGFloat kPhotoSide = 80.0f;
 	NSString *name = [me[@"first_name"] length] ? me[@"first_name"] : @"?";
 
 	self.photoView = [[UIImageView alloc] initWithFrame:
-			CGRectMake((width - kPhotoSide) / 2, 8, kPhotoSide, kPhotoSide)];
-	self.photoView.layer.cornerRadius = kPhotoSide / 2;
+			CGRectMake(TGCenteredOrigin(width, kPhotoSide), 8, kPhotoSide, kPhotoSide)];
+	self.photoView.layer.cornerRadius = TGHalf(kPhotoSide);
 	self.photoView.clipsToBounds = YES;
 	self.photoView.layer.shouldRasterize = YES;
 	self.photoView.layer.rasterizationScale = [UIScreen mainScreen].scale;

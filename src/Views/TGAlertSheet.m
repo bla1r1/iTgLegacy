@@ -2,10 +2,10 @@
 #import "TGTheme.h"
 #import "TGStyle.h"
 
-static const CGFloat kRow      = 50.0f;   ///< one button
-static const CGFloat kPad      = 14.0f;   ///< text from the card's edge
-static const CGFloat kTextGap  = 6.0f;    ///< title to message
-static const CGFloat kFieldTop = 8.0f;
+static const CGFloat kRow      = TGMetricActionRow; ///< one button
+static const CGFloat kPad      = TGMetricAlertPad;  ///< text from the card's edge
+static const CGFloat kTextGap  = TGMetricAlertTextGap; ///< title to message
+static const CGFloat kFieldTop = TGMetricAlertFieldTop;
 
 /// The list shape is the one the others are built on, and it takes a message
 /// the public list form has no room for.
@@ -30,7 +30,7 @@ static const CGFloat kFieldTop = 8.0f;
 /// or either on its own. Returns the height it took.
 + (CGFloat)addTextTo:(UIView *)card title:(NSString *)title message:(NSString *)message {
 	TGTheme *theme = [TGTheme shared];
-	CGFloat width = card.bounds.size.width - 2 * kPad;
+	CGFloat width = card.bounds.size.width - TGDoubled(kPad);
 	CGFloat y = kPad;
 
 	if (title.length){
@@ -89,7 +89,7 @@ static const CGFloat kFieldTop = 8.0f;
 	TGTheme *theme = [TGTheme shared];
 	if (separator){
 		UIView *line = [[UIView alloc] initWithFrame:
-				CGRectMake(0, y, card.bounds.size.width, 0.5f)];
+				CGRectMake(0, y, card.bounds.size.width, TGMetricHairline)];
 		line.backgroundColor = [theme separatorColour];
 		[card addSubview:line];
 	}
@@ -121,7 +121,7 @@ static const CGFloat kFieldTop = 8.0f;
 	if (!host || (!message.length && !title.length))
 		return;
 	TGAlertSheet *sheet = [self sheetForView:host];
-	CGFloat width = host.bounds.size.width - 2 * TGMetricCardMargin;
+	CGFloat width = host.bounds.size.width - TGDoubled(TGMetricCardMargin);
 	CGFloat textHeight = [self addTextTo:[[UIView alloc] initWithFrame:
 			CGRectMake(0, 0, width, 0)] title:title message:message];
 
@@ -162,7 +162,7 @@ static const CGFloat kFieldTop = 8.0f;
 	if (!host || titles.count == 0)
 		return;
 	TGAlertSheet *sheet = [self sheetForView:host];
-	CGFloat width = host.bounds.size.width - 2 * TGMetricCardMargin;
+	CGFloat width = host.bounds.size.width - TGDoubled(TGMetricCardMargin);
 	CGFloat textHeight = [self addTextTo:[[UIView alloc] initWithFrame:
 			CGRectMake(0, 0, width, 0)] title:title message:message];
 
@@ -218,7 +218,7 @@ static const CGFloat kFieldTop = 8.0f;
 		return;
 	TGTheme *theme = [TGTheme shared];
 	TGAlertSheet *sheet = [self sheetForView:host];
-	CGFloat width = host.bounds.size.width - 2 * TGMetricCardMargin;
+	CGFloat width = host.bounds.size.width - TGDoubled(TGMetricCardMargin);
 	CGFloat textHeight = [self addTextTo:[[UIView alloc] initWithFrame:
 			CGRectMake(0, 0, width, 0)] title:title message:message];
 	CGFloat fieldHeight = TGMetricRow - kFieldTop;
@@ -228,7 +228,7 @@ static const CGFloat kFieldTop = 8.0f;
 	[self addTextTo:card title:title message:message];
 
 	UITextField *field = [[UITextField alloc] initWithFrame:
-			CGRectMake(kPad, textHeight + kFieldTop, width - 2 * kPad, fieldHeight)];
+			CGRectMake(kPad, textHeight + kFieldTop, width - TGDoubled(kPad), fieldHeight)];
 	field.font = TGFontRow();
 	field.text = text ?: @"";
 	field.placeholder = placeholder;
@@ -290,7 +290,7 @@ static const CGFloat kFieldTop = 8.0f;
 			[UIApplication sharedApplication].statusBarOrientation)
 			? MIN(frame.size.width, frame.size.height)
 			: frame.size.height;
-	[UIView animateWithDuration:0.25 animations:^{ self.bottomInset = height; }];
+	[UIView animateWithDuration:TGAnimationDurationMedium animations:^{ self.bottomInset = height; }];
 }
 
 - (void)dismiss {

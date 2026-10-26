@@ -9,13 +9,13 @@
 #import "TGStyle.h"
 #import "TGAlertSheet.h"
 
-static const CGFloat kStripHeight = 38.0f;   // categories / sets along the top
-static const CGFloat kTabsHeight  = 36.0f;   // Emoji | Stickers | GIFs
-static const CGFloat kEmojiCell   = 40.0f;
+static const CGFloat kStripHeight = TGMetricEmojiStripHeight;   // categories / sets along the top
+static const CGFloat kTabsHeight  = TGMetricEmojiTabsHeight;   // Emoji | Stickers | GIFs
+static const CGFloat kEmojiCell   = TGMetricEmojiCell;
 
 static const NSInteger kItemTagBase = 1000;  // grid buttons carry their index
 static const NSInteger kHeaderTag   = 900;   // a section title in the feed
-static const CGFloat   kHeaderHeight = 22.0f;
+static const CGFloat   kHeaderHeight = TGMetricEmojiHeader;
 
 /// Pictures decoded for the grid and the strip, by file id; shared by every
 /// panel so reopening one draws at once.
@@ -47,7 +47,7 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 	UIGraphicsBeginImageContextWithOptions(size, NO, 0);
 	CGContextRef ctx = UIGraphicsGetCurrentContext();
 	CGContextSetStrokeColorWithColor(ctx, colour.CGColor);
-	CGContextSetLineWidth(ctx, 1.6f);
+	CGContextSetLineWidth(ctx, TGMetricStrokeIcon);
 	CGContextSetLineJoin(ctx, kCGLineJoinRound);
 	CGContextSetLineCap(ctx, kCGLineCapRound);
 	CGContextMoveToPoint(ctx, 7, 1.5f);
@@ -115,7 +115,7 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 @implementation TGEmojiPanel
 
 + (CGFloat)preferredHeight {
-	return 216.0f;
+	return TGMetricEmojiPanelHeight;
 }
 
 - (id)initWithFrame:(CGRect)frame {
@@ -132,7 +132,7 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 	self.strip.scrollsToTop = NO;
 	[self addSubview:self.strip];
 
-	self.stripLine = [[UIView alloc] initWithFrame:CGRectMake(0, kStripHeight - 0.5f, w, 0.5f)];
+	self.stripLine = [[UIView alloc] initWithFrame:CGRectMake(0, kStripHeight - TGMetricHairline, w, TGMetricHairline)];
 	self.stripLine.autoresizingMask = UIViewAutoresizingFlexibleWidth;
 	[self addSubview:self.stripLine];
 
@@ -157,14 +157,14 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 	self.tabs.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleTopMargin;
 	[self addSubview:self.tabs];
 
-	self.tabsLine = [[UIView alloc] initWithFrame:CGRectMake(0, 0, w, 0.5f)];
+	self.tabsLine = [[UIView alloc] initWithFrame:CGRectMake(0, 0, w, TGMetricHairline)];
 	self.tabsLine.autoresizingMask = UIViewAutoresizingFlexibleWidth;
 	[self.tabs addSubview:self.tabsLine];
 
 	NSArray *titles = @[@"Emoji", @"Stickers", @"GIFs"];
 	NSMutableArray *buttons = [NSMutableArray array];
-	CGFloat tabW = 76.0f;
-	CGFloat x = (w - tabW * titles.count) / 2;
+	CGFloat tabW = TGMetricChatRow;
+	CGFloat x = TGCenteredOrigin(w, tabW * titles.count);
 	for (NSUInteger i = 0; i < titles.count; i++){
 		UIButton *button = [UIButton buttonWithType:UIButtonTypeCustom];
 		button.frame = CGRectMake(x + tabW * i, 0, tabW, kTabsHeight);
@@ -296,7 +296,7 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 		CGFloat width = entry[@"title"] ? 80 : 38;
 		button.frame = CGRectMake(x, 3, width, kStripHeight - 6);
 		button.tag = (NSInteger)i;
-		button.layer.cornerRadius = 6;
+		button.layer.cornerRadius = TGMetricCornerMedium;
 		button.backgroundColor = (NSInteger)i == self.stripIndex
 				? [theme actionTileBackgroundColour] : [UIColor clearColor];
 		if (entry[@"title"]){
@@ -387,19 +387,19 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 
 	if (gesture.state == UIGestureRecognizerStateBegan){
 		CGPoint here = [gesture locationInView:pill];
-		self.stickerDragOffset = here.x - pill.bounds.size.width / 2.0f;
+		self.stickerDragOffset = here.x - TGHalf(pill.bounds.size.width);
 		self.stickerDragFrame = pill.frame;
 		self.strip.scrollEnabled = NO;
-		pill.transform = CGAffineTransformMakeScale(1.08f, 1.08f);
-		pill.alpha = 0.85f;
+		pill.transform = CGAffineTransformMakeScale(TGTransformScalePillActive, TGTransformScalePillActive);
+		pill.alpha = TGAlphaPillInactive;
 	}
 	else if (gesture.state == UIGestureRecognizerStateChanged){
 		CGPoint here = [gesture locationInView:strip];
 		// Content coordinates, the strip's own currency: the frame lives
 		// in them and the finger's press point rides along.
 		CGFloat x = here.x - strip.contentOffset.x - self.stickerDragOffset;
-		CGFloat first = 4, last = strip.contentSize.width
-				- self.stickerDragFrame.size.width - 4;
+		CGFloat first = TGMetricPadSmall, last = strip.contentSize.width
+				- self.stickerDragFrame.size.width - TGMetricPadSmall;
 		if (x < first) x = first;
 		if (x > last)  x = last;
 		pill.frame = CGRectMake(x, self.stickerDragFrame.origin.y,
@@ -410,7 +410,7 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 			 gesture.state == UIGestureRecognizerStateCancelled){
 		strip.scrollEnabled = YES;
 		pill.transform = CGAffineTransformIdentity;
-		pill.alpha = 1.0f;
+		pill.alpha = TGAlphaOpaque;
 
 		NSInteger from = pill.tag - 3;
 		NSArray *sets = self.stickerSets;
@@ -678,7 +678,7 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 		}
 		case TGEmojiPanelTabGIFs: {
 			CGFloat side = floorf(w / 3);
-			return CGSizeMake(side, floorf(side * 0.8f));
+			return CGSizeMake(side, floorf(side * TGMetricGIFCellAspect));
 		}
 	}
 	return CGSizeMake(40, 40);
@@ -766,7 +766,7 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 	if (!self.frames.count)
 		return;
 	CGRect visible = self.grid.bounds;
-	visible.origin.y -= visible.size.height / 2;
+	visible.origin.y -= TGHalf(visible.size.height);
 	visible.size.height *= 2;
 
 	NSMutableArray *gone = [NSMutableArray array];
@@ -823,7 +823,7 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 		button.titleLabel.font = TGFontEmoji();
 		[button setTitle:item forState:UIControlStateNormal];
 	} else if (self.tab == TGEmojiPanelTabStickers){
-		button.imageEdgeInsets = UIEdgeInsetsMake(6, 6, 6, 6);
+		button.imageEdgeInsets = UIEdgeInsetsMake(TGMetricAlertTextGap, TGMetricAlertTextGap, TGMetricAlertTextGap, TGMetricAlertTextGap);
 		button.imageView.contentMode = UIViewContentModeScaleAspectFit;
 		UIImage *cached = [TGPanelImageCache() objectForKey:item[@"thumbId"]];
 		if (cached)

@@ -110,11 +110,10 @@ NSAttributedString *TGAttributedMessageText(NSString *text, NSArray *entities, U
 		} else if ([type isEqualToString:@"textEntityTypeCode"] || [type isEqualToString:@"messageEntityCode"] ||
 				   [type isEqualToString:@"textEntityTypePre"]  || [type isEqualToString:@"messageEntityPre"] ||
 				   [type isEqualToString:@"textEntityTypePreCode"]) {
-			UIFont *mono = [UIFont fontWithName:@"Courier" size:MAX(11.0f, size - 1.0f)] ?:
-						   [UIFont fontWithName:@"CourierNewPSMT" size:MAX(11.0f, size - 1.0f)];
+			UIFont *mono = TGFontCodeAtSize(MAX(TGFontSizeMicro, size - TGMetricTextPadV));
 			if (mono)
 				[str addAttribute:NSFontAttributeName value:mono range:range];
-			[str addAttribute:NSBackgroundColorAttributeName value:[UIColor colorWithWhite:0.5f alpha:0.15f] range:range];
+			[str addAttribute:NSBackgroundColorAttributeName value:TGColourCodeBackground() range:range];
 		} else if ([type isEqualToString:@"textEntityTypeTextUrl"] || [type isEqualToString:@"messageEntityTextUrl"]) {
 			NSString *urlStr = ent[@"type"][@"url"] ?: ent[@"url"];
 			if (urlStr.length) {
@@ -135,7 +134,7 @@ NSAttributedString *TGAttributedMessageText(NSString *text, NSArray *entities, U
 				   [type isEqualToString:@"textEntityTypeBotCommand"]) {
 			[str addAttribute:NSForegroundColorAttributeName value:linkColour range:range];
 		} else if ([type isEqualToString:@"textEntityTypeSpoiler"] || [type isEqualToString:@"messageEntitySpoiler"]) {
-			[str addAttribute:NSBackgroundColorAttributeName value:[UIColor colorWithWhite:0.5f alpha:0.25f] range:range];
+			[str addAttribute:NSBackgroundColorAttributeName value:TGColourCodeBlockBackground() range:range];
 		}
 	}
 
@@ -176,20 +175,20 @@ CGSize TGTextSizeWithEntities(NSString *text, NSArray *entities, UIFont *font, C
 			CGRect rect = [rich boundingRectWithSize:CGSizeMake(width, 10000)
 											 options:NSStringDrawingUsesLineFragmentOrigin | NSStringDrawingUsesFontLeading
 											 context:nil];
-			size = CGSizeMake(ceilf(rect.size.width) + 2.0f, ceilf(rect.size.height) + 1.0f);
+			size = CGSizeMake(ceilf(rect.size.width) + TGMetricTextPadH, ceilf(rect.size.height) + TGMetricTextPadV);
 		} else {
 			size = [text sizeWithFont:font
 					constrainedToSize:CGSizeMake(width, 10000)
 						lineBreakMode:NSLineBreakByWordWrapping];
-			size = CGSizeMake(ceilf(size.width) + 2.0f, ceilf(size.height) + 1.0f);
+			size = CGSizeMake(ceilf(size.width) + TGMetricTextPadH, ceilf(size.height) + TGMetricTextPadV);
 		}
 	} else {
 		if (rich) {
 			size = [rich size];
-			size = CGSizeMake(ceilf(size.width) + 2.0f, ceilf(size.height) + 1.0f);
+			size = CGSizeMake(ceilf(size.width) + TGMetricTextPadH, ceilf(size.height) + TGMetricTextPadV);
 		} else {
 			size = [text sizeWithFont:font];
-			size = CGSizeMake(ceilf(size.width) + 2.0f, ceilf(size.height) + 1.0f);
+			size = CGSizeMake(ceilf(size.width) + TGMetricTextPadH, ceilf(size.height) + TGMetricTextPadV);
 		}
 	}
 

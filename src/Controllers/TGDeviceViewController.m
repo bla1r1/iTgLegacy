@@ -144,11 +144,9 @@
 					onConfirm:^{ [[TGClient shared] logOut]; }];
 }
 
-- (void)tableView:(UITableView *)tableView willDisplayHeaderView:(UIView *)view forSection:(NSInteger)section {
-	if ([view isKindOfClass:[UITableViewHeaderFooterView class]]) {
-		UITableViewHeaderFooterView *header = (UITableViewHeaderFooterView *)view;
-		header.textLabel.textColor = [[TGTheme shared] sectionHeaderColour];
-	}
+- (void)tableView:(UITableView *)tableView willDisplayHeaderView:(UIView *)view
+	   forSection:(NSInteger)section {
+	[[TGTheme shared] styleSectionHeader:view];
 }
 
 - (void)tableView:(UITableView *)tableView willDisplayFooterView:(UIView *)view forSection:(NSInteger)section {

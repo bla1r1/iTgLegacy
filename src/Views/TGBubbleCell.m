@@ -62,7 +62,7 @@
 	self.artwork.hidden = YES;
 	self.artwork.contentMode = UIViewContentModeScaleAspectFill;
 	self.artwork.clipsToBounds = YES;
-	self.artwork.layer.cornerRadius = 4;
+	self.artwork.layer.cornerRadius = TGMetricCornerSmall;
 	[self.bubble addSubview:self.artwork];
 
 	self.disc = [[UIImageView alloc] init];
@@ -78,7 +78,7 @@
 	[self.contentView addSubview:self.tail];
 
 	self.senderAvatar = [[UIImageView alloc] init];
-	self.senderAvatar.layer.cornerRadius = kAvatarSide / 2;
+	self.senderAvatar.layer.cornerRadius = TGHalf(TGMetricGroupAvatarSide);
 	self.senderAvatar.clipsToBounds = YES;
 	self.senderAvatar.layer.shouldRasterize = YES;
 	self.senderAvatar.layer.rasterizationScale = scale;
@@ -140,7 +140,7 @@
 	self.mediaStamp.font = TGFontMicro();
 	self.mediaStamp.textColor = [UIColor whiteColor];
 	self.mediaStamp.textAlignment = NSTextAlignmentCenter;
-	self.mediaStamp.layer.cornerRadius = 8;
+	self.mediaStamp.layer.cornerRadius = TGMetricCornerControl;
 	self.mediaStamp.clipsToBounds = YES;
 	self.mediaStamp.layer.shouldRasterize = YES;
 	self.mediaStamp.layer.rasterizationScale = scale;
@@ -184,7 +184,7 @@
 		UIImageView *cv = [[UIImageView alloc] init];
 		cv.contentMode = UIViewContentModeScaleAspectFill;
 		cv.clipsToBounds = YES;
-		cv.layer.cornerRadius = 4.0f;
+		cv.layer.cornerRadius = TGMetricCornerSmall;
 		cv.userInteractionEnabled = YES;
 		cv.tag = i;
 		cv.layer.shouldRasterize = YES;
@@ -198,8 +198,8 @@
 	self.collageMoreLabel.textAlignment = NSTextAlignmentCenter;
 	self.collageMoreLabel.textColor = [UIColor whiteColor];
 	self.collageMoreLabel.font = TGFontHeader();
-	self.collageMoreLabel.backgroundColor = [UIColor colorWithWhite:0.0f alpha:0.55f];
-	self.collageMoreLabel.layer.cornerRadius = 4.0f;
+	self.collageMoreLabel.backgroundColor = [[TGTheme shared] mediaOverlayColour];
+	self.collageMoreLabel.layer.cornerRadius = TGMetricCornerSmall;
 	self.collageMoreLabel.clipsToBounds = YES;
 	self.collageMoreLabel.hidden = YES;
 	[self.collageView addSubview:self.collageMoreLabel];
@@ -222,7 +222,7 @@
 	NSLayoutManager *layout = [[NSLayoutManager alloc] init];
 	[storage addLayoutManager:layout];
 	NSTextContainer *container = [[NSTextContainer alloc] initWithSize:label.bounds.size];
-	container.lineFragmentPadding = 0.0f;
+	container.lineFragmentPadding = TGMetricZero;
 	container.lineBreakMode = label.lineBreakMode;
 	container.maximumNumberOfLines = label.numberOfLines;
 	[layout addTextContainer:container];

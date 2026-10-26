@@ -35,7 +35,7 @@
 	self.messageHits = @[];
 	self.avatars = [NSMutableDictionary dictionary];
 	self.avatarsRequested = [NSMutableSet set];
-	self.tableView.rowHeight = 60;
+	self.tableView.rowHeight = TGMetricPersonRow;
 	if ([self.tableView respondsToSelector:@selector(setKeyboardDismissMode:)])
 		self.tableView.keyboardDismissMode = UIScrollViewKeyboardDismissModeOnDrag;
 
@@ -81,7 +81,7 @@
 	self.bar.tintColor = [theme accentColour];
 	self.bar.backgroundColor = [theme searchBarBackgroundColour];
 	if ([self.bar respondsToSelector:@selector(setImage:forSearchBarIcon:state:)]) {
-		[self.bar setImage:[TGIcons searchLensOfSize:15.0f colour:[theme secondaryTextColour]]
+		[self.bar setImage:[TGIcons searchLensOfSize:TGMetricSearchIconSize colour:[theme secondaryTextColour]]
 		  forSearchBarIcon:UISearchBarIconSearch
 					 state:UIControlStateNormal];
 	}
@@ -212,11 +212,9 @@
 	return self.messageHits.count ? @"Messages" : nil;
 }
 
-- (void)tableView:(UITableView *)tableView willDisplayHeaderView:(UIView *)view forSection:(NSInteger)section {
-	if ([view isKindOfClass:[UITableViewHeaderFooterView class]]) {
-		UITableViewHeaderFooterView *header = (UITableViewHeaderFooterView *)view;
-		header.textLabel.textColor = [[TGTheme shared] sectionHeaderColour];
-	}
+- (void)tableView:(UITableView *)tableView willDisplayHeaderView:(UIView *)view
+	   forSection:(NSInteger)section {
+	[[TGTheme shared] styleSectionHeader:view];
 }
 
 - (UIImage *)avatarForChat:(int64_t)chatId
@@ -258,7 +256,7 @@
 	UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:reuse];
 	if (!cell) {
 		cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:reuse];
-		cell.imageView.layer.cornerRadius = TGMetricListAvatar / 2;
+		cell.imageView.layer.cornerRadius = TGHalf(TGMetricListAvatar);
 		cell.imageView.clipsToBounds = YES;
 		cell.imageView.layer.shouldRasterize = YES;
 		cell.imageView.layer.rasterizationScale = [UIScreen mainScreen].scale;

@@ -10,7 +10,7 @@
 	self.searchBar.tintColor = [theme accentColour];
 	self.searchBar.backgroundColor = [theme searchBarBackgroundColour];
 	if ([self.searchBar respondsToSelector:@selector(setImage:forSearchBarIcon:state:)]) {
-		[self.searchBar setImage:[TGIcons searchLensOfSize:15.0f colour:[theme secondaryTextColour]]
+		[self.searchBar setImage:[TGIcons searchLensOfSize:TGMetricSearchIconSize colour:[theme secondaryTextColour]]
 				forSearchBarIcon:UISearchBarIconSearch
 						   state:UIControlStateNormal];
 	}

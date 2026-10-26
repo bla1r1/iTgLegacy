@@ -13,6 +13,7 @@
 #import "TGCallViewController.h"
 #import "TGLoginViewController.h"
 #import <QuartzCore/QuartzCore.h>
+#import "TGStyle.h"
 #import "TGAlertSheet.h"
 #include <stdio.h>
 
@@ -175,8 +176,8 @@ static void TGWatchForIncomingCalls(void) {
 			initWithActivityIndicatorStyle:theme.isDark
 					? UIActivityIndicatorViewStyleWhite
 					: UIActivityIndicatorViewStyleGray];
-	spinner.center = CGPointMake(vc.view.bounds.size.width / 2,
-								 vc.view.bounds.size.height / 2);
+	spinner.center = CGPointMake(TGHalf(vc.view.bounds.size.width),
+								 TGHalf(vc.view.bounds.size.height));
 	spinner.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin |
 			UIViewAutoresizingFlexibleRightMargin |
 			UIViewAutoresizingFlexibleTopMargin |

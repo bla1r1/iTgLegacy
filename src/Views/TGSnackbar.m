@@ -6,9 +6,9 @@
 
 // Their snackbar at 360dp: a 48 tall plate inset 8, a 24 countdown ring at 16
 // from the left, the wording at 15, UNDO on the right in blue.
-static const CGFloat kBarHeight = 44.0f;
-static const CGFloat kBarInset  = 7.0f;
-static const CGFloat kRingSide  = 22.0f;
+static const CGFloat kBarHeight = TGMetricRow;
+static const CGFloat kBarInset  = TGMetricSnackbarInset;
+static const CGFloat kRingSide  = TGMetricSnackbarRing;
 
 static TGSnackbar *sOpenBar = nil;
 
@@ -48,7 +48,7 @@ static TGSnackbar *sOpenBar = nil;
 	CGRect b = host.bounds;
 	TGSnackbar *bar = [[TGSnackbar alloc] initWithFrame:CGRectMake(
 			kBarInset, b.size.height - kBarHeight - kBarInset,
-			b.size.width - 2 * kBarInset, kBarHeight)];
+			b.size.width - TGDoubled(kBarInset), kBarHeight)];
 	bar->_total = MAX((NSInteger)1, seconds);
 	bar->_left = bar->_total;
 	bar->_commit = [commit copy];
@@ -61,7 +61,7 @@ static TGSnackbar *sOpenBar = nil;
 	// Up from below the edge, the way it arrives in their design.
 	CGRect resting = bar.frame;
 	bar.frame = CGRectOffset(resting, 0, kBarHeight + kBarInset);
-	[UIView animateWithDuration:0.2 animations:^{ bar.frame = resting; }];
+	[UIView animateWithDuration:TGAnimationDurationNormal animations:^{ bar.frame = resting; }];
 
 	bar->_tick = [NSTimer scheduledTimerWithTimeInterval:1.0
 												  target:bar
@@ -74,19 +74,19 @@ static TGSnackbar *sOpenBar = nil;
 	// steel-gray_dark, which is what their plate is - it has to read over both
 	// a light and a dark chat.
 	self.backgroundColor = [[TGTheme shared] snackbarBackgroundColour];
-	self.layer.cornerRadius = 5;
+	self.layer.cornerRadius = TGMetricCornerMedium;
 
-	CGRect ring = CGRectMake(14, (kBarHeight - kRingSide) / 2, kRingSide, kRingSide);
+	CGRect ring = CGRectMake(14, TGCenteredOrigin(kBarHeight, kRingSide), kRingSide, kRingSide);
 	_ring = [CAShapeLayer layer];
 	_ring.frame = ring;
 	_ring.path = [UIBezierPath bezierPathWithOvalInRect:
 			CGRectInset(CGRectMake(0, 0, kRingSide, kRingSide), 1, 1)].CGPath;
 	_ring.fillColor = [UIColor clearColor].CGColor;
 	_ring.strokeColor = [[TGTheme shared] snackbarTextColour].CGColor;
-	_ring.lineWidth = 1.5f;
+	_ring.lineWidth = TGMetricBorderMedium;
 	// Wound from the top and unwinding as the seconds go, so the plate says how
 	// long is left without anyone having to read the number.
-	_ring.strokeEnd = 1.0f;
+	_ring.strokeEnd = TGMetricScaleFull;
 	_ring.transform = CATransform3DMakeRotation(-M_PI_2, 0, 0, 1);
 	[self.layer addSublayer:_ring];
 
@@ -114,13 +114,13 @@ static TGSnackbar *sOpenBar = nil;
 	[undo setTitleColor:[[TGTheme shared] accentColour]
 			   forState:UIControlStateNormal];
 	undo.titleLabel.font = TGFontSubheadStrong();
-	undo.titleEdgeInsets = UIEdgeInsetsMake(0, 14, 0, 0);
+	undo.titleEdgeInsets = UIEdgeInsetsMake(0, TGMetricPadLarge, 0, 0);
 	[undo addTarget:self action:@selector(undoTapped)
    forControlEvents:UIControlEventTouchUpInside];
 	[self addSubview:undo];
 
 	UIImageView *arrow = [[UIImageView alloc] initWithFrame:CGRectMake(
-			self.bounds.size.width - 74, (kBarHeight - 18) / 2, 18, 18)];
+			self.bounds.size.width - 74, TGCenteredOrigin(kBarHeight, 18), 18, 18)];
 	arrow.image = [TGIcons menuGlyphNamed:@"undo"];
 	arrow.contentMode = UIViewContentModeScaleAspectFit;
 	arrow.tintColor = [[TGTheme shared] accentColour];
@@ -144,7 +144,7 @@ static TGSnackbar *sOpenBar = nil;
 	_tick = nil;
 	_commit = nil;             // the action never happens
 	UIView *me = self;
-	[UIView animateWithDuration:0.2
+	[UIView animateWithDuration:TGAnimationDurationNormal
 					 animations:^{ me.alpha = 0; }
 					 completion:^(BOOL done){ [me removeFromSuperview]; }];
 }

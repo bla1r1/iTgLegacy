@@ -25,13 +25,13 @@
 		self.editToolbar.backgroundColor = [[TGTheme shared] inputBarColour];
 		self.editToolbar.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleTopMargin;
 
-		UIView *hair = [[UIView alloc] initWithFrame:CGRectMake(0, 0, b.size.width, 0.5f)];
+		UIView *hair = [[UIView alloc] initWithFrame:CGRectMake(0, 0, b.size.width, TGMetricHairline)];
 		hair.backgroundColor = [[TGTheme shared] separatorColour];
 		hair.autoresizingMask = UIViewAutoresizingFlexibleWidth;
 		[self.editToolbar addSubview:hair];
 
 		self.editDeleteButton = [UIButton buttonWithType:UIButtonTypeCustom];
-		self.editDeleteButton.frame = CGRectMake(14, 6, 140, 36);
+		self.editDeleteButton.frame = CGRectMake(TGMetricPadLarge, 6, TGMetricEditToolbarButtonWidth, TGMetricButtonHeightSmall);
 		self.editDeleteButton.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeft;
 		self.editDeleteButton.titleLabel.font = TGFontRow();
 		[self.editDeleteButton setTitleColor:[[TGTheme shared] destructiveColour] forState:UIControlStateNormal];
@@ -40,7 +40,7 @@
 		[self.editToolbar addSubview:self.editDeleteButton];
 
 		self.editForwardButton = [UIButton buttonWithType:UIButtonTypeCustom];
-		self.editForwardButton.frame = CGRectMake(b.size.width - 154, 6, 140, 36);
+		self.editForwardButton.frame = CGRectMake(b.size.width - TGMetricEditToolbarButtonWidth - TGMetricPadLarge, 6, TGMetricEditToolbarButtonWidth, TGMetricButtonHeightSmall);
 		self.editForwardButton.contentHorizontalAlignment = UIControlContentHorizontalAlignmentRight;
 		self.editForwardButton.titleLabel.font = TGFontRowStrong();
 		[self.editForwardButton setTitleColor:[[TGTheme shared] accentColour] forState:UIControlStateNormal];
@@ -88,7 +88,7 @@
 	BOOL enabled = (count > 0);
 
 	self.editDeleteButton.enabled = enabled;
-	self.editDeleteButton.alpha = enabled ? 1.0f : 0.4f;
+	self.editDeleteButton.alpha = enabled ? TGAlphaOpaque : TGAlphaDisabled;
 	if (count > 0) {
 		[self.editDeleteButton setTitle:[NSString stringWithFormat:@"Delete (%lu)", (unsigned long)count] forState:UIControlStateNormal];
 	} else {
@@ -96,7 +96,7 @@
 	}
 
 	self.editForwardButton.enabled = enabled;
-	self.editForwardButton.alpha = enabled ? 1.0f : 0.4f;
+	self.editForwardButton.alpha = enabled ? TGAlphaOpaque : TGAlphaDisabled;
 	if (count > 0) {
 		[self.editForwardButton setTitle:[NSString stringWithFormat:@"Forward (%lu)", (unsigned long)count] forState:UIControlStateNormal];
 	} else {
@@ -231,23 +231,23 @@
 
 	if (!mine) {
 		CGRect bf = cell.bubble.frame;
-		bf.origin.x += 34.0f;
+		bf.origin.x += TGMetricSelectionShift;
 		cell.bubble.frame = bf;
 
 		if (!cell.senderAvatar.hidden) {
 			CGRect af = cell.senderAvatar.frame;
-			af.origin.x += 34.0f;
+			af.origin.x += TGMetricSelectionShift;
 			cell.senderAvatar.frame = af;
 		}
 		if (!cell.sender.hidden && cell.sender.superview != cell.bubble) {
 			CGRect sf = cell.sender.frame;
-			sf.origin.x += 34.0f;
+			sf.origin.x += TGMetricSelectionShift;
 			cell.sender.frame = sf;
 		}
 	}
 
 	CGFloat cy = CGRectGetMidY(cell.bubble.frame);
-	cell.checkbox.frame = CGRectMake(10, cy - 11, 22, 22);
+	cell.checkbox.frame = CGRectMake(TGMetricBubblePadH, cy - TGHalf(TGMetricGiftAvatar), TGMetricGiftAvatar, TGMetricGiftAvatar);
 	return cell;
 }
 

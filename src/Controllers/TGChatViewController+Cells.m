@@ -4,6 +4,40 @@
 #import "TGStyle.h"
 #import "TGMusicPlayer.h"
 
+/// The stamp in the corner of a bubble, in one place: where it sits and how
+/// much room it leaves for the ticks beside it.
+static void TGPlaceStamp(TGBubbleCell *cell, CGRect bubbleFrame,
+						 CGFloat timeWidth, BOOL mine) {
+	cell.time.frame = CGRectMake(
+			bubbleFrame.size.width - timeWidth - kPadH,
+			bubbleFrame.size.height - TGMetricStampBottomInset,
+			timeWidth - (mine ? TGMetricStampTicksRoom : 0),
+			TGMetricStampHeight);
+}
+
+/// The ticks in the corner of your own bubble, in one place. Three branches
+/// put them at height-15, one at height-18 and one at a counted offset, so
+/// the same two checkmarks sat at three heights depending on whether the
+/// bubble held text, a file or a quote.
+static void TGPlaceTicks(TGBubbleCell *cell, CGRect bubbleFrame) {
+	cell.ticks.frame = CGRectMake(
+			bubbleFrame.size.width - kPadH - TGMetricTicksWidth,
+			bubbleFrame.size.height - TGMetricTicksBottomInset,
+			TGMetricTicksWidth, TGMetricTicksHeight);
+}
+
+/// The title and the line under it, for every bubble that names something -
+/// a call, a track, a contact, a place. Four branches wrote this pair out
+/// with heights of 18/14, 19/16 and 18/16 and tops 20 or 21 apart, so a
+/// document and a track beside each other did not line up.
+static void TGPlaceTitleDetail(TGBubbleCell *cell, CGFloat x, CGFloat top,
+							   CGFloat width) {
+	cell.body.frame = CGRectMake(x, top + TGMetricBubbleTitleTop, width,
+								 TGMetricBubbleTitleHeight);
+	cell.subtitle.frame = CGRectMake(x, top + TGMetricBubbleDetailTop, width,
+									 TGMetricBubbleDetailHeight);
+}
+
 @implementation TGChatViewController (Cells)
 
 #pragma mark - table
@@ -34,7 +68,7 @@
 		cell.bubble.frame = layout.bubbleFrame;
 		cell.bubble.backgroundColor = [serviceTheme serviceBubbleColour];
 		cell.bubble.layer.borderWidth = 0;
-		cell.bubble.layer.cornerRadius = 10.5f;
+		cell.bubble.layer.cornerRadius = [serviceTheme bubbleCornerRadius];
 		cell.picture.hidden = YES;
 		cell.time.text = @"";
 		cell.body.hidden = NO;
@@ -45,8 +79,8 @@
 		cell.body.text = line;
 		cell.body.frame = layout.bodyFrame;
 		if ([m[@"separator"] isEqualToString:@"unread"]) {
-			cell.bubble.backgroundColor = [[serviceTheme inputBarColour] colorWithAlphaComponent:0.92f];
-			cell.bubble.layer.cornerRadius = 0;
+			cell.bubble.backgroundColor = [serviceTheme unreadSeparatorColour];
+			cell.bubble.layer.cornerRadius = TGMetricCornerNone;
 			cell.body.font = TGFontCaptionStrong();
 			cell.body.textColor = [serviceTheme secondaryTextColour];
 		} else if (m[@"separator"]) {
@@ -56,7 +90,7 @@
 	}
 
 	cell.body.textAlignment = NSTextAlignmentLeft;
-	cell.bubble.layer.cornerRadius = 14;
+	cell.bubble.layer.cornerRadius = [[TGTheme shared] bubbleCornerRadius];
 
 	// Polls
 	if (layout.isPoll) {
@@ -76,8 +110,8 @@
 		cell.body.font = TGFontBodyStrong();
 		cell.body.textColor = [pollTheme primaryTextColour];
 		cell.body.text = question;
-		CGSize qs = TGTextSize(question, cell.body.font, layout.bubbleFrame.size.width - 2 * kPadH);
-		cell.body.frame = CGRectMake(kPadH, kPadV, layout.bubbleFrame.size.width - 2 * kPadH, qs.height);
+		CGSize qs = TGTextSize(question, cell.body.font, layout.bubbleFrame.size.width - TGDoubled(kPadH));
+		cell.body.frame = CGRectMake(kPadH, kPadV, layout.bubbleFrame.size.width - TGDoubled(kPadH), qs.height);
 
 		cell.subtitle.hidden = NO;
 		cell.subtitle.font = TGFontMeta();
@@ -85,7 +119,7 @@
 		cell.subtitle.text = closed ? @"Final results"
 			: [NSString stringWithFormat:@"%@ voted",
 					[m[@"pollTotal"] integerValue] == 0 ? @"Nobody" : m[@"pollTotal"]];
-		cell.subtitle.frame = CGRectMake(kPadH, kPadV + qs.height + 2, layout.bubbleFrame.size.width - 2 * kPadH, 16);
+		cell.subtitle.frame = CGRectMake(kPadH, kPadV + qs.height + 2, layout.bubbleFrame.size.width - TGDoubled(kPadH), 16);
 
 		int64_t msgId = [m[@"id"] longLongValue];
 		if (cell.pollMessageId != msgId) {
@@ -101,15 +135,15 @@
 				NSInteger share = [option[@"vote_percentage"] integerValue];
 
 				UIButton *row = [UIButton buttonWithType:UIButtonTypeCustom];
-				row.frame = CGRectMake(kPadH, y, layout.bubbleFrame.size.width - 2 * kPadH, kPollRow);
+				row.frame = CGRectMake(kPadH, y, layout.bubbleFrame.size.width - TGDoubled(kPadH), kPollRow);
 				row.tag = 0x9100 + (NSInteger)i;
 				row.enabled = !closed;
 				[row addTarget:self action:@selector(pollOptionTapped:) forControlEvents:UIControlEventTouchUpInside];
 				[cell.bubble addSubview:row];
 
-				UIView *dot = [[UIView alloc] initWithFrame:CGRectMake(0, 4, 16, 16)];
-				dot.layer.cornerRadius = 8;
-				dot.layer.borderWidth = 1.5f;
+				UIView *dot = [[UIView alloc] initWithFrame:CGRectMake(0, 4, TGMetricPollDotSide, TGMetricPollDotSide)];
+				dot.layer.cornerRadius = TGHalf(TGMetricPollDotSide);
+				dot.layer.borderWidth = TGMetricBorderMedium;
 				dot.layer.borderColor = [pollTheme accentColour].CGColor;
 				dot.backgroundColor = chosen ? [pollTheme accentColour] : [UIColor clearColor];
 				[row addSubview:dot];
@@ -133,7 +167,7 @@
 				track.backgroundColor = [pollTheme separatorColour];
 				[row addSubview:track];
 
-				UIView *fill = [[UIView alloc] initWithFrame:CGRectMake(24, kPollRow - 6, (row.bounds.size.width - 24) * share / 100.0f, 2)];
+				UIView *fill = [[UIView alloc] initWithFrame:CGRectMake(24, kPollRow - 6, (row.bounds.size.width - 24) * share / TGPercentFull, 2)];
 				fill.backgroundColor = [pollTheme accentColour];
 				[row addSubview:fill];
 
@@ -145,13 +179,11 @@
 		cell.disc.hidden = YES;
 		cell.time.text = layout.stamp;
 		cell.time.textColor = mine ? [pollTheme timeMineColour] : [pollTheme timeColour];
-		CGFloat pollTimeW = layout.timeWidth;
-		cell.time.frame = CGRectMake(layout.bubbleFrame.size.width - pollTimeW - kPadH, layout.bubbleFrame.size.height - 17,
-									 pollTimeW - (mine ? 18 : 0), 12);
+		TGPlaceStamp(cell, layout.bubbleFrame, layout.timeWidth, mine);
 		cell.ticks.hidden = !mine;
 		if (mine) {
 			cell.ticks.image = [self ticksForMessage:m white:NO];
-			cell.ticks.frame = CGRectMake(layout.bubbleFrame.size.width - kPadH - 15, layout.bubbleFrame.size.height - 15, 15, 9);
+			TGPlaceTicks(cell, layout.bubbleFrame);
 		}
 		return [self finalizeCell:cell message:m layout:layout isMine:mine];
 	}
@@ -171,9 +203,9 @@
 
 		cell.disc.hidden = NO;
 		cell.disc.image = [TGIcons callArrowOutgoing:mine missed:missed];
-		cell.disc.frame = CGRectMake(kPadH, fwd + (layout.bubbleFrame.size.height - fwd - 16) / 2, 16, 16);
+		cell.disc.frame = CGRectMake(kPadH, fwd + TGCenteredOrigin(layout.bubbleFrame.size.height - fwd, 16), 16, 16);
 
-		CGFloat rightBtnW = 34.0f;
+		CGFloat rightBtnW = TGMetricCallControlSide;
 		CGFloat textW = layout.bubbleFrame.size.width - kPadH - 26 - rightBtnW - 4;
 
 		cell.body.hidden = NO;
@@ -181,16 +213,16 @@
 		cell.body.font = TGFontSubheadStrong();
 		cell.body.textColor = missed ? [callTheme destructiveColour] : [callTheme primaryTextColour];
 		cell.body.text = line;
-		cell.body.frame = CGRectMake(kPadH + 24, fwd + 6, textW, 18);
+		TGPlaceTitleDetail(cell, kPadH + TGMetricBubbleDiscColumn, fwd, textW);
 
 		cell.subtitle.hidden = NO;
 		cell.subtitle.font = TGFontMeta();
 		cell.subtitle.textColor = [callTheme secondaryTextColour];
 		cell.subtitle.text = layout.stamp;
-		cell.subtitle.frame = CGRectMake(kPadH + 24, fwd + 26, textW, 14);
+
 
 		cell.contactCallButton.hidden = NO;
-		cell.contactCallButton.frame = CGRectMake(layout.bubbleFrame.size.width - rightBtnW - 4, fwd + (layout.bubbleFrame.size.height - fwd - 32) / 2, 32, 32);
+		cell.contactCallButton.frame = CGRectMake(layout.bubbleFrame.size.width - rightBtnW - 4, fwd + TGCenteredOrigin(layout.bubbleFrame.size.height - fwd, 32), 32, 32);
 		[cell.contactCallButton setImage:[TGIcons callArrowOutgoing:YES missed:NO] forState:UIControlStateNormal];
 		[cell.contactCallButton setTitle:nil forState:UIControlStateNormal];
 		cell.contactCallButton.tag = indexPath.row;
@@ -217,7 +249,7 @@
 		cell.bubble.layer.borderColor = [cardTheme bubbleBorderColour].CGColor;
 		cell.bubble.layer.cornerRadius = [cardTheme bubbleCornerRadius];
 
-		CGFloat artY = fwd + (kTrackRow - kTrackArt) / 2 - 2;
+		CGFloat artY = fwd + TGCenteredOrigin(kTrackRow, kTrackArt) - 2;
 		cell.artwork.hidden = NO;
 		cell.artwork.frame = CGRectMake(kPadH, artY, kTrackArt, kTrackArt);
 		UIImage *cover = [self artworkForTrack:m];
@@ -232,8 +264,8 @@
 		cell.disc.hidden = NO;
 		cell.disc.image = (isCurrent && [TGMusicPlayer shared].playing)
 				? [TGIcons pause] : [TGIcons play];
-		cell.disc.frame = CGRectMake(kPadH + (kTrackArt - kTrackDisc) / 2,
-									 artY + (kTrackArt - kTrackDisc) / 2,
+		cell.disc.frame = CGRectMake(kPadH + TGCenteredOrigin(kTrackArt, kTrackDisc),
+									 artY + TGCenteredOrigin(kTrackArt, kTrackDisc),
 									 kTrackDisc, kTrackDisc);
 		[cell.bubble bringSubviewToFront:cell.disc];
 
@@ -247,7 +279,7 @@
 		cell.body.font = TGFontBodyStrong();
 		cell.body.textColor = [cardTheme primaryTextColour];
 		cell.body.text = title;
-		cell.body.frame = CGRectMake(textX, artY + 2, textW, 19);
+		TGPlaceTitleDetail(cell, textX, artY, textW);
 
 		// The performer, or how long it is when there is none - a line that
 		// says nothing is worse than a line that says the duration twice.
@@ -265,7 +297,7 @@
 		cell.subtitle.font = TGFontCaption();
 		cell.subtitle.textColor = [cardTheme fileMetaColour];
 		cell.subtitle.text = second;
-		cell.subtitle.frame = CGRectMake(textX, artY + 23, textW, 16);
+
 
 		cell.time.frame = layout.timeFrame;
 		return [self finalizeCell:cell message:m layout:layout isMine:mine];
@@ -287,15 +319,15 @@
 
 		cell.icon.hidden = NO;
 		CGFloat side = kFileTile;
-		cell.icon.frame = CGRectMake(kPadH, fwd + kPadV + (kFileTile - side) / 2, side, side);
+		cell.icon.frame = CGRectMake(kPadH, fwd + kPadV + TGCenteredOrigin(kFileTile, side), side, side);
 		cell.icon.text = @"";
-		cell.icon.layer.cornerRadius = 3;
+		cell.icon.layer.cornerRadius = TGMetricCornerSmall;
 		cell.icon.backgroundColor = [cardTheme fileTileColour];
 
 		cell.disc.hidden = NO;
 		cell.disc.image = [TGIcons fileDiscOfSide:kFileDisc];
-		cell.disc.frame = CGRectMake(kPadH + (kFileTile - kFileDisc) / 2,
-									 fwd + kPadV + (kFileTile - kFileDisc) / 2,
+		cell.disc.frame = CGRectMake(kPadH + TGCenteredOrigin(kFileTile, kFileDisc),
+									 fwd + kPadV + TGCenteredOrigin(kFileTile, kFileDisc),
 									 kFileDisc, kFileDisc);
 		[cell.bubble bringSubviewToFront:cell.disc];
 
@@ -315,14 +347,11 @@
 
 		cell.time.text = layout.stamp;
 		cell.time.textColor = mine ? [cardTheme timeMineColour] : [cardTheme timeColour];
-		CGFloat fileTimeW = layout.timeWidth;
-		CGFloat fileTicks = mine ? 18 : 0;
-		cell.time.frame = CGRectMake(layout.bubbleFrame.size.width - fileTimeW - kPadH, layout.bubbleFrame.size.height - 17,
-									 fileTimeW - fileTicks, 12);
+		TGPlaceStamp(cell, layout.bubbleFrame, layout.timeWidth, mine);
 		cell.ticks.hidden = !mine;
 		if (mine) {
 			cell.ticks.image = [self ticksForMessage:m white:NO];
-			cell.ticks.frame = CGRectMake(layout.bubbleFrame.size.width - kPadH - 15, layout.bubbleFrame.size.height - 15, 15, 9);
+			TGPlaceTicks(cell, layout.bubbleFrame);
 		}
 		cell.picture.hidden = YES;
 		return [self finalizeCell:cell message:m layout:layout isMine:mine];
@@ -358,7 +387,7 @@
 			initials = [initials stringByAppendingString:[words[1] substringToIndex:1]];
 		cell.icon.text = initials.uppercaseString;
 		cell.icon.font = TGFontHeader();
-		cell.icon.layer.cornerRadius = side / 2;
+		cell.icon.layer.cornerRadius = TGHalf(side);
 		cell.icon.backgroundColor = [cardTheme mediaCircleColour];
 
 		CGFloat textX = kPadH + side + 10;
@@ -368,50 +397,47 @@
 		cell.body.font = TGFontBodyStrong();
 		cell.body.textColor = [cardTheme primaryTextColour];
 		cell.body.text = name;
-		cell.body.frame = CGRectMake(textX, fwd + 8, textW, 18);
+		TGPlaceTitleDetail(cell, textX, fwd + TGMetricPadSmall, textW);
 
 		cell.subtitle.hidden = NO;
 		cell.subtitle.font = TGFontCaption();
 		cell.subtitle.textColor = [cardTheme fileMetaColour];
 		cell.subtitle.text = phone;
-		cell.subtitle.frame = CGRectMake(textX, fwd + 28, textW, 16);
+
 
 		CGFloat sepY = fwd + 55;
 		cell.contactSeparatorH.hidden = NO;
 		cell.contactSeparatorH.backgroundColor = [cardTheme separatorColour];
-		cell.contactSeparatorH.frame = CGRectMake(0, sepY, layout.bubbleFrame.size.width, 0.5f);
+		cell.contactSeparatorH.frame = CGRectMake(0, sepY, layout.bubbleFrame.size.width, TGMetricHairline);
 
-		CGFloat btnW = layout.bubbleFrame.size.width / 2.0f;
+		CGFloat btnW = TGHalf(layout.bubbleFrame.size.width);
 		cell.contactSeparatorV.hidden = NO;
 		cell.contactSeparatorV.backgroundColor = [cardTheme separatorColour];
-		cell.contactSeparatorV.frame = CGRectMake(btnW, sepY, 0.5f, 36);
+		cell.contactSeparatorV.frame = CGRectMake(btnW, sepY, TGMetricHairline, TGMetricButtonHeightSmall);
 
 		cell.contactCallButton.hidden = NO;
-		cell.contactCallButton.frame = CGRectMake(0, sepY, btnW, 36);
+		cell.contactCallButton.frame = CGRectMake(0, sepY, btnW, TGMetricButtonHeightSmall);
 		[cell.contactCallButton setTitleColor:[cardTheme accentColour] forState:UIControlStateNormal];
-		[cell.contactCallButton setTitleColor:[[cardTheme accentColour] colorWithAlphaComponent:0.4f] forState:UIControlStateHighlighted];
+		[cell.contactCallButton setTitleColor:[cardTheme buttonHighlightColour] forState:UIControlStateHighlighted];
 		cell.contactCallButton.tag = indexPath.row;
 		[cell.contactCallButton removeTarget:nil action:NULL forControlEvents:UIControlEventAllEvents];
 		[cell.contactCallButton addTarget:self action:@selector(contactCallButtonTapped:) forControlEvents:UIControlEventTouchUpInside];
 
 		cell.contactAddButton.hidden = NO;
-		cell.contactAddButton.frame = CGRectMake(btnW, sepY, btnW, 36);
+		cell.contactAddButton.frame = CGRectMake(btnW, sepY, btnW, TGMetricButtonHeightSmall);
 		[cell.contactAddButton setTitleColor:[cardTheme accentColour] forState:UIControlStateNormal];
-		[cell.contactAddButton setTitleColor:[[cardTheme accentColour] colorWithAlphaComponent:0.4f] forState:UIControlStateHighlighted];
+		[cell.contactAddButton setTitleColor:[cardTheme buttonHighlightColour] forState:UIControlStateHighlighted];
 		cell.contactAddButton.tag = indexPath.row;
 		[cell.contactAddButton removeTarget:nil action:NULL forControlEvents:UIControlEventAllEvents];
 		[cell.contactAddButton addTarget:self action:@selector(contactAddButtonTapped:) forControlEvents:UIControlEventTouchUpInside];
 
 		cell.time.text = layout.stamp;
 		cell.time.textColor = mine ? [cardTheme timeMineColour] : [cardTheme timeColour];
-		CGFloat fileTimeW = layout.timeWidth;
-		CGFloat fileTicks = mine ? 18 : 0;
-		cell.time.frame = CGRectMake(layout.bubbleFrame.size.width - fileTimeW - kPadH, fwd + 30,
-									 fileTimeW - fileTicks, 12);
+		TGPlaceStamp(cell, layout.bubbleFrame, layout.timeWidth, mine);
 		cell.ticks.hidden = !mine;
 		if (mine) {
 			cell.ticks.image = [self ticksForMessage:m white:NO];
-			cell.ticks.frame = CGRectMake(layout.bubbleFrame.size.width - kPadH - 15, fwd + 32, 15, 9);
+			TGPlaceTicks(cell, layout.bubbleFrame);
 		}
 		cell.picture.hidden = YES;
 		return [self finalizeCell:cell message:m layout:layout isMine:mine];
@@ -428,7 +454,7 @@
 		cell.bubble.layer.cornerRadius = [locTheme bubbleCornerRadius];
 
 		CGFloat mapW = layout.bubbleFrame.size.width;
-		CGFloat mapH = 130.0f;
+		CGFloat mapH = TGMetricMapHeight;
 
 		double lat = [m[@"lat"] doubleValue];
 		double lon = [m[@"lon"] doubleValue];
@@ -441,12 +467,12 @@
 		cell.disc.hidden = NO;
 		cell.disc.userInteractionEnabled = NO;
 		cell.disc.image = [TGIcons mapPinBadge];
-		cell.disc.frame = CGRectMake((mapW - 28) / 2, fwd + (mapH - 36) / 2 - 4, 28, 36);
+		cell.disc.frame = CGRectMake(TGCenteredOrigin(mapW, 28), fwd + TGCenteredOrigin(mapH, 36) - 4, 28, 36);
 		[cell.bubble bringSubviewToFront:cell.disc];
 
 		cell.icon.hidden = NO;
-		cell.icon.layer.cornerRadius = 3;
-		cell.icon.backgroundColor = [UIColor colorWithWhite:0.0f alpha:0.45f];
+		cell.icon.layer.cornerRadius = TGMetricCornerSmall;
+		cell.icon.backgroundColor = [[TGTheme shared] mediaOverlayColour];
 		cell.icon.textColor = [UIColor whiteColor];
 		cell.icon.font = TGFontPlate();
 		cell.icon.text = @" Apple Maps ";
@@ -507,12 +533,16 @@
 			cell.subtitle.font = TGFontMeta();
 			cell.subtitle.textColor = [locTheme fileMetaColour];
 			cell.subtitle.text = vAddr;
-			cell.body.frame = CGRectMake(kPadH, fwd + mapH + 4, mapW - 2 * kPadH, 18);
-			cell.subtitle.frame = CGRectMake(kPadH, fwd + mapH + 24, mapW - 2 * kPadH - locTimeW - locTicks - 4, 16);
+			TGPlaceTitleDetail(cell, kPadH, fwd + mapH + TGMetricPadTiny,
+							   mapW - TGDoubled(kPadH));
+			// Its second line stops short of the stamp in the corner.
+			CGRect detail = cell.subtitle.frame;
+			detail.size.width -= locTimeW + locTicks + TGMetricPadSmall;
+			cell.subtitle.frame = detail;
 		} else {
 			cell.subtitle.hidden = YES;
 			cell.subtitle.text = @"";
-			cell.body.frame = CGRectMake(kPadH, fwd + mapH + 12, mapW - 2 * kPadH - locTimeW - locTicks - 4, 18);
+			cell.body.frame = CGRectMake(kPadH, fwd + mapH + 12, mapW - TGDoubled(kPadH) - locTimeW - locTicks - 4, 18);
 		}
 
 		cell.time.hidden = NO;
@@ -552,7 +582,7 @@
 	cell.bubble.backgroundColor = layout.isSticker ? [UIColor clearColor] : fill;
 
 	cell.tail.hidden = YES;
-	cell.bubble.layer.borderWidth = (layout.isSticker || layout.isRound) ? 0.0f : [theme bubbleBorderWidth];
+	cell.bubble.layer.borderWidth = (layout.isSticker || layout.isRound) ? TGMetricBorderNone : [theme bubbleBorderWidth];
 	cell.bubble.layer.borderColor = [theme bubbleBorderColour].CGColor;
 	cell.bubble.layer.cornerRadius = [theme bubbleCornerRadius];
 	cell.body.textColor = [theme primaryTextColour];
@@ -563,13 +593,13 @@
 		cell.bubble.backgroundColor = [theme fileTileColour];
 		cell.bubble.layer.borderWidth = 0;
 		cell.bubble.frame = layout.bubbleFrame;
-		cell.bubble.layer.cornerRadius = side / 2;
+		cell.bubble.layer.cornerRadius = TGHalf(TGMetricImageMax);
 		cell.bubble.clipsToBounds = YES;
 		cell.picture.hidden = NO;
 		cell.picture.image = [self imageFor:m];
 		cell.picture.backgroundColor = [theme fileTileColour];
 		cell.picture.frame = CGRectMake(0, 0, side, side);
-		cell.picture.layer.cornerRadius = side / 2;
+		cell.picture.layer.cornerRadius = TGHalf(TGMetricImageMax);
 		cell.picture.clipsToBounds = YES;
 		cell.body.hidden = YES;
 
@@ -578,7 +608,7 @@
 		CGFloat disc = 48;
 		BOOL isPlaying = (self.playingMessageId == [m[@"id"] longLongValue] && self.videoNotePlayer != nil);
 		cell.disc.image = [TGIcons mediaDiscOfSide:disc playing:isPlaying];
-		cell.disc.frame = CGRectMake((side - disc) / 2, (side - disc) / 2, disc, disc);
+		cell.disc.frame = CGRectMake(TGCenteredOrigin(side, disc), TGCenteredOrigin(side, disc), disc, disc);
 		if (!cell.disc.gestureRecognizers.count) {
 			[cell.disc addGestureRecognizer:[[UITapGestureRecognizer alloc]
 					initWithTarget:self action:@selector(videoNoteDiscTapped:)]];
@@ -593,14 +623,15 @@
 		cell.mediaStamp.backgroundColor = [theme mediaStampColour];
 		cell.mediaStamp.text = mine ? [NSString stringWithFormat:@"  %@", stampText] : stampText;
 		cell.mediaStamp.textAlignment = mine ? NSTextAlignmentLeft : NSTextAlignmentCenter;
-		cell.mediaStamp.frame = CGRectMake((side - stampW) / 2, side - 24, stampW, 16);
+		cell.mediaStamp.frame = CGRectMake(TGCenteredOrigin(side, stampW), side - 24, stampW, 16);
 		[cell.bubble bringSubviewToFront:cell.mediaStamp];
 
 		cell.ticks.hidden = !mine;
 		if (mine) {
 			cell.ticks.image = [self ticksForMessage:m white:YES];
-			cell.ticks.frame = CGRectMake(CGRectGetMaxX(cell.mediaStamp.frame) - 16,
-										  CGRectGetMidY(cell.mediaStamp.frame) - 4.5f, 15, 9);
+			cell.ticks.frame = CGRectMake(CGRectGetMaxX(cell.mediaStamp.frame) - TGMetricMediaStampCheckInset,
+										  CGRectGetMidY(cell.mediaStamp.frame) - TGHalf(TGMetricMediaStampCheckHeight),
+										  TGMetricMediaStampCheckWidth, TGMetricMediaStampCheckHeight);
 			[cell.bubble bringSubviewToFront:cell.ticks];
 		}
 
@@ -721,15 +752,15 @@
 		cell.picture.image = img;
 		cell.picture.backgroundColor = (img || layout.isSticker) ? [UIColor clearColor] : [theme fileTileColour];
 		cell.picture.frame = layout.pictureFrame;
-		cell.picture.layer.cornerRadius = layout.isSticker ? 0.0f : kMediaRadius;
+		cell.picture.layer.cornerRadius = layout.isSticker ? TGMetricCornerNone : TGMetricCornerMedium;
 		cell.picture.clipsToBounds = YES;
 
 		cell.disc.hidden = ![kind isEqualToString:@"messageVideo"] && ![kind isEqualToString:@"messageAnimation"];
 		if (!cell.disc.hidden) {
 			CGFloat disc = 42;
 			cell.disc.image = [TGIcons mediaDiscOfSide:disc playing:NO];
-			cell.disc.frame = CGRectMake(kPadH + (layout.picSize.width - disc) / 2,
-										 layout.pictureFrame.origin.y + (layout.picSize.height - disc) / 2, disc, disc);
+			cell.disc.frame = CGRectMake(kPadH + TGCenteredOrigin(layout.picSize.width, disc),
+										 layout.pictureFrame.origin.y + TGCenteredOrigin(layout.picSize.height, disc), disc, disc);
 		}
 
 		// A GIF that cannot loop here is still watchable - tapping it opens
@@ -738,9 +769,9 @@
 		// picture.
 		if ([kind isEqualToString:@"messageAnimation"] && ![TGCapabilities canAutoplayGIFs]) {
 			cell.icon.hidden = NO;
-			cell.icon.layer.cornerRadius = 3;
+			cell.icon.layer.cornerRadius = TGMetricCornerSmall;
 			cell.icon.clipsToBounds = YES;
-			cell.icon.backgroundColor = [UIColor colorWithWhite:0.0f alpha:0.45f];
+			cell.icon.backgroundColor = [[TGTheme shared] mediaOverlayColour];
 			cell.icon.textColor = [UIColor whiteColor];
 			cell.icon.font = TGFontPlate();
 			cell.icon.text = [TGCapabilities gifAutoplayWanted] ? @" GIF · tap to play "
@@ -780,7 +811,7 @@
 		cell.disc.hidden = NO;
 		cell.disc.userInteractionEnabled = YES;
 		cell.disc.image = [TGIcons mediaDiscOfSide:disc playing:isPlaying];
-		cell.disc.frame = CGRectMake(kPadH, fwd + (layout.bubbleFrame.size.height - fwd - disc) / 2, disc, disc);
+		cell.disc.frame = CGRectMake(kPadH, fwd + TGCenteredOrigin(layout.bubbleFrame.size.height - fwd, disc), disc, disc);
 		if (!cell.disc.gestureRecognizers.count) {
 			[cell.disc addGestureRecognizer:[[UITapGestureRecognizer alloc]
 					initWithTarget:self action:@selector(voiceDiscTapped:)]];
@@ -819,7 +850,7 @@
 		cell.ticks.hidden = !mine;
 		if (mine) {
 			cell.ticks.image = [self ticksForMessage:m white:NO];
-			cell.ticks.frame = CGRectMake(layout.bubbleFrame.size.width - kPadH - 15, layout.bubbleFrame.size.height - 18, 15, 9);
+			TGPlaceTicks(cell, layout.bubbleFrame);
 		}
 		return [self finalizeCell:cell message:m layout:layout isMine:mine];
 	}
@@ -855,7 +886,7 @@
 		reactions.hidden = NO;
 		reactions.text = reactionText;
 		reactions.textColor = [theme secondaryTextColour];
-		reactions.frame = CGRectMake(kPadH, layout.bodyFrame.origin.y + layout.bodySize.height + 2, layout.bubbleFrame.size.width - 2 * kPadH, 16);
+		reactions.frame = CGRectMake(kPadH, layout.bodyFrame.origin.y + layout.bodySize.height + 2, layout.bubbleFrame.size.width - TGDoubled(kPadH), 16);
 	} else {
 		reactions.hidden = YES;
 	}
@@ -868,8 +899,9 @@
 	cell.ticks.hidden = !mine;
 	if (mine && onPicture) {
 		cell.ticks.image = [self ticksForMessage:m white:YES];
-		cell.ticks.frame = CGRectMake(CGRectGetMaxX(cell.mediaStamp.frame) - 17,
-									  CGRectGetMidY(cell.mediaStamp.frame) - 4.5f, 15, 9);
+		cell.ticks.frame = CGRectMake(CGRectGetMaxX(cell.mediaStamp.frame) - TGMetricMediaStampCheckPhotoInset,
+									  CGRectGetMidY(cell.mediaStamp.frame) - TGHalf(TGMetricMediaStampCheckHeight),
+									  TGMetricMediaStampCheckWidth, TGMetricMediaStampCheckHeight);
 		[cell.bubble bringSubviewToFront:cell.ticks];
 	} else if (mine) {
 		cell.ticks.image = [self ticksForMessage:m white:NO];
@@ -973,22 +1005,22 @@ static BOOL TGSameRun(NSDictionary *a, NSDictionary *b) {
 /// that bubbles of one run sit 2pt apart and runs 8pt apart. Zero for rows
 /// that are not bubbles laid out at the top of their row.
 - (CGFloat)runShiftAtRow:(NSInteger)row layout:(TGMessageLayout *)layout {
-	if (layout.isService || fabs(layout.bubbleFrame.origin.y - 3.0f) > 0.1f)
-		return 0;
-	return ([self runStartsAtRow:row] ? 4.0f : 1.0f) - 3.0f;
+	if (layout.isService || fabs(layout.bubbleFrame.origin.y - TGMetricBubbleRunGapOffset) > TGMetricEpsilon)
+		return TGMetricZero;
+	return ([self runStartsAtRow:row] ? TGMetricBubbleRunGapStart : TGMetricBubbleRunGapInner) - TGMetricBubbleRunGapOffset;
 }
 
 - (CGFloat)runHeightChangeAtRow:(NSInteger)row layout:(TGMessageLayout *)layout {
-	if (layout.isService || fabs(layout.bubbleFrame.origin.y - 3.0f) > 0.1f)
-		return 0;
-	CGFloat above = [self runStartsAtRow:row] ? 4.0f : 1.0f;
-	CGFloat below = [self runEndsAtRow:row] ? 4.0f : 1.0f;
-	return (above - 3.0f) + (below - 3.0f);
+	if (layout.isService || fabs(layout.bubbleFrame.origin.y - TGMetricBubbleRunGapOffset) > TGMetricEpsilon)
+		return TGMetricZero;
+	CGFloat above = [self runStartsAtRow:row] ? TGMetricBubbleRunGapStart : TGMetricBubbleRunGapInner;
+	CGFloat below = [self runEndsAtRow:row] ? TGMetricBubbleRunGapStart : TGMetricBubbleRunGapInner;
+	return (above - TGMetricBubbleRunGapOffset) + (below - TGMetricBubbleRunGapOffset);
 }
 
 /// A rounded box whose four corners can differ.
 static UIBezierPath *TGBubblePath(CGSize size, CGFloat tl, CGFloat tr, CGFloat br, CGFloat bl) {
-	CGFloat cap = MIN(size.width, size.height) / 2;
+	CGFloat cap = TGHalf(MIN(size.width, size.height));
 	tl = MIN(tl, cap); tr = MIN(tr, cap); br = MIN(br, cap); bl = MIN(bl, cap);
 	CGFloat w = size.width, h = size.height;
 
@@ -1039,7 +1071,7 @@ static UIBezierPath *TGBubblePath(CGSize size, CGFloat tl, CGFloat tr, CGFloat b
 		}
 		if (!cell.checkbox.hidden) {
 			CGRect c = cell.checkbox.frame;
-			c.origin.y = CGRectGetMidY(b) - c.size.height / 2;
+			c.origin.y = CGRectGetMidY(b) - TGHalf(c.size.height);
 			cell.checkbox.frame = c;
 		}
 	}
@@ -1050,7 +1082,7 @@ static UIBezierPath *TGBubblePath(CGSize size, CGFloat tl, CGFloat tr, CGFloat b
 
 	TGTheme *theme = [TGTheme shared];
 	UIColor *fill = cell.bubble.backgroundColor;
-	BOOL plain = !fill || CGColorGetAlpha(fill.CGColor) < 0.01f;
+	BOOL plain = !fill || CGColorGetAlpha(fill.CGColor) < TGAlphaEpsilon;
 	// A drawn border would be clipped by the mask, so the skeuomorphic style
 	// keeps its plain rounded box; so do the things that are not bubbles.
 	if (!theme.isFlat || [theme bubbleBorderWidth] > 0 || plain ||

@@ -21,7 +21,7 @@
 
 	self.title = self.chatTitle ?: @"Topics";
 	self.topics = @[];
-	self.tableView.rowHeight = 56;
+	self.tableView.rowHeight = TGMetricPersonRow;
 	[self applyTheme];
 
 	// Making a topic is the one thing the list needs beyond its rows; the
@@ -252,6 +252,13 @@
 	vc.chatTitle = t[@"name"];
 	vc.isGroup = YES;
 	[self.navigationController pushViewController:vc animated:YES];
+}
+
+/// The system's caption is grey on grey over a dark list, which is what
+/// this screen had: every other list styles its own.
+- (void)tableView:(UITableView *)tableView willDisplayHeaderView:(UIView *)view
+	   forSection:(NSInteger)section {
+	[[TGTheme shared] styleSectionHeader:view];
 }
 
 @end

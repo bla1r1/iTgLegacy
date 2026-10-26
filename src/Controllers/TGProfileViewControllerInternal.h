@@ -8,8 +8,9 @@
 #import "TGCallViewController.h"
 #import "TGPopupMenu.h"
 #import "TGForwardPicker.h"
+#import "TGStyle.h"
 
-static const CGFloat kActionTile = 52.0f;
+static const CGFloat kActionTile = TGMetricActionTile;
 
 static const NSInteger kSectionDetails = 0;
 static const NSInteger kSectionStories = 1;

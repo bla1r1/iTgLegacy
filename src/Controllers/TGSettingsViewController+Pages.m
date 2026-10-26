@@ -1,6 +1,7 @@
 #import "TGSettingsViewControllerInternal.h"
 #import "TGAlertSheet.h"
 #import "TGForwardPicker.h"
+#import "TGStyle.h"
 
 @implementation TGSettingsViewController (Pages)
 
@@ -582,8 +583,7 @@
 
 	// Whether the bundled emoji font actually registered - the one thing that
 	// cannot be told apart from "no emoji in this message" by looking.
-	UIFont *emoji = [UIFont fontWithName:@"OpenMojiColor" size:12]
-			?: [UIFont fontWithName:@"OpenMoji" size:12];
+	UIFont *emoji = TGFontEmojiMeta();
 
 	NSMutableArray *facts = [NSMutableArray array];
 	[facts addObject:TGTapRow(@"App Version", [NSString stringWithFormat:@"%@ (%@)",

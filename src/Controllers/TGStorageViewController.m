@@ -8,8 +8,8 @@
 // Their storage page opens with a ring: the total in the middle, one arc per
 // kind of file, the same colours in the list underneath. A column of numbers
 // says the same thing and none of it at a glance.
-static const CGFloat kRingSide  = 150.0f;
-static const CGFloat kRingWidth = 26.0f;
+static const CGFloat kRingSide  = TGMetricStorageRingSide;
+static const CGFloat kRingWidth = TGMetricStorageRingWidth;
 
 @interface TGStorageViewController ()
 @property (nonatomic, strong) NSArray *categories;   // name / bytes / kinds
@@ -57,11 +57,9 @@ static const CGFloat kRingWidth = 26.0f;
 	[[TGTheme shared] styleNavigationBar:self.navigationController.navigationBar];
 }
 
-- (void)tableView:(UITableView *)tableView willDisplayHeaderView:(UIView *)view forSection:(NSInteger)section {
-	if ([view isKindOfClass:[UITableViewHeaderFooterView class]]) {
-		UITableViewHeaderFooterView *header = (UITableViewHeaderFooterView *)view;
-		header.textLabel.textColor = [[TGTheme shared] sectionHeaderColour];
-	}
+- (void)tableView:(UITableView *)tableView willDisplayHeaderView:(UIView *)view
+	   forSection:(NSInteger)section {
+	[[TGTheme shared] styleSectionHeader:view];
 }
 
 - (void)tableView:(UITableView *)tableView willDisplayFooterView:(UIView *)view forSection:(NSInteger)section {
@@ -107,9 +105,9 @@ static UIColor *TGSliceColour(NSUInteger index) {
 			CGRectMake(0, 0, width, kRingSide + 54)];
 	header.backgroundColor = [UIColor clearColor];
 
-	CGRect box = CGRectMake((width - kRingSide) / 2, 8, kRingSide, kRingSide);
+	CGRect box = CGRectMake(TGCenteredOrigin(width, kRingSide), 8, kRingSide, kRingSide);
 	CGPoint centre = CGPointMake(CGRectGetMidX(box), CGRectGetMidY(box));
-	CGFloat radius = (kRingSide - kRingWidth) / 2;
+	CGFloat radius = TGHalf(kRingSide - kRingWidth);
 
 	if (self.total > 0){
 		CGFloat start = -M_PI_2;   // twelve o'clock, the way theirs starts

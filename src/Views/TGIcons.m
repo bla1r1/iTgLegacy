@@ -1,5 +1,6 @@
 #import "TGIconsInternal.h"
 #import "TGMessageLayout.h"
+#import "TGStyle.h"
 
 static NSMutableDictionary *sCache = nil;
 
@@ -97,15 +98,15 @@ static UIBezierPath *TGChatsTabPath(CGFloat s) {
 
 static UIBezierPath *TGContactsTabPath(CGFloat s) {
 	// head and shoulders
-	UIBezierPath *p = [UIBezierPath bezierPathWithOvalInRect:CGRectMake(s/2 - 5, 4, 10, 10)];
-	[p appendPath:[UIBezierPath bezierPathWithRoundedRect:CGRectMake(s/2 - 9, 16, 18, 12) cornerRadius:9]];
+	UIBezierPath *p = [UIBezierPath bezierPathWithOvalInRect:CGRectMake(TGHalf(s) - 5, 4, 10, 10)];
+	[p appendPath:[UIBezierPath bezierPathWithRoundedRect:CGRectMake(TGHalf(s) - 9, 16, 18, 12) cornerRadius:9]];
 	return p;
 }
 
 static UIBezierPath *TGSettingsTabPath(CGFloat s) {
 	// iOS 7 Telegram 6-toothed circular gear
-	CGFloat cx = s / 2.0f;
-	CGFloat cy = s / 2.0f;
+	CGFloat cx = TGHalf(s);
+	CGFloat cy = TGHalf(s);
 	CGFloat rOut = 11.5f;
 	CGFloat rIn = 9.2f;
 	CGFloat rHole = 3.8f;
@@ -151,7 +152,7 @@ static void TGDrawTabPath(CGContextRef ctx, UIBezierPath *path, BOOL filled) {
 			CGContextFillPath(ctx);
 		return;
 	}
-	CGContextSetLineWidth(ctx, 1.6f);
+	CGContextSetLineWidth(ctx, TGIconStroke);
 	CGContextSetLineJoin(ctx, kCGLineJoinRound);
 	CGContextStrokePath(ctx);
 }
@@ -198,7 +199,7 @@ static void TGDrawTabPath(CGContextRef ctx, UIBezierPath *path, BOOL filled) {
 
 + (UIImage *)compose {
 	return [self iconNamed:@"compose" draw:^(CGContextRef ctx, CGFloat s){
-		CGContextSetLineWidth(ctx, 2.0f);
+		CGContextSetLineWidth(ctx, TGIconStroke);
 		CGContextSetLineCap(ctx, kCGLineCapRound);
 		CGContextSetLineJoin(ctx, kCGLineJoinRound);
 
@@ -235,7 +236,7 @@ static void TGDrawTabPath(CGContextRef ctx, UIBezierPath *path, BOOL filled) {
 		CGFloat wingDX = s * 0.20f;
 		CGFloat wingDY = s * 0.20f;
 
-		CGContextSetLineWidth(ctx, 2.4f);
+		CGContextSetLineWidth(ctx, TGIconStroke);
 		CGContextSetLineCap(ctx, kCGLineCapRound);
 		CGContextSetLineJoin(ctx, kCGLineJoinRound);
 
@@ -259,7 +260,7 @@ static void TGDrawTabPath(CGContextRef ctx, UIBezierPath *path, BOOL filled) {
 		CGContextTranslateCTM(ctx, s / 2.0f, s / 2.0f);
 		CGContextRotateCTM(ctx, -M_PI / 4.0f);
 
-		CGContextSetLineWidth(ctx, 2.0f);
+		CGContextSetLineWidth(ctx, TGIconStroke);
 		CGContextSetLineCap(ctx, kCGLineCapRound);
 		CGContextSetLineJoin(ctx, kCGLineJoinRound);
 
@@ -282,7 +283,7 @@ static void TGDrawTabPath(CGContextRef ctx, UIBezierPath *path, BOOL filled) {
 + (UIImage *)play {
 	return [self iconNamed:@"play" draw:^(CGContextRef ctx, CGFloat s){
 		CGContextMoveToPoint(ctx, 8, 5);
-		CGContextAddLineToPoint(ctx, s - 6, s/2);
+		CGContextAddLineToPoint(ctx, s - 6, TGHalf(s));
 		CGContextAddLineToPoint(ctx, 8, s - 5);
 		CGContextClosePath(ctx);
 		CGContextFillPath(ctx);
@@ -294,7 +295,7 @@ static void TGDrawTabPath(CGContextRef ctx, UIBezierPath *path, BOOL filled) {
 + (UIImage *)previousTrack {
 	return [self iconNamed:@"previousTrack" draw:^(CGContextRef ctx, CGFloat s){
 		CGContextMoveToPoint(ctx, s - 7, 6);
-		CGContextAddLineToPoint(ctx, s * 0.42f, s / 2);
+		CGContextAddLineToPoint(ctx, s * 0.42f, TGHalf(s));
 		CGContextAddLineToPoint(ctx, s - 7, s - 6);
 		CGContextClosePath(ctx);
 		CGContextFillPath(ctx);
@@ -305,7 +306,7 @@ static void TGDrawTabPath(CGContextRef ctx, UIBezierPath *path, BOOL filled) {
 + (UIImage *)nextTrack {
 	return [self iconNamed:@"nextTrack" draw:^(CGContextRef ctx, CGFloat s){
 		CGContextMoveToPoint(ctx, 7, 6);
-		CGContextAddLineToPoint(ctx, s * 0.58f, s / 2);
+		CGContextAddLineToPoint(ctx, s * 0.58f, TGHalf(s));
 		CGContextAddLineToPoint(ctx, 7, s - 6);
 		CGContextClosePath(ctx);
 		CGContextFillPath(ctx);
@@ -341,7 +342,7 @@ static void TGDrawTabPath(CGContextRef ctx, UIBezierPath *path, BOOL filled) {
 		CGContextRotateCTM(ctx, -M_PI / 4.0f);
 
 		// Needle
-		CGContextSetLineWidth(ctx, 1.8f);
+		CGContextSetLineWidth(ctx, TGIconStroke);
 		CGContextSetLineCap(ctx, kCGLineCapRound);
 		CGContextMoveToPoint(ctx, 0.0f, 4.0f);
 		CGContextAddLineToPoint(ctx, 0.0f, 10.5f);
@@ -367,16 +368,16 @@ static void TGDrawTabPath(CGContextRef ctx, UIBezierPath *path, BOOL filled) {
 	return [self iconNamed:@"microphone" draw:^(CGContextRef ctx, CGFloat s){
 		// capsule head, stand, base
 		UIBezierPath *head = [UIBezierPath bezierPathWithRoundedRect:
-				CGRectMake(s/2 - 4, 3, 8, 13) cornerRadius:4];
+				CGRectMake(TGHalf(s) - 4, 3, 8, 13) cornerRadius:4];
 		CGContextAddPath(ctx, head.CGPath);
 		CGContextFillPath(ctx);
 
-		CGContextSetLineWidth(ctx, 2);
-		CGContextAddArc(ctx, s/2, 14, 7, 0, M_PI, 0);
+		CGContextSetLineWidth(ctx, TGIconStroke);
+		CGContextAddArc(ctx, TGHalf(s), 14, 7, 0, M_PI, 0);
 		CGContextStrokePath(ctx);
 
-		CGContextMoveToPoint(ctx, s/2, 21);
-		CGContextAddLineToPoint(ctx, s/2, s - 4);
+		CGContextMoveToPoint(ctx, TGHalf(s), 21);
+		CGContextAddLineToPoint(ctx, TGHalf(s), s - 4);
 		CGContextStrokePath(ctx);
 	}];
 }
@@ -385,11 +386,11 @@ static void TGDrawTabPath(CGContextRef ctx, UIBezierPath *path, BOOL filled) {
 /// Unicode 7.0 and iOS 7 draws it as an empty box.
 + (UIImage *)sticker {
 	return [self iconNamed:@"sticker" draw:^(CGContextRef ctx, CGFloat s){
-		CGContextSetLineWidth(ctx, 2);
+		CGContextSetLineWidth(ctx, TGIconStroke);
 		CGContextStrokeEllipseInRect(ctx, CGRectMake(3, 3, s - 6, s - 6));
 		CGContextFillEllipseInRect(ctx, CGRectMake(s * 0.33f, s * 0.34f, 2.5f, 3.5f));
 		CGContextFillEllipseInRect(ctx, CGRectMake(s * 0.60f, s * 0.34f, 2.5f, 3.5f));
-		CGContextAddArc(ctx, s / 2, s * 0.52f, s * 0.22f, 0.5f, M_PI - 0.5f, 0);
+		CGContextAddArc(ctx, TGHalf(s), s * 0.52f, s * 0.22f, 0.5f, M_PI - 0.5f, 0);
 		CGContextStrokePath(ctx);
 	}];
 }
@@ -407,7 +408,7 @@ static void TGDrawTabPath(CGContextRef ctx, UIBezierPath *path, BOOL filled) {
 		CGContextSetRGBStrokeColor(ctx, 0.871f, 0.227f, 0.227f, 1.0f);
 	else
 		CGContextSetRGBStrokeColor(ctx, 0.353f, 0.804f, 0.188f, 1.0f);
-	CGContextSetLineWidth(ctx, 1.6f);
+	CGContextSetLineWidth(ctx, TGIconStroke);
 	CGContextSetLineCap(ctx, kCGLineCapRound);
 	CGContextSetLineJoin(ctx, kCGLineJoinRound);
 
@@ -449,8 +450,8 @@ static void TGDrawTabPath(CGContextRef ctx, UIBezierPath *path, BOOL filled) {
 	CGContextSetRGBFillColor(ctx, 1, 1, 1, 1);
 	if (playing){
 		CGFloat w = side * 0.10f, h = side * 0.30f, gap = side * 0.10f;
-		CGContextFillRect(ctx, CGRectMake(side/2 - gap/2 - w, (side - h)/2, w, h));
-		CGContextFillRect(ctx, CGRectMake(side/2 + gap/2,     (side - h)/2, w, h));
+		CGContextFillRect(ctx, CGRectMake(TGHalf(side) - TGHalf(gap) - w, TGHalf(side - h), w, h));
+		CGContextFillRect(ctx, CGRectMake(TGHalf(side) + TGHalf(gap),     TGHalf(side - h), w, h));
 	} else {
 		CGContextMoveToPoint(ctx, side * 0.40f, side * 0.32f);
 		CGContextAddLineToPoint(ctx, side * 0.68f, side * 0.50f);
@@ -516,11 +517,11 @@ static void TGDrawTabPath(CGContextRef ctx, UIBezierPath *path, BOOL filled) {
 
 	CGContextSetLineWidth(ctx, MAX(1.5f, side * 0.055f));
 	CGContextSetLineCap(ctx, kCGLineCapRound);
-	CGContextAddArc(ctx, side / 2, side * 0.50f, side * 0.20f, 0, M_PI, 0);
+	CGContextAddArc(ctx, TGHalf(side), side * 0.50f, side * 0.20f, 0, M_PI, 0);
 	CGContextStrokePath(ctx);
 
-	CGContextMoveToPoint(ctx, side / 2, side * 0.70f);
-	CGContextAddLineToPoint(ctx, side / 2, side * 0.80f);
+	CGContextMoveToPoint(ctx, TGHalf(side), side * 0.70f);
+	CGContextAddLineToPoint(ctx, TGHalf(side), side * 0.80f);
 	CGContextStrokePath(ctx);
 
 	CGContextMoveToPoint(ctx, side * 0.38f, side * 0.80f);
@@ -597,9 +598,9 @@ static void TGDrawTabPath(CGContextRef ctx, UIBezierPath *path, BOOL filled) {
 
 		CGFloat height = MAX(2.0f, value * size.height);
 		CGFloat x = i * (barW + gap);
-		CGRect bar = CGRectMake(x, (size.height - height) / 2, barW, height);
+		CGRect bar = CGRectMake(x, TGCenteredOrigin(size.height, height), barW, height);
 
-		CGFloat alpha = (i < bars * played) ? 1.0f : 0.32f;
+		CGFloat alpha = (i < bars * played) ? TGAlphaOpaque : 0.32f;
 		[[colour colorWithAlphaComponent:alpha] set];
 		UIBezierPath *rounded = [UIBezierPath bezierPathWithRoundedRect:bar cornerRadius:1];
 		[rounded fill];
@@ -657,7 +658,7 @@ static void TGDrawTabPath(CGContextRef ctx, UIBezierPath *path, BOOL filled) {
 	CGContextRef ctx = UIGraphicsGetCurrentContext();
 
 	CGContextSetStrokeColorWithColor(ctx, c.CGColor);
-	CGContextSetLineWidth(ctx, 1.3f);
+	CGContextSetLineWidth(ctx, TGIconStrokeFine);
 	CGContextSetLineCap(ctx, kCGLineCapRound);
 	CGContextSetLineJoin(ctx, kCGLineJoinRound);
 
@@ -698,7 +699,7 @@ static void TGDrawTabPath(CGContextRef ctx, UIBezierPath *path, BOOL filled) {
 		CGContextFillEllipseInRect(ctx, circleRect);
 
 		CGContextSetStrokeColorWithColor(ctx, [UIColor whiteColor].CGColor);
-		CGContextSetLineWidth(ctx, 2.0f);
+		CGContextSetLineWidth(ctx, TGIconStroke);
 		CGContextSetLineCap(ctx, kCGLineCapRound);
 		CGContextSetLineJoin(ctx, kCGLineJoinRound);
 
@@ -707,9 +708,9 @@ static void TGDrawTabPath(CGContextRef ctx, UIBezierPath *path, BOOL filled) {
 		CGContextAddLineToPoint(ctx, 15.5f, 7.5f);
 		CGContextStrokePath(ctx);
 	} else {
-		UIColor *border = [UIColor colorWithWhite:0.75f alpha:1.0f];
+		UIColor *border = [[TGTheme shared] separatorColour];
 		CGContextSetStrokeColorWithColor(ctx, border.CGColor);
-		CGContextSetLineWidth(ctx, 1.5f);
+		CGContextSetLineWidth(ctx, TGIconStrokeFine);
 		CGContextStrokeEllipseInRect(ctx, circleRect);
 	}
 
@@ -768,7 +769,7 @@ static void TGDrawTabPath(CGContextRef ctx, UIBezierPath *path, BOOL filled) {
 	CGContextRef ctx = UIGraphicsGetCurrentContext();
 
 	CGContextSetStrokeColorWithColor(ctx, colour.CGColor);
-	CGContextSetLineWidth(ctx, 2.5f);
+	CGContextSetLineWidth(ctx, TGIconStroke);
 	CGContextSetLineCap(ctx, kCGLineCapRound);
 	CGContextSetLineJoin(ctx, kCGLineJoinRound);
 
@@ -786,7 +787,7 @@ static void TGDrawTabPath(CGContextRef ctx, UIBezierPath *path, BOOL filled) {
 + (UIImage *)phoneCall {
 	return [self iconNamed:@"phoneCall" draw:^(CGContextRef ctx, CGFloat s) {
 		CGContextSaveGState(ctx);
-		CGContextTranslateCTM(ctx, s / 2.0f, s / 2.0f);
+		CGContextTranslateCTM(ctx, TGHalf(s), TGHalf(s));
 		CGContextRotateCTM(ctx, -M_PI_4);
 
 		UIBezierPath *path = [UIBezierPath bezierPath];
@@ -844,7 +845,7 @@ static void TGDrawTabPath(CGContextRef ctx, UIBezierPath *path, BOOL filled) {
 	CGContextFillPath(ctx);
 
 	// Inner fold for depth
-	CGContextSetFillColorWithColor(ctx, [UIColor colorWithWhite:1.0f alpha:0.35f].CGColor);
+	CGContextSetFillColorWithColor(ctx, [[TGTheme shared] skeuoShineColour].CGColor);
 	UIBezierPath *fold = [UIBezierPath bezierPath];
 	[fold moveToPoint:CGPointMake(s - 2.0f, s * 0.44f)];
 	[fold addLineToPoint:CGPointMake(2.0f, s * 0.18f)];
@@ -869,8 +870,8 @@ static void TGDrawTabPath(CGContextRef ctx, UIBezierPath *path, BOOL filled) {
 	UIGraphicsBeginImageContextWithOptions(CGSizeMake(side, side), NO, scale);
 	CGContextRef ctx = UIGraphicsGetCurrentContext();
 
-	CGFloat cx = side / 2.0f;
-	CGFloat cy = side / 2.0f;
+	CGFloat cx = TGHalf(side);
+	CGFloat cy = TGHalf(side);
 	NSInteger points = 8;
 	CGFloat rOuter = side * 0.46f;
 	CGFloat rInner = side * 0.38f;
@@ -890,7 +891,7 @@ static void TGDrawTabPath(CGContextRef ctx, UIBezierPath *path, BOOL filled) {
 	CGContextFillPath(ctx);
 
 	CGContextSetStrokeColorWithColor(ctx, [UIColor whiteColor].CGColor);
-	CGContextSetLineWidth(ctx, 1.6f);
+	CGContextSetLineWidth(ctx, TGIconStroke);
 	CGContextSetLineCap(ctx, kCGLineCapRound);
 	CGContextSetLineJoin(ctx, kCGLineJoinRound);
 

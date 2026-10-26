@@ -41,15 +41,34 @@ UIFont *TGFontGlyphSmall(void)    { return [UIFont systemFontOfSize:TGSizeGlyphS
 UIFont *TGFontPlate(void)         { return [UIFont boldSystemFontOfSize:TGSizePlate]; }
 UIFont *TGFontEmoji(void)         { return [UIFont systemFontOfSize:TGSizeEmoji]; }
 UIFont *TGFontEmojiSmall(void)    { return [UIFont systemFontOfSize:TGSizeEmojiSm]; }
+UIFont *TGFontEmojiMeta(void)     {
+	return [UIFont fontWithName:@"OpenMojiColor" size:TGSizeMeta]
+		?: [UIFont fontWithName:@"OpenMoji" size:TGSizeMeta]
+		?: [UIFont systemFontOfSize:TGSizeMeta];
+}
 UIFont *TGFontEmojiLarge(void)    { return [UIFont systemFontOfSize:TGSizeEmojiLg]; }
 
 UIColor *TGColourLink(void) {
 	return [UIColor colorWithRed:0.18f green:0.54f blue:0.92f alpha:1.0f];
 }
 
+UIColor *TGColourCodeBackground(void) {
+	return [UIColor colorWithWhite:0.5f alpha:0.15f];
+}
+
+UIColor *TGColourCodeBlockBackground(void) {
+	return [UIColor colorWithWhite:0.5f alpha:0.25f];
+}
+
 UIFont *TGFontAtSize(CGFloat size)       { return [UIFont systemFontOfSize:size]; }
 UIFont *TGFontBoldAtSize(CGFloat size)   { return [UIFont boldSystemFontOfSize:size]; }
 UIFont *TGFontItalicAtSize(CGFloat size) { return [UIFont italicSystemFontOfSize:size]; }
+
+UIFont *TGFontCodeAtSize(CGFloat size) {
+	return [UIFont fontWithName:@"Courier" size:size]
+		?: [UIFont fontWithName:@"CourierNewPSMT" size:size]
+		?: [UIFont systemFontOfSize:size];
+}
 
 UIFont *TGFontMediumAtSize(CGFloat size) {
 	// Medium is not a system weight on this OS; ask for the face by name and

@@ -39,7 +39,7 @@
 	self.users = @[];
 	self.photos = [NSMutableDictionary dictionary];
 	self.photosRequested = [NSMutableSet set];
-	self.tableView.rowHeight = 56;
+	self.tableView.rowHeight = TGMetricPersonRow;
 	self.tableView.backgroundColor = [[TGTheme shared] listBackgroundColour];
 	self.tableView.separatorColor = [[TGTheme shared] separatorColour];
 
@@ -164,7 +164,7 @@ static NSString *TGContactName(NSDictionary *u) {
 									   size:TGMetricListAvatar
 								   colourId:[u[@"id"] longLongValue]];
 	cell.imageView.image = photo;
-	cell.imageView.layer.cornerRadius = TGMetricListAvatar / 2;
+	cell.imageView.layer.cornerRadius = TGHalf(TGMetricListAvatar);
 	cell.imageView.clipsToBounds = YES;
 	cell.imageView.layer.shouldRasterize = YES;
 	cell.imageView.layer.rasterizationScale = [UIScreen mainScreen].scale;
@@ -283,6 +283,13 @@ static NSString *TGContactName(NSDictionary *u) {
 
 - (void)dealloc {
 	[[NSNotificationCenter defaultCenter] removeObserver:self];
+}
+
+/// The system's caption is grey on grey over a dark list, which is what
+/// this screen had: every other list styles its own.
+- (void)tableView:(UITableView *)tableView willDisplayHeaderView:(UIView *)view
+	   forSection:(NSInteger)section {
+	[[TGTheme shared] styleSectionHeader:view];
 }
 
 @end

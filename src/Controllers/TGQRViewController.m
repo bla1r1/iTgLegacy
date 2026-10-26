@@ -63,19 +63,19 @@
 /// A window in a dark wash, which is what tells you where to aim.
 - (void)buildFrame {
 	CGRect b = self.view.bounds;
-	CGFloat side = MIN(b.size.width, b.size.height) * 0.66f;
-	CGRect window = CGRectMake((b.size.width - side) / 2,
-							   (b.size.height - side) / 2 - 20, side, side);
+	CGFloat side = MIN(b.size.width, b.size.height) * TGMetricQRViewfinderRatio;
+	CGRect window = CGRectMake(TGCenteredOrigin(b.size.width, side),
+							   TGCenteredOrigin(b.size.height, side) - 20, side, side);
 
 	UIView *wash = [[UIView alloc] initWithFrame:b];
-	wash.backgroundColor = [UIColor colorWithWhite:0 alpha:0.5f];
+	wash.backgroundColor = [[TGTheme shared] scrimColour];
 	wash.userInteractionEnabled = NO;
 
 	// The hole is cut with an even-odd mask rather than four strips, so the
 	// edges stay exact when the frame moves.
 	CAShapeLayer *mask = [CAShapeLayer layer];
 	UIBezierPath *path = [UIBezierPath bezierPathWithRect:b];
-	[path appendPath:[UIBezierPath bezierPathWithRoundedRect:window cornerRadius:8]];
+	[path appendPath:[UIBezierPath bezierPathWithRoundedRect:window cornerRadius:TGMetricCornerControl]];
 	mask.path = path.CGPath;
 	mask.fillRule = kCAFillRuleEvenOdd;
 	wash.layer.mask = mask;
@@ -83,13 +83,13 @@
 
 	UIView *outline = [[UIView alloc] initWithFrame:window];
 	outline.layer.borderColor = [UIColor whiteColor].CGColor;
-	outline.layer.borderWidth = 2;
-	outline.layer.cornerRadius = 8;
+	outline.layer.borderWidth = TGMetricBorderThick;
+	outline.layer.cornerRadius = TGMetricCornerControl;
 	outline.userInteractionEnabled = NO;
 	[self.view addSubview:outline];
 
 	self.hint = [[UILabel alloc] initWithFrame:CGRectMake(
-			20, CGRectGetMaxY(window) + 20, b.size.width - 40, 40)];
+			TGMetricGutterLarge, CGRectGetMaxY(window) + TGMetricGutterLarge, b.size.width - TGDoubled(TGMetricGutterLarge), TGDoubled(TGMetricGutterLarge))];
 	self.hint.text = @"Point the camera at a QR code";
 	self.hint.numberOfLines = 2;
 	self.hint.textAlignment = NSTextAlignmentCenter;

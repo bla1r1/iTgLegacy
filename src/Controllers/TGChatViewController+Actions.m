@@ -197,7 +197,7 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 	CGRect rect = [self.table rectForRowAtIndexPath:
 			[NSIndexPath indexPathForRow:row inSection:0]];
 	CGPoint where = [self.table convertPoint:
-			CGPointMake(mine ? CGRectGetMaxX(rect) - 60 : 60, CGRectGetMaxY(rect) - 8)
+			CGPointMake(mine ? CGRectGetMaxX(rect) - TGMetricMenuActionOffset : TGMetricMenuActionOffset, CGRectGetMaxY(rect) - TGMetricCardMargin)
 									  toView:self.view];
 
 	__weak typeof(self) weakSelf = self;
@@ -719,7 +719,7 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 	CFRelease(uuid);
 	NSString *path = [NSTemporaryDirectory() stringByAppendingPathComponent:
 			[NSString stringWithFormat:@"outgoing-%@.jpg", name]];
-	if (![UIImageJPEGRepresentation(image, 0.85f) writeToFile:path atomically:YES]){
+	if (![UIImageJPEGRepresentation(image, TGCompressionQualityHigh) writeToFile:path atomically:YES]){
 		NSLog(@"cannot stage the picked image");
 		return;
 	}
@@ -741,7 +741,7 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 		CFRelease(uuid);
 		NSString *path = [NSTemporaryDirectory() stringByAppendingPathComponent:
 				[NSString stringWithFormat:@"outgoing-%@.jpg", name]];
-		if ([UIImageJPEGRepresentation(image, 0.85f) writeToFile:path atomically:YES])
+		if ([UIImageJPEGRepresentation(image, TGCompressionQualityHigh) writeToFile:path atomically:YES])
 			[paths addObject:path];
 	}
 	if (!paths.count){
@@ -857,8 +857,8 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 
 	// A scroll view is all zooming needs; a 4S has no room for a custom one.
 	UIScrollView *zoom = [[UIScrollView alloc] initWithFrame:backdrop.bounds];
-	zoom.minimumZoomScale = 1.0f;
-	zoom.maximumZoomScale = 4.0f;
+	zoom.minimumZoomScale = TGMetricZoomMin;
+	zoom.maximumZoomScale = TGMetricZoomMax;
 	zoom.delegate = self;
 	zoom.showsHorizontalScrollIndicator = NO;
 	zoom.showsVerticalScrollIndicator = NO;
@@ -881,22 +881,22 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 	[backdrop addGestureRecognizer:hold];
 
 	UILabel *hint = [[UILabel alloc] initWithFrame:
-			CGRectMake(0, backdrop.bounds.size.height - 34, backdrop.bounds.size.width, 20)];
+			CGRectMake(0, backdrop.bounds.size.height - TGMetricImageHintBottomOffset, backdrop.bounds.size.width, 20)];
 	hint.text = @"Hold to save";
 	hint.font = TGFontMeta();
 	hint.textAlignment = NSTextAlignmentCenter;
-	hint.textColor = [UIColor colorWithWhite:1 alpha:0.6f];
+	hint.textColor = [[TGTheme shared] secondaryTextColour];
 	hint.backgroundColor = [UIColor clearColor];
 	[backdrop addSubview:hint];
 
-	backdrop.alpha = 0;
+	backdrop.alpha = TGAlphaTransparent;
 	[window addSubview:backdrop];
-	[UIView animateWithDuration:0.2 animations:^{ backdrop.alpha = 1; }];
+	[UIView animateWithDuration:TGAnimationDurationNormal animations:^{ backdrop.alpha = TGAlphaOpaque; }];
 }
 
 - (void)dismissFullScreen:(UITapGestureRecognizer *)tap {
 	UIView *backdrop = tap.view;
-	[UIView animateWithDuration:0.2 animations:^{ backdrop.alpha = 0; }
+	[UIView animateWithDuration:TGAnimationDurationNormal animations:^{ backdrop.alpha = 0; }
 					 completion:^(BOOL done){ [backdrop removeFromSuperview]; }];
 }
 

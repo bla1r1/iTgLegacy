@@ -88,11 +88,9 @@
 	self.tableView.separatorColor = [[TGTheme shared] separatorColour];
 }
 
-- (void)tableView:(UITableView *)tableView willDisplayHeaderView:(UIView *)view forSection:(NSInteger)section {
-	if ([view isKindOfClass:[UITableViewHeaderFooterView class]]) {
-		UITableViewHeaderFooterView *header = (UITableViewHeaderFooterView *)view;
-		header.textLabel.textColor = [[TGTheme shared] sectionHeaderColour];
-	}
+- (void)tableView:(UITableView *)tableView willDisplayHeaderView:(UIView *)view
+	   forSection:(NSInteger)section {
+	[[TGTheme shared] styleSectionHeader:view];
 }
 
 - (void)tableView:(UITableView *)tableView willDisplayFooterView:(UIView *)view forSection:(NSInteger)section {
@@ -190,7 +188,7 @@
 		return nil;
 	CGSize size = [self footerTextSize:text];
 	UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(
-			kFooterInset, 8, self.tableView.bounds.size.width - 2 * kFooterInset,
+			kFooterInset, 8, self.tableView.bounds.size.width - TGDoubled(kFooterInset),
 			size.height)];
 	label.text = text;
 	label.font = TGFontMeta();
@@ -375,17 +373,17 @@
 - (CGFloat)tableView:(UITableView *)tableView heightForHeaderInSection:(NSInteger)section {
 	NSString *text = self.sections[section][@"header"];
 	if (text.length)
-		return 32.0f;
-	return 12.0f;
+		return TGMetricSectionHeaderHeight;
+	return TGMetricSectionHeaderEmpty;
 }
 
 - (UIView *)tableView:(UITableView *)tableView viewForHeaderInSection:(NSInteger)section {
 	NSString *text = self.sections[section][@"header"];
 	if (!text.length)
-		return [[UIView alloc] initWithFrame:CGRectMake(0, 0, tableView.bounds.size.width, 12.0f)];
-	UIView *holder = [[UIView alloc] initWithFrame:CGRectMake(0, 0, tableView.bounds.size.width, 32)];
+		return [[UIView alloc] initWithFrame:CGRectMake(0, 0, tableView.bounds.size.width, TGMetricSectionHeaderEmpty)];
+	UIView *holder = [[UIView alloc] initWithFrame:CGRectMake(0, 0, tableView.bounds.size.width, TGMetricSectionHeaderHeight)];
 	holder.backgroundColor = [UIColor clearColor];
-	UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(kFooterInset, 10, tableView.bounds.size.width - 2 * kFooterInset, 18)];
+	UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(kFooterInset, 10, tableView.bounds.size.width - TGDoubled(kFooterInset), 18)];
 	label.text = text.uppercaseString;
 	label.font = TGFontMeta();
 	label.textColor = [[TGTheme shared] sectionHeaderColour];
@@ -397,10 +395,10 @@
 /// The footers explain things, so there are a lot of words in them; at UIKit's
 /// default size they were louder than the settings they describe. Drawn here
 /// rather than handed over as a title so the size is ours.
-static const CGFloat kFooterInset  = 15.0f;
+static const CGFloat kFooterInset  = TGMetricGutter;
 
 - (CGSize)footerTextSize:(NSString *)text {
-	CGFloat width = self.tableView.bounds.size.width - 2 * kFooterInset;
+	CGFloat width = self.tableView.bounds.size.width - TGDoubled(kFooterInset);
 	return [text sizeWithFont:TGFontMeta()
 			constrainedToSize:CGSizeMake(MAX(width, 100), 400)
 				lineBreakMode:NSLineBreakByWordWrapping];
@@ -408,28 +406,28 @@ static const CGFloat kFooterInset  = 15.0f;
 
 - (CGFloat)tableView:(UITableView *)tableView heightForFooterInSection:(NSInteger)section {
 	if (self.page == TGSettingsPageRoot && section == (NSInteger)self.sections.count - 1)
-		return 38.0f;
+		return TGMetricSectionFooterRoot;
 	NSString *text = self.sections[section][@"footer"];
 	if (!text.length)
-		return 0.001f;
-	return [self footerTextSize:text].height + 14.0f;
+		return TGMetricSectionHeaderHidden;
+	return [self footerTextSize:text].height + TGMetricSectionFooterGap;
 }
 
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)path {
 	NSDictionary *row = [self rowAt:path];
 	NSString *kind = row[TGRowKind];
-	if ([kind isEqualToString:TGKindProfile]) return 168.0f;
-	if ([kind isEqualToString:TGKindPreview]) return 108.0f;
+	if ([kind isEqualToString:TGKindProfile]) return TGMetricSettingsProfileRow;
+	if ([kind isEqualToString:TGKindPreview]) return TGMetricSettingsPreviewRow;
 	if ([kind isEqualToString:TGKindToggleInfo]){
 		// Glyph, name, and the description wrapped in what is left once the
 		// switch has taken its side.
-		CGFloat width = self.tableView.bounds.size.width - 44 - 62;
+		CGFloat width = self.tableView.bounds.size.width - TGMetricRow - TGMetricViewerBottomBar;
 		CGSize size = [(row[TGRowDetail] ?: @"") sizeWithFont:TGFontCaption()
-										   constrainedToSize:CGSizeMake(width, 200)
+										   constrainedToSize:CGSizeMake(width, TGMetricImageMax)
 											   lineBreakMode:NSLineBreakByWordWrapping];
-		return MAX(52.0f, 30.0f + size.height);
+		return MAX(TGMetricActionTile, TGMetricPollRow + size.height);
 	}
-	return 44.0f;
+	return TGMetricRow;
 }
 
 /// Two bubbles over the wallpaper, drawn from the palette that is in force.
@@ -471,7 +469,7 @@ static const CGFloat kFooterInset  = 15.0f;
 		UILabel *text = [[UILabel alloc] initWithFrame:
 				CGRectMake(9, 0, bubbleW - 46, bubbleH)];
 		text.text = lines[i];
-		text.font = TGFontAtSize(MIN(theme.messageFontSize, 14.0f));
+		text.font = TGFontAtSize(MIN(theme.messageFontSize, TGFontMessageBaseCap));
 		text.textColor = [theme primaryTextColour];
 		text.backgroundColor = [UIColor clearColor];
 		text.adjustsFontSizeToFitWidth = YES;
@@ -526,7 +524,7 @@ static const CGFloat kFooterInset  = 15.0f;
 	cell.textLabel.font = TGFontRow();
 	cell.textLabel.textAlignment = NSTextAlignmentLeft;
 	cell.textLabel.textColor = [kind isEqualToString:TGKindDestructive]
-			? TGRGB(0.8f, 0.1f, 0.1f) : [theme primaryTextColour];
+			? [theme destructiveColour] : [theme primaryTextColour];
 	cell.detailTextLabel.text = row[TGRowDetail];
 	cell.detailTextLabel.font = subtitle ? TGFontCaption() : TGFontBody();
 	cell.detailTextLabel.textColor = subtitle
@@ -603,13 +601,13 @@ static const CGFloat kFooterInset  = 15.0f;
 
 	CGFloat y = scrollView.contentOffset.y;
 	CGFloat delta = y - self.lastScrollY;
-	if (fabsf((float)delta) < 14.0f)
+	if (fabsf((float)delta) < TGMetricFontSizeDeltaThreshold)
 		return;
 	self.lastScrollY = y;
 
 	// Never hide it while the top of the list is showing: there would be
 	// nothing on screen to bring it back with.
-	BOOL hide = (delta > 0) && (y > 44);
+	BOOL hide = (delta > 0) && (y > TGMetricRow);
 	if (self.navigationController.navigationBarHidden != hide)
 		[self.navigationController setNavigationBarHidden:hide animated:YES];
 }
@@ -663,8 +661,8 @@ static const CGFloat kFooterInset  = 15.0f;
 			? [NSString stringWithFormat:@"@%@", me[@"username"]] : @"";
 
 	self.avatarView = [[UIImageView alloc] initWithFrame:
-			CGRectMake((width - side) / 2, 18, side, side)];
-	self.avatarView.layer.cornerRadius = side / 2;
+			CGRectMake(TGCenteredOrigin(width, side), 18, side, side)];
+	self.avatarView.layer.cornerRadius = TGHalf(side);
 	self.avatarView.clipsToBounds = YES;
 	self.avatarView.layer.shouldRasterize = YES;
 	self.avatarView.layer.rasterizationScale = [UIScreen mainScreen].scale;

@@ -1,6 +1,7 @@
 #import "TGChatListViewControllerInternal.h"
 #import "TGCapabilities.h"
 #import "TGAlertSheet.h"
+#import "TGStyle.h"
 
 @implementation TGChatListViewController (Actions)
 
@@ -52,8 +53,8 @@
 	NSInteger markItem = (NSInteger)items.count - 1;
 
 	__weak typeof(self) weakSelf = self;
-	CGPoint where = CGPointMake(self.view.bounds.size.width / 2,
-								self.view.bounds.size.height / 2);
+	CGPoint where = CGPointMake(TGHalf(self.view.bounds.size.width),
+								TGHalf(self.view.bounds.size.height));
 	[TGPopupMenu showItems:items
 				   atPoint:where
 					inView:self.navigationController.view
@@ -131,7 +132,7 @@
 	CGRect rect = [self.tableView rectForRowAtIndexPath:
 			[NSIndexPath indexPathForRow:row inSection:0]];
 	CGPoint where = [self.tableView convertPoint:
-			CGPointMake(120, CGRectGetMaxY(rect) - 10) toView:self.navigationController.view];
+			CGPointMake(TGMetricChatListMenuX, CGRectGetMaxY(rect) - TGMetricPadMedium) toView:self.navigationController.view];
 
 	__weak typeof(self) weakSelf = self;
 	[TGPopupMenu showItems:items atPoint:where inView:self.navigationController.view

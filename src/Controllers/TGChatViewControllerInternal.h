@@ -19,11 +19,12 @@
 #import <CoreLocation/CoreLocation.h>
 #import <AddressBookUI/AddressBookUI.h>
 #import <MobileCoreServices/MobileCoreServices.h>
+#import "TGStyle.h"
 
-static const CGFloat kInputHeight = 48.0f;
+static const CGFloat kInputHeight = TGMetricInputBarHeight;
 /// The reply / edit strip above the composer: two lines, the way their client
 /// shows who is being answered and what they said.
-static const CGFloat kComposeBannerHeight = 44.0f;
+static const CGFloat kComposeBannerHeight = TGMetricRow;
 
 @interface TGChatViewController () <UISearchBarDelegate, CLLocationManagerDelegate, TGEmojiPanelDelegate,
 		UIScrollViewDelegate, AVAudioPlayerDelegate,

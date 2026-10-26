@@ -127,10 +127,10 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 	header.backgroundColor = [[TGTheme shared] groupedBackgroundColour];
 
 	self.avatarView = [[UIImageView alloc] initWithFrame:
-			CGRectMake((width - side) / 2, 16, side, side)];
+			CGRectMake(TGCenteredOrigin(width, side), 16, side, side)];
 	self.avatarView.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin |
 			UIViewAutoresizingFlexibleRightMargin;
-	self.avatarView.layer.cornerRadius = side / 2;
+	self.avatarView.layer.cornerRadius = TGHalf(side);
 	self.avatarView.clipsToBounds = YES;
 	self.avatarView.layer.shouldRasterize = YES;
 	self.avatarView.layer.rasterizationScale = [UIScreen mainScreen].scale;
@@ -333,7 +333,7 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 		for (NSDictionary *tab in tabs)
 			[titles addObject:tab[@"title"]];
 		UISegmentedControl *segments = [[UISegmentedControl alloc] initWithItems:titles];
-		segments.frame = CGRectMake(10, 3, tableView.bounds.size.width - 20, 30);
+		segments.frame = CGRectMake(TGMetricPadMedium, 3, tableView.bounds.size.width - TGDoubled(TGMetricPadMedium), 30);
 		// The highlighted segment comes from the stored kind, not a number:
 		// the array behind titles reorders as categories load (B1).
 		NSString *kind = [self selectedMediaKind];
@@ -352,11 +352,9 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 	return nil;
 }
 
-- (void)tableView:(UITableView *)tableView willDisplayHeaderView:(UIView *)view forSection:(NSInteger)section {
-	if ([view isKindOfClass:[UITableViewHeaderFooterView class]]) {
-		UITableViewHeaderFooterView *header = (UITableViewHeaderFooterView *)view;
-		header.textLabel.textColor = [[TGTheme shared] sectionHeaderColour];
-	}
+- (void)tableView:(UITableView *)tableView willDisplayHeaderView:(UIView *)view
+	   forSection:(NSInteger)section {
+	[[TGTheme shared] styleSectionHeader:view];
 }
 
 - (void)tableView:(UITableView *)tableView willDisplayFooterView:(UIView *)view forSection:(NSInteger)section {
@@ -367,7 +365,7 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 }
 
 - (CGFloat)tableView:(UITableView *)tableView heightForHeaderInSection:(NSInteger)section {
-	if (section == kSectionMedia) return 38;
+	if (section == kSectionMedia) return TGMetricMediaStripHeader;
 	// Stories and Gifts are categories in the bar now and have no rows left.
 	// A grouped table still pads an empty section at both ends, and two of
 	// them in a row opened a gap the size of a screen above the bar.
@@ -387,8 +385,8 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
 	if (indexPath.section == kSectionMedia && [self selectedTabIsGrid])
 		return [self storyGridHeight];
-	if (indexPath.section == kSectionStories) return 56;
-	return indexPath.section == kSectionDetails ? 52 : 44;
+	if (indexPath.section == kSectionStories) return TGMetricPersonRow;
+	return indexPath.section == kSectionDetails ? TGMetricPersonRow : TGMetricRow;
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
@@ -449,7 +447,7 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 		thumb.backgroundColor = [[TGTheme shared] fileTileColour];
 		thumb.contentMode = UIViewContentModeScaleAspectFill;
 		thumb.clipsToBounds = YES;
-		thumb.layer.cornerRadius = 6;
+		thumb.layer.cornerRadius = TGMetricCornerMedium;
 		cell.imageView.image = [TGIcons avatarWithInitials:@" " size:40
 												  colourId:indexPath.row];
 		NSNumber *fileId = story[@"thumbPhotoId"] ?: story[@"photoId"];
@@ -619,17 +617,17 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 
 	UILabel *toast = [[UILabel alloc] initWithFrame:
 			CGRectMake(0, 0, 120, 34)];
-	toast.center = CGPointMake(self.view.bounds.size.width / 2,
-							   self.view.bounds.size.height - 70);
+	toast.center = CGPointMake(TGHalf(self.view.bounds.size.width),
+							   self.view.bounds.size.height - TGMetricToastBottomOffset);
 	toast.text = @"Copied";
 	toast.textAlignment = NSTextAlignmentCenter;
 	toast.font = TGFontSubhead();
 	toast.textColor = [[TGTheme shared] hudTextColour];
 	toast.backgroundColor = [[TGTheme shared] hudBackgroundColour];
-	toast.layer.cornerRadius = 6;
+	toast.layer.cornerRadius = TGMetricCornerMedium;
 	toast.clipsToBounds = YES;
 	[self.view addSubview:toast];
-	[UIView animateWithDuration:0.3 delay:1.0 options:0
+	[UIView animateWithDuration:TGAnimationDurationSlow delay:1.0 options:0
 					 animations:^{ toast.alpha = 0; }
 					 completion:^(BOOL done){ [toast removeFromSuperview]; }];
 }
