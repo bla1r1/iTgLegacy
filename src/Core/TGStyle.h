@@ -176,7 +176,14 @@ static const CGFloat TGMetricCallAvatarSide      = 120.0f;
 /// Round call action button square side (60 pt).
 static const CGFloat TGMetricCallButtonSide      = 60.0f;
 /// Call screen bottom action buttons baseline offset (130 pt).
-static const CGFloat TGMetricCallButtonsBottomOffset = 130.0f;
+/// The call screen laid out as a cursor from the top, then two rows measured
+/// up from the bottom: the toggles with their captions, and End under them.
+static const CGFloat TGMetricCallEmojiTop        = 26.0f;
+static const CGFloat TGMetricCallEmojiHeight     = 30.0f;
+static const CGFloat TGMetricCallNameHeight      = 30.0f;
+static const CGFloat TGMetricCallStatusHeight    = 20.0f;
+static const CGFloat TGMetricCallTogglesBottom   = 150.0f;
+static const CGFloat TGMetricCallEndBottom       = 70.0f;
 /// Call button label vertical gap from button origin (65 pt).
 static const CGFloat TGMetricCallLabelGap        = 65.0f;
 /// Call button caption label width (80 pt).
@@ -330,6 +337,8 @@ static const CGFloat TGTransformScalePillActive   = 1.08f;
 static const CGFloat TGTransformScaleButtonActive = 0.86f;
 /// Popup menu appearance initial scale (0.85).
 static const CGFloat TGTransformScaleMenuInitial  = 0.85f;
+/// The ring a held call control wears: wider than the button it surrounds.
+static const CGFloat TGTransformScaleRingHeld     = 1.22f;
 /// Audio mic button small scale (0.30).
 static const CGFloat TGTransformScaleSmall        = 0.30f;
 
@@ -452,7 +461,9 @@ static const CGFloat TGMetricAttachTick         = 18.0f;
 static const CGFloat TGMetricTicksWidth         = 15.0f;
 static const CGFloat TGMetricTicksHeight        = 9.0f;
 /// How far the ticks' baseline sits above the bottom of the bubble.
-static const CGFloat TGMetricTicksBottomInset   = 18.0f;
+/// The dot that marks a voice note unheard or a round note unwatched, and the
+/// air around the clock that sits outside a round note.
+static const CGFloat TGMetricUnreadDotSide      = 7.0f;
 
 /// The two lines inside a bubble that names something - a file, a contact, a
 /// track, a place. The title line and the line under it were written out at
@@ -476,18 +487,26 @@ static const CGFloat TGMetricStampTicksRoom     = 18.0f;
 static const CGFloat TGMetricPollDotSide        = 16.0f;
 /// Contact action button or right call button width.
 static const CGFloat TGMetricCallControlSide    = 34.0f;
+/// The glyph inside a round call button.
+static const CGFloat TGMetricCallGlyphSide      = 28.0f;
 
 /// Small round things, named by their side rather than by their roundness:
 /// the radius is half of whichever of these the view is, which cannot drift
 /// from it the way a separate TGMetricCorner* name could.
 static const CGFloat TGMetricPlayerThumbSide    = 8.0f;
 static const CGFloat TGMetricRecordDotSide      = 9.0f;
-static const CGFloat TGMetricRecordHaloSide     = 58.0f;
+static const CGFloat TGMetricRecordHaloSide     = 60.0f;
 /// Capsules: the height is what rounds them.
 static const CGFloat TGMetricJumpBadgeHeight    = 18.0f;
 static const CGFloat TGMetricChatBadgeHeight    = 20.0f;
 /// Where the unread count sits on a chat list row.
 static const CGFloat TGMetricChatBadgeTop       = 42.0f;
+/// How far the folder pill is inset into its strip, top and bottom. Its
+/// height and its radius are both worked out from this, so they cannot
+/// disagree - which is how the pill stopped being a pill once.
+static const CGFloat TGMetricFolderPillInset    = 5.0f;
+/// How much history to fetch around a pinned message when going to it.
+static const CGFloat TGMetricHistoryPageAroundPinned = 40.0f;
 static const CGFloat TGMetricFloatingDateHeight = 22.0f;
 /// Height of an inline location map preview.
 static const CGFloat TGMetricMapHeight          = 130.0f;
@@ -655,3 +674,6 @@ static const CGFloat TGMetricStrokeFine         = 1.4f;
 static const CGFloat TGMetricTrackArt           = 44.0f;
 static const CGFloat TGMetricTrackDisc          = 28.0f;
 static const CGFloat TGMetricTrackRow           = 60.0f;
+/// A track's bubble is as fixed in width as a voice note's: the cover, the
+/// gap, and room for a title that gets truncated rather than growing it.
+static const CGFloat TGMetricTrackContent       = 200.0f;

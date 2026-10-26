@@ -37,6 +37,9 @@
 /// bar glyphs are template images and cannot carry a fill of their own.
 + (UIImage *)microphoneOfSide:(CGFloat)side colour:(UIColor *)colour;
 
+/// The same microphone with a line through it, for a muted call.
++ (UIImage *)microphoneOffOfSide:(CGFloat)side colour:(UIColor *)colour;
+
 /// The padlock on the recorder's lock capsule, drawn rather than set as an
 /// emoji - iOS 7 has no colour glyph for it on every device.
 + (UIImage *)lockOfSide:(CGFloat)side colour:(UIColor *)colour;

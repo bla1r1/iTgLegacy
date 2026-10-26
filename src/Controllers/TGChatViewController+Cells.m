@@ -20,9 +20,15 @@ static void TGPlaceStamp(TGBubbleCell *cell, CGRect bubbleFrame,
 /// the same two checkmarks sat at three heights depending on whether the
 /// bubble held text, a file or a quote.
 static void TGPlaceTicks(TGBubbleCell *cell, CGRect bubbleFrame) {
+	// Centred on the clock's own line rather than measured up from the bottom
+	// of the bubble on its own: the two insets were 17 and 18 against heights
+	// of 12 and 9, which left the ticks two and a half points above the time
+	// they belong to, and in a bubble whose height came out differently they
+	// drifted apart further.
+	CGFloat stampTop = bubbleFrame.size.height - TGMetricStampBottomInset;
 	cell.ticks.frame = CGRectMake(
 			bubbleFrame.size.width - kPadH - TGMetricTicksWidth,
-			bubbleFrame.size.height - TGMetricTicksBottomInset,
+			stampTop + TGCenteredOrigin(TGMetricStampHeight, TGMetricTicksHeight),
 			TGMetricTicksWidth, TGMetricTicksHeight);
 }
 
@@ -269,8 +275,10 @@ static void TGPlaceTitleDetail(TGBubbleCell *cell, CGFloat x, CGFloat top,
 									 kTrackDisc, kTrackDisc);
 		[cell.bubble bringSubviewToFront:cell.disc];
 
-		CGFloat textX = kPadH + kTrackArt + 9;
-		CGFloat textW = layout.bubbleFrame.size.width - textX - kPadH;
+		CGFloat textX = kPadH + kTrackArt + TGMetricPadSmall + TGMetricPadTiny;
+		// Never negative: a label given a negative width draws its whole text
+		// anyway, straight out past the bubble it belongs to.
+		CGFloat textW = MAX(layout.bubbleFrame.size.width - textX - kPadH, 0);
 
 		NSString *title = [m[@"audioTitle"] length] ? m[@"audioTitle"]
 				: ([m[@"docName"] length] ? m[@"docName"] : @"Audio");
@@ -593,13 +601,16 @@ static void TGPlaceTitleDetail(TGBubbleCell *cell, CGFloat x, CGFloat top,
 		cell.bubble.backgroundColor = [theme fileTileColour];
 		cell.bubble.layer.borderWidth = 0;
 		cell.bubble.frame = layout.bubbleFrame;
-		cell.bubble.layer.cornerRadius = TGHalf(TGMetricImageMax);
+		// Half of the side this view actually has, not half of the widest a
+		// picture may be: a video note is 178 across, and asking for 100 drew
+		// a rounded quadrilateral because CALayer here does not clamp.
+		cell.bubble.layer.cornerRadius = TGHalf(side);
 		cell.bubble.clipsToBounds = YES;
 		cell.picture.hidden = NO;
 		cell.picture.image = [self imageFor:m];
 		cell.picture.backgroundColor = [theme fileTileColour];
 		cell.picture.frame = CGRectMake(0, 0, side, side);
-		cell.picture.layer.cornerRadius = TGHalf(TGMetricImageMax);
+		cell.picture.layer.cornerRadius = TGHalf(side);
 		cell.picture.clipsToBounds = YES;
 		cell.body.hidden = YES;
 
@@ -616,26 +627,63 @@ static void TGPlaceTitleDetail(TGBubbleCell *cell, CGFloat x, CGFloat top,
 		NSInteger dur = [m[@"duration"] integerValue];
 		NSString *durStr = (dur > 0) ? [NSString stringWithFormat:@"%ld:%02ld", (long)(dur / 60), (long)(dur % 60)] : @"";
 		NSString *stamp = (layout.stamp.length && ![layout.stamp isEqualToString:@"(null)"]) ? layout.stamp : @"";
-		NSString *stampText = durStr.length ? (stamp.length ? [NSString stringWithFormat:@"%@  %@", durStr, stamp] : durStr) : stamp;
 
-		CGFloat stampW = TGTextSize(stampText, TGFontMicro(), 0).width + (mine ? 26 : 14);
-		cell.mediaStamp.hidden = NO;
+		// How long it runs belongs to the picture, so it rides inside the
+		// circle; what time it was sent and whether it was read belong to the
+		// message, so they sit outside it. They used to share one pill in the
+		// middle of the circle, which read as the clock being part of the
+		// video, and the ticks were clipped away by the circle's own curve.
+		CGFloat stampW = TGTextSize(durStr, TGFontMicro(), 0).width + TGMetricPadLarge;
+		cell.mediaStamp.hidden = !durStr.length;
 		cell.mediaStamp.backgroundColor = [theme mediaStampColour];
-		cell.mediaStamp.text = mine ? [NSString stringWithFormat:@"  %@", stampText] : stampText;
-		cell.mediaStamp.textAlignment = mine ? NSTextAlignmentLeft : NSTextAlignmentCenter;
-		cell.mediaStamp.frame = CGRectMake(TGCenteredOrigin(side, stampW), side - 24, stampW, 16);
+		cell.mediaStamp.text = durStr;
+		cell.mediaStamp.textAlignment = NSTextAlignmentCenter;
+		cell.mediaStamp.frame = CGRectMake(TGCenteredOrigin(side, stampW),
+										   side - TGMetricStampBottomInset - TGMetricPadSmall,
+										   stampW, TGMetricRow / 2 - TGMetricPadSmall);
 		[cell.bubble bringSubviewToFront:cell.mediaStamp];
+
+		// Outside the circle, in the cell's own coordinates: the bubble clips
+		// to a circle, so anything parented to it that leaves the disc is cut.
+		// The clock and the ticks read as one line, the way they do in a
+		// bubble - stacking the ticks under the time put them adrift.
+		CGRect frame = layout.bubbleFrame;
+		CGFloat clockW = TGTextSize(stamp, TGFontMicro(), 0).width;
+		CGFloat groupW = clockW + (mine ? TGMetricPadSmall + TGMetricTicksWidth : 0);
+		CGFloat groupX = mine
+				? CGRectGetMinX(frame) - TGMetricPadMedium - groupW
+				: CGRectGetMaxX(frame) + TGMetricPadMedium;
+		CGFloat clockY = CGRectGetMaxY(frame) - TGMetricStampBottomInset;
+
+		[cell.contentView addSubview:cell.time];
+		cell.time.hidden = !stamp.length;
+		cell.time.text = stamp;
+		cell.time.textColor = [theme timeColour];
+		cell.time.textAlignment = NSTextAlignmentLeft;
+		cell.time.frame = CGRectMake(groupX, clockY, clockW, TGMetricStampHeight);
 
 		cell.ticks.hidden = !mine;
 		if (mine) {
-			cell.ticks.image = [self ticksForMessage:m white:YES];
-			cell.ticks.frame = CGRectMake(CGRectGetMaxX(cell.mediaStamp.frame) - TGMetricMediaStampCheckInset,
-										  CGRectGetMidY(cell.mediaStamp.frame) - TGHalf(TGMetricMediaStampCheckHeight),
-										  TGMetricMediaStampCheckWidth, TGMetricMediaStampCheckHeight);
-			[cell.bubble bringSubviewToFront:cell.ticks];
+			[cell.contentView addSubview:cell.ticks];
+			cell.ticks.image = [self ticksForMessage:m white:NO];
+			cell.ticks.frame = CGRectMake(
+					groupX + clockW + TGMetricPadSmall,
+					clockY + TGCenteredOrigin(TGMetricStampHeight, TGMetricTicksHeight),
+					TGMetricTicksWidth, TGMetricTicksHeight);
 		}
 
-		cell.time.hidden = YES;
+		// A round note nobody has opened gets the same dot a voice note does.
+		BOOL unplayed = !mine && [m[@"unplayed"] boolValue];
+		cell.unreadDot.hidden = !unplayed;
+		if (unplayed){
+			cell.unreadDot.frame = CGRectMake(
+					groupX + groupW + TGMetricPadSmall,
+					clockY + TGCenteredOrigin(TGMetricStampHeight, TGMetricUnreadDotSide),
+					TGMetricUnreadDotSide, TGMetricUnreadDotSide);
+			cell.unreadDot.layer.cornerRadius = TGHalf(TGMetricUnreadDotSide);
+			cell.unreadDot.backgroundColor = [theme accentColour];
+		}
+
 		return [self finalizeCell:cell message:m layout:layout isMine:mine];
 	}
 
@@ -817,11 +865,17 @@ static void TGPlaceTitleDetail(TGBubbleCell *cell, CGFloat x, CGFloat top,
 					initWithTarget:self action:@selector(voiceDiscTapped:)]];
 		}
 
+		// A voice note nobody has heard is drawn whole, as if it had already
+		// played through; listening to it is what empties the bars. That is
+		// Telegram's way of saying it is waiting for you.
+		BOOL unplayed = !mine && [m[@"unplayed"] boolValue];
+
 		cell.wave.hidden = NO;
 		CGSize waveSize = CGSizeMake(layout.bubbleFrame.size.width - left - kPadH, 18);
 		cell.wave.image = [TGIcons waveform:m[@"waveform"]
 									   size:waveSize
-									 played:(isPlaying ? [self playedFraction] : 0)
+									 played:(isPlaying ? [self playedFraction]
+													  : (unplayed ? 1.0f : 0))
 									 colour:[voiceTheme accentColour]];
 		cell.wave.frame = CGRectMake(left, fwd + 10, waveSize.width, waveSize.height);
 		cell.wave.userInteractionEnabled = YES;
@@ -841,12 +895,22 @@ static void TGPlaceTitleDetail(TGBubbleCell *cell, CGFloat x, CGFloat top,
 				(long)(seconds / 60), (long)(seconds % 60)];
 		cell.body.frame = CGRectMake(left, layout.bubbleFrame.size.height - 20, 44, 14);
 
+		// The dot sits just after the length, where Telegram puts it.
+		cell.unreadDot.hidden = !unplayed;
+		if (unplayed){
+			CGRect inCell = [cell.contentView convertRect:cell.body.frame fromView:cell.bubble];
+			cell.unreadDot.frame = CGRectMake(
+					CGRectGetMinX(inCell) + TGTextSize(cell.body.text, cell.body.font, 0).width + TGMetricPadSmall,
+					CGRectGetMinY(inCell) + TGCenteredOrigin(CGRectGetHeight(inCell), TGMetricUnreadDotSide),
+					TGMetricUnreadDotSide, TGMetricUnreadDotSide);
+			cell.unreadDot.layer.cornerRadius = TGHalf(TGMetricUnreadDotSide);
+			cell.unreadDot.backgroundColor = [voiceTheme accentColour];
+		}
+
 		cell.picture.hidden = YES;
 		cell.time.text = layout.stamp;
 		cell.time.textColor = mine ? [voiceTheme timeMineColour] : [voiceTheme timeColour];
-		CGFloat tickRoom = mine ? 18 : 0;
-		cell.time.frame = CGRectMake(layout.bubbleFrame.size.width - layout.timeWidth - kPadH, layout.bubbleFrame.size.height - 20,
-									 layout.timeWidth - tickRoom, 12);
+		TGPlaceStamp(cell, layout.bubbleFrame, layout.timeWidth, mine);
 		cell.ticks.hidden = !mine;
 		if (mine) {
 			cell.ticks.image = [self ticksForMessage:m white:NO];

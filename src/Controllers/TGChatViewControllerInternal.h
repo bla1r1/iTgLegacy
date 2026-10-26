@@ -178,6 +178,7 @@ static const CGFloat kComposeBannerHeight = TGMetricRow;
 						  host:(NSString *)host;
 - (void)loadPinnedMessage;
 - (void)hidePinnedBanner;
+- (void)pinnedBannerTapped;
 - (void)stopPlayback;
 - (void)stopVideoNote;
 - (void)playVideoNoteAtPath:(NSString *)path row:(NSInteger)row;
@@ -214,6 +215,7 @@ static const CGFloat kComposeBannerHeight = TGMetricRow;
 @interface TGChatViewController (Actions)
 
 - (void)showActionsForRow:(NSInteger)row;
+- (void)showActionsForRow:(NSInteger)row atPoint:(CGPoint)point;
 - (void)messageHeld:(UILongPressGestureRecognizer *)hold;
 - (void)runMessageAction:(NSString *)action;
 - (void)pickMedia;

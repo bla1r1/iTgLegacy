@@ -534,6 +534,31 @@ static void TGDrawTabPath(CGContextRef ctx, UIBezierPath *path, BOOL filled) {
 	return image;
 }
 
++ (UIImage *)microphoneOffOfSide:(CGFloat)side colour:(UIColor *)colour {
+	NSString *key = [NSString stringWithFormat:@"micoff_%.0f_%lu", side, (unsigned long)[colour hash]];
+	UIImage *cached = TGIconsGetCached(key);
+	if (cached) return cached;
+
+	UIGraphicsBeginImageContextWithOptions(CGSizeMake(side, side), NO, 0);
+	CGContextRef ctx = UIGraphicsGetCurrentContext();
+	[colour set];
+
+	// The same microphone, struck through corner to corner: the mute button
+	// has to say which way it is, and a colour alone did not.
+	[[self microphoneOfSide:side colour:colour] drawInRect:CGRectMake(0, 0, side, side)];
+
+	CGContextSetLineWidth(ctx, MAX(1.5f, side * 0.055f));
+	CGContextSetLineCap(ctx, kCGLineCapRound);
+	CGContextMoveToPoint(ctx, side * 0.22f, side * 0.20f);
+	CGContextAddLineToPoint(ctx, side * 0.78f, side * 0.80f);
+	CGContextStrokePath(ctx);
+
+	UIImage *image = UIGraphicsGetImageFromCurrentImageContext();
+	UIGraphicsEndImageContext();
+	TGIconsSetCached(key, image);
+	return image;
+}
+
 + (UIImage *)lockOfSide:(CGFloat)side colour:(UIColor *)colour {
 	NSString *key = [NSString stringWithFormat:@"lock_%.0f_%lu", side, (unsigned long)[colour hash]];
 	UIImage *cached = TGIconsGetCached(key);

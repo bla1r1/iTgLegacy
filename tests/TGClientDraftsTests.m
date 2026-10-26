@@ -261,6 +261,29 @@ static NSUInteger countRequestsOfType(TGClient *c, NSString *type) {
 	XCTAssertEqual([c.chatsById[@(7)][@"unread"] integerValue], (NSInteger)0);
 }
 
+/// The device said this one: sending a draft on the way out of every chat
+/// meant a clear-draft request per chat, and a channel this account does not
+/// administer refuses it - the log filled with "Need administrator rights in
+/// the channel chat" for drafts nobody had typed. The screen now compares
+/// what was typed against what is stored, so the cache has to answer that
+/// question truthfully.
+- (void)testDraft_WhatIsStoredIsWhatWasSentSoAChatWithNoDraftNeedsNoRequest {
+	TGClient *c = D();
+	c.chatsById[@(7)] = [@{@"id" : @(7), @"title" : @"Channel"} mutableCopy];
+
+	// Nothing typed, nothing stored: the screen's own test is equality, and
+	// it has to come out equal.
+	XCTAssertEqualObjects([c draftForChat:7], @"");
+
+	[c setDraft:@"half a thought" inChat:7 thread:0 replyTo:0];
+	XCTAssertEqualObjects([c draftForChat:7], @"half a thought");
+
+	// And back to nothing once it is cleared, so leaving the chat again is
+	// not another request.
+	[c setDraft:@"" inChat:7 thread:0 replyTo:0];
+	XCTAssertEqualObjects([c draftForChat:7], @"");
+}
+
 @end
 
 // vim:ft=objc

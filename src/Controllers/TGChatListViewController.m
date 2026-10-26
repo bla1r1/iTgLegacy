@@ -116,12 +116,15 @@ static const CGFloat kFolderTabRow = TGMetricFolderTabRow;
 				 [folders[i - 1][@"id"] integerValue] == self.folderId);
 		CGFloat w = MIN([label sizeWithFont:font].width + 26, 150);
 		UIButton *pill = [UIButton buttonWithType:UIButtonTypeCustom];
-		pill.frame = CGRectMake(x, 5, w, kFolderTabRow - 10);
+		// One expression for the height, used again for the radius below: a
+		// capsule is half of whatever this comes to.
+		CGFloat pillHeight = kFolderTabRow - TGDoubled(TGMetricFolderPillInset);
+		pill.frame = CGRectMake(x, TGMetricFolderPillInset, w, pillHeight);
 		pill.tag = 100 + i;
 		[pill setTitle:label forState:UIControlStateNormal];
 		pill.titleLabel.font = font;
 		pill.titleLabel.lineBreakMode = NSLineBreakByTruncatingTail;
-		pill.layer.cornerRadius = TGHalf(kFolderTabRow - TGDoubled(TGMetricPadMedium));
+		pill.layer.cornerRadius = TGHalf(pillHeight);
 		if (active){
 			[pill setBackgroundColor:[[TGTheme shared] accentColour]];
 			[pill setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];

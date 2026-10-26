@@ -109,12 +109,21 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 
 	NSIndexPath *path = [self.table indexPathForRowAtPoint:[hold locationInView:self.table]];
 	if (path)
-		[self showActionsForRow:path.row];
+		[self showActionsForRow:path.row
+						atPoint:[hold locationInView:self.view]];
 }
 
 /// Split out from the gesture so itglegacy://holdrow/N can reach it: a long
-/// press cannot be delivered through a URL.
+/// press cannot be delivered through a URL. With no finger to go by, the
+/// menu falls back to the corner of the bubble.
 - (void)showActionsForRow:(NSInteger)row {
+	[self showActionsForRow:row atPoint:CGPointZero];
+}
+
+/// `point` is where the finger is, in this view's coordinates, and the menu
+/// opens there. CGPointZero means there was no finger - a URL asked for this
+/// - and the bubble's own corner stands in.
+- (void)showActionsForRow:(NSInteger)row atPoint:(CGPoint)point {
 	if (row < 0 || row >= (NSInteger)self.messages.count)
 		return;
 
@@ -194,11 +203,18 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 
 	// Beside the message rather than over the whole screen, which is what
 	// makes it read as belonging to that bubble.
-	CGRect rect = [self.table rectForRowAtIndexPath:
-			[NSIndexPath indexPathForRow:row inSection:0]];
-	CGPoint where = [self.table convertPoint:
-			CGPointMake(mine ? CGRectGetMaxX(rect) - TGMetricMenuActionOffset : TGMetricMenuActionOffset, CGRectGetMaxY(rect) - TGMetricCardMargin)
-									  toView:self.view];
+	// Where the finger is. This used to anchor on the bottom edge of the row
+	// whatever the hold had touched, so holding the top of a tall bubble
+	// opened the menu somewhere else entirely.
+	CGPoint where = point;
+	if (CGPointEqualToPoint(point, CGPointZero)){
+		CGRect rect = [self.table rectForRowAtIndexPath:
+				[NSIndexPath indexPathForRow:row inSection:0]];
+		where = [self.table convertPoint:CGPointMake(
+				mine ? CGRectGetMaxX(rect) - TGMetricMenuActionOffset
+					 : TGMetricMenuActionOffset,
+				CGRectGetMaxY(rect) - TGMetricCardMargin) toView:self.view];
+	}
 
 	__weak typeof(self) weakSelf = self;
 	[TGPopupMenu showItems:items atPoint:where inView:self.view

@@ -89,6 +89,11 @@
 	self.ticks.hidden = YES;
 	[self.bubble addSubview:self.ticks];
 
+	self.unreadDot = [[UIView alloc] init];
+	self.unreadDot.hidden = YES;
+	self.unreadDot.backgroundColor = [[TGTheme shared] accentColour];
+	[self.contentView addSubview:self.unreadDot];
+
 	self.checkbox = [[UIImageView alloc] init];
 	self.checkbox.hidden = YES;
 	self.checkbox.contentMode = UIViewContentModeCenter;
@@ -347,6 +352,14 @@
 	self.contactSeparatorH.hidden = YES;
 	self.contactSeparatorV.hidden = YES;
 	self.mediaStamp.hidden = YES;
+	self.unreadDot.hidden = YES;
+	// A round note moves the clock and the ticks out of the bubble, because a
+	// circle clips them away. Every other kind places them in the bubble's
+	// own coordinates, so a reused cell has to get them back first.
+	if (self.time.superview != self.bubble)
+		[self.bubble addSubview:self.time];
+	if (self.ticks.superview != self.bubble)
+		[self.bubble addSubview:self.ticks];
 	self.quoteBar.hidden = YES;
 	self.quote.hidden = YES;
 	self.quoteAuthor.hidden = YES;

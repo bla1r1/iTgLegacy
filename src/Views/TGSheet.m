@@ -27,8 +27,15 @@ static TGSheet *sOpenSheet = nil;
 }
 
 + (instancetype)sheetForView:(UIView *)host {
-	if (!host)
+	// A caller that is not a view at all is a programming mistake, and it
+	// used to be a crash: the media viewer is an NSObject and passed itself,
+	// so a picture finishing saving asked a plain object for its bounds.
+	if (![host isKindOfClass:UIView.class]){
+		if (host)
+			NSLog(@"TGSheet: asked to rise from a %@, which is not a view",
+					NSStringFromClass([host class]));
 		return nil;
+	}
 	TGSheet *sheet = [[self alloc] initWithFrame:host.bounds];
 	sheet->_host = host;
 	return sheet;

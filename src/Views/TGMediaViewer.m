@@ -719,8 +719,12 @@ static const NSInteger kZoomTag = 0x7001;
 
 - (void)image:(UIImage *)image didFinishSavingWithError:(NSError *)error
   contextInfo:(void *)contextInfo {
+	// The viewer is an NSObject, not a view: passing it here asked a plain
+	// object for its bounds and brought the app down the moment a picture
+	// finished saving. Its backdrop is the view on screen.
 	[TGAlertSheet showMessage:(error ? @"Could not save" : @"Saved to Camera Roll")
-						title:nil inView:self];
+						title:nil
+					   inView:(self.backdrop ?: [UIApplication sharedApplication].keyWindow)];
 }
 
 - (void)dealloc {

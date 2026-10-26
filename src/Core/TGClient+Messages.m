@@ -500,6 +500,13 @@ NSDictionary *TGFlattenMessage(NSDictionary *m) {
 		@"pollAnonymous": m[@"content"][@"poll"][@"is_anonymous"] ?: @YES,
 		@"liveEditable": @(liveEditable),
 		@"duration"  : duration ?: @0,
+		// A voice note nobody has listened to, or a round note nobody has
+		// watched. Telegram draws both as not-yet-heard until they are, so
+		// the chat has to know which ones they are.
+		@"unplayed"  : @(([ctype isEqualToString:@"messageVoiceNote"] &&
+							![content[@"is_listened"] boolValue]) ||
+						 ([ctype isEqualToString:@"messageVideoNote"] &&
+							![content[@"is_viewed"] boolValue])),
 		@"waveform"  : waveform ?: [NSData data],
 		@"audioTitle"     : audioTitle     ?: @"",
 		@"audioPerformer" : audioPerformer ?: @"",

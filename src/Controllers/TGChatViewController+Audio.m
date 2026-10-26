@@ -386,7 +386,7 @@ static BOOL sIsCancelled;
 
 	UIView *circle = [[UIView alloc] initWithFrame:
 			CGRectMake(x, inTable.origin.y + 3, side, side)];
-	circle.layer.cornerRadius = TGHalf(TGMetricImageMax);
+	circle.layer.cornerRadius = TGHalf(side);
 	circle.clipsToBounds = YES;
 	circle.layer.masksToBounds = YES;
 	circle.backgroundColor = [UIColor blackColor];

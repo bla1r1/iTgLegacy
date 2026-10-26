@@ -19,6 +19,11 @@
 @property (nonatomic, strong) UILabel *quote;
 @property (nonatomic, strong) UILabel *quoteAuthor;
 @property (nonatomic, strong) UIImageView *ticks;
+
+/// The dot that says a voice note has not been listened to or a round note
+/// has not been watched. It lives beside the clock, not inside the bubble,
+/// because on a round note the bubble clips to a circle.
+@property (nonatomic, strong) UIView *unreadDot;
 @property (nonatomic, strong) UIImageView *checkbox;
 @property (nonatomic, strong) UIImageView *senderAvatar;
 @property (nonatomic, strong) UIImageView *tail;

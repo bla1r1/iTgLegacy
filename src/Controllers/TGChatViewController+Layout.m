@@ -379,6 +379,11 @@ UIColor *TGSenderColour(int64_t userId) {
 		contentW = MAX(contentW, body.width + 6 + timeW);
 	if (isVoice)
 		contentW = 190;
+	// A track measured itself from its caption, which is usually empty, so
+	// the bubble came out narrower than the row drawn inside it and the title
+	// ran out past its own edge.
+	if (isTrack)
+		contentW = MAX(contentW, TGMetricTrackContent);
 	CGFloat senderH = senderName.length ? TGMetricSenderLineHeight : TGMetricZero;
 	if (senderName.length) {
 		CGFloat senderW = TGTextSize(senderName, TGFontMetaStrong(), 0).width;
@@ -393,6 +398,11 @@ UIColor *TGSenderColour(int64_t userId) {
 			(isAlbum ? (collageH + (body.height ? 4 : 0)) : (pic.height ? pic.height + 4 : 0)) + body.height;
 	if (isVoice)
 		bubbleH = 56 + senderH + ([m[@"forward"] length] ? 18 : 0);
+	// A track's row is fixed below, but its bubble was still measured by the
+	// generic formula, so the two disagreed: the bubble ran past the row it
+	// was given and sat on top of the message above it.
+	if (isTrack)
+		bubbleH = kTrackRow + senderH + forwarded;
 
 	CGFloat x = mine ? (tableW - bubbleW - 8) : 8;
 	CGFloat top = [self continuesAlbumAtRow:row] ? 0 : 3;
@@ -455,7 +465,8 @@ UIColor *TGSenderColour(int64_t userId) {
 	if (isVoice) rowH = 62 + forwarded;
 	// Fixed, like a voice note: the artwork and the two lines beside it do
 	// not grow with the title, which is truncated instead.
-	if (isTrack) rowH = kTrackRow + forwarded;
+	// One expression for the row and the bubble, so they cannot drift apart.
+	if (isTrack) rowH = kTrackRow + forwarded + senderH;
 
 	layout.rowHeight = MAX(rowH + 6, 40);
 

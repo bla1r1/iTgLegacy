@@ -313,8 +313,17 @@
 	if ([self isMovingFromParentViewController]) {
 		// An unsent message is a draft, not something to throw away. Saved
 		// before closeChat so the chat list redraws with it in place.
-		if (self.editingId == 0)
-			[[TGClient shared] setDraft:self.input.text
+		//
+		// Only when it actually differs from the draft already there. It used
+		// to be sent on the way out of every chat, which meant a clear-draft
+		// request for every chat anybody ever opened - and in a channel this
+		// account does not administer Telegram refuses it, so the device log
+		// filled with "Need administrator rights in the channel chat" for
+		// drafts nobody had typed.
+		NSString *typed = self.input.text ?: @"";
+		NSString *stored = [[TGClient shared] draftForChat:self.chatId] ?: @"";
+		if (self.editingId == 0 && ![typed isEqualToString:stored])
+			[[TGClient shared] setDraft:typed
 								 inChat:self.chatId
 								 thread:self.threadId
 								replyTo:self.replyToId];
@@ -587,6 +596,35 @@
 	return [self.messages[row + 1][@"albumId"] isEqualToString:album];
 }
 
+/// The pinned message, which may be far above whatever the chat has loaded.
+/// Scrolling there is the first try; when it is outside the window the
+/// history is fetched around it and the scroll is tried again.
+- (void)pinnedBannerTapped {
+	int64_t pinned = self.pinnedMessageId;
+	if (!pinned)
+		return;
+	if ([self scrollToMessageId:pinned])
+		return;
+
+	__weak typeof(self) weakSelf = self;
+	[[TGClient shared] historyForChat:self.chatId
+						 fromMessageId:pinned
+								 limit:(NSInteger)TGMetricHistoryPageAroundPinned
+							completion:^(NSArray *messages){
+		TGChatViewController *me = weakSelf;
+		if (!me || !messages.count)
+			return;
+		// The fetched window replaces what was on screen, the way following a
+		// reply upwards does.
+		me.rawMessages = messages;
+		me.messages = [me groupedMessagesFromMessages:messages];
+		[me.table reloadData];
+		if (![me scrollToMessageId:pinned])
+			[TGSnackbar showInView:me.view text:@"The pinned message is gone"
+						   seconds:2 onCommit:nil];
+	}];
+}
+
 /// Scroll to a message already loaded, and flash it so the eye finds it.
 /// NO when the message is not in the loaded window.
 - (BOOL)scrollToMessageId:(int64_t)messageId {
@@ -692,6 +730,12 @@
 	[banner addSubview:hair];
 
 	[self.view addSubview:banner];
+	// Tapping the strip goes to what is pinned, which is the whole reason a
+	// client shows it. It had no tap handler at all.
+	banner.userInteractionEnabled = YES;
+	[banner addGestureRecognizer:[[UITapGestureRecognizer alloc]
+			initWithTarget:self action:@selector(pinnedBannerTapped)]];
+
 	self.pinnedBannerView = banner;
 	self.pinnedBannerHair = hair;
 

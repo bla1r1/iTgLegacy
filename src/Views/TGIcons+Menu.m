@@ -23,7 +23,7 @@ void TGIconsClearSettingsIconCache(void) {
 				// the profile's action tiles
 				@"call", @"video", @"search", @"more",
 				// the call screen
-				@"endcall", @"recent", @"star",
+				@"endcall", @"recent", @"star", @"speakerOn",
 				// the dismiss cross and the record lock's arrow, which were
 				// drawn with characters in four places and came out as four
 				// different shapes
@@ -155,7 +155,8 @@ void TGIconsClearSettingsIconCache(void) {
 			CGContextAddLineToPoint(ctx, s - m - 1.0f, m + 1.0f);
 			CGContextStrokePath(ctx);
 
-		} else if ([name isEqualToString:@"mute"] || [name isEqualToString:@"unmute"]){
+		} else if ([name isEqualToString:@"mute"] || [name isEqualToString:@"unmute"]
+				|| [name isEqualToString:@"speakerOn"]){
 			// a speaker cone
 			CGContextMoveToPoint(ctx, m, s * 0.38f);
 			CGContextAddLineToPoint(ctx, s * 0.34f, s * 0.38f);
@@ -170,6 +171,14 @@ void TGIconsClearSettingsIconCache(void) {
 				CGContextAddLineToPoint(ctx, s * 0.86f, s * 0.62f);
 				CGContextMoveToPoint(ctx, s * 0.86f, s * 0.38f);
 				CGContextAddLineToPoint(ctx, s * 0.66f, s * 0.62f);
+				CGContextStrokePath(ctx);
+			}
+			// Sound coming out of it, so the speaker button can say it is on
+			// with its drawing and not only with its colour.
+			if ([name isEqualToString:@"speakerOn"]){
+				CGContextAddArc(ctx, s * 0.58f, TGHalf(s), s * 0.16f, -M_PI_4, M_PI_4, 0);
+				CGContextStrokePath(ctx);
+				CGContextAddArc(ctx, s * 0.58f, TGHalf(s), s * 0.28f, -M_PI_4, M_PI_4, 0);
 				CGContextStrokePath(ctx);
 			}
 
