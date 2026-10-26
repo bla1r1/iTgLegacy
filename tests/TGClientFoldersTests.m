@@ -391,6 +391,136 @@ static void answerLastRequest(TGClient *c, NSDictionary *answer) {
 	XCTAssertEqualObjects(forget[@"category"][@"@type"], @"topChatCategoryUsers");
 }
 
-@end
 
-// vim:ft=objc
+#pragma mark - the strip dragged into a new order
+
+- (void)testReorderFoldersLocally_TheStripHoldsItBeforeTheWireSaysSo {
+	// The reorder is local-first: the strip re-renders from folders, so the
+	// drag has to land there before the request is even on the wire.
+	TGClient *c = F2();
+	c.folders = (@[@{@"id" : @(1), @"title" : @"Work"},
+				   @{@"id" : @(2), @"title" : @"Home"},
+				   @{@"id" : @(3), @"title" : @"Noise"}]);
+
+	__block NSInteger changed = 0;
+	__weak TGClient *me = c;
+	c.onChatsChanged = ^{ changed++; };
+
+	// The drag moved Work to the end: noise would follow it down the list[0].
+	[c reorderFoldersToLocalIds:@[@(2), @(3), @(1)] mainListAt:0];
+	NSArray *order = c.folders;
+	XCTAssertEqual(order.count, (NSUInteger)3);
+	XCTAssertEqualObjects(order[0][@"title"], @"Home");
+	XCTAssertEqualObjects(order[1][@"title"], @"Noise");
+	XCTAssertEqualObjects(order[2][@"title"], @"Work");
+	XCTAssertEqual(changed, 1, @"the strip rebuilds off the local order");
+
+	NSDictionary *sent = lastOfType(c, @"reorderChatFolders");
+	XCTAssertEqualObjects(sent[@"chat_folder_ids"], (@[@(2), @(3), @(1)]));
+	XCTAssertEqual([sent[@"main_chat_list_position"] integerValue], 0);
+}
+
+- (void)testReorderFoldersLocally_AnIdTheDragForgotStillFitsSomewhere {
+	// An order that names a folder the client never heard of, or drops one
+	// it did: neither may take a folder off the strip. Unknown ids are
+	// skipped, forgotten ones ride at the end - a pill that vanishes on a
+	// successful drag is worse than one in a slot TDLib never asked for.
+	TGClient *c = F2();
+	c.folders = (@[@{@"id" : @(1), @"title" : @"Work"},
+				   @{@"id" : @(2), @"title" : @"Home"}]);
+
+	[c reorderFoldersToLocalIds:@[@(9), @(2)] mainListAt:0];
+	NSArray *order = c.folders;
+	XCTAssertEqual(order.count, (NSUInteger)2);
+	XCTAssertEqualObjects(order[0][@"title"], @"Home");
+	XCTAssertEqualObjects(order[1][@"title"], @"Work");
+
+	NSDictionary *sent = lastOfType(c, @"reorderChatFolders");
+	// The wire carries the dragged order itself, not the padded one - the
+	// server's authority is what the finger did, and Telegram's answer
+	// updates the strip on its own.
+	XCTAssertEqualObjects(sent[@"chat_folder_ids"], (@[@(9), @(2)]));
+}
+
+#pragma mark - reading a whole list, the archive settings
+
+/// The badge on "All chats" or a folder pill is a chat list's own counter,
+/// and one request clears it: folder 0 speaks for chatListMain, a real id
+/// for its chatListFolder.
+- (void)testReadChatList_ThePillSaysWhichListItMeans {
+	TGClient *c = F2();
+
+	[c readChatListOfFolder:0 archived:NO];
+	NSDictionary *main = lastOfType(c, @"readChatList");
+	XCTAssertEqualObjects(main[@"chat_list"][@"@type"], @"chatListMain");
+
+	[c readChatListOfFolder:7 archived:NO];
+	NSDictionary *folder = lastOfType(c, @"readChatList");
+	XCTAssertEqualObjects(folder[@"chat_list"][@"@type"], @"chatListFolder");
+	XCTAssertEqual([folder[@"chat_list"][@"chat_folder_id"] integerValue], 7);
+}
+
+/// The archive screen is a chat list of its own, and its "Mark Read" has
+/// to name that list and not the main one.
+- (void)testReadChatList_TheArchiveIsAListOfItsOwn {
+	TGClient *c = F2();
+
+	[c readChatListOfFolder:0 archived:YES];
+	NSDictionary *archive = lastOfType(c, @"readChatList");
+	XCTAssertEqualObjects(archive[@"chat_list"][@"@type"], @"chatListArchive");
+}
+
+/// The settings page draws off the cached copy before any answer arrives,
+/// so a refresh must swap the copy and run its completion either way.
+- (void)testArchiveSettings_TheRefreshSwapsTheCachedCopyUnderThePage {
+	TGClient *c = F2();
+	c.archiveSettings = nil;
+
+	__block BOOL ran = NO;
+	[c refreshArchiveChatListSettings:^{ ran = YES; }];
+	answerLastRequest(c, @{@"@type" : @"archiveChatListSettings",
+			@"archive_and_mute_new_chats_from_unknown_users" : @YES,
+			@"keep_unmuted_chats_archived"                   : @NO,
+			@"keep_chats_from_folders_archived"              : @NO});
+	XCTAssertTrue(ran, @"the page redraws on the fresh copy, good or bad");
+	XCTAssertTrue([c.archiveSettings[@"archive_and_mute_new_chats_from_unknown_users"] boolValue],
+			@"the copy the page reads holds the answer's bits");
+
+	// A broken answer must not leave the page with nothing to read: an
+	// error completion still runs, and the copy goes empty rather than nil.
+	c.archiveSettings = nil;
+	ran = NO;
+	[c refreshArchiveChatListSettings:^{ ran = YES; }];
+	answerLastRequest(c, @{@"@type" : @"error", @"code" : @400,
+			@"message" : @"not now"});
+	XCTAssertTrue(ran);
+	XCTAssertNotNil(c.archiveSettings, @"empty, not nil - the page reads it");
+}
+
+/// The three switches are one TDLib object: the local copy flips first so
+/// the redraw never flickers back, then the whole object goes on the wire.
+- (void)testArchiveSettings_TheSwitchesSendOneObjectNotThree {
+	TGClient *c = F2();
+	c.archiveSettings = @{@"@type" : @"archiveChatListSettings",
+			@"archive_and_mute_new_chats_from_unknown_users" : @NO,
+			@"keep_unmuted_chats_archived"                   : @NO,
+			@"keep_chats_from_folders_archived"              : @NO};
+
+	[c setArchiveSettingsArchiveAndMute:YES
+					keepUnmutedArchived:YES
+			  keepFolderChatsArchived:NO];
+
+	XCTAssertTrue([c.archiveSettings[@"archive_and_mute_new_chats_from_unknown_users"] boolValue]);
+	XCTAssertTrue([c.archiveSettings[@"keep_unmuted_chats_archived"] boolValue]);
+	XCTAssertFalse([c.archiveSettings[@"keep_chats_from_folders_archived"] boolValue]);
+
+	NSDictionary *sent = lastOfType(c, @"setArchiveChatListSettings");
+	NSDictionary *settings = sent[@"settings"];
+	XCTAssertTrue([settings isKindOfClass:NSDictionary.class]);
+	XCTAssertEqualObjects(settings[@"@type"], @"archiveChatListSettings");
+	XCTAssertTrue([settings[@"archive_and_mute_new_chats_from_unknown_users"] boolValue]);
+	XCTAssertTrue([settings[@"keep_unmuted_chats_archived"] boolValue]);
+	XCTAssertFalse([settings[@"keep_chats_from_folders_archived"] boolValue]);
+}
+
+@end

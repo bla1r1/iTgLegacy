@@ -280,6 +280,7 @@
 	__weak typeof(self) weakSelf = self;
 	BOOL mobile = [[TGClient shared] autoDownloadOverMobile];
 	BOOL wifi   = [[TGClient shared] autoDownloadOverWifi];
+	NSDictionary *archiveSettings = [TGClient shared].archiveSettings ?: @{};
 
 	return @[
 		TGSection(@"Usage", nil, @[
@@ -320,6 +321,42 @@
 			TGSwitchRow(@"Over Wi-Fi", wifi, ^(BOOL on){
 				[[TGClient shared] setAutoDownloadOverMobile:[[TGClient shared] autoDownloadOverMobile]
 														wifi:on];
+				[weakSelf rebuild];
+			}),
+		]),
+
+		TGSection(@"Archive", @"New chats from non-contacts can be archived "
+				  @"and muted instead of ringing in. A new message can drag "
+				  @"an archived chat back to the main list - the last two "
+				  @"switches decide whether it does.", @[
+			TGSwitchRow(@"Archive New Chats From Non-Contacts",
+					[archiveSettings[@"archive_and_mute_new_chats_from_unknown_users"] boolValue],
+					^(BOOL on){
+				NSDictionary *old = [TGClient shared].archiveSettings ?: @{};
+				[[TGClient shared] setArchiveSettingsArchiveAndMute:on
+											keepUnmutedArchived:[old[@"keep_unmuted_chats_archived"] boolValue]
+									  keepFolderChatsArchived:[old[@"keep_chats_from_folders_archived"] boolValue]];
+				[weakSelf rebuild];
+			}),
+			TGSwitchRow(@"Keep Unmuted Chats Archived",
+					[archiveSettings[@"keep_unmuted_chats_archived"] boolValue],
+					^(BOOL on){
+				NSDictionary *old = [TGClient shared].archiveSettings ?: @{};
+				[[TGClient shared] setArchiveSettingsArchiveAndMute:[old[@"archive_and_mute_new_chats_from_unknown_users"] boolValue]
+											keepUnmutedArchived:on
+									  keepFolderChatsArchived:[old[@"keep_chats_from_folders_archived"] boolValue]];
+				[weakSelf rebuild];
+			}),
+			// Ignored while "Keep Unmuted Chats Archived" is on, which is
+			// how TDLib reads the same object; the row stays for the day
+			// that switch goes back off.
+			TGSwitchRow(@"Keep Folder Chats Archived",
+					[archiveSettings[@"keep_chats_from_folders_archived"] boolValue],
+					^(BOOL on){
+				NSDictionary *old = [TGClient shared].archiveSettings ?: @{};
+				[[TGClient shared] setArchiveSettingsArchiveAndMute:[old[@"archive_and_mute_new_chats_from_unknown_users"] boolValue]
+											keepUnmutedArchived:[old[@"keep_unmuted_chats_archived"] boolValue]
+									  keepFolderChatsArchived:on];
 				[weakSelf rebuild];
 			}),
 		]),

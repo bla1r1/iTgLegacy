@@ -19,6 +19,10 @@
 @property (nonatomic, strong) NSArray *chats;
 @property (nonatomic, assign) BOOL showsArchive;      // this IS the archive screen
 @property (nonatomic, assign) NSInteger folderId;     // 0 = no folder
+// A folder pill being dragged to a new slot: where on the pill the finger
+// grabbed it, and the frame it lifted from.
+@property (nonatomic, assign) CGFloat folderDragOffset;
+@property (nonatomic, assign) CGRect folderDragFrame;
 @property (nonatomic, strong) NSMutableDictionary *avatars;   // fileId -> UIImage
 @property (nonatomic, strong) NSMutableSet *avatarsRequested;
 @property (nonatomic, strong) UISearchBar *searchBar;

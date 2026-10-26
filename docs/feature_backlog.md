@@ -14,8 +14,8 @@ sh scripts/tdlib_coverage.sh --relevant # what is missing and worth having
 sh scripts/tdlib_coverage.sh --skipped  # what is missing on purpose
 ```
 
-As of 2026-10-26: **1076 functions declared, 187 called (17%)**. Of the 889
-never called, the script counts 501 out of scope and 388 wanted.
+As of 2026-10-26: **1076 functions declared, 190 called (17%)**. Of the 886
+never called, the script counts 501 out of scope and 385 wanted.
 
 Two things this is not. It is not a to-do list in priority order below the
 tier — within a tier, pick by what the owner reaches for. And it is not a
@@ -104,9 +104,15 @@ Groups, folders and the write half of screens the app already shows read-only.
   Folders makes, renames and deletes them, adds and removes a chat at a time
   through the forward picker, and adopts Telegram's own suggestions:
   `createChatFolder`, `editChatFolder`, `deleteChatFolder`, `getChatFolder`,
-  `getRecommendedChatFolders`, `reorderChatFolders`. Still open: the strip's
-  order needs a drag, and `readChatList` / `setArchiveChatListSettings` have
-  no screen
+  `getRecommendedChatFolders`, `reorderChatFolders`. Also wired:
+  `readChatList` - the folder menu's trailing "Mark Read" row reads the
+  list that is open, main included, the archive screen naming
+  `chatListArchive` - and the Archive screen's three settings live in
+  Settings, Data and Storage: one `archiveChatListSettings` object, three
+  switches, the local copy moving before `setArchiveChatListSettings`.
+  The pill strip itself is drag-ordered now: holding a folder pill picks
+  it up, it follows the finger, and a drop writes the order locally
+  before asking TDLib, so the strip holds while the wire is still in flight
 - **Forum topics, write side** — **done**. The topics list has a plus that
   makes a topic, name and one of the seven forum hues
   (`createForumTopic`), and holding a topic renames it

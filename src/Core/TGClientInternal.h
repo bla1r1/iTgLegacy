@@ -24,6 +24,7 @@ NSDictionary *TGStickerInfo(NSDictionary *sticker);
 @property (nonatomic, strong) NSMutableDictionary *forumSupergroups;
 @property (nonatomic, strong) NSArray *archivedChats;
 @property (nonatomic, strong) NSArray *folders;
+@property (nonatomic, strong) NSDictionary *archiveSettings;
 @property (nonatomic, strong) NSArray *chats;
 @property (nonatomic, strong) NSMutableArray *outbox;   // JSON strings awaiting send
 @property (nonatomic, strong) NSLock *outboxLock;

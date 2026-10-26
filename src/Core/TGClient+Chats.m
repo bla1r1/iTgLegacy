@@ -115,6 +115,12 @@ int64_t TGArchiveOrder(NSArray *positions) {
 		@"limit"     : @(50),
 	}];
 
+	// The Archive screen's three settings are preferences, not per-chat
+	// state: one get at sync start, and whichever page needs it reads the
+	// cached copy instead of blocking on TDLib.
+	if (!self.archiveSettings)
+		[self refreshArchiveChatListSettings:nil];
+
 	// A batch beyond the first needs a server round trip, so silence for a
 	// second or two means nothing. Keep asking on a timer and stop only when
 	// TDLib says 404 (everything loaded) or after a sane number of tries.
@@ -766,6 +772,83 @@ static NSDictionary *TGFolderObject(NSString *name, NSString *icon,
 		@"chat_folder_ids"        : folderIds,
 		@"main_chat_list_position": @(position),
 	}];
+}
+
+/// The strip was dragged into a new order. Local first, wire second: the
+/// strip re-renders from self.folders, so the drag must land there before
+/// anything else happens - and the wire request answers only later, which
+/// would otherwise snap the pills back while the flight is underway. A
+/// folder the dragged order forgot rides at the end; losing one from the
+/// strip is worse than a slot TDLib never asked to hold.
+- (void)reorderFoldersToLocalIds:(NSArray *)folderIds
+					 mainListAt:(NSInteger)position {
+	NSMutableArray *out = [NSMutableArray array];
+	for (NSNumber *entry in folderIds ?: @[]){
+		for (NSDictionary *folder in self.folders)
+			if ([folder[@"id"] integerValue] ==
+					[entry longLongValue]){
+				if ([out indexOfObject:folder] == NSNotFound)
+					[out addObject:folder];
+				break;
+			}
+	}
+	for (NSDictionary *folder in self.folders)
+		if ([out indexOfObject:folder] == NSNotFound)
+			[out addObject:folder];
+	self.folders = out;
+	if (self.onChatsChanged)
+		self.onChatsChanged();
+	[self send:@{
+		@"@type"                  : @"reorderChatFolders",
+		@"chat_folder_ids"        : folderIds ?: @[],
+		@"main_chat_list_position": @(position),
+	}];
+}
+
+/// The badge on a folder pill or "All chats" counts a chat list, and TDLib
+/// keeps that count per list - readChatList zeroes it in one request, the
+/// way a chat's own unread count zeroes behind readChat. folderId 0 is the
+/// main list, which is what the strip's "All chats" stands for; archived
+/// asks for the Archive list on its own, which the archive screen shows.
+- (void)readChatListOfFolder:(NSInteger)folderId archived:(BOOL)archived {
+	NSDictionary *list = archived
+			? @{@"@type" : @"chatListArchive"}
+			: folderId
+				? @{@"@type" : @"chatListFolder",
+					@"chat_folder_id" : @(folderId)}
+				: @{@"@type" : @"chatListMain"};
+	[self send:@{@"@type" : @"readChatList", @"chat_list" : list}];
+}
+
+- (void)refreshArchiveChatListSettings:(void (^)(void))completion {
+	[self request:@{@"@type" : @"getArchiveChatListSettings"}
+	   completion:^(NSDictionary *result){
+		self.archiveSettings =
+				[result isKindOfClass:NSDictionary.class] &&
+				result.count ? result : @{};
+		if (completion)
+			completion();
+	}];
+}
+
+/// One TDLib object holds all three, so one call sets all three: flipping a
+/// switch on the page reads the page's copy, flips its bit and sends the
+/// whole object again.
+- (void)setArchiveSettingsArchiveAndMute:(BOOL)archiveAndMute
+					 keepUnmutedArchived:(BOOL)keepUnmuted
+				   keepFolderChatsArchived:(BOOL)keepFolders {
+	NSDictionary *settings = @{
+		@"@type" : @"archiveChatListSettings",
+		@"archive_and_mute_new_chats_from_unknown_users" : @(archiveAndMute),
+		@"keep_unmuted_chats_archived"                   : @(keepUnmuted),
+		@"keep_chats_from_folders_archived"              : @(keepFolders),
+	};
+	// The local copy moves first: the switches re-render off
+	// archiveSettings, so a change that only goes out on the wire would
+	// flicker back while the round trip is still in the air.
+	self.archiveSettings = settings;
+	[self send:@{@"@type" : @"setArchiveChatListSettings",
+				 @"settings" : settings}];
 }
 
 /// Telegram's own suggestions - Unread, Personal, Groups and so on - each

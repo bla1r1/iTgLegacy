@@ -134,6 +134,17 @@ static const CGFloat kFolderTabRow = 40.0f;
 		}
 		[pill addTarget:self action:@selector(folderTabTapped:)
 			  forControlEvents:UIControlEventTouchUpInside];
+		if (i > 0){
+			// A folder pill can be picked up and put elsewhere: held long
+			// enough it follows the finger, and wherever it drops is the
+			// order the strip keeps. "All chats" stays first - its slot is
+			// what main_chat_list_position says, and the strip never moves.
+			UILongPressGestureRecognizer *drag =
+					[[UILongPressGestureRecognizer alloc]
+					initWithTarget:self action:@selector(folderDragged:)];
+			drag.minimumPressDuration = 0.45;
+			[pill addGestureRecognizer:drag];
+		}
 		[strip addSubview:pill];
 		x += w + 6;
 	}
@@ -147,6 +158,88 @@ static const CGFloat kFolderTabRow = 40.0f;
 	NSLog(@"TGClient: B3 pill tag=%ld folders=%lu", (long)pill.tag,
 			(unsigned long)[TGClient shared].folders.count);
 	[self runFolderChoice:pill.tag - 100];
+}
+
+/// A held pill follows the finger; where it drops is its new slot among the
+/// folders. The strip's own scrolling is pinned shut while a pill is up -
+/// otherwise the pan gesture and the drag fight over one finger.
+- (void)folderDragged:(UILongPressGestureRecognizer *)gesture {
+	UIButton *pill = (UIButton *)gesture.view;
+	UIScrollView *strip = (UIScrollView *)pill.superview;
+	if (![strip isKindOfClass:UIScrollView.class] || pill.tag <= 100)
+		return;
+
+	if (gesture.state == UIGestureRecognizerStateBegan){
+		CGPoint here = [gesture locationInView:pill];
+		self.folderDragOffset = here.x - pill.bounds.size.width / 2.0f;
+		self.folderDragFrame = pill.frame;
+		strip.scrollEnabled = NO;
+		pill.transform = CGAffineTransformMakeScale(1.08f, 1.08f);
+		pill.alpha = 0.85f;
+	}
+	else if (gesture.state == UIGestureRecognizerStateChanged){
+		CGPoint here = [gesture locationInView:strip];
+		// Content coordinates: a pill's frame lives where the strip scrolls
+		// over, and the finger's x is in the visible half of it.
+		CGFloat x_in_content = here.x - strip.contentOffset.x
+				- self.folderDragOffset;
+		CGFloat first = 8, last = strip.contentSize.width
+				- self.folderDragFrame.size.width - 8;
+		if (x_in_content < first) x_in_content = first;
+		if (x_in_content > last)  x_in_content = last;
+		pill.frame = CGRectMake(x_in_content, self.folderDragFrame.origin.y,
+				self.folderDragFrame.size.width,
+				self.folderDragFrame.size.height);
+	}
+	else if (gesture.state == UIGestureRecognizerStateEnded ||
+			 gesture.state == UIGestureRecognizerStateCancelled){
+		strip.scrollEnabled = YES;
+		pill.transform = CGAffineTransformIdentity;
+		pill.alpha = 1.0f;
+
+		BOOL cancelled = gesture.state == UIGestureRecognizerStateCancelled;
+		if (cancelled){
+			[self.tableView reloadData];   // back where the data says
+			return;
+		}
+
+		// The slot is where the pill's centre sits among the other pills:
+		// every centre it cleared on the way over counts as a slot ahead.
+		NSArray *folders = [TGClient shared].folders;
+		NSInteger from = pill.tag - 101;
+		if (from < 0 || from >= (NSInteger)folders.count)
+			return;
+		CGPoint centreInStrip = [gesture locationInView:strip];
+		CGFloat centre = centreInStrip.x - strip.contentOffset.x;
+		NSInteger slot = 0;
+		for (NSInteger i = 0; i < (NSInteger)folders.count; i++){
+			if (i == from)
+				continue;
+			UIView *other = [strip viewWithTag:101 + i];
+			if (!other)
+				continue;
+			if (other.center.x < centre)
+				slot++;
+		}
+		if (slot == from){
+			[self.tableView reloadData];   // a hand back down on its slot
+			return;
+		}
+
+		NSMutableArray *order = [NSMutableArray array];
+		// The dragged one leaves the line, then comes back wherever the
+		// drop said - the slot already counts what stayed left of the
+		// pill's centre on both readings of "left".
+		[folders enumerateObjectsUsingBlock:^(NSDictionary *folder, NSUInteger idx,
+											  BOOL *stop __unused){
+			if ((NSInteger)idx != from)
+				[order addObject:@([folder[@"id"] integerValue])];
+		}];
+		[order insertObject:folders[from][@"id"]
+					atIndex:MIN(slot, (NSInteger)order.count)];
+		[[TGClient shared] reorderFoldersToLocalIds:order mainListAt:0];
+		[self.tableView reloadData];
+	}
 }
 
 /// Sticky section header. In a plain table the pinning keeps the pill strip

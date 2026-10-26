@@ -927,11 +927,36 @@ typedef NS_ENUM(NSInteger, TGDownloadPriority) {
 /// rather than a folder of its own.
 - (void)reorderFolderIds:(NSArray *)folderIds mainListAt:(NSInteger)position;
 
+/// The pill strip's drag result: the local order is written first so the
+/// strip holds it while the wire request is still in flight, then the same
+/// order is sent.
+- (void)reorderFoldersToLocalIds:(NSArray *)folderIds
+					 mainListAt:(NSInteger)position;
+
 /// Telegram's own suggestions, each with the sentence their client shows
 /// under it: "title", "description", and "folder" ready to be created.
 - (void)recommendedFoldersWithCompletion:(void (^)(NSArray *folders))completion;
 - (void)createRecommendedFolder:(NSDictionary *)folder
 					 completion:(void (^)(NSInteger folderId))completion;
+
+/// Marks every chat of one chat list read: the folder's badge clears because
+/// the list was read as a whole, not chat by chat. folderId 0 = "All chats".
+- (void)readChatListOfFolder:(NSInteger)folderId archived:(BOOL)archived;
+
+/// The Archive screen's three settings as one archiveChatListSettings
+/// dictionary, readable before the network answers anything.
+@property (nonatomic, readonly) NSDictionary *archiveSettings;
+
+/// Asks TDLib for the archive settings again and swaps the local copy under
+/// the completion; the block runs whether the answer is good or bad, because
+/// a page built on the old copy must not wait for one.
+- (void)refreshArchiveChatListSettings:(void (^)(void))completion;
+
+/// Sets all three at once - the archive settings are one object in TDLib,
+/// not three unrelated switches.
+- (void)setArchiveSettingsArchiveAndMute:(BOOL)archiveAndMute
+					 keepUnmutedArchived:(BOOL)keepUnmuted
+				   keepFolderChatsArchived:(BOOL)keepFolders;
 
 #pragma mark - maintenance
 

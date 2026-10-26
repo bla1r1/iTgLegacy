@@ -42,6 +42,14 @@
 		if ([title isKindOfClass:NSString.class] && title.length)
 			[items addObject:@{@"title" : title}];
 	}
+	// A trailing row that does not choose a folder: it reads the list that
+	// is open, whoever it is, badge and all. Chosen last so the folder
+	// indexes above stay untouched. On the main screen with no folder open
+	// it reads "Mark All Read", elsewhere it becomes plain "Mark Read".
+	NSString *markTitle = self.showsArchive || self.folderId
+			? @"Mark Read" : @"Mark All Read";
+	[items addObject:@{@"title" : markTitle}];
+	NSInteger markItem = (NSInteger)items.count - 1;
 
 	__weak typeof(self) weakSelf = self;
 	CGPoint where = CGPointMake(self.view.bounds.size.width / 2,
@@ -50,6 +58,11 @@
 				   atPoint:where
 					inView:self.navigationController.view
 				  onChoice:^(NSInteger choice, NSString *title){
+		if (choice == markItem){
+			[[TGClient shared] readChatListOfFolder:weakSelf.folderId
+										   archived:weakSelf.showsArchive];
+			return;
+		}
 		[weakSelf runFolderChoice:choice];
 	}];
 }

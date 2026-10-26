@@ -106,6 +106,10 @@
 	[super viewWillAppear:animated];
 	[[TGTheme shared] styleNavigationBar:self.navigationController.navigationBar];
 	[self rebuild];
+	// The Archive switches are the one page that reads copy TDLib holds:
+	// the cached copy answers the first draw, the network refresh redraws.
+	if (self.page == TGSettingsPageData)
+		[[TGClient shared] refreshArchiveChatListSettings:^{ [self rebuild]; }];
 }
 
 #pragma mark - reordering, where a page has an order
