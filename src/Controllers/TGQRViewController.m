@@ -89,7 +89,7 @@
 	[self.view addSubview:outline];
 
 	self.hint = [[UILabel alloc] initWithFrame:CGRectMake(
-			TGMetricGutterLarge, CGRectGetMaxY(window) + TGMetricGutterLarge, b.size.width - TGDoubled(TGMetricGutterLarge), TGDoubled(TGMetricGutterLarge))];
+			TGMetricPadWide, CGRectGetMaxY(window) + TGMetricPadWide, b.size.width - TGDoubled(TGMetricPadWide), TGDoubled(TGMetricPadWide))];
 	self.hint.text = @"Point the camera at a QR code";
 	self.hint.numberOfLines = 2;
 	self.hint.textAlignment = NSTextAlignmentCenter;

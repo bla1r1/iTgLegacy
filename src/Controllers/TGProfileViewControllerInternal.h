@@ -12,6 +12,38 @@
 
 static const CGFloat kActionTile = TGMetricActionTile;
 
+// ── the profile's own geometry ───────────────────────────────────────────────
+// The header stacks a picture, a name and a status line; the lists below it
+// carry a thumbnail each. Built out of TGStyle's scales, named here because
+// no other screen stacks them this way.
+
+/// The picture's gap from the top of the header, then the name under it, then
+/// the status line, then the row of action tiles.
+static const CGFloat kAvatarTop     = TGMetricPadLarge;
+static const CGFloat kNameTop       = TGMetricPad;
+static const CGFloat kStatusTop     = TGMetricPad + TGMetricLineTitle;
+static const CGFloat kActionsTop    = TGMetricPad + TGMetricLineTitle + TGMetricLineBody
+		+ TGMetricPadMedium;
+/// The side inset the header's text keeps, which is its own and not the
+/// table's: the labels are centred, so this only stops a long name touching
+/// the edge.
+static const CGFloat kHeaderTextInset = TGMetricPadMedium;
+/// The segmented control that picks a media tab, on a header of its own.
+static const CGFloat kMediaTabsRow  = 38.0f;
+static const CGFloat kMediaTabs     = 30.0f;
+/// A story's thumbnail, and the emoji tile a gift is drawn into.
+static const CGFloat kStoryThumb    = TGMetricListAvatar;
+static const CGFloat kGiftTile      = TGMetricListAvatar;
+static const CGFloat kGiftTileInset = TGMetricBorderWidth;
+/// A member's picture, which is smaller than a list avatar because the row
+/// it sits in is a settings row and not a person row.
+static const CGFloat kMemberAvatar  = 32.0f;
+/// The glyph beside a link in the media list.
+static const CGFloat kLinkGlyph     = 24.0f;
+/// The "Copied" toast, which is as wide as that word needs and no wider.
+static const CGFloat kToastWidth    = 120.0f;
+static const CGFloat kToastHeight   = 34.0f;
+
 static const NSInteger kSectionDetails = 0;
 static const NSInteger kSectionStories = 1;
 static const NSInteger kSectionGifts   = 2;

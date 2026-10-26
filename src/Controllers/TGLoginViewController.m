@@ -68,12 +68,12 @@
     // The stack, added up rather than written out. Every y below is the one
     // before it plus a step, which is what makes the rhythm one value.
     CGFloat inner = width - TGDoubled(TGMetricGutter);
-    CGFloat wide  = width - TGDoubled(TGMetricGutterLarge);
+    CGFloat wide  = width - TGDoubled(TGMetricPadWide);
     CGFloat y = TGMetricStackTop;
 
     // Clean native iOS 7 subtitle / instructions
     self.subtitleLabel = [[UILabel alloc] initWithFrame:
-            CGRectMake(TGMetricGutterLarge, y, wide, TGMetricLoginSubtitleHeight)];
+            CGRectMake(TGMetricPadWide, y, wide, TGMetricLoginSubtitleHeight)];
     self.subtitleLabel.text = @"Please confirm your country code\nand enter your phone number.";
     self.subtitleLabel.backgroundColor = [UIColor clearColor];
     self.subtitleLabel.font = TGFontSubhead();
@@ -166,7 +166,7 @@
     // A new group, so the larger step.
     y += TGMetricLoginLinkHeight + TGMetricStackGroup;
     self.themeSectionLabel = [[UILabel alloc] initWithFrame:
-            CGRectMake(TGMetricGutterLarge, y, wide, TGMetricMarginLarge)];
+            CGRectMake(TGMetricPadWide, y, wide, TGMetricPadLarge)];
     self.themeSectionLabel.text = @"THEME";
     self.themeSectionLabel.font = TGFontMicroStrong();
     self.themeSectionLabel.textAlignment = NSTextAlignmentCenter;
@@ -174,13 +174,13 @@
     [self.scrollView addSubview:self.themeSectionLabel];
 
     self.themeSegmentedControl = [[UISegmentedControl alloc] initWithItems:@[@"Classic", @"Day", @"Night", @"Night Blue"]];
-    y += TGMetricMarginLarge + TGMetricPadSmall;
+    y += TGMetricPadLarge + TGMetricPadSmall;
     self.themeSegmentedControl.frame = CGRectMake(TGMetricGutter, y, inner,
                                                   TGMetricLoginLinkHeight);
     [self.themeSegmentedControl addTarget:self action:@selector(themeSegmentChanged:) forControlEvents:UIControlEventValueChanged];
     [self.scrollView addSubview:self.themeSegmentedControl];
 
-    y += TGMetricLoginLinkHeight + TGMetricMarginLarge;
+    y += TGMetricLoginLinkHeight + TGMetricPadLarge;
     self.scrollView.contentSize = CGSizeMake(width, y);
     self.currentStep = TGLoginStepPhone;
 

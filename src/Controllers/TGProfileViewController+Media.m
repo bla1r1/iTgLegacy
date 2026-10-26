@@ -375,8 +375,8 @@ static const NSInteger kStoryGridCols  = 3;
 	NSString *caption = story[@"caption"];
 	if (caption.length){
 		UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(
-				TGMetricMarginLarge, window.bounds.size.height - TGMetricStoryCaptionBottomOffset,
-				window.bounds.size.width - TGDoubled(TGMetricMarginLarge), TGMetricStoryCaptionHeight)];
+				TGMetricPadLarge, window.bounds.size.height - TGMetricStoryCaptionBottomOffset,
+				window.bounds.size.width - TGDoubled(TGMetricPadLarge), TGMetricStoryCaptionHeight)];
 		label.text = caption;
 		label.numberOfLines = 3;
 		label.font = TGFontSubhead();

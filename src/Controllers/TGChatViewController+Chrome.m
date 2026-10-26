@@ -186,7 +186,7 @@ static UIImage *TGJumpChevron(UIColor *colour) {
 	self.jumpButton.clipsToBounds = NO;
 
 	CGSize date = [self.floatingDate sizeThatFits:CGSizeMake(table.size.width, 22)];
-	CGFloat dw = ceilf(date.width) + TGMetricGutterLarge;
+	CGFloat dw = ceilf(date.width) + TGMetricPadWide;
 	CGFloat top = self.pinnedBannerView.hidden || !self.pinnedBannerView ? TGMetricZero : CGRectGetMaxY(self.pinnedBannerView.frame);
 	self.floatingDate.frame = CGRectMake(TGCenteredOrigin(table.size.width, dw), top + TGMetricFloatingDateTopOffset, dw,
 			TGMetricFloatingDateHeight);

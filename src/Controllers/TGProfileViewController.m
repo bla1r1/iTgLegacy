@@ -30,10 +30,12 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 	if (cached)
 		return cached;
 
-	UIGraphicsBeginImageContextWithOptions(CGSizeMake(40, 40), NO, 0);
+	UIGraphicsBeginImageContextWithOptions(CGSizeMake(kGiftTile, kGiftTile), NO, 0);
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
-	[emoji drawInRect:CGRectMake(1, 1, 38, 38)
+	[emoji drawInRect:CGRectMake(kGiftTileInset, kGiftTileInset,
+								 kGiftTile - TGDoubled(kGiftTileInset),
+								 kGiftTile - TGDoubled(kGiftTileInset))
 			 withFont:TGFontEmoji()
 		lineBreakMode:NSLineBreakByClipping
 		   alignment:NSTextAlignmentCenter];
@@ -127,7 +129,7 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 	header.backgroundColor = [[TGTheme shared] groupedBackgroundColour];
 
 	self.avatarView = [[UIImageView alloc] initWithFrame:
-			CGRectMake(TGCenteredOrigin(width, side), 16, side, side)];
+			CGRectMake(TGCenteredOrigin(width, side), kAvatarTop, side, side)];
 	self.avatarView.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin |
 			UIViewAutoresizingFlexibleRightMargin;
 	self.avatarView.layer.cornerRadius = TGHalf(side);
@@ -149,7 +151,8 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 	self.avatarView.userInteractionEnabled = YES;
 
 	UILabel *nameLabel = [[UILabel alloc] initWithFrame:
-			CGRectMake(10, 16 + side + 8, width - 20, 26)];
+			CGRectMake(kHeaderTextInset, kAvatarTop + side + kNameTop,
+					width - TGDoubled(kHeaderTextInset), TGMetricLineTitle)];
 	nameLabel.autoresizingMask = UIViewAutoresizingFlexibleWidth;
 	nameLabel.text = self.name;
 	nameLabel.font = TGFontTitle();
@@ -159,7 +162,8 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 	[header addSubview:nameLabel];
 
 	self.statusLabel = [[UILabel alloc] initWithFrame:
-			CGRectMake(10, 16 + side + 34, width - 20, 18)];
+			CGRectMake(kHeaderTextInset, kAvatarTop + side + kStatusTop,
+					width - TGDoubled(kHeaderTextInset), TGMetricLineBody)];
 	self.statusLabel.autoresizingMask = UIViewAutoresizingFlexibleWidth;
 	self.statusLabel.font = TGFontSubhead();
 	self.statusLabel.textAlignment = NSTextAlignmentCenter;
@@ -167,7 +171,7 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 	self.statusLabel.backgroundColor = [UIColor clearColor];
 	[header addSubview:self.statusLabel];
 
-	[self buildActionsIn:header atY:(16 + side + 62)];
+	[self buildActionsIn:header atY:(kAvatarTop + side + kActionsTop)];
 
 	// The status line listens to presence too: a status arriving while the
 	// profile is open refreshes the line (B4).
@@ -326,14 +330,17 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 
 - (UIView *)tableView:(UITableView *)tableView viewForHeaderInSection:(NSInteger)section {
 	if (section == kSectionMedia) {
-		UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0, 0, tableView.bounds.size.width, 38)];
+		UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0, 0,
+				tableView.bounds.size.width, kMediaTabsRow)];
 		header.backgroundColor = [UIColor clearColor];
 		NSArray *tabs = [self currentMediaTabs];
 		NSMutableArray *titles = [NSMutableArray array];
 		for (NSDictionary *tab in tabs)
 			[titles addObject:tab[@"title"]];
 		UISegmentedControl *segments = [[UISegmentedControl alloc] initWithItems:titles];
-		segments.frame = CGRectMake(TGMetricPadMedium, 3, tableView.bounds.size.width - TGDoubled(TGMetricPadMedium), 30);
+		segments.frame = CGRectMake(TGMetricPadMedium,
+				TGCenteredOrigin(kMediaTabsRow, kMediaTabs),
+				tableView.bounds.size.width - TGDoubled(TGMetricPadMedium), kMediaTabs);
 		// The highlighted segment comes from the stored kind, not a number:
 		// the array behind titles reorders as categories load (B1).
 		NSString *kind = [self selectedMediaKind];
@@ -443,12 +450,13 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 		cell.detailTextLabel.font = TGFontMeta();
 		cell.detailTextLabel.textColor = [[TGTheme shared] secondaryTextColour];
 
-		UIImageView *thumb = [[UIImageView alloc] initWithFrame:CGRectMake(0, 0, 40, 40)];
+		UIImageView *thumb = [[UIImageView alloc] initWithFrame:
+				CGRectMake(0, 0, kStoryThumb, kStoryThumb)];
 		thumb.backgroundColor = [[TGTheme shared] fileTileColour];
 		thumb.contentMode = UIViewContentModeScaleAspectFill;
 		thumb.clipsToBounds = YES;
 		thumb.layer.cornerRadius = TGMetricCornerMedium;
-		cell.imageView.image = [TGIcons avatarWithInitials:@" " size:40
+		cell.imageView.image = [TGIcons avatarWithInitials:@" " size:kStoryThumb
 												  colourId:indexPath.row];
 		NSNumber *fileId = story[@"thumbPhotoId"] ?: story[@"photoId"];
 		if ([fileId isKindOfClass:NSNumber.class]){
@@ -458,7 +466,7 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 								 completion:^(NSString *path){
 				if (!path.length) return;
 				UIImage *image = [TGIcons decodedImage:[UIImage imageWithContentsOfFile:path]
-										   fittingSize:CGSizeMake(40, 40) fill:YES
+										   fittingSize:CGSizeMake(kStoryThumb, kStoryThumb) fill:YES
 												 scale:[UIScreen mainScreen].scale];
 				if (!image) return;
 				cell.imageView.image = image;
@@ -497,7 +505,7 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 					return;
 				UIImage *image = [TGIcons decodedImage:
 						[UIImage imageWithContentsOfFile:path]
-						fittingSize:CGSizeMake(40, 40) fill:YES
+						fittingSize:CGSizeMake(kStoryThumb, kStoryThumb) fill:YES
 						scale:[UIScreen mainScreen].scale];
 				if (!image)
 					return;
@@ -527,7 +535,7 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 		cell.detailTextLabel.text = nil;
 		cell.imageView.image = [TGIcons avatarWithInitials:
 				(name.length ? [name substringToIndex:1].uppercaseString : @"?")
-													  size:32 colourId:userId];
+													  size:kMemberAvatar colourId:userId];
 	} else if (indexPath.section == kSectionMedia) {
 		NSString *kind = [self selectedMediaKind];
 		NSArray *rows = [self selectedMediaRows];
@@ -549,7 +557,7 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 				cell.detailTextLabel.text = TGProfileShortDate(m[@"date"]);
 				cell.imageView.image = [TGIcons glyphNamed:@"copy"
 													colour:[[TGTheme shared] secondaryTextColour]
-													  side:24];
+													  side:kLinkGlyph];
 			} else if ([kind isEqualToString:@"gifts"]) {
 				NSString *emoji = m[@"emoji"] ?: @"";
 				NSString *message = m[@"message"];
@@ -571,7 +579,7 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 							return;
 						UIImage *image = [TGIcons decodedImage:
 								[UIImage imageWithContentsOfFile:path]
-								fittingSize:CGSizeMake(40, 40) fill:YES
+								fittingSize:CGSizeMake(kStoryThumb, kStoryThumb) fill:YES
 								scale:[UIScreen mainScreen].scale];
 						if (!image)
 							return;
@@ -616,7 +624,7 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 	[UIPasteboard generalPasteboard].string = value;
 
 	UILabel *toast = [[UILabel alloc] initWithFrame:
-			CGRectMake(0, 0, 120, 34)];
+			CGRectMake(0, 0, kToastWidth, kToastHeight)];
 	toast.center = CGPointMake(TGHalf(self.view.bounds.size.width),
 							   self.view.bounds.size.height - TGMetricToastBottomOffset);
 	toast.text = @"Copied";

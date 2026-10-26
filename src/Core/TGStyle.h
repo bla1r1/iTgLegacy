@@ -98,6 +98,70 @@ UIColor *TGColourLink(void);
 UIColor *TGColourCodeBackground(void);
 UIColor *TGColourCodeBlockBackground(void);
 
+#pragma mark - the spacing scale
+
+// Six steps and no seventh. Before this the app spaced things at 2, 4, 5, 6,
+// 7, 8, 10, 12, 14, 15, 16, 20 and 24, which is not a scale, it is whatever
+// each screen's author felt like: an alert padded at 14 beside a card padded
+// at 16, a pill inset 5 beside a bar inset 4. The eye cannot read a 1pt
+// difference as meaning anything, so those differences were only noise, and
+// noise that each new screen copied from whichever neighbour it grew from.
+//
+// Every gap, inset, margin and pad in the app is one of these. A role that
+// wants its own name says so by deriving from a step - see TGMetricCardMargin
+// and the rest below - so the name can explain itself while the value stays
+// on the scale. Two values stand outside it on purpose, and each says why:
+// TGMetricGutter, which is UIKit's own, and TGMetricTextPadV, which is a
+// measuring allowance rather than a gap.
+
+/// 2. A hairline gap: a title over its text, cells in a collage.
+static const CGFloat TGMetricPadTiny           = 2.0f;
+/// 4. Inside something small: a pill, a badge, a stamp.
+static const CGFloat TGMetricPadSmall          = 4.0f;
+/// 8. The default. Reach for this one first.
+static const CGFloat TGMetricPad               = 8.0f;
+/// 10. A list row's own inset, which sits in from the screen's gutter.
+static const CGFloat TGMetricPadMedium         = 10.0f;
+/// 16. A card's inner inset, a wide margin.
+static const CGFloat TGMetricPadLarge          = 16.0f;
+/// 20. The roomiest step: a screen that is mostly empty, a login form.
+static const CGFloat TGMetricPadWide           = 20.0f;
+
+/// Extra padding horizontally when measuring text bounds (2 pt).
+static const CGFloat TGMetricTextPadH          = TGMetricPadTiny;
+/// Not a step on the scale: a 1pt rounding allowance when measuring text,
+/// which is a lie told to CoreText, not a gap anybody sees.
+static const CGFloat TGMetricTextPadV          = 1.0f;
+#pragma mark - the line scale
+
+// The box a screen gives one line of text. These went the same way as the
+// spacing did: a one-line label was 12, 13, 14, 15, 16, 17, 18, 19, 20, 21,
+// 26 or 34 points tall depending on the screen, and nothing tied any of them
+// to the font inside. A box 1pt short of its font clips the descender on a
+// "g"; a box 4pt over it opens a gap the layout above has to absorb.
+//
+// So there is one line box per role in the type scale, and the name says
+// which role it is for: TGFontCaption text gets TGMetricLineCaption. Ask for
+// the pair, not the numbers. A label that holds two or more lines is measured
+// instead - TGTextSize - and these do not apply to it.
+
+/// One line of TGFontMicro (11).
+static const CGFloat TGMetricLineMicro   = 14.0f;
+/// One line of TGFontCaption (13).
+static const CGFloat TGMetricLineCaption = 16.0f;
+/// One line of TGFontSubhead (14).
+static const CGFloat TGMetricLineSubhead = 17.0f;
+/// One line of TGFontBody (15).
+static const CGFloat TGMetricLineBody    = 18.0f;
+/// One line of TGFontRow (16).
+static const CGFloat TGMetricLineRow     = 20.0f;
+/// One line of TGFontHeader (17).
+static const CGFloat TGMetricLineHeader  = 21.0f;
+/// One line of TGFontTitle (22).
+static const CGFloat TGMetricLineTitle   = 26.0f;
+/// One line of TGFontHero (28).
+static const CGFloat TGMetricLineHero    = 34.0f;
+
 #pragma mark - metrics
 
 /// Returns half of a dimension without manual / 2 division.
@@ -143,12 +207,15 @@ static const CGFloat TGMetricMapCardWidth       = 220.0f;
 static const CGFloat TGMetricMapCardHeight      = 130.0f;
 /// The picture on a list row - chats, contacts, search, the forward picker.
 static const CGFloat TGMetricListAvatar = 40.0f;
-/// Text from the side of the screen.
+/// Text from the side of the screen. Not a step on the spacing scale: 15 is
+/// UIKit's own separator inset on a 320pt screen, so what the app lays out
+/// itself lines up with the text in a stock table cell beside it. Move it to
+/// 16 and every custom header stands 1pt out of line with the system's.
 static const CGFloat TGMetricGutter     = 15.0f;
-/// Large gutter from the side of the screen (20 pt).
-static const CGFloat TGMetricGutterLarge= 20.0f;
-/// The gap around a card floating over a dimmed screen.
-static const CGFloat TGMetricCardMargin = 8.0f;
+/// The gap around a card floating over a dimmed screen. Its own name because
+/// a card's outer gap and a component's inner padding answer to different
+/// drawings, even while both sit on the 8pt step.
+static const CGFloat TGMetricCardMargin = TGMetricPad;
 
 #pragma mark - corner radii
 
@@ -181,7 +248,7 @@ static const CGFloat TGMetricCallButtonSide      = 60.0f;
 static const CGFloat TGMetricCallEmojiTop        = 26.0f;
 static const CGFloat TGMetricCallEmojiHeight     = 30.0f;
 static const CGFloat TGMetricCallNameHeight      = 30.0f;
-static const CGFloat TGMetricCallStatusHeight    = 20.0f;
+static const CGFloat TGMetricCallStatusHeight    = TGMetricLineRow;
 static const CGFloat TGMetricCallTogglesBottom   = 150.0f;
 static const CGFloat TGMetricCallEndBottom       = 70.0f;
 /// Call button label vertical gap from button origin (65 pt).
@@ -207,9 +274,9 @@ static const CGFloat TGMetricChatRow        = 76.0f;
 #pragma mark - message bubble metrics
 
 /// Horizontal inner padding for message bubbles.
-static const CGFloat TGMetricBubblePadH         = 10.0f;
+static const CGFloat TGMetricBubblePadH         = TGMetricPadMedium;
 /// Vertical inner padding for message bubbles.
-static const CGFloat TGMetricBubblePadV         = 7.0f;
+static const CGFloat TGMetricBubblePadV         = TGMetricPad;
 /// Sender avatar side in group chats.
 static const CGFloat TGMetricGroupAvatarSide    = 28.0f;
 /// Maximum side of an inline image or photo.
@@ -349,28 +416,10 @@ static const CGFloat TGMetricSectionHeaderHeight = 32.0f;
 /// Grouped table empty header separator gap.
 static const CGFloat TGMetricSectionHeaderEmpty  = 12.0f;
 /// Grouped table footer text vertical padding.
-static const CGFloat TGMetricSectionFooterGap    = 14.0f;
+static const CGFloat TGMetricSectionFooterGap    = TGMetricPadLarge;
 /// Grouped table root page footer trailing height.
 static const CGFloat TGMetricSectionFooterRoot   = 38.0f;
 
-#pragma mark - general insets and margins
-
-/// Extra fine padding (2 pt).
-static const CGFloat TGMetricPadTiny           = 2.0f;
-/// Extra padding horizontally when measuring text bounds (2 pt).
-static const CGFloat TGMetricTextPadH          = 2.0f;
-/// Extra padding vertically when measuring text bounds (1 pt).
-static const CGFloat TGMetricTextPadV          = 1.0f;
-/// Small padding (4 pt).
-static const CGFloat TGMetricPadSmall          = 4.0f;
-/// Standard component padding (8 pt).
-static const CGFloat TGMetricPad               = 8.0f;
-/// Medium component padding (10 pt).
-static const CGFloat TGMetricPadMedium         = 10.0f;
-/// Large component padding / card inner inset (14 pt).
-static const CGFloat TGMetricPadLarge          = 14.0f;
-/// Wide card margin (16 pt).
-static const CGFloat TGMetricMarginLarge       = 16.0f;
 /// Toast HUD bottom margin above screen bottom (70 pt).
 static const CGFloat TGMetricToastBottomOffset = 70.0f;
 /// Story viewer caption bottom offset (76 pt).
@@ -383,13 +432,13 @@ static const CGFloat TGMetricStoryCaptionHeight       = 60.0f;
 /// Glyphs inside popup menu rows.
 static const CGFloat TGMetricMenuGlyph          = 22.0f;
 /// Left inset inside popup menu rows.
-static const CGFloat TGMetricMenuInset          = 14.0f;
+static const CGFloat TGMetricMenuInset          = TGMetricPadLarge;
 /// Alert sheet inner padding.
-static const CGFloat TGMetricAlertPad           = 14.0f;
+static const CGFloat TGMetricAlertPad           = TGMetricPadLarge;
 /// Spacing between title and message in alert sheets.
-static const CGFloat TGMetricAlertTextGap       = 6.0f;
+static const CGFloat TGMetricAlertTextGap       = TGMetricPad;
 /// Spacing above text input field in alert sheets.
-static const CGFloat TGMetricAlertFieldTop      = 8.0f;
+static const CGFloat TGMetricAlertFieldTop      = TGMetricPad;
 /// Height of recent photo strip in attach sheet.
 static const CGFloat TGMetricAttachStrip        = 100.0f;
 /// Side of photo thumbnail in attach sheet.
@@ -401,7 +450,7 @@ static const CGFloat TGMetricGiftAvatar         = 22.0f;
 /// Star badge side inside gift viewer.
 static const CGFloat TGMetricGiftStar           = 15.0f;
 /// Inset of countdown plate in snackbar.
-static const CGFloat TGMetricSnackbarInset      = 7.0f;
+static const CGFloat TGMetricSnackbarInset      = TGMetricPad;
 /// Countdown ring diameter in snackbar.
 static const CGFloat TGMetricSnackbarRing       = 22.0f;
 /// Full-screen image preview hold-to-save hint bottom offset (34 pt).
@@ -416,7 +465,7 @@ static const CGFloat TGMetricCompactBarHeight   = 32.0f;
 /// Maximum width of an inline photo collage block.
 static const CGFloat TGMetricCollageWidth       = 220.0f;
 /// Gap between photos in an inline collage.
-static const CGFloat TGMetricCollageGap         = 2.0f;
+static const CGFloat TGMetricCollageGap         = TGMetricPadTiny;
 /// Height of 2-photo collage layout.
 static const CGFloat TGMetricCollageHeightDual  = 135.0f;
 /// Top photo height in 3-photo collage layout.
@@ -426,9 +475,9 @@ static const CGFloat TGMetricCollageBottomHeight= 88.0f;
 /// Height of each row in 4-photo collage layout.
 static const CGFloat TGMetricCollageQuadHeight  = 104.0f;
 /// Height of forwarded header line inside quotes.
-static const CGFloat TGMetricQuoteForwardLine   = 18.0f;
+static const CGFloat TGMetricQuoteForwardLine   = TGMetricLineBody;
 /// Height of sender name header line inside bubbles.
-static const CGFloat TGMetricSenderLineHeight   = 16.0f;
+static const CGFloat TGMetricSenderLineHeight   = TGMetricLineCaption;
 /// Checkmark selection horizontal shift in edit mode.
 static const CGFloat TGMetricSelectionShift     = 34.0f;
 /// Login QR code dimension.
@@ -438,13 +487,13 @@ static const CGFloat TGMetricLoginQRSize        = 180.0f;
 /// absolute offsets: 14, 56, 108, 154, 190, 210 with gaps of 8, 8, 4, 6 and
 /// 4 between them. One step between things, one larger step before a new
 /// group, and the positions come out of adding them up.
-static const CGFloat TGMetricStackTop   = 14.0f;
-static const CGFloat TGMetricStackStep  = 8.0f;
+static const CGFloat TGMetricStackTop   = TGMetricPadLarge;
+static const CGFloat TGMetricStackStep  = TGMetricPad;
 static const CGFloat TGMetricStackGroup = 20.0f;
 /// The three sizes the sign-in stack needs that are not the shared scale:
 /// two lines of instructions, the country prefix beside the number, and the
 /// height of a plain text link or a segmented control.
-static const CGFloat TGMetricLoginSubtitleHeight = 34.0f;
+static const CGFloat TGMetricLoginSubtitleHeight = TGMetricLineSubhead + TGMetricLineSubhead;
 static const CGFloat TGMetricLoginPrefixWidth    = 56.0f;
 static const CGFloat TGMetricLoginLinkHeight     = 30.0f;
 /// Where the QR code sits, which is below a one-line instruction rather than
@@ -470,10 +519,10 @@ static const CGFloat TGMetricUnreadDotSide      = 7.0f;
 /// 18/14, 19/16 and 18/16 in different branches, which is why a document and
 /// a track did not line up with each other.
 static const CGFloat TGMetricBubbleTitleHeight  = 19.0f;
-static const CGFloat TGMetricBubbleDetailHeight = 16.0f;
+static const CGFloat TGMetricBubbleDetailHeight = TGMetricLineCaption;
 /// The gap from the top of such a bubble to its title, and from the title to
 /// the line under it.
-static const CGFloat TGMetricBubbleTitleTop     = 2.0f;
+static const CGFloat TGMetricBubbleTitleTop     = TGMetricPadTiny;
 static const CGFloat TGMetricBubbleDetailTop    = 23.0f;
 /// The column a call bubble's text starts in, past its disc.
 static const CGFloat TGMetricBubbleDiscColumn   = 24.0f;
@@ -497,14 +546,14 @@ static const CGFloat TGMetricPlayerThumbSide    = 8.0f;
 static const CGFloat TGMetricRecordDotSide      = 9.0f;
 static const CGFloat TGMetricRecordHaloSide     = 60.0f;
 /// Capsules: the height is what rounds them.
-static const CGFloat TGMetricJumpBadgeHeight    = 18.0f;
-static const CGFloat TGMetricChatBadgeHeight    = 20.0f;
+static const CGFloat TGMetricJumpBadgeHeight    = TGMetricLineBody;
+static const CGFloat TGMetricChatBadgeHeight    = TGMetricLineRow;
 /// Where the unread count sits on a chat list row.
 static const CGFloat TGMetricChatBadgeTop       = 42.0f;
 /// How far the folder pill is inset into its strip, top and bottom. Its
 /// height and its radius are both worked out from this, so they cannot
 /// disagree - which is how the pill stopped being a pill once.
-static const CGFloat TGMetricFolderPillInset    = 5.0f;
+static const CGFloat TGMetricFolderPillInset    = TGMetricPadSmall;
 /// How much history to fetch around a pinned message when going to it.
 static const CGFloat TGMetricHistoryPageAroundPinned = 40.0f;
 static const CGFloat TGMetricFloatingDateHeight = 22.0f;
@@ -545,19 +594,19 @@ static const CGFloat TGMetricMediaStampCheckInset  = 16.0f;
 /// Horizontal inset for ticks inside photo media stamp plate (17 pt).
 static const CGFloat TGMetricMediaStampCheckPhotoInset = 17.0f;
 /// Jump button right margin from edge (8 pt).
-static const CGFloat TGMetricJumpMarginRight       = 8.0f;
+static const CGFloat TGMetricJumpMarginRight       = TGMetricPad;
 /// Jump button bottom margin above composer (10 pt).
-static const CGFloat TGMetricJumpMarginBottom      = 10.0f;
+static const CGFloat TGMetricJumpMarginBottom      = TGMetricPadMedium;
 /// Badge overlap top offset (-9 pt).
 static const CGFloat TGMetricBadgeOffsetTop        = -9.0f;
 /// Floating date plate top offset (8 pt).
-static const CGFloat TGMetricFloatingDateTopOffset = 8.0f;
+static const CGFloat TGMetricFloatingDateTopOffset = TGMetricPad;
 /// Context menu action horizontal offset (60 pt).
 static const CGFloat TGMetricMenuActionOffset      = 60.0f;
 /// Chat list context menu X coordinate (120 pt).
 static const CGFloat TGMetricChatListMenuX         = 120.0f;
 /// Chat cell title to date gap (6 pt).
-static const CGFloat TGMetricChatCellDateGap       = 6.0f;
+static const CGFloat TGMetricChatCellDateGap       = TGMetricPadSmall;
 /// Zero height gap for hidden table section header (0.001 pt).
 static const CGFloat TGMetricSectionHeaderHidden = 0.001f;
 /// Base point size for chat message font slider.
@@ -635,11 +684,14 @@ static const CGFloat TGCompressionQualityHigh      = 0.85f;
 /// Standard JPEG compression (90%).
 static const CGFloat TGCompressionQualityStandard  = 0.90f;
 /// Run gap spacing when starting a bubble sequence (4 pt).
-static const CGFloat TGMetricBubbleRunGapStart     = 4.0f;
+static const CGFloat TGMetricBubbleRunGapStart     = TGMetricPadSmall;
 /// Run gap spacing between bubbles inside a run (1 pt).
 static const CGFloat TGMetricBubbleRunGapInner     = 1.0f;
-/// Vertical alignment offset for run gap calculation (3 pt).
-static const CGFloat TGMetricBubbleRunGapOffset    = 3.0f;
+/// The gap a bubble leaves above and below itself inside its own row, so a
+/// row is its bubble plus twice this. The run gaps above are measured from
+/// here, which is why they and this are one value and not three: a bubble
+/// moved off this inset stops being gapped at all (see adjustmentForRow:).
+static const CGFloat TGMetricBubbleRowInset        = 3.0f;
 /// Voice lock finger margin from top bar (20 pt).
 static const CGFloat TGMetricVoiceLockMargin       = 20.0f;
 /// Playback rate threshold to switch to fast 1.5x (1.25).

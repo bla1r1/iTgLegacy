@@ -8,7 +8,7 @@
 #import <QuartzCore/QuartzCore.h>
 #import "TGStyle.h"
 
-static const CGFloat kSide    = TGMetricMarginLarge;   ///< card side margin, as TGAttachSheet pads its rows
+static const CGFloat kSide    = TGMetricPadLarge;   ///< card side margin, as TGAttachSheet pads its rows
 static const CGFloat kRow     = TGMetricRow;
 static const CGFloat kButton  = TGMetricButtonHeight;
 static const CGFloat kClose   = TGMetricCloseSide;

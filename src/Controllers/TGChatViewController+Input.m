@@ -18,7 +18,8 @@
 	self.inputBar.backgroundColor = [[TGTheme shared] inputBarColour];
 	self.inputBar.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleTopMargin;
 
-	UIView *hair = [[UIView alloc] initWithFrame:CGRectMake(0, 0, b.size.width, 1)];
+	UIView *hair = [[UIView alloc] initWithFrame:CGRectMake(0, 0, b.size.width,
+			TGMetricBorderWidth)];
 	hair.backgroundColor = [[TGTheme shared] separatorColour];
 	hair.autoresizingMask = UIViewAutoresizingFlexibleWidth;
 	[self.inputBar addSubview:hair];
@@ -26,7 +27,7 @@
 	CGFloat sendY = TGCenteredOrigin(kInputHeight, kSendSide);
 
 	UIButton *attach = [UIButton buttonWithType:UIButtonTypeCustom];
-	attach.frame = CGRectMake(4, sendY, 34, kSendSide);
+	attach.frame = CGRectMake(kComposerInset, sendY, kAttachWidth, kSendSide);
 	[attach setImage:[TGIcons attach] forState:UIControlStateNormal];
 	attach.tintColor = [[TGTheme shared] accentColour];
 	[attach addTarget:self action:@selector(attachTapped)
@@ -34,7 +35,8 @@
 	[self.inputBar addSubview:attach];
 
 	self.input = [[UITextField alloc] initWithFrame:
-			CGRectMake(40, 7, b.size.width - 120, kInputHeight - 14)];
+			CGRectMake(kFieldLeft, kFieldInsetV, b.size.width - kFieldRoom,
+					kInputHeight - TGDoubled(kFieldInsetV))];
 	self.input.borderStyle = UITextBorderStyleNone;
 	self.input.background = nil;
 	self.input.backgroundColor = [[TGTheme shared] listBackgroundColour];
@@ -43,7 +45,8 @@
 	self.input.layer.borderColor = [[TGTheme shared] separatorColour].CGColor;
 	self.input.layer.shouldRasterize = YES;
 	self.input.layer.rasterizationScale = scale;
-	self.input.leftView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 10, 1)];
+	self.input.leftView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, kFieldLeftPad,
+			TGMetricBorderWidth)];
 	self.input.leftViewMode = UITextFieldViewModeAlways;
 	self.input.placeholder = @"Message";
 	self.input.textColor = [[TGTheme shared] primaryTextColour];
@@ -56,7 +59,7 @@
 	[self.inputBar addSubview:self.input];
 
 	self.sendButton = [UIButton buttonWithType:UIButtonTypeCustom];
-	self.sendButton.frame = CGRectMake(b.size.width - kSendSide - 6, sendY,
+	self.sendButton.frame = CGRectMake(b.size.width - kSendSide - kSendInset, sendY,
 									   kSendSide, kSendSide);
 	self.sendButton.backgroundColor = [[TGTheme shared] accentColour];
 	self.sendButton.layer.cornerRadius = TGHalf(kSendSide);
@@ -78,8 +81,8 @@
 
 	// A sticker button beside the composer, as clients place it.
 	self.stickerButton = [UIButton buttonWithType:UIButtonTypeCustom];
-	self.stickerButton.frame = CGRectMake(b.size.width - kSendSide - 42, sendY,
-										  30, kSendSide);
+	self.stickerButton.frame = CGRectMake(b.size.width - kSendSide - kStickerInset, sendY,
+										  kStickerWidth, kSendSide);
 	[self.stickerButton setImage:[TGIcons sticker] forState:UIControlStateNormal];
 	self.stickerButton.tintColor = [[TGTheme shared] secondaryTextColour];
 	self.stickerButton.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
@@ -223,12 +226,15 @@ static const NSInteger kBannerSubtitleTag = 72;
 		self.composeBanner.autoresizingMask = UIViewAutoresizingFlexibleWidth |
 											  UIViewAutoresizingFlexibleTopMargin;
 
-		UIView *stripe = [[UIView alloc] initWithFrame:CGRectMake(12, 7, 2, kComposeBannerHeight - 14)];
+		UIView *stripe = [[UIView alloc] initWithFrame:CGRectMake(kBannerStripeX,
+				kBannerStripeTop, kQuoteBarWidth,
+				kComposeBannerHeight - TGDoubled(kBannerStripeTop))];
 		stripe.backgroundColor = [[TGTheme shared] accentColour];
 		[self.composeBanner addSubview:stripe];
 
 		UILabel *title = [[UILabel alloc] initWithFrame:
-				CGRectMake(22, 5, width - TGMetricComposeBannerTextMarginRight, 17)];
+				CGRectMake(kBannerTextX, kBannerTitleTop,
+						width - TGMetricComposeBannerTextMarginRight, TGMetricLineSubhead)];
 		title.tag = kBannerTitleTag;
 		title.font = TGFontCaptionStrong();
 		title.textColor = [[TGTheme shared] accentColour];
@@ -237,7 +243,8 @@ static const NSInteger kBannerSubtitleTag = 72;
 		[self.composeBanner addSubview:title];
 
 		UILabel *preview = [[UILabel alloc] initWithFrame:
-				CGRectMake(22, 22, width - TGMetricComposeBannerTextMarginRight, 17)];
+				CGRectMake(kBannerTextX, kBannerTitleTop + TGMetricLineSubhead,
+						width - TGMetricComposeBannerTextMarginRight, TGMetricLineSubhead)];
 		preview.tag = kBannerSubtitleTag;
 		preview.font = TGFontCaption();
 		preview.textColor = [[TGTheme shared] secondaryTextColour];
@@ -250,7 +257,7 @@ static const NSInteger kBannerSubtitleTag = 72;
 		cancel.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
 		[cancel setImage:[TGIcons glyphNamed:@"close"
 									  colour:[[TGTheme shared] secondaryTextColour]
-										side:16]
+										side:kBannerCloseGlyph]
 				forState:UIControlStateNormal];
 		[cancel addTarget:self action:@selector(clearComposeState)
 		 forControlEvents:UIControlEventTouchUpInside];
@@ -265,8 +272,11 @@ static const NSInteger kBannerSubtitleTag = 72;
 	preview.text = subtitle ?: @"";
 	// One line centres itself; two share the strip.
 	CGFloat half = TGHalf(kComposeBannerHeight);
-	title.frame = CGRectMake(22, subtitle.length ? 5 : half - 9,
-							 self.composeBanner.bounds.size.width - TGMetricComposeBannerTextMarginRight, 17);
+	title.frame = CGRectMake(kBannerTextX,
+							 subtitle.length ? kBannerTitleTop
+											  : half - TGHalf(TGMetricLineSubhead),
+							 self.composeBanner.bounds.size.width - TGMetricComposeBannerTextMarginRight,
+							 TGMetricLineSubhead);
 
 	self.composeBanner.hidden = NO;
 	[self layoutChrome];

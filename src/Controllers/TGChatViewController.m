@@ -162,9 +162,10 @@
 /// A two-line header: the chat name with member count or status beneath it,
 /// which is what tells you where you are in a group.
 - (void)buildTitleView {
-	UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 200, 40)];
+	UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0, 0, kTitleWidth, kTitleRow)];
 
-	UILabel *name = [[UILabel alloc] initWithFrame:CGRectMake(0, 1, 200, 20)];
+	UILabel *name = [[UILabel alloc] initWithFrame:CGRectMake(0, TGMetricBorderWidth,
+			kTitleWidth, TGMetricLineRow)];
 	name.text = self.chatTitle ?: @"Chat";
 	name.font = TGFontHeader();
 	name.textColor = [[TGTheme shared] barTitleColour];
@@ -177,7 +178,8 @@
 	[header addSubview:name];
 	self.titleNameLabel = name;
 
-	UILabel *subtitle = [[UILabel alloc] initWithFrame:CGRectMake(0, 21, 200, 14)];
+	UILabel *subtitle = [[UILabel alloc] initWithFrame:CGRectMake(0,
+			TGMetricBorderWidth + TGMetricLineRow, kTitleWidth, TGMetricLineMicro)];
 	subtitle.font = TGFontMeta();
 	subtitle.textColor = [[TGTheme shared] barSubtitleColour];
 	subtitle.backgroundColor = [UIColor clearColor];
@@ -701,22 +703,26 @@
 	[self hidePinnedBanner];
 	CGRect b = self.view.bounds;
 	TGTheme *theme = [TGTheme shared];
-	UIView *banner = [[UIView alloc] initWithFrame:CGRectMake(0, 0, b.size.width, 34)];
+	UIView *banner = [[UIView alloc] initWithFrame:CGRectMake(0, 0, b.size.width,
+			kPinnedBanner)];
 	banner.backgroundColor = [theme inputBarColour];
 	banner.autoresizingMask = UIViewAutoresizingFlexibleWidth;
 
-	UIView *stripe = [[UIView alloc] initWithFrame:CGRectMake(8, 5, 2, 24)];
+	UIView *stripe = [[UIView alloc] initWithFrame:CGRectMake(TGMetricPad,
+			TGMetricPadSmall, kQuoteBarWidth, kPinnedBanner - TGMetricPadMedium)];
 	stripe.backgroundColor = [theme accentColour];
 	[banner addSubview:stripe];
 
-	UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(TGMetricMarginLarge, 2, b.size.width - TGMetricPinnedBannerTextPadRight, 14)];
+	UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(TGMetricPadLarge, TGMetricPadTiny,
+			b.size.width - TGMetricPinnedBannerTextPadRight, TGMetricLineMicro)];
 	label.text = @"Pinned message";
 	label.font = TGFontMicroStrong();
 	label.textColor = [theme accentColour];
 	label.backgroundColor = [UIColor clearColor];
 	[banner addSubview:label];
 
-	UILabel *body = [[UILabel alloc] initWithFrame:CGRectMake(TGMetricMarginLarge, 16, b.size.width - TGMetricPinnedBannerTextPadRight, 16)];
+	UILabel *body = [[UILabel alloc] initWithFrame:CGRectMake(TGMetricPadLarge, TGMetricPadTiny + TGMetricLineMicro,
+			b.size.width - TGMetricPinnedBannerTextPadRight, TGMetricLineCaption)];
 	body.text = text;
 	body.font = TGFontCaption();
 	body.textColor = [theme primaryTextColour];
@@ -724,7 +730,8 @@
 	body.autoresizingMask = UIViewAutoresizingFlexibleWidth;
 	[banner addSubview:body];
 
-	UIView *hair = [[UIView alloc] initWithFrame:CGRectMake(0, 33, b.size.width, 1)];
+	UIView *hair = [[UIView alloc] initWithFrame:CGRectMake(0,
+			kPinnedBanner - TGMetricBorderWidth, b.size.width, TGMetricBorderWidth)];
 	hair.backgroundColor = [theme separatorColour];
 	hair.autoresizingMask = UIViewAutoresizingFlexibleWidth;
 	[banner addSubview:hair];

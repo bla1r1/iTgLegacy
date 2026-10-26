@@ -5,6 +5,15 @@
 
 static const CGFloat kInset    = TGMetricPadMedium;   // picture from the left edge, text from the right
 static const CGFloat kTextLeft = kInset + kAvatar + TGMetricPadMedium;
+/// The row carries two lines: the name with the date and ticks beside it,
+/// then the preview with the unread badge or the pin beside that.
+static const CGFloat kFirstLineTop  = TGMetricPadMedium;
+static const CGFloat kSecondLineTop = 32.0f;
+static const CGFloat kPreviewMax    = 40.0f;
+static const CGFloat kMuteGlyph     = 16.0f;
+static const CGFloat kMuteRoom      = 20.0f;
+static const CGFloat kPinGlyph      = 16.0f;
+static const CGFloat kBadgePad      = TGMetricPadMedium + TGMetricPadTiny;
 
 static CGSize TGChatCellTextSize(NSString *text, UIFont *font) {
 	if (!text.length || !font) return CGSizeZero;
@@ -140,36 +149,42 @@ static UIFont *TGChatCellTitleFont(void) {
 	// The first line: the date pinned to the right edge, the ticks before it,
 	// and the title taking whatever is left.
 	CGSize date = TGChatCellTextSize(self.dateLabel.text, self.dateLabel.font);
-	self.dateLabel.frame = CGRectMake(right - ceilf(date.width), 11, ceilf(date.width), 18);
+	self.dateLabel.frame = CGRectMake(right - ceilf(date.width), kFirstLineTop + TGMetricBorderWidth,
+			ceilf(date.width), TGMetricLineBody);
 	CGFloat titleRight = CGRectGetMinX(self.dateLabel.frame) - TGMetricChatCellDateGap;
 	if (!self.tick.hidden) {
-		self.tick.frame = CGRectMake(titleRight - TGMetricMediaStampCheckWidth, 16, TGMetricMediaStampCheckWidth, TGMetricMediaStampCheckHeight);
-		titleRight -= (TGMetricMediaStampCheckWidth + 4);
+		self.tick.frame = CGRectMake(titleRight - TGMetricMediaStampCheckWidth,
+				kFirstLineTop + TGMetricPadSmall, TGMetricMediaStampCheckWidth,
+				TGMetricMediaStampCheckHeight);
+		titleRight -= (TGMetricMediaStampCheckWidth + TGMetricPadSmall);
 	}
 
-	CGFloat muteW = self.muteIcon.hidden ? 0 : 20;
+	CGFloat muteW = self.muteIcon.hidden ? 0 : kMuteRoom;
 	CGFloat titleRoom = MAX(0, titleRight - kTextLeft - muteW);
 	CGFloat titleW = MIN(ceilf(TGChatCellTextSize(self.titleLabel.text, self.titleLabel.font).width), titleRoom);
-	self.titleLabel.frame = CGRectMake(kTextLeft, 10, titleW, 20);
+	self.titleLabel.frame = CGRectMake(kTextLeft, kFirstLineTop, titleW, TGMetricLineRow);
 	if (!self.muteIcon.hidden)
-		self.muteIcon.frame = CGRectMake(kTextLeft + titleW + 3, 12, 16, 16);
+		self.muteIcon.frame = CGRectMake(kTextLeft + titleW + TGMetricBubbleRowInset,
+				kFirstLineTop + TGMetricPadTiny, kMuteGlyph, kMuteGlyph);
 
 	// The second line: the badge (or the pin) at the right edge, and the
 	// preview wrapping onto a second line up to it.
 	CGFloat previewRight = right;
 	if (!self.badge.hidden) {
 		CGSize s = TGChatCellTextSize(self.badge.text, self.badge.font);
-		CGFloat bw = MAX(20, ceilf(s.width) + 12);
+		CGFloat bw = MAX(TGMetricChatBadgeHeight, ceilf(s.width) + kBadgePad);
 		self.badge.frame = CGRectMake(right - bw, TGMetricChatBadgeTop, bw,
 								  TGMetricChatBadgeHeight);
-		previewRight = right - bw - 8;
+		previewRight = right - bw - TGMetricPad;
 	} else if (!self.pin.hidden) {
-		self.pin.frame = CGRectMake(right - 16, 44, 16, 16);
-		previewRight = right - 24;
+		self.pin.frame = CGRectMake(right - kPinGlyph, TGMetricChatBadgeTop + TGMetricPadTiny,
+				kPinGlyph, kPinGlyph);
+		previewRight = right - kPinGlyph - TGMetricPad;
 	}
 	CGFloat previewW = MAX(0, previewRight - kTextLeft);
-	CGSize fit = [self.previewLabel sizeThatFits:CGSizeMake(previewW, 40)];
-	self.previewLabel.frame = CGRectMake(kTextLeft, 32, previewW, MIN(ceilf(fit.height), 38));
+	CGSize fit = [self.previewLabel sizeThatFits:CGSizeMake(previewW, kPreviewMax)];
+	self.previewLabel.frame = CGRectMake(kTextLeft, kSecondLineTop, previewW,
+			MIN(ceilf(fit.height), kPreviewMax - TGMetricPadTiny));
 
 	CGFloat hair = TGMetricHairline;
 	self.separator.frame = CGRectMake(kTextLeft, h - hair, w - kTextLeft, hair);

@@ -16,6 +16,23 @@ static const CGFloat kTopBar    = TGMetricViewerTopBar;
 static const CGFloat kBottomBar = TGMetricViewerBottomBar;
 static const NSInteger kZoomTag = 0x7001;
 
+/// The top bar stacks the counter over the date; Done sits beside them. The
+/// bottom bar carries the caption, Save, and - on a video - a transport strip
+/// under both. These are this viewer's own, named here rather than in TGStyle.
+static const CGFloat kChromeInset   = TGMetricPadSmall;
+static const CGFloat kCounterTop    = TGMetricPadWide;
+static const CGFloat kDateTop       = 36.0f;
+static const CGFloat kButtonWidth   = 62.0f;
+static const CGFloat kButtonHeight  = 30.0f;
+static const CGFloat kCaptionInset  = TGMetricPadMedium + TGMetricPadTiny;
+static const CGFloat kCaptionHeight = 34.0f;
+static const CGFloat kSaveWidth     = 68.0f;
+static const CGFloat kStripTop      = 38.0f;
+static const CGFloat kStripHeight   = 22.0f;
+static const CGFloat kPlayWidth     = 30.0f;
+static const CGFloat kScrubberLeft  = 42.0f;
+static const CGFloat kClockWidth    = 52.0f;
+
 /// A view whose whole job is to keep the player layer filling it. A CALayer
 /// does not autoresize, and this app rotates - the old movie view had its
 /// frame set once too, and came out the wrong shape after a turn.
@@ -188,7 +205,8 @@ static const NSInteger kZoomTag = 0x7001;
 	[self.backdrop addSubview:self.topBar];
 
 	self.counterLabel = [[UILabel alloc] initWithFrame:
-			CGRectMake(TGMetricViewerTitleSide, 20, bounds.size.width - TGDoubled(TGMetricViewerTitleSide), 18)];
+			CGRectMake(TGMetricViewerTitleSide, kCounterTop,
+					bounds.size.width - TGDoubled(TGMetricViewerTitleSide), TGMetricLineBody)];
 	self.counterLabel.font = TGFontBodyStrong();
 	self.counterLabel.textAlignment = NSTextAlignmentCenter;
 	self.counterLabel.textColor = [UIColor whiteColor];
@@ -196,7 +214,8 @@ static const NSInteger kZoomTag = 0x7001;
 	[self.topBar addSubview:self.counterLabel];
 
 	self.dateLabel = [[UILabel alloc] initWithFrame:
-			CGRectMake(TGMetricViewerTitleSide, 36, bounds.size.width - TGDoubled(TGMetricViewerTitleSide), 14)];
+			CGRectMake(TGMetricViewerTitleSide, kDateTop,
+					bounds.size.width - TGDoubled(TGMetricViewerTitleSide), TGMetricLineMicro)];
 	self.dateLabel.font = TGFontMicro();
 	self.dateLabel.textAlignment = NSTextAlignmentCenter;
 	self.dateLabel.textColor = [[TGTheme shared] secondaryTextColour];
@@ -204,7 +223,8 @@ static const NSInteger kZoomTag = 0x7001;
 	[self.topBar addSubview:self.dateLabel];
 
 	UIButton *close = [UIButton buttonWithType:UIButtonTypeCustom];
-	close.frame = CGRectMake(4, 18, 62, 30);
+	close.frame = CGRectMake(kChromeInset, TGCenteredOrigin(kTopBar, kButtonHeight),
+			kButtonWidth, kButtonHeight);
 	[close setTitle:@"Done" forState:UIControlStateNormal];
 	close.titleLabel.font = TGFontBody();
 	[close addTarget:self action:@selector(dismiss)
@@ -217,7 +237,8 @@ static const NSInteger kZoomTag = 0x7001;
 	[self.backdrop addSubview:self.bottomBar];
 
 	self.captionLabel = [[UILabel alloc] initWithFrame:
-			CGRectMake(12, 4, bounds.size.width - TGMetricViewerCaptionMarginRight, 34)];
+			CGRectMake(kCaptionInset, kChromeInset,
+					bounds.size.width - TGMetricViewerCaptionMarginRight, kCaptionHeight)];
 	self.captionLabel.font = TGFontCaption();
 	self.captionLabel.numberOfLines = 2;
 	self.captionLabel.textColor = [UIColor whiteColor];
@@ -225,7 +246,8 @@ static const NSInteger kZoomTag = 0x7001;
 	[self.bottomBar addSubview:self.captionLabel];
 
 	UIButton *save = [UIButton buttonWithType:UIButtonTypeCustom];
-	save.frame = CGRectMake(bounds.size.width - 74, 4, 68, 34);
+	save.frame = CGRectMake(bounds.size.width - kSaveWidth - kCaptionInset - TGMetricBorderThick,
+			kChromeInset, kSaveWidth, kCaptionHeight);
 	[save setTitle:@"Save" forState:UIControlStateNormal];
 	save.titleLabel.font = TGFontBody();
 	[save addTarget:self action:@selector(saveCurrent)
@@ -234,7 +256,7 @@ static const NSInteger kZoomTag = 0x7001;
 
 	// The video strip lives in the bottom bar and only appears on a video page.
 	self.playButton = [UIButton buttonWithType:UIButtonTypeCustom];
-	self.playButton.frame = CGRectMake(8, 38, 30, 22);
+	self.playButton.frame = CGRectMake(TGMetricPad, kStripTop, kPlayWidth, kStripHeight);
 	[self.playButton setImage:[TGIcons play] forState:UIControlStateNormal];
 	self.playButton.tintColor = [UIColor whiteColor];
 	[self.playButton addTarget:self action:@selector(toggleMovie)
@@ -243,7 +265,8 @@ static const NSInteger kZoomTag = 0x7001;
 	[self.bottomBar addSubview:self.playButton];
 
 	self.scrubber = [[UISlider alloc] initWithFrame:
-			CGRectMake(42, 38, bounds.size.width - TGMetricViewerScrubberMarginRight, 22)];
+			CGRectMake(kScrubberLeft, kStripTop,
+					bounds.size.width - TGMetricViewerScrubberMarginRight, kStripHeight)];
 	self.scrubber.minimumTrackTintColor = [[TGTheme shared] accentColour];
 	[self.scrubber addTarget:self action:@selector(scrubberMoved)
 			forControlEvents:UIControlEventValueChanged];
@@ -251,7 +274,8 @@ static const NSInteger kZoomTag = 0x7001;
 	[self.bottomBar addSubview:self.scrubber];
 
 	self.timeLabel = [[UILabel alloc] initWithFrame:
-			CGRectMake(bounds.size.width - 58, 38, 52, 22)];
+			CGRectMake(bounds.size.width - kClockWidth - kChromeInset - TGMetricPadTiny,
+					kStripTop, kClockWidth, kStripHeight)];
 	self.timeLabel.font = TGFontMicro();
 	self.timeLabel.textColor = [UIColor whiteColor];
 	self.timeLabel.textAlignment = NSTextAlignmentRight;
@@ -294,8 +318,9 @@ static const NSInteger kZoomTag = 0x7001;
 	self.playButton.hidden = !isVideo && !isAnim;
 	self.scrubber.hidden = !isVideo;
 	self.timeLabel.hidden = !isVideo;
-	self.captionLabel.frame = CGRectMake(12, 4,
-			self.backdrop.bounds.size.width - TGMetricViewerCaptionMarginRight, (isVideo || isAnim) ? 30 : 34);
+	self.captionLabel.frame = CGRectMake(kCaptionInset, kChromeInset,
+			self.backdrop.bounds.size.width - TGMetricViewerCaptionMarginRight,
+			(isVideo || isAnim) ? kCaptionHeight - TGMetricPadSmall : kCaptionHeight);
 }
 
 #pragma mark - pages

@@ -70,26 +70,30 @@ static BOOL sIsCancelled;
 		self.recordPanel.autoresizingMask = UIViewAutoresizingFlexibleWidth |
 											UIViewAutoresizingFlexibleTopMargin;
 
-		UIView *hair = [[UIView alloc] initWithFrame:CGRectMake(0, 0, bar.size.width, 1)];
+		UIView *hair = [[UIView alloc] initWithFrame:CGRectMake(0, 0, bar.size.width,
+				TGMetricBorderWidth)];
 		hair.backgroundColor = [theme separatorColour];
 		hair.autoresizingMask = UIViewAutoresizingFlexibleWidth;
 		[self.recordPanel addSubview:hair];
 
 		self.recordDot = [[UIView alloc] initWithFrame:
-				CGRectMake(14, TGCenteredOrigin(kInputHeight, 9), 9, 9)];
+				CGRectMake(kRecordDotX, TGCenteredOrigin(kInputHeight, TGMetricRecordDotSide),
+						TGMetricRecordDotSide, TGMetricRecordDotSide)];
 		self.recordDot.backgroundColor = [theme destructiveColour];
 		self.recordDot.layer.cornerRadius = TGHalf(TGMetricRecordDotSide);
 		[self.recordPanel addSubview:self.recordDot];
 
 		self.recordClock = [[UILabel alloc] initWithFrame:
-				CGRectMake(32, TGCenteredOrigin(kInputHeight, 20), 62, 20)];
+				CGRectMake(kRecordClockX, TGCenteredOrigin(kInputHeight, TGMetricLineRow),
+						kRecordClockW, TGMetricLineRow)];
 		self.recordClock.font = TGFontRow();
 		self.recordClock.textColor = [theme primaryTextColour];
 		self.recordClock.backgroundColor = [UIColor clearColor];
 		[self.recordPanel addSubview:self.recordClock];
 
 		self.recordCancelSlideLabel = [[UILabel alloc] initWithFrame:
-				CGRectMake(100, TGCenteredOrigin(kInputHeight, 20), bar.size.width - 180, 20)];
+				CGRectMake(kRecordSlideX, TGCenteredOrigin(kInputHeight, TGMetricLineRow),
+						bar.size.width - kRecordSlideRoom, TGMetricLineRow)];
 		self.recordCancelSlideLabel.text = @"‹ Slide to cancel";
 		self.recordCancelSlideLabel.font = TGFontBody();
 		self.recordCancelSlideLabel.textColor = [theme secondaryTextColour];
@@ -99,7 +103,10 @@ static BOOL sIsCancelled;
 
 		// Cancel text button for locked mode (centered, like TG Desktop / Mobile)
 		self.recordCancelButton = [UIButton buttonWithType:UIButtonTypeCustom];
-		self.recordCancelButton.frame = CGRectMake(TGCenteredOrigin(bar.size.width, 100), TGCenteredOrigin(kInputHeight, 32), 100, 32);
+		self.recordCancelButton.frame =
+				CGRectMake(TGCenteredOrigin(bar.size.width, kRecordCancelW),
+						TGCenteredOrigin(kInputHeight, kRecordCancelH),
+						kRecordCancelW, kRecordCancelH);
 		[self.recordCancelButton setTitle:@"Cancel" forState:UIControlStateNormal];
 		[self.recordCancelButton setTitleColor:[theme accentColour] forState:UIControlStateNormal];
 		self.recordCancelButton.titleLabel.font = TGFontRow();
@@ -155,7 +162,8 @@ static BOOL sIsCancelled;
 	self.recordDot.frame = CGRectMake(TGMetricPadLarge,
 			TGCenteredOrigin(kInputHeight, TGMetricRecordDotSide),
 			TGMetricRecordDotSide, TGMetricRecordDotSide);
-	self.recordClock.frame = CGRectMake(32, TGCenteredOrigin(kInputHeight, 20), 62, 20);
+	self.recordClock.frame = CGRectMake(kRecordClockX,
+			TGCenteredOrigin(kInputHeight, TGMetricLineRow), kRecordClockW, TGMetricLineRow);
 
 	self.recordPanel.frame = bar;
 	self.recordClock.text = @"0:00,0";
@@ -174,24 +182,26 @@ static BOOL sIsCancelled;
 		pill.clipsToBounds = YES;
 
 		UIImageView *lockIcon = [[UIImageView alloc] initWithFrame:
-				CGRectMake(TGCenteredOrigin(pillW, 18), TGMetricPad, 18, 18)];
-		lockIcon.image = [TGIcons lockOfSide:18
+				CGRectMake(TGCenteredOrigin(pillW, kRecordLockGlyph), TGMetricPad,
+						kRecordLockGlyph, kRecordLockGlyph)];
+		lockIcon.image = [TGIcons lockOfSide:kRecordLockGlyph
 									  colour:[UIColor whiteColor]];
 		lockIcon.backgroundColor = [UIColor clearColor];
 		[pill addSubview:lockIcon];
 
 		UIImageView *arrow = [[UIImageView alloc] initWithFrame:
-				CGRectMake(TGCenteredOrigin(pillW, 16), 36, 16, 16)];
+				CGRectMake(TGCenteredOrigin(pillW, kRecordLockArrow), kRecordLockArrowY,
+						kRecordLockArrow, kRecordLockArrow)];
 		arrow.image = [TGIcons glyphNamed:@"chevronUp"
 									  colour:[[TGTheme shared] secondaryTextColour]
-										side:16];
+										side:kRecordLockArrow];
 		arrow.backgroundColor = [UIColor clearColor];
 		[pill addSubview:arrow];
 
 		self.recordLockView = pill;
 	}
 	self.recordLockView.alpha = TGAlphaTransparent;
-	self.recordLockView.transform = CGAffineTransformMakeTranslation(0, 10);
+	self.recordLockView.transform = CGAffineTransformMakeTranslation(0, kRecordLockRest);
 	[self.view addSubview:self.recordLockView];
 	[UIView animateWithDuration:TGAnimationDurationNormal animations:^{
 		self.recordLockView.alpha = TGAlphaOpaque;
@@ -219,7 +229,7 @@ static BOOL sIsCancelled;
 
 	[UIView animateWithDuration:TGAnimationDurationNormal animations:^{
 		self.recordLockView.alpha = TGAlphaTransparent;
-		self.recordLockView.transform = CGAffineTransformMakeTranslation(0, -15);
+		self.recordLockView.transform = CGAffineTransformMakeTranslation(0, -kRecordLockLift);
 	} completion:^(BOOL finished) {
 		[self.recordLockView removeFromSuperview];
 		self.recordLockView = nil;
@@ -382,10 +392,10 @@ static BOOL sIsCancelled;
 			[NSIndexPath indexPathForRow:row inSection:0]];
 	NSDictionary *m = self.messages[row];
 	CGFloat x = [m[@"outgoing"] boolValue]
-			? (self.table.bounds.size.width - side - 8) : 8;
+			? (self.table.bounds.size.width - side - TGMetricPad) : TGMetricPad;
 
 	UIView *circle = [[UIView alloc] initWithFrame:
-			CGRectMake(x, inTable.origin.y + 3, side, side)];
+			CGRectMake(x, inTable.origin.y + TGMetricBubbleRowInset, side, side)];
 	circle.layer.cornerRadius = TGHalf(side);
 	circle.clipsToBounds = YES;
 	circle.layer.masksToBounds = YES;
@@ -409,13 +419,13 @@ static BOOL sIsCancelled;
 	self.videoNoteProgressLayer = [CAShapeLayer layer];
 	self.videoNoteProgressLayer.frame = circle.bounds;
 	self.videoNoteProgressLayer.path = [UIBezierPath bezierPathWithArcCenter:CGPointMake(TGHalf(side), TGHalf(side))
-																	  radius:TGHalf(side) - 2
+																	  radius:TGHalf(side) - TGMetricPadTiny
 																  startAngle:-M_PI_2
 																	endAngle:M_PI_2 * 3
 																   clockwise:YES].CGPath;
 	self.videoNoteProgressLayer.strokeColor = [[TGTheme shared] accentColour].CGColor;
 	self.videoNoteProgressLayer.fillColor = [UIColor clearColor].CGColor;
-	self.videoNoteProgressLayer.lineWidth = 4.0;
+	self.videoNoteProgressLayer.lineWidth = TGMetricPadSmall;
 	self.videoNoteProgressLayer.strokeEnd = 0.0;
 	[circle.layer addSublayer:self.videoNoteProgressLayer];
 
@@ -481,7 +491,7 @@ static BOOL sIsCancelled;
 		// Album art where their player has it. A voice note has none, and
 		// the view simply stays hidden for one.
 		self.playerArtwork = [[UIImageView alloc] initWithFrame:
-				CGRectMake(8, TGCenteredOrigin(kPlayerBarHeight, kPlayerArt) - 1,
+				CGRectMake(kPlayerArtX, TGCenteredOrigin(kPlayerBarHeight, kPlayerArt) - kPlayerArtLift,
 						   kPlayerArt, kPlayerArt)];
 		self.playerArtwork.contentMode = UIViewContentModeScaleAspectFill;
 		self.playerArtwork.clipsToBounds = YES;
@@ -546,7 +556,7 @@ static BOOL sIsCancelled;
 		self.playerClose = [UIButton buttonWithType:UIButtonTypeCustom];
 		[self.playerClose setImage:[TGIcons glyphNamed:@"close"
 											colour:[theme secondaryTextColour]
-											  side:16]
+											  side:kRecordLockArrow]
 						  forState:UIControlStateNormal];
 		self.playerClose.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
 		[self.playerClose addTarget:self action:@selector(stopPlayback)
@@ -556,20 +566,20 @@ static BOOL sIsCancelled;
 		[self.playerBar addSubview:self.playerClose];
 
 		UIView *track = [[UIView alloc] initWithFrame:
-				CGRectMake(0, kPlayerBarHeight - 2, b.size.width, 2)];
+				CGRectMake(0, kPlayerBarHeight - kPlayerProgressH, b.size.width, kPlayerProgressH)];
 		track.backgroundColor = [theme separatorColour];
 		track.autoresizingMask = UIViewAutoresizingFlexibleWidth;
 		[self.playerBar addSubview:track];
 
 		self.playerProgress = [[UIView alloc] initWithFrame:
-				CGRectMake(0, kPlayerBarHeight - 2, 0, 2)];
+				CGRectMake(0, kPlayerBarHeight - kPlayerProgressH, 0, kPlayerProgressH)];
 		self.playerProgress.backgroundColor = [theme accentColour];
 		[self.playerBar addSubview:self.playerProgress];
 
 		// A 2pt line is nothing to aim at, so the whole strip is the target
 		// and the thumb says where the finger landed.
 		self.playerThumb = [[UIView alloc] initWithFrame:
-				CGRectMake(-TGMetricPadSmall, kPlayerBarHeight - TGMetricPadSmall - 1,
+				CGRectMake(-TGMetricPadSmall, kPlayerBarHeight - TGMetricPadSmall - kPlayerArtLift,
 						   TGMetricPlayerThumbSide, TGMetricPlayerThumbSide)];
 		self.playerThumb.backgroundColor = [theme accentColour];
 		self.playerThumb.layer.cornerRadius = TGHalf(TGMetricPlayerThumbSide);
@@ -589,7 +599,8 @@ static BOOL sIsCancelled;
 	self.playerDetail.text = @"";
 	self.playerClock.text = @"";
 	self.playerArtwork.image = nil;
-	self.playerProgress.frame = CGRectMake(0, kPlayerBarHeight - 2, 0, 2);
+	self.playerProgress.frame = CGRectMake(0, kPlayerBarHeight - kPlayerProgressH,
+			0, kPlayerProgressH);
 	[self.playerToggle setImage:[TGIcons pause] forState:UIControlStateNormal];
 	// A video note has no rate to change.
 	self.playerSpeed.hidden = (self.voicePlayer == nil);
@@ -609,40 +620,47 @@ static BOOL sIsCancelled;
 /// both and the queue is what a track needs.
 - (void)layoutPlayerBarForMusic:(BOOL)music {
 	CGFloat width = self.playerBar.bounds.size.width;
-	CGFloat mid = TGCenteredOrigin(kPlayerBarHeight, 28) - 1;
+	CGFloat mid = TGCenteredOrigin(kPlayerBarHeight, kPlayerButton) - kPlayerArtLift;
 
 	self.playerArtwork.hidden = !music;
 	CGFloat textX;
 	if (music){
-		self.playerToggle.frame = CGRectMake(8 + kPlayerArt + 6, mid, 28, 28);
-		textX = 8 + kPlayerArt + 6 + 28 + 4;
+		self.playerToggle.frame = CGRectMake(kPlayerArtX + kPlayerArt + kPlayerArtGap, mid,
+				kPlayerButton, kPlayerButton);
+		textX = kPlayerArtX + kPlayerArt + kPlayerArtGap + kPlayerButton + kPlayerButtonGap;
 	} else {
-		self.playerToggle.frame = CGRectMake(8, mid, 28, 28);
-		textX = 42;
+		self.playerToggle.frame = CGRectMake(kPlayerArtX, mid, kPlayerButton, kPlayerButton);
+		textX = kPlayerArtX + kPlayerButton + kPlayerArtGap;
 	}
 
 	// Right to left: close, then the queue or the speed, then the clock.
-	self.playerClose.frame = CGRectMake(width - 34, mid, 30, 28);
-	CGFloat rightEdge = width - 38;
+	self.playerClose.frame = CGRectMake(width - kPlayerCloseW - kPlayerButtonGap, mid,
+			kPlayerCloseW, kPlayerButton);
+	CGFloat rightEdge = width - kPlayerRightEdge;
 
 	self.musicPrevious.hidden = !music;
 	self.musicNext.hidden = !music;
 	self.playerSpeed.hidden = music;
 	if (music){
-		self.musicNext.frame = CGRectMake(rightEdge - 30, mid, 30, 28);
-		self.musicPrevious.frame = CGRectMake(rightEdge - 62, mid, 30, 28);
-		rightEdge -= 64;
+		self.musicNext.frame = CGRectMake(rightEdge - kPlayerCloseW, mid,
+				kPlayerCloseW, kPlayerButton);
+		self.musicPrevious.frame = CGRectMake(rightEdge - TGDoubled(kPlayerCloseW) - TGMetricPadTiny,
+				mid, kPlayerCloseW, kPlayerButton);
+		rightEdge -= TGDoubled(kPlayerCloseW) + TGMetricPadSmall;
 	} else {
-		self.playerSpeed.frame = CGRectMake(rightEdge - 40, mid, 40, 28);
-		rightEdge -= 42;
+		self.playerSpeed.frame = CGRectMake(rightEdge - kPlayerSpeedW, mid,
+				kPlayerSpeedW, kPlayerButton);
+		rightEdge -= kPlayerSpeedW + TGMetricPadTiny;
 	}
 
-	CGFloat clockW = 72;
-	self.playerClock.frame = CGRectMake(rightEdge - clockW, mid + 7, clockW, 14);
-	CGFloat textW = MAX(40, rightEdge - clockW - textX - 4);
+	CGFloat clockW = kPlayerClockW;
+	self.playerClock.frame = CGRectMake(rightEdge - clockW, mid + kPlayerClockDrop,
+			clockW, TGMetricLineMicro);
+	CGFloat textW = MAX(kPlayerTextMin, rightEdge - clockW - textX - TGMetricPadSmall);
 
-	self.playerLabel.frame = CGRectMake(textX, mid + 1, textW, 15);
-	self.playerDetail.frame = CGRectMake(textX, mid + 15, textW, 13);
+	self.playerLabel.frame = CGRectMake(textX, mid + kPlayerArtLift, textW, kPlayerTitleLine);
+	self.playerDetail.frame = CGRectMake(textX, mid + kPlayerTitleLine, textW,
+			kPlayerDetailLine);
 }
 
 /// "1:07 / 3:42", or just the elapsed time while the length is unknown.
@@ -698,10 +716,10 @@ static NSString *TGClockText(NSTimeInterval position, NSTimeInterval duration) {
 	}
 	CGFloat played = [self playedFraction];
 	CGFloat barWidth = self.playerBar.bounds.size.width;
-	self.playerProgress.frame = CGRectMake(0, kPlayerBarHeight - 2,
-			barWidth * played, 2);
+	self.playerProgress.frame = CGRectMake(0, kPlayerBarHeight - kPlayerProgressH,
+			barWidth * played, kPlayerProgressH);
 	self.playerThumb.center = CGPointMake(barWidth * played,
-										  kPlayerBarHeight - 1);
+										  kPlayerBarHeight - kPlayerArtLift);
 
 	TGMusicPlayer *music = [TGMusicPlayer shared];
 	if (music.current)

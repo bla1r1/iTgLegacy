@@ -82,8 +82,8 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
         self.codeStepQrButton = nil;
     }
 
-    y = TGStackPlaceGroup(self.themeSectionLabel, y, TGMetricMarginLarge,
-                          width, TGMetricGutterLarge);
+    y = TGStackPlaceGroup(self.themeSectionLabel, y, TGMetricPadLarge,
+                          width, TGMetricPadWide);
     y = TGStackPlace(self.themeSegmentedControl, y - TGMetricStackStep +
                      TGMetricPadSmall, TGMetricLoginLinkHeight,
                      width, TGMetricGutter);
@@ -91,7 +91,7 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
     self.themeSegmentedControl.hidden = NO;
 
     self.scrollView.contentSize = CGSizeMake(width,
-            y - TGMetricStackStep + TGMetricMarginLarge);
+            y - TGMetricStackStep + TGMetricPadLarge);
     [self applyTheme];
     [self.inputField becomeFirstResponder];
 }
@@ -171,9 +171,9 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
     self.qrImageView.image = [self generateQRCodeForString:link size:qrSize];
 
     CGFloat qrY = TGStackPlaceGroup(nil, TGMetricStackQRTop + qrSize,
-                                    0, width, TGMetricGutterLarge);
+                                    0, width, TGMetricPadWide);
     qrY = TGStackPlace(self.themeSectionLabel, qrY - TGMetricStackStep,
-                       TGMetricMarginLarge, width, TGMetricGutterLarge);
+                       TGMetricPadLarge, width, TGMetricPadWide);
     qrY = TGStackPlace(self.themeSegmentedControl,
                        qrY - TGMetricStackStep + TGMetricPadSmall,
                        TGMetricLoginLinkHeight, width, TGMetricGutter);
@@ -181,7 +181,7 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
     self.themeSegmentedControl.hidden = NO;
 
     self.scrollView.contentSize = CGSizeMake(width,
-            qrY - TGMetricStackStep + TGMetricMarginLarge);
+            qrY - TGMetricStackStep + TGMetricPadLarge);
     [self applyTheme];
 }
 
@@ -286,7 +286,7 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
     // Past the two links, whichever of them is showing.
     codeY += TGDoubled(TGMetricLoginLinkHeight) + TGMetricPadSmall;
     codeY = TGStackPlaceGroup(self.themeSectionLabel, codeY,
-                              TGMetricMarginLarge, width, TGMetricGutterLarge);
+                              TGMetricPadLarge, width, TGMetricPadWide);
     codeY = TGStackPlace(self.themeSegmentedControl,
                          codeY - TGMetricStackStep + TGMetricPadSmall,
                          TGMetricLoginLinkHeight, width, TGMetricGutter);
@@ -294,7 +294,7 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
     self.themeSegmentedControl.hidden = NO;
 
     self.scrollView.contentSize = CGSizeMake(width,
-            codeY - TGMetricStackStep + TGMetricMarginLarge);
+            codeY - TGMetricStackStep + TGMetricPadLarge);
 
     [self.resendTimer invalidate];
     self.resendTimer = nil;
@@ -380,7 +380,7 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
     CGFloat width = self.view.bounds.size.width;
     [self useSingleFieldLayout];
     // The terms can run long, so the field sits under whatever they took.
-    CGSize room = CGSizeMake(width - TGDoubled(TGMetricGutterLarge),
+    CGSize room = CGSizeMake(width - TGDoubled(TGMetricPadWide),
                              TGMetricTextMeasureHeight);
     CGFloat subtitleH = 40;
     if ([self.subtitleLabel.text respondsToSelector:
@@ -390,8 +390,8 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
              attributes:@{NSFontAttributeName : self.subtitleLabel.font}
                 context:nil].size.height);
     }
-    self.subtitleLabel.frame = CGRectMake(TGMetricGutterLarge, TGMetricPad,
-            width - TGDoubled(TGMetricGutterLarge), subtitleH);
+    self.subtitleLabel.frame = CGRectMake(TGMetricPadWide, TGMetricPad,
+            width - TGDoubled(TGMetricPadWide), subtitleH);
 
     CGFloat y = 16 + subtitleH;
     y = TGStackPlace(self.inputContainer, y, TGMetricRow, width, TGMetricGutter);
@@ -406,7 +406,7 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
     self.themeSectionLabel.hidden = YES;
     self.themeSegmentedControl.hidden = YES;
     self.scrollView.contentSize = CGSizeMake(width,
-            y - TGMetricStackStep + TGMetricMarginLarge);
+            y - TGMetricStackStep + TGMetricPadLarge);
 
     [self applyTheme];
     [self.inputField becomeFirstResponder];
@@ -450,7 +450,7 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
     self.nextItem.title = @"Done";
 
     passY = TGStackPlaceGroup(self.themeSectionLabel, passY,
-                              TGMetricMarginLarge, width, TGMetricGutterLarge);
+                              TGMetricPadLarge, width, TGMetricPadWide);
     passY = TGStackPlace(self.themeSegmentedControl,
                          passY - TGMetricStackStep + TGMetricPadSmall,
                          TGMetricLoginLinkHeight, width, TGMetricGutter);
@@ -458,7 +458,7 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
     self.themeSegmentedControl.hidden = NO;
 
     self.scrollView.contentSize = CGSizeMake(width,
-            passY - TGMetricStackStep + TGMetricMarginLarge);
+            passY - TGMetricStackStep + TGMetricPadLarge);
 
     [self applyTheme];
     [self.inputField becomeFirstResponder];

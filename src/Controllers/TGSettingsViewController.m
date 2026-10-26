@@ -169,7 +169,7 @@
 		return [self footerLabelForSection:section];
 	NSDictionary *info = [NSBundle mainBundle].infoDictionary;
 	UILabel *label = [[UILabel alloc] initWithFrame:
-			CGRectMake(0, 0, self.view.bounds.size.width, 40)];
+			CGRectMake(0, 0, self.view.bounds.size.width, kVersionRow)];
 	label.text = [NSString stringWithFormat:@"LegacyTG %@ (%@) armv7",
 			info[@"CFBundleShortVersionString"] ?: @"", info[@"CFBundleVersion"] ?: @""];
 	label.font = TGFontMeta();
@@ -383,7 +383,9 @@
 		return [[UIView alloc] initWithFrame:CGRectMake(0, 0, tableView.bounds.size.width, TGMetricSectionHeaderEmpty)];
 	UIView *holder = [[UIView alloc] initWithFrame:CGRectMake(0, 0, tableView.bounds.size.width, TGMetricSectionHeaderHeight)];
 	holder.backgroundColor = [UIColor clearColor];
-	UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(kFooterInset, 10, tableView.bounds.size.width - TGDoubled(kFooterInset), 18)];
+	UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(kFooterInset,
+			TGMetricPadMedium, tableView.bounds.size.width - TGDoubled(kFooterInset),
+			TGMetricLineBody)];
 	label.text = text.uppercaseString;
 	label.font = TGFontMeta();
 	label.textColor = [[TGTheme shared] sectionHeaderColour];
@@ -396,11 +398,33 @@
 /// default size they were louder than the settings they describe. Drawn here
 /// rather than handed over as a title so the size is ours.
 static const CGFloat kFooterInset  = TGMetricGutter;
+/// The version line that ends the root page.
+static const CGFloat kVersionRow   = 40.0f;
+/// Measuring a footer: the narrowest column worth wrapping into, and a height
+/// no footer will reach, which is how sizeWithFont: is told "as tall as it
+/// needs".
+static const CGFloat kFooterMinW   = 100.0f;
+static const CGFloat kFooterMaxH   = 400.0f;
+/// The theme preview: a strip of wallpaper with two bubbles on it.
+static const CGFloat kPreviewRow      = TGMetricSettingsPreviewRow;
+static const CGFloat kPreviewBubbleW  = 176.0f;
+static const CGFloat kPreviewBubbleH  = 34.0f;
+static const CGFloat kPreviewInset    = TGMetricPadMedium + TGMetricPadTiny;
+static const CGFloat kPreviewTop      = TGMetricPadLarge - TGMetricPadTiny;
+static const CGFloat kPreviewGap      = TGMetricPad;
+static const CGFloat kPreviewTextLeft = 9.0f;
+static const CGFloat kPreviewStampRoom = 46.0f;
+static const CGFloat kPreviewStampW   = 30.0f;
+/// The account header: the picture, the name under it, the phone under that.
+static const CGFloat kMeAvatarTop  = TGMetricPadLarge + TGMetricPadTiny;
+static const CGFloat kMeNameTop    = TGMetricPadMedium;
+static const CGFloat kMeNameLine   = TGMetricLineTitle + TGMetricPadTiny;
+static const CGFloat kMeTextInset  = TGMetricPadMedium;
 
 - (CGSize)footerTextSize:(NSString *)text {
 	CGFloat width = self.tableView.bounds.size.width - TGDoubled(kFooterInset);
 	return [text sizeWithFont:TGFontMeta()
-			constrainedToSize:CGSizeMake(MAX(width, 100), 400)
+			constrainedToSize:CGSizeMake(MAX(width, kFooterMinW), kFooterMaxH)
 				lineBreakMode:NSLineBreakByWordWrapping];
 }
 
@@ -441,7 +465,7 @@ static const CGFloat kFooterInset  = TGMetricGutter;
 			initWithStyle:UITableViewCellStyleDefault reuseIdentifier:nil];
 	cell.selectionStyle = UITableViewCellSelectionStyleNone;
 
-	UIView *canvas = [[UIView alloc] initWithFrame:CGRectMake(0, 0, width, 108)];
+	UIView *canvas = [[UIView alloc] initWithFrame:CGRectMake(0, 0, width, kPreviewRow)];
 	canvas.backgroundColor = [theme chatBackgroundColour];
 	canvas.clipsToBounds = YES;
 	if (theme.wallpaper){
@@ -455,9 +479,10 @@ static const CGFloat kFooterInset  = TGMetricGutter;
 	NSArray *lines = @[@"How does this one look?", @"Like Telegram, only older."];
 	for (NSUInteger i = 0; i < 2; i++){
 		BOOL mine = (i == 1);
-		CGFloat bubbleW = 176, bubbleH = 34;
+		CGFloat bubbleW = kPreviewBubbleW, bubbleH = kPreviewBubbleH;
 		UIView *bubble = [[UIView alloc] initWithFrame:CGRectMake(
-				mine ? width - bubbleW - 12 : 12, 14 + i * (bubbleH + 8),
+				mine ? width - bubbleW - kPreviewInset : kPreviewInset,
+				kPreviewTop + i * (bubbleH + kPreviewGap),
 				bubbleW, bubbleH)];
 		bubble.backgroundColor = mine ? [theme bubbleMineColour]
 									  : [theme bubbleTheirsColour];
@@ -467,7 +492,7 @@ static const CGFloat kFooterInset  = TGMetricGutter;
 		[canvas addSubview:bubble];
 
 		UILabel *text = [[UILabel alloc] initWithFrame:
-				CGRectMake(9, 0, bubbleW - 46, bubbleH)];
+				CGRectMake(kPreviewTextLeft, 0, bubbleW - kPreviewStampRoom, bubbleH)];
 		text.text = lines[i];
 		text.font = TGFontAtSize(MIN(theme.messageFontSize, TGFontMessageBaseCap));
 		text.textColor = [theme primaryTextColour];
@@ -476,7 +501,8 @@ static const CGFloat kFooterInset  = TGMetricGutter;
 		[bubble addSubview:text];
 
 		UILabel *stamp = [[UILabel alloc] initWithFrame:
-				CGRectMake(bubbleW - 38, bubbleH - 16, 30, 12)];
+				CGRectMake(bubbleW - kPreviewStampW - TGMetricPad,
+						bubbleH - TGMetricLineCaption, kPreviewStampW, TGMetricStampHeight)];
 		stamp.text = @"9:41";
 		stamp.font = TGFontMicro();
 		stamp.textColor = [theme timeColour];
@@ -661,7 +687,7 @@ static const CGFloat kFooterInset  = TGMetricGutter;
 			? [NSString stringWithFormat:@"@%@", me[@"username"]] : @"";
 
 	self.avatarView = [[UIImageView alloc] initWithFrame:
-			CGRectMake(TGCenteredOrigin(width, side), 18, side, side)];
+			CGRectMake(TGCenteredOrigin(width, side), kMeAvatarTop, side, side)];
 	self.avatarView.layer.cornerRadius = TGHalf(side);
 	self.avatarView.clipsToBounds = YES;
 	self.avatarView.layer.shouldRasterize = YES;
@@ -682,7 +708,8 @@ static const CGFloat kFooterInset  = TGMetricGutter;
 	}
 
 	UILabel *nameLabel = [[UILabel alloc] initWithFrame:
-			CGRectMake(10, 18 + side + 10, width - 20, 28)];
+			CGRectMake(kMeTextInset, kMeAvatarTop + side + kMeNameTop,
+					width - TGDoubled(kMeTextInset), kMeNameLine)];
 	nameLabel.text = name;
 	nameLabel.font = TGFontTitle();
 	nameLabel.textAlignment = NSTextAlignmentCenter;
@@ -691,7 +718,8 @@ static const CGFloat kFooterInset  = TGMetricGutter;
 	[profile.contentView addSubview:nameLabel];
 
 	UILabel *phoneLabel = [[UILabel alloc] initWithFrame:
-			CGRectMake(10, 18 + side + 38, width - 20, 20)];
+			CGRectMake(kMeTextInset, kMeAvatarTop + side + kMeNameTop + kMeNameLine,
+					width - TGDoubled(kMeTextInset), TGMetricLineRow)];
 	phoneLabel.text = (phone.length && username.length)
 			? [NSString stringWithFormat:@"%@ • %@", phone, username]
 			: (phone.length ? phone : username);
