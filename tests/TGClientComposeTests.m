@@ -1,0 +1,505 @@
+// TGClientComposeTests.m — the tier-0 holes in composing and finding: markup
+// that could not be sent, a caption that could not be edited, pictures that
+// could not go as one album, and a search that only ever found what was
+// already loaded.
+//
+// The shapes here are the ones TDLib refuses outright (an album where two
+// pictures carry a caption) or accepts and does the wrong thing with (a
+// caption edited as text, which is a different request and leaves the
+// caption alone).
+#import "TGTestRunner.h"
+#import "TGClient.h"
+#import "TGClientInternal.h"
+
+@interface TGClientComposeTests : XCTestCase @end
+
+static TGClient *C(void) {
+	TGClient *c = TGClient.shared;
+	[c.outbox removeAllObjects];
+	[c.pendingRequests removeAllObjects];
+	[c.chatsById removeAllObjects];
+	[c.usersById removeAllObjects];
+	c.onChatsChanged = nil;
+	return c;
+}
+
+static NSDictionary *decodeC(NSData *d) {
+	NSString *json = [[NSString alloc] initWithData:d encoding:NSUTF8StringEncoding];
+	NSString *trimmed = [json componentsSeparatedByString:@"\0"][0];
+	return [NSJSONSerialization JSONObjectWithData:
+			[trimmed dataUsingEncoding:NSUTF8StringEncoding] options:0 error:nil];
+}
+
+static NSDictionary *lastC(TGClient *c, NSString *type) {
+	NSDictionary *found = nil;
+	for (NSData *d in c.outbox)
+		if ([decodeC(d)[@"@type"] isEqualToString:type])
+			found = decodeC(d);
+	return found;
+}
+
+static NSUInteger countC(TGClient *c, NSString *type) {
+	NSUInteger n = 0;
+	for (NSData *d in c.outbox)
+		if ([decodeC(d)[@"@type"] isEqualToString:type])
+			n++;
+	return n;
+}
+
+/// Answers the oldest unanswered request of a type, so a method that sends
+/// three at once can be answered one at a time in a known order.
+static void answerTyped(TGClient *c, NSString *type, NSDictionary *answer) {
+	for (NSData *d in c.outbox){
+		NSDictionary *sent = decodeC(d);
+		if (![sent[@"@type"] isEqualToString:type])
+			continue;
+		NSString *extra = sent[@"@extra"];
+		if (!extra || !c.pendingRequests[extra])
+			continue;
+		NSMutableDictionary *reply = [answer mutableCopy];
+		reply[@"@extra"] = extra;
+		[c handleUpdate:reply];
+		return;
+	}
+}
+
+@implementation TGClientComposeTests
+
+#pragma mark - markup
+
+/// Without the execute symbol - which is how the host sees it, and how a
+/// device with a dylib missing it would - the text goes as written rather
+/// than not at all.
+- (void)testFormattedText_FallsBackToTheTextAsWritten {
+	TGClient *c = C();
+	c.td_exec = NULL;
+
+	NSDictionary *formatted = TGFormattedText(@"*bold* and plain");
+	XCTAssertEqualObjects(formatted[@"@type"], @"formattedText");
+	XCTAssertEqualObjects(formatted[@"text"], @"*bold* and plain");
+	XCTAssertEqual([formatted[@"entities"] count], (NSUInteger)0);
+}
+
+- (void)testFormattedText_EmptyAndNilAreStillAFormattedText {
+	TGClient *c = C();
+	c.td_exec = NULL;
+	XCTAssertEqualObjects(TGFormattedText(nil)[@"text"], @"");
+	XCTAssertEqualObjects(TGFormattedText(@"")[@"text"], @"");
+}
+
+/// A message now carries a formattedText rather than a bare string, which is
+/// what lets bold and italic leave this device at all.
+- (void)testSendText_CarriesAFormattedTextRatherThanAPlainString {
+	TGClient *c = C();
+	c.td_exec = NULL;
+	[c sendText:@"hello" toChat:7 thread:0 replyTo:0];
+
+	NSDictionary *content = lastC(c, @"sendMessage")[@"input_message_content"];
+	XCTAssertEqualObjects(content[@"@type"], @"inputMessageText");
+	XCTAssertEqualObjects(content[@"text"][@"@type"], @"formattedText");
+	XCTAssertEqualObjects(content[@"text"][@"text"], @"hello");
+}
+
+#pragma mark - captions
+
+/// Editing a caption as text leaves the caption alone: it is its own
+/// request, and that is why media with a caption had no Edit at all.
+- (void)testEditCaption_IsItsOwnRequestAndNotEditMessageText {
+	TGClient *c = C();
+	c.td_exec = NULL;
+	[c editCaption:@"the slides" ofMessage:5 inChat:7 completion:nil];
+
+	NSDictionary *r = lastC(c, @"editMessageCaption");
+	XCTAssertNotNil(r);
+	XCTAssertEqual(countC(c, @"editMessageText"), (NSUInteger)0);
+	XCTAssertEqual([r[@"message_id"] longLongValue], 5LL);
+	XCTAssertEqualObjects(r[@"caption"][@"text"], @"the slides");
+}
+
+- (void)testEditCaption_AnErrorIsNotSuccess {
+	TGClient *c = C();
+	c.td_exec = NULL;
+	__block BOOL ok = YES;
+	[c editCaption:@"x" ofMessage:5 inChat:7 completion:^(BOOL good){ ok = good; }];
+	answerTyped(c, @"editMessageCaption",
+			@{@"@type" : @"error", @"message" : @"MESSAGE_NOT_MODIFIED"});
+	XCTAssertFalse(ok);
+}
+
+/// Replacing the picture takes the whole content, so the caption has to
+/// travel with it or editing the picture wipes the words under it.
+- (void)testEditPhoto_CarriesTheCaptionAlongWithTheNewPicture {
+	TGClient *c = C();
+	c.td_exec = NULL;
+	[c editPhotoAtPath:@"/tmp/new.jpg" caption:@"still the slides"
+			 ofMessage:5 inChat:7 completion:nil];
+
+	NSDictionary *content = lastC(c, @"editMessageMedia")[@"input_message_content"];
+	XCTAssertEqualObjects(content[@"@type"], @"inputMessagePhoto");
+	XCTAssertEqualObjects(content[@"photo"][@"path"], @"/tmp/new.jpg");
+	XCTAssertEqualObjects(content[@"caption"][@"text"], @"still the slides");
+}
+
+- (void)testEditPhoto_RefusesAnEmptyPathRatherThanSendingOne {
+	TGClient *c = C();
+	c.td_exec = NULL;
+	__block BOOL ok = YES;
+	[c editPhotoAtPath:@"" caption:nil ofMessage:5 inChat:7
+			completion:^(BOOL good){ ok = good; }];
+	XCTAssertEqual(countC(c, @"editMessageMedia"), (NSUInteger)0);
+	XCTAssertFalse(ok);
+}
+
+#pragma mark - albums
+
+/// One request, not several: that is the difference between an album and a
+/// run of pictures that happen to be next to each other.
+- (void)testAlbum_IsOneRequestWithEveryPictureInIt {
+	TGClient *c = C();
+	c.td_exec = NULL;
+	[c sendPhotoAlbumAtPaths:@[@"/tmp/a.jpg", @"/tmp/b.jpg", @"/tmp/c.jpg"]
+					 caption:@"three of them" toChat:7 thread:0];
+
+	XCTAssertEqual(countC(c, @"sendMessageAlbum"), (NSUInteger)1);
+	XCTAssertEqual(countC(c, @"sendMessage"), (NSUInteger)0);
+	NSArray *contents = lastC(c, @"sendMessageAlbum")[@"input_message_contents"];
+	XCTAssertEqual(contents.count, (NSUInteger)3);
+	XCTAssertEqualObjects(contents[0][@"photo"][@"path"], @"/tmp/a.jpg");
+}
+
+/// TDLib refuses an album where more than one picture carries a caption, so
+/// only the first may.
+- (void)testAlbum_OnlyTheFirstPictureCarriesTheCaption {
+	TGClient *c = C();
+	c.td_exec = NULL;
+	[c sendPhotoAlbumAtPaths:@[@"/tmp/a.jpg", @"/tmp/b.jpg"]
+					 caption:@"the caption" toChat:7 thread:0];
+
+	NSArray *contents = lastC(c, @"sendMessageAlbum")[@"input_message_contents"];
+	XCTAssertEqualObjects(contents[0][@"caption"][@"text"], @"the caption");
+	XCTAssertEqualObjects(contents[1][@"caption"][@"text"], @"");
+}
+
+/// Their own ceiling is ten. An eleventh would have the whole album refused
+/// rather than trimmed.
+- (void)testAlbum_StopsAtTen {
+	TGClient *c = C();
+	c.td_exec = NULL;
+	NSMutableArray *paths = [NSMutableArray array];
+	for (NSUInteger i = 0; i < 14; i++)
+		[paths addObject:[NSString stringWithFormat:@"/tmp/%lu.jpg", (unsigned long)i]];
+	[c sendPhotoAlbumAtPaths:paths caption:nil toChat:7 thread:0];
+
+	NSArray *contents = lastC(c, @"sendMessageAlbum")[@"input_message_contents"];
+	XCTAssertEqual(contents.count, (NSUInteger)10);
+}
+
+- (void)testAlbum_NothingToSendIsNoRequest {
+	TGClient *c = C();
+	c.td_exec = NULL;
+	[c sendPhotoAlbumAtPaths:@[] caption:@"x" toChat:7 thread:0];
+	[c sendPhotoAlbumAtPaths:@[@"", [NSNull null]] caption:nil toChat:7 thread:0];
+	XCTAssertEqual(countC(c, @"sendMessageAlbum"), (NSUInteger)0);
+}
+
+#pragma mark - finding a chat by name
+
+/// Three requests, one answer. Matching titles in the loaded list only ever
+/// found chats already here, so a chat this account has and has not opened -
+/// and every public chat - was unfindable by name.
+- (void)testSearchChats_AsksAllThreePlacesAChatCanBe {
+	TGClient *c = C();
+	[c searchChatsForQuery:@"walk" completion:nil];
+	XCTAssertEqual(countC(c, @"searchChats"), (NSUInteger)1);
+	XCTAssertEqual(countC(c, @"searchChatsOnServer"), (NSUInteger)1);
+	XCTAssertEqual(countC(c, @"searchPublicChats"), (NSUInteger)1);
+}
+
+/// Local first, and each chat once: a chat you are in must never rank below
+/// a stranger with a similar name.
+- (void)testSearchChats_LocalComesFirstAndNothingAppearsTwice {
+	TGClient *c = C();
+	c.chatsById[@(7)] = [@{@"id" : @(7), @"title" : @"Walkers"} mutableCopy];
+	c.chatsById[@(8)] = [@{@"id" : @(8), @"title" : @"Walking group"} mutableCopy];
+
+	__block NSArray *found = nil;
+	[c searchChatsForQuery:@"walk" completion:^(NSArray *chats){ found = chats; }];
+
+	// The public answer arrives first and still ends up last.
+	answerTyped(c, @"searchPublicChats", @{@"@type" : @"chats",
+										   @"chat_ids" : @[@(9), @(7)]});
+	answerTyped(c, @"searchChatsOnServer", @{@"@type" : @"chats",
+											 @"chat_ids" : @[@(8)]});
+	answerTyped(c, @"searchChats", @{@"@type" : @"chats", @"chat_ids" : @[@(7)]});
+
+	XCTAssertEqual(found.count, (NSUInteger)3);
+	XCTAssertEqual([found[0][@"id"] longLongValue], 7LL);
+	XCTAssertEqual([found[1][@"id"] longLongValue], 8LL);
+	XCTAssertEqual([found[2][@"id"] longLongValue], 9LL);
+}
+
+/// The answer waits for all three rather than arriving three times, or the
+/// table would reorder itself under the finger.
+- (void)testSearchChats_AnswersOnceAllThreeHaveLanded {
+	TGClient *c = C();
+	__block NSUInteger calls = 0;
+	[c searchChatsForQuery:@"walk" completion:^(NSArray *chats){ calls++; }];
+
+	answerTyped(c, @"searchChats", @{@"@type" : @"chats", @"chat_ids" : @[]});
+	XCTAssertEqual(calls, (NSUInteger)0);
+	answerTyped(c, @"searchChatsOnServer", @{@"@type" : @"chats", @"chat_ids" : @[]});
+	XCTAssertEqual(calls, (NSUInteger)0);
+	answerTyped(c, @"searchPublicChats", @{@"@type" : @"chats", @"chat_ids" : @[]});
+	XCTAssertEqual(calls, (NSUInteger)1);
+}
+
+/// A public chat nobody here has opened has no title to draw, so it is asked
+/// for - and the row carries its id meanwhile, which is enough to open it.
+- (void)testSearchChats_AnUnknownPublicChatIsAskedForById {
+	TGClient *c = C();
+	__block NSArray *found = nil;
+	[c searchChatsForQuery:@"walk" completion:^(NSArray *chats){ found = chats; }];
+	answerTyped(c, @"searchChats", @{@"@type" : @"chats", @"chat_ids" : @[]});
+	answerTyped(c, @"searchChatsOnServer", @{@"@type" : @"chats", @"chat_ids" : @[]});
+	answerTyped(c, @"searchPublicChats", @{@"@type" : @"chats", @"chat_ids" : @[@(99)]});
+
+	XCTAssertEqual(found.count, (NSUInteger)1);
+	XCTAssertEqual([found[0][@"id"] longLongValue], 99LL);
+	XCTAssertEqualObjects(found[0][@"title"], @"");
+	XCTAssertNotNil(lastC(c, @"getChat"), @"its title has to be asked for");
+}
+
+- (void)testSearchChats_AnEmptyQueryIsNoRequest {
+	TGClient *c = C();
+	__block BOOL called = NO;
+	[c searchChatsForQuery:@"" completion:^(NSArray *chats){ called = YES; }];
+	XCTAssertEqual(countC(c, @"searchChats"), (NSUInteger)0);
+	XCTAssertTrue(called, @"the caller still has to be told there is nothing");
+}
+
+/// Telegram matches a contact on the username and the phone number too,
+/// which comparing names here never did.
+- (void)testSearchContacts_NamedOffWhatTheListKnows {
+	TGClient *c = C();
+	c.usersById[@(6)] = @"Pat";
+	__block NSArray *found = nil;
+	[c searchContactsForQuery:@"pat" completion:^(NSArray *users){ found = users; }];
+	XCTAssertEqualObjects(lastC(c, @"searchContacts")[@"query"], @"pat");
+
+	answerTyped(c, @"searchContacts", @{@"@type" : @"users",
+										@"user_ids" : @[@(6), @(7)]});
+	XCTAssertEqual(found.count, (NSUInteger)2);
+	XCTAssertEqualObjects(found[0][@"name"], @"Pat");
+	// A contact whose name has not arrived is still a row; the screen fills
+	// it in from nameForUserId when it does.
+	XCTAssertEqualObjects(found[1][@"name"], @"");
+}
+
+#pragma mark - links
+
+/// A card under a message is Telegram's answer, not a guess here, and most
+/// links have none - so nil has to be the ordinary case rather than an
+/// error.
+- (void)testLinkPreview_FlattensWhatACardDraws {
+	TGClient *c = C();
+	c.td_exec = NULL;
+	__block NSDictionary *preview = nil;
+	[c linkPreviewForText:@"look at https://example.com"
+			   completion:^(NSDictionary *found){ preview = found; }];
+	XCTAssertEqualObjects(lastC(c, @"getLinkPreview")[@"text"][@"text"],
+						  @"look at https://example.com");
+
+	answerTyped(c, @"getLinkPreview", @{@"@type" : @"linkPreview",
+			@"url" : @"https://example.com",
+			@"site_name" : @"Example",
+			@"title" : @"An example",
+			@"description" : @{@"text" : @"what it is"},
+			@"instant_view_version" : @(2),
+			@"type" : @{@"photo" : @{@"sizes" : @[
+					@{@"photo" : @{@"id" : @(41)}},
+					@{@"photo" : @{@"id" : @(42)}}]}}});
+
+	XCTAssertEqualObjects(preview[@"site"], @"Example");
+	XCTAssertEqualObjects(preview[@"title"], @"An example");
+	XCTAssertEqualObjects(preview[@"description"], @"what it is");
+	// The biggest size, which is the one a card draws.
+	XCTAssertEqual([preview[@"photoId"] integerValue], (NSInteger)42);
+	XCTAssertTrue([preview[@"instantView"] boolValue]);
+}
+
+- (void)testLinkPreview_NoPreviewIsNilAndNotAnEmptyCard {
+	TGClient *c = C();
+	c.td_exec = NULL;
+	__block NSDictionary *preview = @{};
+	[c linkPreviewForText:@"nothing here"
+			   completion:^(NSDictionary *found){ preview = found; }];
+	answerTyped(c, @"getLinkPreview",
+			@{@"@type" : @"error", @"message" : @"WEBPAGE_NOT_FOUND"});
+	XCTAssertNil(preview);
+}
+
+- (void)testLinkPreview_EmptyTextIsNoRequest {
+	TGClient *c = C();
+	c.td_exec = NULL;
+	__block BOOL called = NO;
+	[c linkPreviewForText:@"" completion:^(NSDictionary *found){ called = YES; }];
+	XCTAssertEqual(countC(c, @"getLinkPreview"), (NSUInteger)0);
+	XCTAssertTrue(called);
+}
+
+/// The chat used to read a t.me path by hand, which made
+/// t.me/addstickers/foo a chat called "addstickers". Telegram says what its
+/// own links mean.
+- (void)testInternalLink_KindsAreReadRatherThanGuessed {
+	TGClient *c = C();
+	c.td_exec = NULL;
+
+	__block NSString *kind = nil;
+	__block NSString *value = nil;
+	void (^answer)(NSDictionary *) = ^(NSDictionary *reply){
+		answerTyped(c, @"getInternalLinkType", reply);
+	};
+
+	[c internalLinkKind:@"https://t.me/addstickers/foo"
+			 completion:^(NSString *k, NSString *v){ kind = k; value = v; }];
+	answer(@{@"@type" : @"internalLinkTypeStickerSet", @"sticker_set_name" : @"foo"});
+	XCTAssertEqualObjects(kind, @"stickerSet");
+	XCTAssertEqualObjects(value, @"foo");
+
+	[c internalLinkKind:@"https://t.me/durov"
+			 completion:^(NSString *k, NSString *v){ kind = k; value = v; }];
+	answer(@{@"@type" : @"internalLinkTypePublicChat", @"chat_username" : @"durov"});
+	XCTAssertEqualObjects(kind, @"publicChat");
+	XCTAssertEqualObjects(value, @"durov");
+
+	[c internalLinkKind:@"https://t.me/+abc"
+			 completion:^(NSString *k, NSString *v){ kind = k; value = v; }];
+	answer(@{@"@type" : @"internalLinkTypeChatInvite",
+			 @"invite_link" : @"https://t.me/+abc"});
+	XCTAssertEqualObjects(kind, @"inviteLink");
+}
+
+/// A kind this app has no step for must say so, so the caller falls back to
+/// the paths it matches by hand rather than doing nothing.
+- (void)testInternalLink_AnUnhandledKindIsUnknown {
+	TGClient *c = C();
+	c.td_exec = NULL;
+	__block NSString *kind = nil;
+	[c internalLinkKind:@"https://t.me/proxy?server=x"
+			 completion:^(NSString *k, NSString *v){ kind = k; }];
+	answerTyped(c, @"getInternalLinkType", @{@"@type" : @"internalLinkTypeProxy"});
+	XCTAssertEqualObjects(kind, @"unknown");
+}
+
+#pragma mark - signing up
+
+/// A number Telegram has never seen waits in a state that had no case at
+/// all, so a code entered on a new number left the code screen up forever.
+- (void)testRegisterUser_CarriesTheNameAndRefusesAnEmptyOne {
+	TGClient *c = C();
+	c.td_exec = NULL;
+	__block BOOL ok = YES;
+	[c registerWithFirstName:@"" lastName:nil
+				  completion:^(BOOL good, NSString *error){ ok = good; }];
+	XCTAssertEqual(countC(c, @"registerUser"), (NSUInteger)0);
+	XCTAssertFalse(ok);
+
+	[c registerWithFirstName:@"Pat" lastName:@"Walker" completion:nil];
+	NSDictionary *r = lastC(c, @"registerUser");
+	XCTAssertEqualObjects(r[@"first_name"], @"Pat");
+	XCTAssertEqualObjects(r[@"last_name"], @"Walker");
+}
+
+/// The terms arrive with the authorization state and nowhere else; the
+/// screen that shows them cannot ask for them later.
+- (void)testRegistrationTerms_AreKeptFromTheState {
+	TGClient *c = C();
+	[c handleUpdate:@{@"@type" : @"updateAuthorizationState",
+			@"authorization_state" : @{
+					@"@type" : @"authorizationStateWaitRegistration",
+					@"terms_of_service" : @{
+							@"text" : @{@"text" : @"Be nice to each other."}}}}];
+	XCTAssertEqualObjects([c registrationTerms], @"Be nice to each other.");
+	XCTAssertEqual(c.authState, TGAuthStateWaitRegistration);
+}
+
+/// Hidden countries are left out, and one with no calling code is not a row
+/// the picker can use.
+- (void)testCountries_FlattenToWhatThePickerNeeds {
+	TGClient *c = C();
+	c.td_exec = NULL;
+	__block NSArray *countries = nil;
+	[c countriesWithCompletion:^(NSArray *found){ countries = found; }];
+	answerTyped(c, @"getCountries", @{@"@type" : @"countries", @"countries" : @[
+			@{@"country_code" : @"UA", @"name" : @"Ukraine",
+			  @"flag_emoji" : @"🇺🇦", @"calling_codes" : @[@"380"]},
+			@{@"country_code" : @"XX", @"name" : @"Hidden",
+			  @"is_hidden" : @YES, @"calling_codes" : @[@"1"]},
+			@{@"country_code" : @"ZZ", @"name" : @"No code",
+			  @"calling_codes" : @[]}]});
+
+	XCTAssertEqual(countries.count, (NSUInteger)1);
+	XCTAssertEqualObjects(countries[0][@"code"], @"UA");
+	XCTAssertEqualObjects(countries[0][@"prefix"], @"+380");
+}
+
+#pragma mark - push
+
+/// A production token registered as sandbox is silently never delivered to,
+/// so the flag has to travel exactly as given.
+- (void)testPushToken_CarriesTheTokenAndTheSandboxFlag {
+	TGClient *c = C();
+	c.td_exec = NULL;
+	[c registerPushToken:@"deadbeef" sandbox:YES completion:nil];
+	NSDictionary *token = lastC(c, @"registerDevice")[@"device_token"];
+	XCTAssertEqualObjects(token[@"@type"], @"deviceTokenApplePush");
+	XCTAssertEqualObjects(token[@"device_token"], @"deadbeef");
+	XCTAssertTrue([token[@"is_app_sandbox"] boolValue]);
+
+	[c registerPushToken:@"deadbeef" sandbox:NO completion:nil];
+	XCTAssertFalse([lastC(c, @"registerDevice")[@"device_token"]
+			[@"is_app_sandbox"] boolValue]);
+}
+
+- (void)testPushToken_NoTokenIsNoRequest {
+	TGClient *c = C();
+	c.td_exec = NULL;
+	__block BOOL ok = YES;
+	[c registerPushToken:@"" sandbox:NO completion:^(BOOL good){ ok = good; }];
+	XCTAssertEqual(countC(c, @"registerDevice"), (NSUInteger)0);
+	XCTAssertFalse(ok);
+}
+
+/// Only a pushReceiverId means Telegram took it; an error means notifications
+/// will not arrive and the log should say so.
+- (void)testPushToken_OnlyAReceiverIdCounts {
+	TGClient *c = C();
+	c.td_exec = NULL;
+	__block BOOL ok = NO;
+	[c registerPushToken:@"deadbeef" sandbox:NO completion:^(BOOL good){ ok = good; }];
+	answerTyped(c, @"registerDevice", @{@"@type" : @"pushReceiverId", @"id" : @"7"});
+	XCTAssertTrue(ok);
+
+	[c registerPushToken:@"deadbeef" sandbox:NO completion:^(BOOL good){ ok = good; }];
+	answerTyped(c, @"registerDevice",
+			@{@"@type" : @"error", @"message" : @"Invalid token"});
+	XCTAssertFalse(ok);
+}
+
+/// A notification that arrives while the app runs goes to TDLib as the JSON
+/// it came as, so the chat list moves without waiting for a poll.
+- (void)testPushPayload_GoesThroughAsJson {
+	TGClient *c = C();
+	c.td_exec = NULL;
+	[c processPushPayload:@{@"p" : @"payload"}];
+	NSDictionary *r = lastC(c, @"processPushNotification");
+	XCTAssertNotNil(r);
+	XCTAssertTrue([r[@"payload"] rangeOfString:@"payload"].location != NSNotFound);
+
+	[c processPushPayload:nil];
+	XCTAssertEqual(countC(c, @"processPushNotification"), (NSUInteger)1);
+}
+
+@end
+
+// vim:ft=objc

@@ -17,6 +17,10 @@ static const NSUInteger kRecentPhotos = 24;
 /// Holds the assets alive: an ALAsset is only valid while its library is.
 @property (nonatomic, strong) ALAssetsLibrary *library;
 @property (nonatomic, strong) NSMutableArray *assets;
+/// Which tiles are ticked, in the order they were. Empty until a tile is
+/// held, which is what starts a selection.
+@property (nonatomic, strong) NSMutableArray *selected;
+@property (nonatomic, strong) UIButton *sendButton;
 @end
 
 @implementation TGAttachSheet
@@ -66,10 +70,23 @@ static const NSUInteger kRecentPhotos = 24;
 		y += kRow;
 	}
 
+	// Send sits on the Cancel card, hidden until something is ticked: a card
+	// that appears and shifts the stack while a finger is on it is worse
+	// than a button that was always there.
 	self.cancelCard = [self addCardOfHeight:kRow edgeToEdge:NO];
 	UIButton *cancel = [self rowButtonTitled:@"Cancel" bold:YES frame:self.cancelCard.bounds];
 	[cancel addTarget:self action:@selector(dismiss) forControlEvents:UIControlEventTouchUpInside];
 	[self.cancelCard addSubview:cancel];
+
+	if (strip){
+		self.sendButton = [self rowButtonTitled:@"Send" bold:YES
+										  frame:self.cancelCard.bounds];
+		self.sendButton.hidden = YES;
+		self.sendButton.backgroundColor = [theme cardBackgroundColour];
+		[self.sendButton addTarget:self action:@selector(sendSelected)
+				  forControlEvents:UIControlEventTouchUpInside];
+		[self.cancelCard addSubview:self.sendButton];
+	}
 
 	return self;
 }
@@ -151,15 +168,115 @@ static const NSUInteger kRecentPhotos = 24;
 		if (thumb)
 			[button setImage:[UIImage imageWithCGImage:thumb] forState:UIControlStateNormal];
 		[button addTarget:self action:@selector(photoTapped:) forControlEvents:UIControlEventTouchUpInside];
+		// Holding one starts picking several; there is no other free gesture
+		// on a strip that already scrolls and taps.
+		UILongPressGestureRecognizer *hold = [[UILongPressGestureRecognizer alloc]
+				initWithTarget:self action:@selector(photoHeld:)];
+		[button addGestureRecognizer:hold];
 		[self.strip addSubview:button];
 		x += kThumb + 5;
 	}
 	self.strip.contentSize = CGSizeMake(x + 2, kStrip);
 }
 
+/// The tick drawn over a chosen tile, and its number - which is the order
+/// the album will be in.
+- (void)markTile:(UIButton *)button position:(NSInteger)position {
+	UILabel *tick = (UILabel *)[button viewWithTag:0x5101];
+	if (position <= 0){
+		[tick removeFromSuperview];
+		button.alpha = 1.0f;
+		return;
+	}
+	if (!tick){
+		tick = [[UILabel alloc] initWithFrame:CGRectMake(
+				button.bounds.size.width - 22, 4, 18, 18)];
+		tick.tag = 0x5101;
+		tick.textAlignment = NSTextAlignmentCenter;
+		tick.font = TGFontMicroStrong();
+		tick.textColor = [UIColor whiteColor];
+		tick.backgroundColor = [[TGTheme shared] accentColour];
+		tick.layer.cornerRadius = 9;
+		tick.clipsToBounds = YES;
+		[button addSubview:tick];
+	}
+	tick.text = [NSString stringWithFormat:@"%ld", (long)position];
+	button.alpha = 0.75f;
+}
+
+/// Renumbers every tile after one is ticked or unticked, so the numbers
+/// always read 1..n with no gaps.
+- (void)refreshTileMarks {
+	for (UIView *view in self.strip.subviews){
+		if (![view isKindOfClass:UIButton.class])
+			continue;
+		UIButton *button = (UIButton *)view;
+		NSUInteger at = [self.selected indexOfObject:@(button.tag)];
+		[self markTile:button
+			  position:(at == NSNotFound ? 0 : (NSInteger)at + 1)];
+	}
+
+	if (!self.sendButton)
+		return;
+	self.sendButton.hidden = self.selected.count == 0;
+	[self.sendButton setTitle:[NSString stringWithFormat:@"Send %lu",
+			(unsigned long)self.selected.count] forState:UIControlStateNormal];
+}
+
+- (void)photoHeld:(UILongPressGestureRecognizer *)hold {
+	if (hold.state != UIGestureRecognizerStateBegan)
+		return;
+	UIButton *button = (UIButton *)hold.view;
+	if (![button isKindOfClass:UIButton.class] ||
+		button.tag >= (NSInteger)self.assets.count)
+		return;
+	if (!self.selected)
+		self.selected = [NSMutableArray array];
+	if (![self.selected containsObject:@(button.tag)])
+		[self.selected addObject:@(button.tag)];
+	[self refreshTileMarks];
+}
+
+/// The screen-sized rendition of every ticked tile, in the order they were
+/// ticked. Reading them is not instant, which is why it happens on the tap
+/// that sends rather than on each tick.
+- (void)sendSelected {
+	NSMutableArray *images = [NSMutableArray array];
+	for (NSNumber *index in self.selected){
+		if (index.integerValue >= (NSInteger)self.assets.count)
+			continue;
+		ALAsset *asset = self.assets[index.integerValue];
+		CGImageRef full = asset.defaultRepresentation.fullScreenImage;
+		if (full)
+			[images addObject:[UIImage imageWithCGImage:full]];
+	}
+	void (^onPhotos)(NSArray *) = self.onPhotos;
+	void (^onPhoto)(UIImage *) = self.onPhoto;
+	[self dismiss];
+	if (!images.count)
+		return;
+	// One picture is a picture, not an album of one.
+	if (images.count == 1 && onPhoto)
+		onPhoto(images[0]);
+	else if (onPhotos)
+		onPhotos(images);
+}
+
 - (void)photoTapped:(UIButton *)button {
 	if (button.tag >= (NSInteger)self.assets.count)
 		return;
+
+	// Once a selection has started, a tap ticks and unticks rather than
+	// sending - otherwise the first tap after a hold would send one picture.
+	if (self.selected.count){
+		if ([self.selected containsObject:@(button.tag)])
+			[self.selected removeObject:@(button.tag)];
+		else
+			[self.selected addObject:@(button.tag)];
+		[self refreshTileMarks];
+		return;
+	}
+
 	ALAsset *asset = self.assets[button.tag];
 	// The screen-sized rendition is already rotated upright and is what
 	// Telegram compresses a photo down to anyway.

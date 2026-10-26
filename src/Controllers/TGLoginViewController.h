@@ -19,5 +19,7 @@
 - (void)showCodeStepWithPhoneNumber:(NSString *)phoneNumber;
 - (void)showQRCodeStepWithLink:(NSString *)link;
 - (void)showPasswordStep;
+/// A number Telegram has never seen stops here until an account is made.
+- (void)showRegisterStep;
 
 @end

@@ -61,6 +61,33 @@
 /// is not a placeholder to be ashamed of - on a device with no connection it
 /// is the whole answer - but it shows roads that are not there, and the real
 /// thumbnail shows where the pin actually is.
+/// A track's album cover, downloaded once and kept with the other pictures.
+/// TDLib sends the cover's file id with the message and nothing here drew it
+/// until the track bubble existed.
+- (UIImage *)artworkForTrack:(NSDictionary *)m {
+	NSNumber *coverId = m[@"albumCoverId"];
+	if (![coverId isKindOfClass:NSNumber.class] || coverId.integerValue <= 0)
+		return nil;
+
+	UIImage *cached = self.images[coverId];
+	if (cached)
+		return cached;
+	if ([self.imagesRequested containsObject:coverId])
+		return nil;
+	[self.imagesRequested addObject:coverId];
+
+	__weak typeof(self) weakSelf = self;
+	[[TGClient shared] downloadFile:coverId.integerValue completion:^(NSString *path){
+		TGChatViewController *me = weakSelf;
+		UIImage *cover = path.length ? [UIImage imageWithContentsOfFile:path] : nil;
+		if (!me || !cover)
+			return;
+		me.images[coverId] = cover;
+		[me reloadTableDebounced];
+	}];
+	return nil;
+}
+
 - (void)fetchMissingMaps {
 	for (NSDictionary *m in self.messages){
 		NSNumber *lat = m[@"lat"], *lon = m[@"lon"];

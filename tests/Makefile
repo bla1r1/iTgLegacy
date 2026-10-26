@@ -122,7 +122,8 @@ CLIENT_TEST_SRCS := \
     $(TESTS)/TGClientFoldersTests.m \
     $(TESTS)/TGClientGroupsTests.m \
     $(TESTS)/TGMessageParserTests.m \
-    $(TESTS)/TGClientAccountTests.m
+    $(TESTS)/TGClientAccountTests.m \
+    $(TESTS)/TGClientComposeTests.m
 
 TEST_BINARY := $(BUILD)/TGCallTests
 CLIENT_BINARY := $(BUILD)/TGClientTests

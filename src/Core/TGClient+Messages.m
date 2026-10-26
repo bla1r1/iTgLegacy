@@ -691,7 +691,9 @@ NSDictionary *TGFlattenMessage(NSDictionary *m) {
 		@"message_thread_id"    : @(threadId),
 		@"input_message_content": @{
 			@"@type" : @"inputMessageText",
-			@"text"  : @{@"@type" : @"formattedText", @"text" : text ?: @""},
+			// The markup the user typed is read here rather than sent as
+			// literal asterisks.
+			@"text"  : TGFormattedText(text),
 		},
 	} mutableCopy];
 
@@ -795,8 +797,85 @@ NSDictionary *TGFlattenMessage(NSDictionary *m) {
 		@"message_id"           : @(messageId),
 		@"input_message_content": @{
 			@"@type" : @"inputMessageText",
-			@"text"  : @{@"@type" : @"formattedText", @"text" : text ?: @""},
+			@"text"  : TGFormattedText(text),
 		},
+	}];
+}
+
+/// The caption under a picture, a video or a file. A separate request from
+/// editing text, which is why only text could be edited before.
+- (void)editCaption:(NSString *)caption
+		  ofMessage:(int64_t)messageId
+			 inChat:(int64_t)chatId
+		 completion:(void (^)(BOOL ok))completion {
+	[self request:@{
+		@"@type"      : @"editMessageCaption",
+		@"chat_id"    : @(chatId),
+		@"message_id" : @(messageId),
+		@"caption"    : TGFormattedText(caption),
+	} completion:^(NSDictionary *result){
+		if (completion)
+			completion(![result[@"@type"] isEqualToString:@"error"]);
+	}];
+}
+
+/// Replaces the picture itself, keeping the message where it is in the
+/// history. The caption travels with it: editMessageMedia takes the whole
+/// content, so leaving the caption out would clear it.
+- (void)editPhotoAtPath:(NSString *)path
+				caption:(NSString *)caption
+			  ofMessage:(int64_t)messageId
+				 inChat:(int64_t)chatId
+			 completion:(void (^)(BOOL ok))completion {
+	if (!path.length){
+		if (completion) completion(NO);
+		return;
+	}
+	[self request:@{
+		@"@type"      : @"editMessageMedia",
+		@"chat_id"    : @(chatId),
+		@"message_id" : @(messageId),
+		@"input_message_content": @{
+			@"@type"   : @"inputMessagePhoto",
+			@"photo"   : @{@"@type" : @"inputFileLocal", @"path" : path},
+			@"caption" : TGFormattedText(caption),
+		},
+	} completion:^(NSDictionary *result){
+		if (completion)
+			completion(![result[@"@type"] isEqualToString:@"error"]);
+	}];
+}
+
+/// Several pictures as one message. Their own client sends up to ten; the
+/// album is one request, so the pictures arrive together rather than as a
+/// run of separate messages that happen to be next to each other.
+///
+/// Only the first picture carries the caption - TDLib refuses an album where
+/// more than one does.
+- (void)sendPhotoAlbumAtPaths:(NSArray *)paths
+					  caption:(NSString *)caption
+					   toChat:(int64_t)chatId
+					   thread:(int64_t)threadId {
+	if (!paths.count)
+		return;
+	NSMutableArray *contents = [NSMutableArray array];
+	for (NSUInteger i = 0; i < MIN(paths.count, (NSUInteger)10); i++){
+		NSString *path = paths[i];
+		if (![path isKindOfClass:NSString.class] || !path.length)
+			continue;
+		[contents addObject:@{
+			@"@type"   : @"inputMessagePhoto",
+			@"photo"   : @{@"@type" : @"inputFileLocal", @"path" : path},
+			@"caption" : TGFormattedText(i == 0 ? caption : nil),
+		}];
+	}
+	if (!contents.count)
+		return;
+	[self send:@{
+		@"@type"                  : @"sendMessageAlbum",
+		@"chat_id"                : @(chatId),
+		@"message_thread_id"      : @(threadId),
+		@"input_message_contents" : contents,
 	}];
 }
 
@@ -1396,6 +1475,77 @@ NSDictionary *TGFlattenMessage(NSDictionary *m) {
 			return;
 		}
 		[me downloadFile:fileId.integerValue completion:completion];
+	}];
+}
+
+/// What Telegram makes of a link: the site, a title, a description and the
+/// picture, which is the card their clients draw under a message. Answers nil
+/// when the link has no preview, which is most links.
+///
+/// Entries: "url", "site", "title", "description", "photoId", "instantView".
+- (void)linkPreviewForText:(NSString *)text
+				completion:(void (^)(NSDictionary *preview))completion {
+	if (!text.length){
+		if (completion) completion(nil);
+		return;
+	}
+	[self request:@{
+		@"@type" : @"getLinkPreview",
+		@"text"  : TGFormattedText(text),
+		@"link_preview_options" : @{@"@type" : @"linkPreviewOptions",
+									@"is_disabled" : @NO},
+	} completion:^(NSDictionary *result){
+		if (!completion)
+			return;
+		if (![result[@"@type"] isEqualToString:@"linkPreview"]){
+			completion(nil);
+			return;
+		}
+		// The biggest size the preview carries, which is the one a card draws.
+		NSArray *sizes = result[@"type"][@"photo"][@"sizes"];
+		NSDictionary *largest = [sizes isKindOfClass:NSArray.class]
+				? [sizes lastObject] : nil;
+		NSNumber *photoId = largest[@"photo"][@"id"];
+		completion(@{
+			@"url"         : result[@"url"] ?: @"",
+			@"site"        : result[@"site_name"] ?: @"",
+			@"title"       : result[@"title"] ?: @"",
+			@"description" : result[@"description"][@"text"] ?: @"",
+			@"photoId"     : photoId ?: [NSNull null],
+			@"instantView" : @([result[@"instant_view_version"] integerValue] > 0),
+		});
+	}];
+}
+
+/// What a t.me or tg:// link points at, decided by Telegram rather than by
+/// pattern-matching the path here - which is how a link to a sticker set
+/// ended up opening a chat named after it.
+///
+/// Answers the kind as one word ("publicChat", "message", "stickerSet",
+/// "inviteLink", "unknown") and the piece of it worth acting on.
+- (void)internalLinkKind:(NSString *)link
+			  completion:(void (^)(NSString *kind, NSString *value))completion {
+	if (!link.length){
+		if (completion) completion(@"unknown", nil);
+		return;
+	}
+	[self request:@{@"@type" : @"getInternalLinkType", @"link" : link}
+	   completion:^(NSDictionary *result){
+		if (!completion)
+			return;
+		NSString *type = result[@"@type"] ?: @"";
+		if ([type isEqualToString:@"internalLinkTypePublicChat"])
+			completion(@"publicChat", result[@"chat_username"]);
+		else if ([type isEqualToString:@"internalLinkTypeMessage"])
+			completion(@"message", result[@"url"]);
+		else if ([type isEqualToString:@"internalLinkTypeStickerSet"])
+			completion(@"stickerSet", result[@"sticker_set_name"]);
+		else if ([type isEqualToString:@"internalLinkTypeChatInvite"])
+			completion(@"inviteLink", result[@"invite_link"]);
+		else if ([type isEqualToString:@"internalLinkTypeUserPhoneNumber"])
+			completion(@"phoneNumber", result[@"phone_number"]);
+		else
+			completion(@"unknown", nil);
 	}];
 }
 

@@ -266,6 +266,20 @@ typedef NS_ENUM(NSInteger, TGDownloadPriority) {
 /// search. Entries are the same chat dictionaries the chat list holds.
 - (void)topChatsWithCompletion:(void (^)(NSArray *chats))completion;
 
+/// Everything the search field can find by name, from the three places a
+/// chat can be: loaded here, on the server but not loaded, and public and
+/// belonging to nobody yet. Deduplicated in that order, so a chat you are in
+/// never ranks below a stranger with a similar name. A public chat the list
+/// has never seen arrives as an "id"/"title" pair, which is enough to open.
+- (void)searchChatsForQuery:(NSString *)query
+				 completion:(void (^)(NSArray *chats))completion;
+
+/// Contacts matched by Telegram - on the username and the phone number as
+/// well as the name, which comparing strings here does not do. Entries carry
+/// "id" and "name".
+- (void)searchContactsForQuery:(NSString *)query
+					completion:(void (^)(NSArray *users))completion;
+
 /// The chats opened most recently - the other half of an empty search.
 - (void)recentlyOpenedChatsWithCompletion:(void (^)(NSArray *chats))completion;
 
@@ -476,6 +490,29 @@ typedef NS_ENUM(NSInteger, TGDownloadPriority) {
 /// Replace the text of a message already sent.
 - (void)editMessage:(int64_t)messageId inChat:(int64_t)chatId text:(NSString *)text;
 
+/// The caption under a picture, a video or a file - a different request from
+/// editing text, which is why only text could be edited before.
+- (void)editCaption:(NSString *)caption
+		  ofMessage:(int64_t)messageId
+			 inChat:(int64_t)chatId
+		 completion:(void (^)(BOOL ok))completion;
+
+/// Replaces the picture itself, keeping the message where it is. The caption
+/// travels with it, because the request takes the whole content.
+- (void)editPhotoAtPath:(NSString *)path
+				caption:(NSString *)caption
+			  ofMessage:(int64_t)messageId
+				 inChat:(int64_t)chatId
+			 completion:(void (^)(BOOL ok))completion;
+
+/// Up to ten pictures as one message rather than as a run of separate ones.
+/// Only the first carries the caption; TDLib refuses an album where more
+/// than one does.
+- (void)sendPhotoAlbumAtPaths:(NSArray *)paths
+					  caption:(NSString *)caption
+					   toChat:(int64_t)chatId
+					   thread:(int64_t)threadId;
+
 /// One message by id, flattened. Used to show what a reply is answering.
 - (void)messageWithId:(int64_t)messageId
                inChat:(int64_t)chatId
@@ -562,6 +599,19 @@ typedef NS_ENUM(NSInteger, TGDownloadPriority) {
 - (void)sendPhotoAtPath:(NSString *)path toChat:(int64_t)chatId;
 /// Vote in a poll. `optionIds` are indexes into the poll's options.
 - (void)votePoll:(int64_t)messageId inChat:(int64_t)chatId options:(NSArray *)optionIds;
+
+/// What Telegram makes of a link: "url", "site", "title", "description",
+/// "photoId" and "instantView". nil when the link has no preview, which is
+/// most links.
+- (void)linkPreviewForText:(NSString *)text
+				completion:(void (^)(NSDictionary *preview))completion;
+
+/// What a t.me or tg:// link points at, decided by Telegram rather than by
+/// pattern-matching the path. The kind is one word - "publicChat",
+/// "message", "stickerSet", "inviteLink", "phoneNumber" or "unknown" - with
+/// the piece of it worth acting on.
+- (void)internalLinkKind:(NSString *)link
+			  completion:(void (^)(NSString *kind, NSString *value))completion;
 
 /// Telegram's own static map of a place, as a PNG, answered as a local path
 /// once it is down - or nil, which on this device is ordinary. The drawn card
@@ -1022,6 +1072,33 @@ typedef NS_ENUM(NSInteger, TGDownloadPriority) {
 - (void)sendPassword:(NSString *)password;
 - (void)resendAuthenticationCode;
 - (void)requestQrCodeAuthentication;
+
+/// A phone number Telegram has never seen waits here, and this is the only
+/// way out of it: without it a new account enters its code and then sits on
+/// the code screen forever.
+- (void)registerWithFirstName:(NSString *)firstName
+					 lastName:(NSString *)lastName
+				   completion:(void (^)(BOOL ok, NSString *error))completion;
+
+/// The terms Telegram sent with the registration state, or an empty string.
+- (NSString *)registrationTerms;
+
+/// Every country Telegram knows, for the phone step's picker: "code",
+/// "name", "prefix" and "flag". Hidden ones are left out.
+- (void)countriesWithCompletion:(void (^)(NSArray *countries))completion;
+/// The country this phone is in, as Telegram guesses from the network.
+- (void)countryCodeWithCompletion:(void (^)(NSString *code))completion;
+
+/// Hands the APNs token to Telegram, which is what makes a notification
+/// arrive while the app is closed. `sandbox` has to match the certificate
+/// the build was signed against, or nothing is ever delivered.
+- (void)registerPushToken:(NSString *)token
+				  sandbox:(BOOL)sandbox
+			   completion:(void (^)(BOOL ok))completion;
+
+/// A notification that arrived while the app was running: TDLib turns it
+/// into the ordinary updates.
+- (void)processPushPayload:(NSDictionary *)payload;
 - (void)destroySession;
 - (void)logOut;
 
@@ -1030,5 +1107,9 @@ typedef NS_ENUM(NSInteger, TGDownloadPriority) {
 
 /// Fire-and-forget request. `request` is a JSON object; @extra is not tracked.
 - (void)send:(NSDictionary *)request;
+
+/// The synchronous half of td_api - a few functions answer with no round
+/// trip. nil when the dylib has no execute symbol.
+- (NSDictionary *)executeSynchronously:(NSDictionary *)request;
 
 @end

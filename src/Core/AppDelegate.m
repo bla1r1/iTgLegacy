@@ -118,12 +118,23 @@ static void TGWatchForIncomingCalls(void) {
 					[me showLoginUI];
 					[me.loginVC showPasswordStep];
 					break;
+				// A number Telegram has never seen waits here. There was no
+				// case for it, so entering a code on a new number left the
+				// code screen up with nothing happening.
+				case TGAuthStateWaitRegistration:
+					[[NSUserDefaults standardUserDefaults] setBool:NO forKey:@"hasAuthorizedSession"];
+					[me showLoginUI];
+					[me.loginVC showRegisterStep];
+					break;
 				case TGAuthStateWaitOtherDeviceConfirmation:
 					[[NSUserDefaults standardUserDefaults] setBool:NO forKey:@"hasAuthorizedSession"];
 					[me showLoginUI];
 					[me.loginVC showQRCodeStepWithLink:[TGClient shared].qrCodeLink];
 					break;
 				case TGAuthStateReady:
+					// Telegram only takes a token for a signed-in account, so
+					// the ask waits until there is one.
+					[me askForPushToken];
 					[[NSUserDefaults standardUserDefaults] setBool:YES forKey:@"hasAuthorizedSession"];
 					[me.loginVC setBusy:NO];
 					[me showMainUI];
@@ -219,6 +230,63 @@ static void TGWatchForIncomingCalls(void) {
 	[[TGTheme shared] styleNavigationBar:nav.navigationBar];
 	[self.window setRootViewController:nav];
 	self.rootViewController = nil;
+}
+
+#pragma mark - push
+
+/// Notifications were never set up at all: the app asked iOS for nothing and
+/// handed Telegram nothing, so a closed app was silent however the
+/// certificate was configured.
+- (void)askForPushToken {
+	UIApplication *app = [UIApplication sharedApplication];
+	// iOS 8 moved this; on 6 and 7 the types are registered directly.
+	if ([app respondsToSelector:@selector(registerForRemoteNotifications)]){
+		[app performSelector:@selector(registerForRemoteNotifications)];
+		return;
+	}
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+	[app registerForRemoteNotificationTypes:
+			(UIRemoteNotificationTypeAlert | UIRemoteNotificationTypeBadge |
+			 UIRemoteNotificationTypeSound)];
+#pragma clang diagnostic pop
+}
+
+- (void)application:(UIApplication *)application
+		didRegisterForRemoteNotificationsWithDeviceToken:(NSData *)deviceToken {
+	// TDLib wants the token as hex, which is what their own clients send.
+	const unsigned char *bytes = deviceToken.bytes;
+	NSMutableString *hex = [NSMutableString stringWithCapacity:deviceToken.length * 2];
+	for (NSUInteger i = 0; i < deviceToken.length; i++)
+		[hex appendFormat:@"%02x", bytes[i]];
+
+	// A production token registered as sandbox is silently never delivered
+	// to, so the flag follows the build rather than being guessed.
+#ifdef DEBUG
+	BOOL sandbox = YES;
+#else
+	BOOL sandbox = NO;
+#endif
+	NSLog(@"[LegacyTG] push token %lu bytes, sandbox=%d",
+			(unsigned long)deviceToken.length, sandbox);
+	[[TGClient shared] registerPushToken:hex sandbox:sandbox completion:^(BOOL ok){
+		NSLog(@"[LegacyTG] registerDevice %@", ok ? @"accepted" : @"refused");
+	}];
+}
+
+- (void)application:(UIApplication *)application
+		didFailToRegisterForRemoteNotificationsWithError:(NSError *)error {
+	// No certificate, no entitlement, or no network: the app works without
+	// notifications and says so in the log rather than to the user.
+	NSLog(@"[LegacyTG] no push token: %@", error.localizedDescription);
+}
+
+/// A notification that arrives while the app is running goes to TDLib, which
+/// turns it into the ordinary updates - so the chat list moves at once
+/// instead of waiting for the next poll.
+- (void)application:(UIApplication *)application
+		didReceiveRemoteNotification:(NSDictionary *)userInfo {
+	[[TGClient shared] processPushPayload:userInfo];
 }
 
 - (void)showMessage:(NSString *)msg {

@@ -2,6 +2,7 @@
 #import <QuartzCore/QuartzCore.h>
 #import "TGCapabilities.h"
 #import "TGStyle.h"
+#import "TGMusicPlayer.h"
 
 @implementation TGChatViewController (Cells)
 
@@ -199,6 +200,74 @@
 		cell.picture.hidden = YES;
 		cell.time.text = @"";
 		cell.ticks.hidden = YES;
+		return [self finalizeCell:cell message:m layout:layout isMine:mine];
+	}
+
+	// A track: album art, the title, who it is by, and how long - with the
+	// arrow over the art saying whether this is the one playing. It used to
+	// fall through to the document branch below, where a song looked like an
+	// attachment and its cover, which TDLib sends, was never drawn at all.
+	if (layout.isTrack) {
+		TGTheme *cardTheme = [TGTheme shared];
+		CGFloat fwd = [self layoutForwardIn:cell message:m width:layout.bubbleFrame.size.width];
+		cell.bubble.frame = layout.bubbleFrame;
+		cell.bubble.backgroundColor = mine ? [cardTheme bubbleMineColour]
+										   : [cardTheme bubbleTheirsColour];
+		cell.bubble.layer.borderWidth = [cardTheme bubbleBorderWidth];
+		cell.bubble.layer.borderColor = [cardTheme bubbleBorderColour].CGColor;
+		cell.bubble.layer.cornerRadius = [cardTheme bubbleCornerRadius];
+
+		CGFloat artY = fwd + (kTrackRow - kTrackArt) / 2 - 2;
+		cell.artwork.hidden = NO;
+		cell.artwork.frame = CGRectMake(kPadH, artY, kTrackArt, kTrackArt);
+		UIImage *cover = [self artworkForTrack:m];
+		cell.artwork.image = cover;
+		// No cover is not an empty square: the tile colour stands in, the way
+		// a file glyph's does.
+		cell.artwork.backgroundColor = cover ? [UIColor clearColor]
+											 : [cardTheme fileTileColour];
+
+		BOOL isCurrent = [TGMusicPlayer shared].currentMessageId ==
+						 [m[@"id"] longLongValue];
+		cell.disc.hidden = NO;
+		cell.disc.image = (isCurrent && [TGMusicPlayer shared].playing)
+				? [TGIcons pause] : [TGIcons play];
+		cell.disc.frame = CGRectMake(kPadH + (kTrackArt - kTrackDisc) / 2,
+									 artY + (kTrackArt - kTrackDisc) / 2,
+									 kTrackDisc, kTrackDisc);
+		[cell.bubble bringSubviewToFront:cell.disc];
+
+		CGFloat textX = kPadH + kTrackArt + 9;
+		CGFloat textW = layout.bubbleFrame.size.width - textX - kPadH;
+
+		NSString *title = [m[@"audioTitle"] length] ? m[@"audioTitle"]
+				: ([m[@"docName"] length] ? m[@"docName"] : @"Audio");
+		cell.body.hidden = NO;
+		cell.body.numberOfLines = 1;
+		cell.body.font = TGFontBodyStrong();
+		cell.body.textColor = [cardTheme primaryTextColour];
+		cell.body.text = title;
+		cell.body.frame = CGRectMake(textX, artY + 2, textW, 19);
+
+		// The performer, or how long it is when there is none - a line that
+		// says nothing is worse than a line that says the duration twice.
+		NSInteger seconds = [m[@"duration"] integerValue];
+		NSString *length = seconds > 0
+				? [NSString stringWithFormat:@"%ld:%02ld",
+						(long)(seconds / 60), (long)(seconds % 60)]
+				: @"";
+		NSString *performer = m[@"audioPerformer"];
+		NSString *second = performer.length
+				? (length.length ? [NSString stringWithFormat:@"%@ - %@",
+						performer, length] : performer)
+				: length;
+		cell.subtitle.hidden = NO;
+		cell.subtitle.font = TGFontCaption();
+		cell.subtitle.textColor = [cardTheme fileMetaColour];
+		cell.subtitle.text = second;
+		cell.subtitle.frame = CGRectMake(textX, artY + 23, textW, 16);
+
+		cell.time.frame = layout.timeFrame;
 		return [self finalizeCell:cell message:m layout:layout isMine:mine];
 	}
 

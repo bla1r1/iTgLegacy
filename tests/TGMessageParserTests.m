@@ -245,6 +245,53 @@ static NSDictionary *textContent(NSString *text) {
 	XCTAssertEqualObjects(TGPhraseFromTypeName(@"message"), @"Message");
 }
 
+#pragma mark - a track
+
+/// Everything the track bubble draws comes from here, and until the bubble
+/// existed none of it was read: a song drew as the document it also is, and
+/// the cover TDLib sends was never put on screen.
+- (void)testFlatten_ATrackCarriesItsTitlePerformerCoverAndLength {
+	NSDictionary *flat = TGFlattenMessage(msg(@{
+			@"@type" : @"messageAudio",
+			@"audio" : @{@"file_name" : @"track01.mp3",
+						 @"title"     : @"Teardrop",
+						 @"performer" : @"Massive Attack",
+						 @"duration"  : @(330),
+						 @"audio"     : @{@"id" : @(21)},
+						 @"album_cover_thumbnail" : @{@"file" : @{@"id" : @(22)}}}}, nil));
+
+	XCTAssertEqualObjects(flat[@"kind"], @"messageAudio");
+	XCTAssertEqualObjects(flat[@"audioTitle"], @"Teardrop");
+	XCTAssertEqualObjects(flat[@"audioPerformer"], @"Massive Attack");
+	XCTAssertEqual([flat[@"duration"] integerValue], (NSInteger)330);
+	XCTAssertEqual([flat[@"albumCoverId"] integerValue], (NSInteger)22);
+	// It is still a file, because that is what gets downloaded to play it.
+	XCTAssertEqual([flat[@"docId"] integerValue], (NSInteger)21);
+}
+
+/// A track with no tags falls back to the file name, which is what the bubble
+/// puts on its first line rather than leaving it blank.
+- (void)testFlatten_ATrackWithNoTagsStillHasAName {
+	NSDictionary *flat = TGFlattenMessage(msg(@{
+			@"@type" : @"messageAudio",
+			@"audio" : @{@"file_name" : @"track01.mp3",
+						 @"duration"  : @(12),
+						 @"audio"     : @{@"id" : @(21)}}}, nil));
+	XCTAssertEqualObjects(flat[@"text"], @"track01.mp3");
+	XCTAssertEqualObjects(flat[@"audioTitle"], @"");
+	XCTAssertEqualObjects(flat[@"audioPerformer"], @"");
+	// Nothing to draw rather than a zero that would look like a real cover.
+	XCTAssertEqualObjects(flat[@"albumCoverId"], [NSNull null]);
+}
+
+/// A track is not a service message, however little it carries.
+- (void)testFlatten_ATrackIsNotAServiceLine {
+	NSDictionary *flat = TGFlattenMessage(msg(@{
+			@"@type" : @"messageAudio",
+			@"audio" : @{@"audio" : @{@"id" : @(21)}}}, nil));
+	XCTAssertFalse([flat[@"service"] boolValue]);
+}
+
 @end
 
 // vim:ft=objc

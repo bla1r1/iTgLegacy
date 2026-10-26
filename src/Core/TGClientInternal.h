@@ -14,6 +14,13 @@ NSDictionary *TGStickerInfo(NSDictionary *sticker);
 @property (nonatomic, assign) void *client;
 @property (nonatomic, assign) td_send_fn td_send;
 @property (nonatomic, assign) td_recv_fn td_recv;
+/// td_json_client_execute, for the handful of td_api functions that answer
+/// without a round trip. Null when the dylib is missing the symbol, which
+/// every caller has to survive.
+@property (nonatomic, assign) td_exec_fn td_exec;
+/// The terms Telegram sent with the registration state, kept for the screen
+/// that has to show them before an account is made.
+@property (nonatomic, copy) NSString *registrationTermsText;
 @property (nonatomic, assign) TGAuthState authState;
 @property (nonatomic, assign) BOOL available;
 @property (nonatomic, assign) BOOL running;
@@ -76,6 +83,11 @@ NSString *TGPlainTitle(id value);
 
 /// stickerSetInfo entries down to "id", "title" and "cover".
 NSArray *TGFlattenStickerSets(NSArray *sets);
+
+/// A formattedText for `text`, with Bold, Italic, Code and the rest read out
+/// of the markup the user typed. Falls back to the text as written when the
+/// parse is unavailable or the markup does not pair up.
+NSDictionary *TGFormattedText(NSString *text);
 
 /// The emoji of your own reaction on a message, or nil.
 NSString *TGMyReactionEmoji(NSDictionary *m);

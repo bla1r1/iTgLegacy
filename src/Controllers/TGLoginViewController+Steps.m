@@ -287,6 +287,70 @@
     [self showPhoneStep];
 }
 
+/// Their sign-up screen, as far as this app needs it: a first name, and the
+/// terms Telegram sent with the state. A last name is optional and Telegram
+/// does not require one, so the single field this screen has asks for the
+/// first and the rest is left for Edit Profile.
+- (void)showRegisterStep {
+    [self setBusy:NO];
+    self.currentStep = TGLoginStepRegister;
+    self.title = @"Your Name";
+
+    NSString *terms = [[TGClient shared] registrationTerms];
+    self.subtitleLabel.text = terms.length
+            ? [NSString stringWithFormat:@"This number is new to Telegram.\n\n%@", terms]
+            : @"This number is new to Telegram.\nEnter your name to finish.";
+    self.subtitleLabel.numberOfLines = 0;
+
+    self.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc]
+        initWithTitle:@"Cancel"
+        style:UIBarButtonItemStylePlain
+        target:self
+        action:@selector(showPhoneStep)];
+
+    if (self.resendButton) {
+        [self.resendButton removeFromSuperview];
+        self.resendButton = nil;
+    }
+    if (self.codeStepQrButton) {
+        [self.codeStepQrButton removeFromSuperview];
+        self.codeStepQrButton = nil;
+    }
+    [self.resendTimer invalidate];
+    self.resendTimer = nil;
+
+    CGFloat width = self.view.bounds.size.width;
+    [self useSingleFieldLayout];
+    // The terms can run long, so the field sits under whatever they took.
+    CGSize room = CGSizeMake(width - 40, 10000);
+    CGFloat subtitleH = 40;
+    if ([self.subtitleLabel.text respondsToSelector:
+            @selector(boundingRectWithSize:options:attributes:context:)]){
+        subtitleH = ceilf([self.subtitleLabel.text boundingRectWithSize:room
+                options:NSStringDrawingUsesLineFragmentOrigin
+             attributes:@{NSFontAttributeName : self.subtitleLabel.font}
+                context:nil].size.height);
+    }
+    self.subtitleLabel.frame = CGRectMake(20, 8, width - 40, subtitleH);
+
+    CGFloat y = 16 + subtitleH;
+    self.inputContainer.frame = CGRectMake(15, y, width - 30, 44);
+    self.inputField.placeholder = @"First name";
+    self.inputField.secureTextEntry = NO;
+    self.inputField.keyboardType = UIKeyboardTypeDefault;
+    self.inputField.autocapitalizationType = UITextAutocapitalizationTypeWords;
+    self.actionButton.frame = CGRectMake(15, y + 52, width - 30, 42);
+    [self.actionButton setTitle:@"Create Account" forState:UIControlStateNormal];
+    self.nextItem.title = @"Done";
+
+    self.themeSectionLabel.hidden = YES;
+    self.themeSegmentedControl.hidden = YES;
+    self.scrollView.contentSize = CGSizeMake(width, y + 110);
+
+    [self applyTheme];
+    [self.inputField becomeFirstResponder];
+}
+
 - (void)showPasswordStep {
     [self setBusy:NO];
     self.currentStep = TGLoginStepPassword;

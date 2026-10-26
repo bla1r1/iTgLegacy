@@ -17,6 +17,7 @@
 #import "TGClientGroupsTests.m"
 #import "TGMessageParserTests.m"
 #import "TGClientAccountTests.m"
+#import "TGClientComposeTests.m"
 
 int main(int argc, char *argv[]) {
 	@autoreleasepool {

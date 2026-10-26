@@ -74,6 +74,7 @@ NSString *const TGUserStatusChangedNotification = @"TGUserStatusChangedNotificat
 
 	td_create_fn create = dlsym(lookup, "td_json_client_create");
 	td_exec_fn   exec   = dlsym(lookup, "td_json_client_execute");
+	self.td_exec = exec;
 	self.td_send = dlsym(lookup, "td_json_client_send");
 	self.td_recv = dlsym(lookup, "td_json_client_receive");
 	if (!create || !self.td_send || !self.td_recv){
@@ -184,6 +185,54 @@ NSString *const TGUserStatusChangedNotification = @"TGUserStatusChangedNotificat
 	NSMutableDictionary *withExtra = [request mutableCopy];
 	withExtra[@"@extra"] = extra;
 	[self send:withExtra];
+}
+
+/// The synchronous half of td_api: a few functions answer on the spot, with
+/// no client and no round trip. nil when the dylib has no execute symbol,
+/// which is also how the host tests see it.
+- (NSDictionary *)executeSynchronously:(NSDictionary *)request {
+	if (!self.td_exec || !request)
+		return nil;
+	NSData *json = [NSJSONSerialization dataWithJSONObject:request options:0 error:nil];
+	if (!json)
+		return nil;
+	const char *answer = self.td_exec(NULL, [[[NSString alloc]
+			initWithData:json encoding:NSUTF8StringEncoding] UTF8String]);
+	if (!answer)
+		return nil;
+	NSData *data = [[NSString stringWithUTF8String:answer]
+			dataUsingEncoding:NSUTF8StringEncoding];
+	NSDictionary *parsed = [NSJSONSerialization JSONObjectWithData:data
+														   options:0 error:nil];
+	return [parsed isKindOfClass:NSDictionary.class] ? parsed : nil;
+}
+
+/// What goes into an inputMessageText. Bold, italic, code and links are
+/// written the way Telegram Desktop writes them - *bold*, _italic_, `code` -
+/// and read back out here, because a UITextField on this OS has no way to
+/// mark up a selection.
+///
+/// Markup that does not pair up is left alone: a lone asterisk is an
+/// asterisk. When the parse is not available at all the text is sent as
+/// written, which is what this app did for every message until now.
+NSDictionary *TGFormattedText(NSString *text) {
+	NSDictionary *plain = @{@"@type" : @"formattedText",
+							@"text"  : text ?: @"",
+							@"entities" : @[]};
+	if (!text.length)
+		return plain;
+
+	NSDictionary *parsed = [[TGClient shared] executeSynchronously:@{
+		@"@type" : @"parseTextEntities",
+		@"text"  : text,
+		@"parse_mode" : @{@"@type" : @"textParseModeMarkdown",
+						  // Version 2 is the one that needs every reserved
+						  // character escaped; version 1 is what people type.
+						  @"version" : @(1)},
+	}];
+	if (![parsed[@"@type"] isEqualToString:@"formattedText"])
+		return plain;
+	return parsed;
 }
 
 #pragma mark - updates
@@ -487,6 +536,9 @@ NSString *const TGUserStatusChangedNotification = @"TGUserStatusChangedNotificat
 		s = TGAuthStateWaitPassword;
 	} else if ([type isEqualToString:@"authorizationStateWaitRegistration"]){
 		s = TGAuthStateWaitRegistration;
+		// The terms come with the state and nowhere else; a screen that has
+		// to show them before making an account cannot ask for them later.
+		self.registrationTermsText = state[@"terms_of_service"][@"text"][@"text"];
 	} else if ([type isEqualToString:@"authorizationStateWaitOtherDeviceConfirmation"]){
 		s = TGAuthStateWaitOtherDeviceConfirmation;
 		self.qrCodeLink = state[@"link"];

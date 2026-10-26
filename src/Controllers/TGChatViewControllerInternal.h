@@ -127,6 +127,20 @@ static const CGFloat kComposeBannerHeight = 44.0f;
 /// When "typing..." was last reported, so it is sent at most once every
 /// four seconds while the composer is being typed into.
 @property (nonatomic, assign) NSTimeInterval lastTypingReport;
+/// True while the composer is editing a caption rather than a message's
+/// text, which is a different request.
+@property (nonatomic, assign) BOOL editingIsCaption;
+/// The link the composer has already asked Telegram about, so a second
+/// keystroke on the same one does not ask again.
+@property (nonatomic, copy) NSString *previewedLink;
+/// The player strip's own parts. It is 48 points tall because a track needs
+/// its cover, its title and who it is by, which one 36-point line could not
+/// hold.
+@property (nonatomic, strong) UIImageView *playerArtwork;
+@property (nonatomic, strong) UILabel *playerDetail;
+@property (nonatomic, strong) UILabel *playerClock;
+@property (nonatomic, strong) UIView *playerThumb;
+@property (nonatomic, strong) UIButton *playerClose;
 
 @property (nonatomic, strong) UIView *savedTitleView;
 @property (nonatomic, strong) UIBarButtonItem *savedRightBarButtonItem;
@@ -149,6 +163,18 @@ static const CGFloat kComposeBannerHeight = 44.0f;
 - (void)applyTheme;
 - (void)inputChanged;
 - (void)reportTyping;
+- (void)refreshLinkPreview;
+- (void)sendImageAlbum:(NSArray *)images;
+- (UIImage *)artworkForTrack:(NSDictionary *)m;
+- (void)layoutPlayerBarForMusic:(BOOL)music;
+- (void)joinChatByInviteLink:(NSString *)link;
+- (void)openChatWithPhoneNumber:(NSString *)phone;
+- (void)openPlainLink:(NSURL *)url;
+- (void)openTelegramLinkByPath:(NSString *)clean
+						   url:(NSURL *)u
+				isTelegramHost:(BOOL)isTelegramHost
+			  isTelegramScheme:(BOOL)isTelegramScheme
+						  host:(NSString *)host;
 - (void)loadPinnedMessage;
 - (void)hidePinnedBanner;
 - (void)stopPlayback;

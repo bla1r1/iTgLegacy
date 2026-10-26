@@ -19,6 +19,13 @@ static BOOL sIsCancelled;
 /// the two cross over with a quick scale rather than blinking.
 - (void)inputChanged {
 	[self reportTyping];
+	// Asked after the typing settles rather than per keystroke: one request
+	// per link, and the answer is thrown away if the text moved on.
+	[NSObject cancelPreviousPerformRequestsWithTarget:self
+											 selector:@selector(refreshLinkPreview)
+											   object:nil];
+	[self performSelector:@selector(refreshLinkPreview) withObject:nil
+			   afterDelay:0.7];
 	BOOL hasText = self.input.text.length > 0;
 	UIButton *coming = hasText ? self.sendButton : self.micButton;
 	UIButton *going = hasText ? self.micButton : self.sendButton;
@@ -462,77 +469,187 @@ static BOOL sIsCancelled;
 /// a client puts it so the chat stays readable while something plays.
 - (void)showPlayerBar {
 	CGRect b = self.view.bounds;
+	TGTheme *theme = [TGTheme shared];
 	if (!self.playerBar){
-		self.playerBar = [[UIView alloc] initWithFrame:CGRectMake(0, 0, b.size.width, 36)];
-		self.playerBar.backgroundColor = [[TGTheme shared] listBackgroundColour];
+		self.playerBar = [[UIView alloc] initWithFrame:
+				CGRectMake(0, 0, b.size.width, kPlayerBarHeight)];
+		self.playerBar.backgroundColor = [theme listBackgroundColour];
 		self.playerBar.autoresizingMask = UIViewAutoresizingFlexibleWidth;
 
+		// Album art where their player has it. A voice note has none, and
+		// the view simply stays hidden for one.
+		self.playerArtwork = [[UIImageView alloc] initWithFrame:
+				CGRectMake(8, (kPlayerBarHeight - kPlayerArt) / 2 - 1,
+						   kPlayerArt, kPlayerArt)];
+		self.playerArtwork.contentMode = UIViewContentModeScaleAspectFill;
+		self.playerArtwork.clipsToBounds = YES;
+		self.playerArtwork.layer.cornerRadius = 3;
+		self.playerArtwork.hidden = YES;
+		[self.playerBar addSubview:self.playerArtwork];
+
 		self.playerToggle = [UIButton buttonWithType:UIButtonTypeCustom];
-		self.playerToggle.frame = CGRectMake(8, 4, 28, 28);
-		self.playerToggle.tintColor = [[TGTheme shared] accentColour];
+		self.playerToggle.tintColor = [theme accentColour];
 		[self.playerToggle addTarget:self action:@selector(togglePlayback)
 					forControlEvents:UIControlEventTouchUpInside];
 		[self.playerBar addSubview:self.playerToggle];
 
-		self.playerLabel = [[UILabel alloc] initWithFrame:
-				CGRectMake(40, 8, b.size.width - 128, 20)];
-		self.playerLabel.font = TGFontSubhead();
+		// Two lines, not one: "performer - title" on a 320pt screen truncated
+		// both halves and told you neither.
+		self.playerLabel = [[UILabel alloc] init];
+		self.playerLabel.font = TGFontCaptionStrong();
 		self.playerLabel.backgroundColor = [UIColor clearColor];
 		self.playerLabel.autoresizingMask = UIViewAutoresizingFlexibleWidth;
 		[self.playerBar addSubview:self.playerLabel];
 
-		UIButton *close = [UIButton buttonWithType:UIButtonTypeCustom];
-		close.frame = CGRectMake(b.size.width - 38, 4, 34, 28);
-		[close setTitle:@"×" forState:UIControlStateNormal];
-		close.titleLabel.font = TGFontGlyph();
-		close.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
-		[close addTarget:self action:@selector(stopPlayback)
-		forControlEvents:UIControlEventTouchUpInside];
-		[self.playerBar addSubview:close];
-		[close setTitleColor:[[TGTheme shared] secondaryTextColour]
-					forState:UIControlStateNormal];
+		self.playerDetail = [[UILabel alloc] init];
+		self.playerDetail.font = TGFontMeta();
+		self.playerDetail.textColor = [theme secondaryTextColour];
+		self.playerDetail.backgroundColor = [UIColor clearColor];
+		self.playerDetail.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+		[self.playerBar addSubview:self.playerDetail];
+
+		// Elapsed over total, which the strip never said at all.
+		self.playerClock = [[UILabel alloc] init];
+		self.playerClock.font = TGFontMicro();
+		self.playerClock.textColor = [theme secondaryTextColour];
+		self.playerClock.textAlignment = NSTextAlignmentRight;
+		self.playerClock.backgroundColor = [UIColor clearColor];
+		self.playerClock.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
+		[self.playerBar addSubview:self.playerClock];
+
+		self.musicPrevious = [UIButton buttonWithType:UIButtonTypeCustom];
+		self.musicPrevious.tintColor = [theme accentColour];
+		self.musicPrevious.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
+		[self.musicPrevious addTarget:self action:@selector(musicPreviousTapped)
+					 forControlEvents:UIControlEventTouchUpInside];
+		[self.playerBar addSubview:self.musicPrevious];
+
+		self.musicNext = [UIButton buttonWithType:UIButtonTypeCustom];
+		self.musicNext.tintColor = [theme accentColour];
+		self.musicNext.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
+		[self.musicNext addTarget:self action:@selector(musicNextTapped)
+				 forControlEvents:UIControlEventTouchUpInside];
+		[self.playerBar addSubview:self.musicNext];
 
 		self.playerSpeed = [UIButton buttonWithType:UIButtonTypeCustom];
-		self.playerSpeed.frame = CGRectMake(b.size.width - 82, 4, 42, 28);
 		self.playerSpeed.titleLabel.font = TGFontCaption();
 		self.playerSpeed.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
 		[self.playerSpeed setTitle:@"1x" forState:UIControlStateNormal];
-		[self.playerSpeed setTitleColor:[[TGTheme shared] accentColour]
+		[self.playerSpeed setTitleColor:[theme accentColour]
 							   forState:UIControlStateNormal];
 		[self.playerSpeed addTarget:self action:@selector(cyclePlaybackSpeed)
 				   forControlEvents:UIControlEventTouchUpInside];
 		[self.playerBar addSubview:self.playerSpeed];
+
+		self.playerClose = [UIButton buttonWithType:UIButtonTypeCustom];
+		[self.playerClose setTitle:@"×" forState:UIControlStateNormal];
+		self.playerClose.titleLabel.font = TGFontGlyph();
+		self.playerClose.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
+		[self.playerClose addTarget:self action:@selector(stopPlayback)
+				   forControlEvents:UIControlEventTouchUpInside];
+		[self.playerClose setTitleColor:[theme secondaryTextColour]
+							   forState:UIControlStateNormal];
+		[self.playerBar addSubview:self.playerClose];
+
+		UIView *track = [[UIView alloc] initWithFrame:
+				CGRectMake(0, kPlayerBarHeight - 2, b.size.width, 2)];
+		track.backgroundColor = [theme separatorColour];
+		track.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+		[self.playerBar addSubview:track];
+
+		self.playerProgress = [[UIView alloc] initWithFrame:
+				CGRectMake(0, kPlayerBarHeight - 2, 0, 2)];
+		self.playerProgress.backgroundColor = [theme accentColour];
+		[self.playerBar addSubview:self.playerProgress];
+
+		// A 2pt line is nothing to aim at, so the whole strip is the target
+		// and the thumb says where the finger landed.
+		self.playerThumb = [[UIView alloc] initWithFrame:
+				CGRectMake(-4, kPlayerBarHeight - 5, 8, 8)];
+		self.playerThumb.backgroundColor = [theme accentColour];
+		self.playerThumb.layer.cornerRadius = 4;
+		[self.playerBar addSubview:self.playerThumb];
 
 		[self.playerBar addGestureRecognizer:[[UITapGestureRecognizer alloc]
 				initWithTarget:self action:@selector(playerBarScrubbed:)]];
 		[self.playerBar addGestureRecognizer:[[UIPanGestureRecognizer alloc]
 				initWithTarget:self action:@selector(playerBarScrubbed:)]];
 
-		UIView *track = [[UIView alloc] initWithFrame:CGRectMake(0, 34, b.size.width, 2)];
-		track.backgroundColor = [[TGTheme shared] separatorColour];
-		track.autoresizingMask = UIViewAutoresizingFlexibleWidth;
-		[self.playerBar addSubview:track];
-
-		self.playerProgress = [[UIView alloc] initWithFrame:CGRectMake(0, 34, 0, 2)];
-		self.playerProgress.backgroundColor = [[TGTheme shared] accentColour];
-		[self.playerBar addSubview:self.playerProgress];
+		[self layoutPlayerBarForMusic:NO];
 	}
 
+	[self layoutPlayerBarForMusic:NO];
 	self.playerLabel.textColor = [[TGTheme shared] primaryTextColour];
 	self.playerLabel.text = @"Voice message";
-	self.playerProgress.frame = CGRectMake(0, 34, 0, 2);
+	self.playerDetail.text = @"";
+	self.playerClock.text = @"";
+	self.playerArtwork.image = nil;
+	self.playerProgress.frame = CGRectMake(0, kPlayerBarHeight - 2, 0, 2);
 	[self.playerToggle setImage:[TGIcons pause] forState:UIControlStateNormal];
-	self.playerSpeed.hidden = (self.voicePlayer == nil);   // video notes have no rate
+	// A video note has no rate to change.
+	self.playerSpeed.hidden = (self.voicePlayer == nil);
 	[self.playerSpeed setTitle:@"1x" forState:UIControlStateNormal];
-	self.musicPrevious.hidden = YES;
-	self.musicNext.hidden = YES;
 	[self.view addSubview:self.playerBar];
 
 	// Push the messages down so the strip does not cover the newest one.
 	UIEdgeInsets insets = self.table.contentInset;
-	insets.top += 36;
+	insets.top += kPlayerBarHeight;
 	self.table.contentInset = insets;
 	self.table.scrollIndicatorInsets = insets;
+}
+
+/// Two arrangements of the same strip. A voice note has no queue and no
+/// cover, so its text starts at the arrow and the corner carries the speed;
+/// a track has art, previous and next, and no speed - the corner cannot hold
+/// both and the queue is what a track needs.
+- (void)layoutPlayerBarForMusic:(BOOL)music {
+	CGFloat width = self.playerBar.bounds.size.width;
+	CGFloat mid = (kPlayerBarHeight - 28) / 2 - 1;
+
+	self.playerArtwork.hidden = !music;
+	CGFloat textX;
+	if (music){
+		self.playerToggle.frame = CGRectMake(8 + kPlayerArt + 6, mid, 28, 28);
+		textX = 8 + kPlayerArt + 6 + 28 + 4;
+	} else {
+		self.playerToggle.frame = CGRectMake(8, mid, 28, 28);
+		textX = 42;
+	}
+
+	// Right to left: close, then the queue or the speed, then the clock.
+	self.playerClose.frame = CGRectMake(width - 34, mid, 30, 28);
+	CGFloat rightEdge = width - 38;
+
+	self.musicPrevious.hidden = !music;
+	self.musicNext.hidden = !music;
+	self.playerSpeed.hidden = music;
+	if (music){
+		self.musicNext.frame = CGRectMake(rightEdge - 30, mid, 30, 28);
+		self.musicPrevious.frame = CGRectMake(rightEdge - 62, mid, 30, 28);
+		rightEdge -= 64;
+	} else {
+		self.playerSpeed.frame = CGRectMake(rightEdge - 40, mid, 40, 28);
+		rightEdge -= 42;
+	}
+
+	CGFloat clockW = 72;
+	self.playerClock.frame = CGRectMake(rightEdge - clockW, mid + 7, clockW, 14);
+	CGFloat textW = MAX(40, rightEdge - clockW - textX - 4);
+
+	self.playerLabel.frame = CGRectMake(textX, mid + 1, textW, 15);
+	self.playerDetail.frame = CGRectMake(textX, mid + 15, textW, 13);
+}
+
+/// "1:07 / 3:42", or just the elapsed time while the length is unknown.
+static NSString *TGClockText(NSTimeInterval position, NSTimeInterval duration) {
+	NSInteger at = (NSInteger)MAX(0.0, position);
+	NSString *elapsed = [NSString stringWithFormat:@"%ld:%02ld",
+			(long)(at / 60), (long)(at % 60)];
+	if (duration <= 0)
+		return elapsed;
+	NSInteger total = (NSInteger)duration;
+	return [NSString stringWithFormat:@"%@ / %ld:%02ld", elapsed,
+			(long)(total / 60), (long)(total % 60)];
 }
 
 - (void)hidePlayerBar {
@@ -540,7 +657,7 @@ static BOOL sIsCancelled;
 		return;
 	[self.playerBar removeFromSuperview];
 	UIEdgeInsets insets = self.table.contentInset;
-	insets.top -= 36;
+	insets.top -= kPlayerBarHeight;
 	self.table.contentInset = insets;
 	self.table.scrollIndicatorInsets = insets;
 }
@@ -575,8 +692,18 @@ static BOOL sIsCancelled;
 		}
 	}
 	CGFloat played = [self playedFraction];
-	self.playerProgress.frame = CGRectMake(0, 34,
-			self.playerBar.bounds.size.width * played, 2);
+	CGFloat barWidth = self.playerBar.bounds.size.width;
+	self.playerProgress.frame = CGRectMake(0, kPlayerBarHeight - 2,
+			barWidth * played, 2);
+	self.playerThumb.center = CGPointMake(barWidth * played,
+										  kPlayerBarHeight - 1);
+
+	TGMusicPlayer *music = [TGMusicPlayer shared];
+	if (music.current)
+		self.playerClock.text = TGClockText(music.position, music.duration);
+	else if (self.voicePlayer)
+		self.playerClock.text = TGClockText(self.voicePlayer.currentTime,
+											self.voicePlayer.duration);
             
     if (self.videoNoteProgressLayer) {
         self.videoNoteProgressLayer.strokeEnd = played;
@@ -602,36 +729,9 @@ static BOOL sIsCancelled;
 /// them. Their player puts previous and next either side of play.
 - (void)showMusicBar {
 	[self showPlayerBar];
-
-	if (!self.musicPrevious){
-		CGFloat width = self.playerBar.bounds.size.width;
-
-		self.musicPrevious = [UIButton buttonWithType:UIButtonTypeCustom];
-		self.musicPrevious.frame = CGRectMake(width - 120, 4, 28, 28);
-		self.musicPrevious.titleLabel.font = TGFontGlyphSmall();
-		[self.musicPrevious setTitle:@"◀" forState:UIControlStateNormal];
-		self.musicPrevious.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
-		[self.musicPrevious addTarget:self action:@selector(musicPreviousTapped)
-					 forControlEvents:UIControlEventTouchUpInside];
-		[self.playerBar addSubview:self.musicPrevious];
-
-		self.musicNext = [UIButton buttonWithType:UIButtonTypeCustom];
-		self.musicNext.frame = CGRectMake(width - 92, 4, 28, 28);
-		self.musicNext.titleLabel.font = TGFontGlyphSmall();
-		[self.musicNext setTitle:@"▶" forState:UIControlStateNormal];
-		self.musicNext.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
-		[self.musicNext addTarget:self action:@selector(musicNextTapped)
-				 forControlEvents:UIControlEventTouchUpInside];
-		[self.playerBar addSubview:self.musicNext];
-	}
-
-	UIColor *accent = [[TGTheme shared] accentColour];
-	[self.musicPrevious setTitleColor:accent forState:UIControlStateNormal];
-	[self.musicNext setTitleColor:accent forState:UIControlStateNormal];
-	self.musicPrevious.hidden = NO;
-	self.musicNext.hidden = NO;
-	self.playerSpeed.hidden = YES;      // the two buttons take that corner
-
+	[self layoutPlayerBarForMusic:YES];
+	[self.musicPrevious setImage:[TGIcons previousTrack] forState:UIControlStateNormal];
+	[self.musicNext setImage:[TGIcons nextTrack] forState:UIControlStateNormal];
 	[self musicChanged];
 	[self startPlaybackTimer];
 }
@@ -652,9 +752,18 @@ static BOOL sIsCancelled;
 	NSString *title = [music.current[@"audioTitle"] length]
 			? music.current[@"audioTitle"]
 			: (music.current[@"docName"] ?: @"Audio");
-	NSString *performer = music.current[@"audioPerformer"];
-	self.playerLabel.text = performer.length
-			? [NSString stringWithFormat:@"%@ - %@", performer, title] : title;
+	self.playerLabel.textColor = [[TGTheme shared] primaryTextColour];
+	self.playerLabel.text = title;
+	self.playerDetail.text = [music.current[@"audioPerformer"] length]
+			? music.current[@"audioPerformer"] : @"";
+	self.playerClock.text = TGClockText(music.position, music.duration);
+
+	// The cover is the one the bubble already fetched, so switching tracks
+	// shows it at once rather than after a second download.
+	self.playerArtwork.image = [self artworkForTrack:music.current];
+	self.playerArtwork.backgroundColor = self.playerArtwork.image
+			? [UIColor clearColor] : [[TGTheme shared] fileTileColour];
+
 	[self.playerToggle setImage:(music.playing ? [TGIcons pause] : [TGIcons play])
 					   forState:UIControlStateNormal];
 	[self.table reloadData];

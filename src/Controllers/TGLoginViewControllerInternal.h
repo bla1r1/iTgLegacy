@@ -9,12 +9,18 @@
 typedef NS_ENUM(NSInteger, TGLoginStep) {
     TGLoginStepPhone,
     TGLoginStepCode,
-    TGLoginStepPassword
+    TGLoginStepPassword,
+    /// A phone number Telegram has never seen: the account is made here, and
+    /// before this step existed the code screen simply never moved on.
+    TGLoginStepRegister
 };
 
 @interface TGLoginViewController ()
 
 @property (nonatomic, assign) TGLoginStep currentStep;
+/// The last name typed on the registration step, which is optional and so
+/// cannot live in the one input field the step shares with every other.
+@property (nonatomic, copy) NSString *registrationLastName;
 @property (nonatomic, strong) UIScrollView *scrollView;
 @property (nonatomic, strong) UILabel *subtitleLabel;
 @property (nonatomic, strong) UIView *inputContainer;

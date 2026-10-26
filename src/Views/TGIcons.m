@@ -289,6 +289,30 @@ static void TGDrawTabPath(CGContextRef ctx, UIBezierPath *path, BOOL filled) {
 	}];
 }
 
+/// The two the player strip used to draw with "◀" and "▶" in a bold font,
+/// which sat a pixel off centre and did not match the play arrow beside them.
++ (UIImage *)previousTrack {
+	return [self iconNamed:@"previousTrack" draw:^(CGContextRef ctx, CGFloat s){
+		CGContextMoveToPoint(ctx, s - 7, 6);
+		CGContextAddLineToPoint(ctx, s * 0.42f, s / 2);
+		CGContextAddLineToPoint(ctx, s - 7, s - 6);
+		CGContextClosePath(ctx);
+		CGContextFillPath(ctx);
+		CGContextFillRect(ctx, CGRectMake(s * 0.3f, 6, s * 0.1f, s - 12));
+	}];
+}
+
++ (UIImage *)nextTrack {
+	return [self iconNamed:@"nextTrack" draw:^(CGContextRef ctx, CGFloat s){
+		CGContextMoveToPoint(ctx, 7, 6);
+		CGContextAddLineToPoint(ctx, s * 0.58f, s / 2);
+		CGContextAddLineToPoint(ctx, 7, s - 6);
+		CGContextClosePath(ctx);
+		CGContextFillPath(ctx);
+		CGContextFillRect(ctx, CGRectMake(s * 0.6f, 6, s * 0.1f, s - 12));
+	}];
+}
+
 + (UIImage *)pause {
 	return [self iconNamed:@"pause" draw:^(CGContextRef ctx, CGFloat s){
 		CGContextFillRect(ctx, CGRectMake(s * 0.32f, 5, s * 0.13f, s - 10));

@@ -1,5 +1,7 @@
 #import "TGLoginViewControllerInternal.h"
 #import "TGStyle.h"
+#import "TGAlertSheet.h"
+#import "TGClient.h"
 
 @implementation TGLoginViewController
 
@@ -306,6 +308,18 @@
         if (self.onPasswordSubmitted) {
             self.onPasswordSubmitted(text);
         }
+    } else if (self.currentStep == TGLoginStepRegister) {
+        __weak typeof(self) weakSelf = self;
+        [[TGClient shared] registerWithFirstName:text
+                                        lastName:self.registrationLastName
+                                      completion:^(BOOL ok, NSString *error){
+            TGLoginViewController *me = weakSelf;
+            [me setBusy:NO];
+            if (ok)
+                return;   // the authorization state carries the screen on
+            [TGAlertSheet showMessage:(error ?: @"Telegram refused that name.")
+                                title:@"Your Name" inView:me.view];
+        }];
     }
 }
 

@@ -57,6 +57,14 @@
 	self.sender.hidden = YES;
 	[self.bubble addSubview:self.sender];
 
+	// Under the disc: the play arrow sits over the album art.
+	self.artwork = [[UIImageView alloc] init];
+	self.artwork.hidden = YES;
+	self.artwork.contentMode = UIViewContentModeScaleAspectFill;
+	self.artwork.clipsToBounds = YES;
+	self.artwork.layer.cornerRadius = 4;
+	[self.bubble addSubview:self.artwork];
+
 	self.disc = [[UIImageView alloc] init];
 	self.disc.hidden = YES;
 	[self.bubble addSubview:self.disc];
@@ -331,6 +339,8 @@
 	self.tail.hidden = YES;
 	self.checkbox.hidden = YES;
 	self.disc.hidden = YES;
+	self.artwork.hidden = YES;
+	self.artwork.image = nil;
 	self.wave.hidden = YES;
 	self.contactCallButton.hidden = YES;
 	self.contactAddButton.hidden = YES;

@@ -23,6 +23,9 @@
 @property (nonatomic, strong) UIImageView *senderAvatar;
 @property (nonatomic, strong) UIImageView *tail;
 @property (nonatomic, strong) UIImageView *disc;
+/// Album art on a track bubble. Its own view rather than the picture one:
+/// a track is not a photo message, and the two are laid out differently.
+@property (nonatomic, strong) UIImageView *artwork;
 @property (nonatomic, strong) UIImageView *wave;
 @property (nonatomic, strong) UILabel *mediaStamp;
 @property (nonatomic, assign) int64_t voiceMessageId;

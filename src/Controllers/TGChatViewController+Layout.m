@@ -198,6 +198,9 @@ UIColor *TGSenderColour(int64_t userId) {
 	BOOL isRound = [kind isEqualToString:@"messageVideoNote"];
 	BOOL isService = [m[@"service"] boolValue];
 	BOOL isPoll = [kind isEqualToString:@"messagePoll"];
+	// A track is a document with a title and a performer of its own. It was
+	// drawn as the document it also is, which is why music looked like a file.
+	BOOL isTrack = [kind isEqualToString:@"messageAudio"];
 	BOOL isCall = [kind isEqualToString:@"messageCall"];
 	BOOL isDoc = [kind isEqualToString:@"messageDocument"];
 	BOOL isContact = [kind isEqualToString:@"messageContact"];
@@ -212,6 +215,7 @@ UIColor *TGSenderColour(int64_t userId) {
 	layout.isVoice = isVoice;
 	layout.isRound = isRound;
 	layout.isPoll = isPoll;
+	layout.isTrack = isTrack;
 	layout.isCall = isCall;
 	layout.isDoc = isDoc;
 	layout.isContact = isContact;
@@ -449,6 +453,9 @@ UIColor *TGSenderColour(int64_t userId) {
 	else if (pic.height > 0) rowH += pic.height + 4;
 	if (body.height > 0) rowH += body.height;
 	if (isVoice) rowH = 62 + forwarded;
+	// Fixed, like a voice note: the artwork and the two lines beside it do
+	// not grow with the title, which is truncated instead.
+	if (isTrack) rowH = kTrackRow + forwarded;
 
 	layout.rowHeight = MAX(rowH + 6, 40);
 

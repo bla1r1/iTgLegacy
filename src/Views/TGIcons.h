@@ -18,6 +18,8 @@
 + (UIImage *)attach;
 + (UIImage *)play;         ///< over video thumbnails
 + (UIImage *)pause;
++ (UIImage *)previousTrack;  ///< the player strip's queue
++ (UIImage *)nextTrack;
 + (UIImage *)document;
 + (UIImage *)pin;
 + (UIImage *)microphone;

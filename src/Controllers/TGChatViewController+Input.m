@@ -111,6 +111,66 @@
 	[self.view addSubview:self.inputBar];
 }
 
+/// The first thing in `text` that could be a link. Not a validator - TDLib
+/// decides what has a preview - just enough of a trigger to stop asking on
+/// every keystroke of an ordinary sentence.
+static NSString *TGFirstLinkIn(NSString *text) {
+	for (NSString *word in [text componentsSeparatedByCharactersInSet:
+			[NSCharacterSet whitespaceAndNewlineCharacterSet]]){
+		if (word.length < 4)
+			continue;
+		if ([word rangeOfString:@"://"].location != NSNotFound)
+			return word;
+		// A bare domain needs a dot with something either side of it.
+		NSRange dot = [word rangeOfString:@"."];
+		if (dot.location != NSNotFound && dot.location > 0 &&
+			dot.location + 1 < word.length &&
+			[word rangeOfString:@"@"].location == NSNotFound)
+			return word;
+	}
+	return nil;
+}
+
+/// What their composer shows once a link is typed: the site and the title
+/// Telegram found, so the card that will be attached is not a surprise.
+/// Nothing is asked until the typing stops, and never while the banner is
+/// already carrying a reply or an edit.
+- (void)refreshLinkPreview {
+	if (self.replyToId != 0 || self.editingId != 0)
+		return;
+
+	NSString *link = TGFirstLinkIn(self.input.text ?: @"");
+	if (!link.length){
+		if (self.previewedLink.length){
+			self.previewedLink = nil;
+			self.composeBanner.hidden = YES;
+			[self layoutChrome];
+		}
+		return;
+	}
+	if ([link isEqualToString:self.previewedLink])
+		return;          // already asked about this one
+	self.previewedLink = link;
+
+	__weak typeof(self) weakSelf = self;
+	[[TGClient shared] linkPreviewForText:self.input.text
+							   completion:^(NSDictionary *preview){
+		TGChatViewController *me = weakSelf;
+		if (!me || ![TGFirstLinkIn(me.input.text ?: @"") isEqualToString:link])
+			return;      // the text moved on while the answer was in flight
+		if (!preview){
+			me.composeBanner.hidden = YES;
+			[me layoutChrome];
+			return;
+		}
+		NSString *title = [preview[@"title"] length] ? preview[@"title"]
+				: ([preview[@"site"] length] ? preview[@"site"] : link);
+		NSString *detail = [preview[@"description"] length]
+				? preview[@"description"] : preview[@"url"];
+		[me showComposeBanner:title subtitle:detail];
+	}];
+}
+
 /// "typing..." on the other side. TDLib lets one of these stand for a few
 /// seconds, so one per four is enough to keep it up while typing goes on -
 /// and sending one per keystroke on this radio would be its own problem.
@@ -133,6 +193,8 @@
 - (void)clearComposeState {
 	self.replyToId = 0;
 	self.editingId = 0;
+	self.editingIsCaption = NO;
+	self.previewedLink = nil;
 	self.composeBanner.hidden = YES;
 	[self inputChanged];
 	[self layoutChrome];
@@ -218,7 +280,19 @@ static const NSInteger kBannerSubtitleTag = 72;
 	if (!text.length)
 		return;
 
-	if (self.editingId != 0)
+	if (self.editingId != 0 && self.editingIsCaption){
+		__weak typeof(self) weakSelf = self;
+		[[TGClient shared] editCaption:text
+							 ofMessage:self.editingId
+								inChat:self.chatId
+							completion:^(BOOL ok){
+			if (!ok)
+				[TGSnackbar showInView:weakSelf.view
+								  text:@"Telegram refused that caption"
+							   seconds:2 onCommit:nil];
+		}];
+		self.editingIsCaption = NO;
+	} else if (self.editingId != 0)
 		[[TGClient shared] editMessage:self.editingId inChat:self.chatId text:text];
 	else
 		[[TGClient shared] sendText:text toChat:self.chatId
@@ -447,6 +521,9 @@ static const NSInteger kBannerSubtitleTag = 72;
 	__weak typeof(self) weakSelf = self;
 	sheet.onPhoto = ^(UIImage *image){
 		[weakSelf sendImage:image];
+	};
+	sheet.onPhotos = ^(NSArray *images){
+		[weakSelf sendImageAlbum:images];
 	};
 	sheet.onChoice = ^(TGAttachChoice choice){
 		switch (choice){

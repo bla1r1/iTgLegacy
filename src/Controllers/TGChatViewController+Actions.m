@@ -145,7 +145,9 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 	[items addObject:@{@"title" : @"Select", @"icon" : @"select"}];
 	if ([m[@"text"] length])
 		[items addObject:@{@"title" : @"Copy", @"icon" : @"copy"}];
-	if (mine && [m[@"text"] length])
+	// A caption is edited by its own request, which is why only text could be
+	// edited before: media with a caption got no Edit row at all.
+	if (mine && ([m[@"text"] length] || [m[@"photoId"] isKindOfClass:NSNumber.class]))
 		[items addObject:@{@"title" : @"Edit", @"icon" : @"edit"}];
 	if (![m[@"service"] boolValue])
 		[items addObject:@{@"title" : (heldId == self.pinnedMessageId ? @"Unpin" : @"Pin"),
@@ -511,8 +513,12 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 	} else if ([action isEqualToString:@"Edit"]){
 		self.editingId = messageId;
 		self.replyToId = 0;
+		// Media carries a caption, and a caption is not text: the commit has
+		// to know which request to send.
+		self.editingIsCaption = [m[@"photoId"] isKindOfClass:NSNumber.class] ||
+								[m[@"docId"] isKindOfClass:NSNumber.class];
 		self.input.text = m[@"text"];
-		[self showComposeBanner:@"Editing"];
+		[self showComposeBanner:self.editingIsCaption ? @"Editing caption" : @"Editing"];
 		[self.input becomeFirstResponder];
 
 	} else if ([action isEqualToString:@"Add to Favourites"]){
@@ -720,6 +726,42 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 	[[TGClient shared] sendPhotoAtPath:path toChat:self.chatId];
 }
 
+/// Several pictures as one message. Each is staged on disk the way a single
+/// one is - TDLib uploads from a file - and the album goes as one request, so
+/// they arrive together instead of as a run that happens to be adjacent.
+- (void)sendImageAlbum:(NSArray *)images {
+	if (!images.count)
+		return;
+	NSMutableArray *paths = [NSMutableArray array];
+	for (UIImage *image in images){
+		if (![image isKindOfClass:UIImage.class])
+			continue;
+		CFUUIDRef uuid = CFUUIDCreate(NULL);
+		NSString *name = (__bridge_transfer NSString *)CFUUIDCreateString(NULL, uuid);
+		CFRelease(uuid);
+		NSString *path = [NSTemporaryDirectory() stringByAppendingPathComponent:
+				[NSString stringWithFormat:@"outgoing-%@.jpg", name]];
+		if ([UIImageJPEGRepresentation(image, 0.85f) writeToFile:path atomically:YES])
+			[paths addObject:path];
+	}
+	if (!paths.count){
+		NSLog(@"cannot stage the picked album");
+		return;
+	}
+	// Whatever is in the composer rides along as the album's caption, which
+	// is where their client puts it too.
+	NSString *caption = [self.input.text stringByTrimmingCharactersInSet:
+			[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+	if (caption.length){
+		self.input.text = @"";
+		[self inputChanged];
+	}
+	[[TGClient shared] sendPhotoAlbumAtPaths:paths
+									 caption:caption
+									  toChat:self.chatId
+									  thread:self.threadId];
+}
+
 - (void)imagePickerControllerDidCancel:(UIImagePickerController *)picker {
 	[picker dismissViewControllerAnimated:YES completion:nil];
 }
@@ -901,6 +943,103 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 	BOOL isTelegramScheme = [scheme isEqualToString:@"tg"];
 
 	if (isTelegramHost || isTelegramScheme) {
+		// Telegram knows what its own links mean; this screen used to guess
+		// from the path, which read t.me/addstickers/foo as a chat called
+		// "addstickers". The guess is still the fallback, because an answer
+		// takes a round trip and some links genuinely have no kind.
+		__weak typeof(self) weakSelf = self;
+		[[TGClient shared] internalLinkKind:clean
+								 completion:^(NSString *kind, NSString *value){
+			TGChatViewController *me = weakSelf;
+			if (!me)
+				return;
+			if ([kind isEqualToString:@"publicChat"] && value.length){
+				[me openChatWithUsername:value];
+				return;
+			}
+			if ([kind isEqualToString:@"inviteLink"] && value.length){
+				[me joinChatByInviteLink:value];
+				return;
+			}
+			if ([kind isEqualToString:@"stickerSet"] && value.length){
+				// A sticker set is not a chat, and opening one as a chat is
+				// what this did before.
+				[TGSnackbar showInView:me.navigationController.view ?: me.view
+								  text:[NSString stringWithFormat:
+										@"Sticker set: %@", value]
+							   seconds:2 onCommit:nil];
+				return;
+			}
+			if ([kind isEqualToString:@"phoneNumber"] && value.length){
+				[me openChatWithPhoneNumber:value];
+				return;
+			}
+			// Anything Telegram has no kind for falls through to the paths
+			// this screen has always matched by hand.
+			[me openTelegramLinkByPath:clean url:u
+							isTelegramHost:isTelegramHost
+						  isTelegramScheme:isTelegramScheme
+									  host:host];
+		}];
+		return;
+	}
+
+	[self openPlainLink:u];
+}
+
+/// Joining by a link, with the snackbar the tap used to get inline.
+- (void)joinChatByInviteLink:(NSString *)link {
+	__weak typeof(self) weakSelf = self;
+	[[TGClient shared] joinChatByInviteLink:link completion:^(int64_t chatId,
+															 NSString *title){
+		TGChatViewController *me = weakSelf;
+		if (!me) return;
+		if (chatId != 0){
+			TGChatViewController *chatVC = [[TGChatViewController alloc] init];
+			chatVC.chatId = chatId;
+			chatVC.chatTitle = title.length ? title : @"Chat";
+			chatVC.hidesBottomBarWhenPushed = YES;
+			[me.navigationController pushViewController:chatVC animated:YES];
+		} else {
+			[TGSnackbar showInView:me.navigationController.view
+							  text:@"Could not join chat" seconds:2 onCommit:nil];
+		}
+	}];
+}
+
+/// Someone by their number, which a tg://resolve link can carry instead of a
+/// username.
+- (void)openChatWithPhoneNumber:(NSString *)phone {
+	__weak typeof(self) weakSelf = self;
+	[[TGClient shared] userForPhone:phone completion:^(NSDictionary *user){
+		TGChatViewController *me = weakSelf;
+		int64_t userId = [user[@"id"] longLongValue];
+		if (!me || !userId){
+			[TGSnackbar showInView:me.navigationController.view ?: me.view
+							  text:@"No Telegram account on that number"
+						   seconds:2 onCommit:nil];
+			return;
+		}
+		[[TGClient shared] privateChatWithUser:userId completion:^(int64_t chatId){
+			if (!chatId)
+				return;
+			TGChatViewController *chatVC = [[TGChatViewController alloc] init];
+			chatVC.chatId = chatId;
+			chatVC.chatTitle = [[TGClient shared] nameForUserId:userId] ?: phone;
+			chatVC.hidesBottomBarWhenPushed = YES;
+			[me.navigationController pushViewController:chatVC animated:YES];
+		}];
+	}];
+}
+
+/// The paths this screen has always matched by hand, now the fallback for a
+/// link Telegram gave no kind for.
+- (void)openTelegramLinkByPath:(NSString *)clean
+						   url:(NSURL *)u
+				isTelegramHost:(BOOL)isTelegramHost
+			  isTelegramScheme:(BOOL)isTelegramScheme
+						  host:(NSString *)host {
+	{
 		NSString *inviteHash = nil;
 		if (isTelegramHost) {
 			NSString *path = u.path;
@@ -920,21 +1059,7 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 		}
 
 		if (inviteHash.length) {
-			__weak typeof(self) weakSelf = self;
-			[[TGClient shared] joinChatByInviteLink:clean completion:^(int64_t chatId, NSString *title) {
-				TGChatViewController *me = weakSelf;
-				if (!me) return;
-				if (chatId != 0) {
-					TGChatViewController *chatVC = [[TGChatViewController alloc] init];
-					chatVC.chatId = chatId;
-					chatVC.chatTitle = title.length ? title : @"Chat";
-					chatVC.hidesBottomBarWhenPushed = YES;
-					[me.navigationController pushViewController:chatVC animated:YES];
-				} else {
-					[TGSnackbar showInView:me.navigationController.view
-									  text:@"Could not join chat" seconds:2 onCommit:nil];
-				}
-			}];
+			[self joinChatByInviteLink:clean];
 			return;
 		}
 
@@ -960,9 +1085,14 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 		}
 	}
 
-	if (u) {
-		[[UIApplication sharedApplication] openURL:u];
-	}
+	[self openPlainLink:u];
+}
+
+/// Anything that is not a Telegram link: Safari, which is the whole of what
+/// this app does with the web.
+- (void)openPlainLink:(NSURL *)url {
+	if (url)
+		[[UIApplication sharedApplication] openURL:url];
 }
 
 @end

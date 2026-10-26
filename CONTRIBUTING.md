@@ -89,7 +89,7 @@ bug closes.
 
 Before a PR counts as ready:
 
-- [ ] `make -f tests/Makefile test` is green (currently 371 passed, 0 failed —
+- [ ] `make -f tests/Makefile test` is green (currently 403 passed, 0 failed —
       raise the bar, never lower it)
 - [ ] `sh scripts/lint_tokens.sh` is clean — no hand-written size or colour
 - [ ] a fix lands with the regression test that failed before it
