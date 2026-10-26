@@ -78,18 +78,6 @@
 	[self.navigationController pushViewController:chat animated:YES];
 }
 
-/// Folders are a filter over the chat list, so this says where they are rather
-/// than building a second copy of the same sheet.
-- (void)showFolders {
-	NSArray *folders = [TGClient shared].folders;
-	NSString *message = folders.count
-			? [NSString stringWithFormat:@"%lu folders. Pick one from Folders "
-					@"above the chat list.", (unsigned long)folders.count]
-			: @"This account has no chat folders. They are set up in Telegram "
-			  @"on a desktop or a newer phone, and appear here.";
-	[TGAlertSheet showMessage:message title:@"Folders" inView:self.view];
-}
-
 - (void)showPremiumState {
 	__weak typeof(self) weakSelf = self;
 	[[TGClient shared] premiumStateWithCompletion:^(NSString *summary){
@@ -100,20 +88,222 @@
 	}];
 }
 
-/// Setting a password is a multi-step flow with a recovery address; this screen
-/// reports the state and says where to change it rather than pretending to.
+/// Their Two-Step Verification page, as a sheet: what the state is, and the
+/// three things that can be done to it. The password is never held - each
+/// request carries the one just typed and nothing keeps it afterwards.
 - (void)showTwoStepState {
 	__weak typeof(self) weakSelf = self;
 	[[TGClient shared] hasPasswordWithCompletion:^(BOOL has, NSString *email){
+		TGSettingsViewController *me = weakSelf;
+		if (!me)
+			return;
+
 		NSString *message = has
-				? [NSString stringWithFormat:@"Two-step verification is on.%@",
-						email.length ? [NSString stringWithFormat:
-								@"\nRecovery address: %@", email] : @""]
-				: @"Two-step verification is off. It is set up in an official "
-				  @"client; once it is on, this app asks for the password when "
-				  @"signing in.";
-		[TGAlertSheet showMessage:message title:@"Two-Step Verification"
-						   inView:weakSelf.view];
+				? (email.length
+						? @"A password is set, with a recovery address behind it."
+						: @"A password is set. There is no recovery address, so "
+						  @"forgetting it means waiting a week to reset.")
+				: @"Off. With it on, signing in on a new device asks for this "
+				  @"password as well as the code.";
+		NSArray *choices = has
+				? @[@"Change Password", @"Recovery Address", @"Turn Off"]
+				: @[@"Set a Password"];
+
+		[TGAlertSheet showChoices:choices
+							title:@"Two-Step Verification"
+						  message:message
+				 destructiveIndex:(has ? 2 : -1)
+						   inView:me.view
+						 onChoice:^(NSInteger index){
+			if (!has){
+				[me askNewPasswordReplacing:nil];
+				return;
+			}
+			if (index == 0)
+				[me askCurrentPasswordThen:^(NSString *current){
+					[me askNewPasswordReplacing:current];
+				}];
+			else if (index == 1)
+				[me askRecoveryAddress];
+			else
+				[me askTurnPasswordOff];
+		}];
+	}];
+}
+
+/// The gate every change goes through. Asked once, handed on, forgotten.
+- (void)askCurrentPasswordThen:(void (^)(NSString *current))next {
+	[TGAlertSheet showSecureInput:@"Current Password"
+						  message:nil
+					  placeholder:@"Password"
+						   action:@"Continue"
+						   inView:self.view
+						 onSubmit:^(NSString *current){
+		if (next) next(current);
+	}];
+}
+
+/// A new password, then its hint. Telegram shows the hint to whoever is
+/// signing in, so it is asked for separately rather than guessed at.
+- (void)askNewPasswordReplacing:(NSString *)current {
+	__weak typeof(self) weakSelf = self;
+	[TGAlertSheet showSecureInput:@"New Password"
+						  message:@"Eight characters or more is the usual advice."
+					  placeholder:@"Password"
+						   action:@"Next"
+						   inView:self.view
+						 onSubmit:^(NSString *new){
+		TGSettingsViewController *me = weakSelf;
+		[TGAlertSheet showInput:@"Hint"
+						message:@"Shown when this password is asked for. It can "
+								@"be left empty."
+					placeholder:@"Hint"
+						   text:nil
+						 action:@"Set Password"
+						 inView:me.view
+					   onSubmit:^(NSString *hint){
+			[me commitPassword:new replacing:current hint:hint];
+		}];
+	}];
+}
+
+/// Set Password with an empty hint has to be reachable too, so the hint sheet
+/// being cancelled is not the end of the flow - this is the shared landing.
+- (void)commitPassword:(NSString *)new replacing:(NSString *)current
+				  hint:(NSString *)hint {
+	__weak typeof(self) weakSelf = self;
+	[[TGClient shared] setPassword:current
+							   new:new
+							  hint:hint
+				   setEmailAddress:NO
+							 email:nil
+						completion:^(BOOL ok){
+		TGSettingsViewController *me = weakSelf;
+		if (!ok){
+			[TGAlertSheet showMessage:@"Telegram refused that. A wrong current "
+									  @"password is the usual reason."
+								title:@"Two-Step Verification" inView:me.view];
+			return;
+		}
+		me.hasPassword = YES;
+		me.passwordKnown = YES;
+		[me rebuild];
+		[TGAlertSheet showMessage:@"Set. Signing in on a new device now asks "
+								  @"for it. Add a recovery address so that "
+								  @"forgetting it is not final."
+							title:@"Two-Step Verification" inView:me.view];
+	}];
+}
+
+/// Off is an empty new password, not a request of its own - and it still
+/// needs the current one.
+- (void)askTurnPasswordOff {
+	__weak typeof(self) weakSelf = self;
+	[TGAlertSheet showConfirm:@"Signing in will only need the code again."
+						title:@"Turn Off"
+					   action:@"Turn Off"
+				  destructive:YES
+					   inView:self.view
+					onConfirm:^{
+		TGSettingsViewController *me = weakSelf;
+		[me askCurrentPasswordThen:^(NSString *current){
+			[[TGClient shared] setPassword:current
+									   new:@""
+									  hint:@""
+						   setEmailAddress:NO
+									 email:nil
+								completion:^(BOOL ok){
+				if (!ok){
+					[TGAlertSheet showMessage:@"Wrong password."
+										title:@"Turn Off" inView:me.view];
+					return;
+				}
+				me.hasPassword = NO;
+				me.passwordKnown = YES;
+				[me rebuild];
+				[TGAlertSheet showMessage:@"Two-step verification is off."
+									title:@"Turn Off" inView:me.view];
+			}];
+		}];
+	}];
+}
+
+/// Reading the address back needs the password, which is the whole point of
+/// it - so the same sheet shows what is there and offers to change it.
+- (void)askRecoveryAddress {
+	__weak typeof(self) weakSelf = self;
+	[self askCurrentPasswordThen:^(NSString *current){
+		TGSettingsViewController *me = weakSelf;
+		[[TGClient shared] recoveryEmailAddress:current completion:^(NSString *email){
+			[TGAlertSheet showChoices:@[@"Change Address"]
+								title:@"Recovery Address"
+							  message:(email.length
+									? [NSString stringWithFormat:@"Letters go to %@.",
+											email]
+									: @"There is none, or the password was wrong.")
+					 destructiveIndex:-1
+							   inView:me.view
+							 onChoice:^(NSInteger index){
+				[TGAlertSheet showInput:@"Recovery Address"
+								message:@"Telegram writes to it to confirm."
+							placeholder:@"you@example.com"
+								   text:email
+								 action:@"Save"
+								 inView:me.view
+							   onSubmit:^(NSString *address){
+					[[TGClient shared] setRecoveryEmailAddress:current
+															to:address
+													completion:^(BOOL ok){
+						[TGAlertSheet showMessage:(ok
+								? @"Telegram has written to it. Follow the "
+								  @"letter to finish."
+								: @"Telegram refused that address.")
+											title:@"Recovery Address"
+										   inView:me.view];
+					}];
+				}];
+			}];
+		}];
+	}];
+}
+
+/// The end of the road. Two confirmations, then the reason their own form
+/// asks for, then the password when two-step verification is on.
+- (void)askDeleteAccountNow {
+	__weak typeof(self) weakSelf = self;
+	[TGAlertSheet showConfirm:@"Every message, chat, contact and the account "
+							  @"itself go, on every device, and none of it "
+							  @"comes back."
+						title:@"Delete Account"
+					   action:@"Delete Account"
+				  destructive:YES
+					   inView:self.view
+					onConfirm:^{
+		TGSettingsViewController *me = weakSelf;
+		[TGAlertSheet showInput:@"Why"
+						message:@"Telegram asks. It can be left empty."
+					placeholder:@"Reason"
+						   text:nil
+						 action:@"Continue"
+						 inView:me.view
+					   onSubmit:^(NSString *reason){
+			void (^finish)(NSString *) = ^(NSString *password){
+				[[TGClient shared] deleteAccountWithReason:reason
+												  password:password
+												completion:^(BOOL ok){
+					if (!ok)
+						[TGAlertSheet showMessage:@"Telegram refused. A wrong "
+												  @"password is the usual reason."
+											title:@"Delete Account" inView:me.view];
+					// On success TDLib logs out on its own and the login
+					// screen takes over; there is nothing left to say.
+				}];
+			};
+			if (me.hasPassword)
+				[me askCurrentPasswordThen:finish];
+			else
+				finish(nil);
+		}];
 	}];
 }
 

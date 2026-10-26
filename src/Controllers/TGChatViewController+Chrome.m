@@ -5,6 +5,7 @@
 //
 #import "TGChatViewControllerInternal.h"
 #import <QuartzCore/QuartzCore.h>
+#import "TGAlertSheet.h"
 #import "TGStatusText.h"
 #import "TGStyle.h"
 
@@ -382,7 +383,6 @@ static const CGFloat kReplyPull = 56.0f;   // how far a bubble travels before it
 	self.networkSubtitle = nil;
 	if (!was.length && note)
 		return;   // nothing of ours to hand back
-
 	if (!self.typingTimer){
 		NSString *resting = self.restingSubtitle ?: @"";
 		if (resting.length){
@@ -391,6 +391,62 @@ static const CGFloat kReplyPull = 56.0f;   // how far a bubble travels before it
 		}
 	}
 	// A live typing timer re-writes the line on its own tick.
+}
+
+#pragma mark - secret chats
+
+/// A secret chat lives or dies by its state: "pending" until the other
+/// device has answered the exchange, spent when closed. The state is the
+/// resting subtitle, and an update mid-chat re-runs this line.
+- (void)refreshSecretState {
+	__weak typeof(self) weakSelf = self;
+	NSInteger secretId = self.secretChatId;
+	if (!secretId)
+		return;
+	[[TGClient shared] secretChatState:secretId completion:^(NSString *state, BOOL outgoing){
+		TGChatViewController *me = weakSelf;
+		if (!me)
+			return;
+		NSString *resting = nil;
+		if ([state isEqualToString:@"pending"]){
+			// An incoming one waits for its owner to accept; the outgoing
+			// one waits for the phone it was made with to come online.
+			resting = outgoing ? @"Secret chat · waiting for them to come online"
+							   : @"Secret chat · waiting for you to accept";
+			me.inputBar.hidden = YES;
+		} else if ([state isEqualToString:@"ready"]){
+			resting = @"Secret chat · keys exchanged";
+			me.inputBar.hidden = NO;
+		} else if ([state isEqualToString:@"closed"]){
+			resting = @"Secret chat · closed and gone when you leave";
+			me.inputBar.hidden = YES;
+		}
+		me.restingSubtitle = resting ?: @"";
+		[me titleSubtitleOwnerChanged:nil];
+	}];
+}
+
+/// Holding the header of a secret chat offers ending it. On a plain chat
+/// the hold does nothing, because the profile already has the row.
+- (void)headerHeld:(UILongPressGestureRecognizer *)hold {
+	if (hold.state != UIGestureRecognizerStateBegan || !self.secretChatId)
+		return;
+	NSInteger secretId = self.secretChatId;
+	int64_t chatId = self.chatId;
+	__weak typeof(self) weakSelf = self;
+	[TGAlertSheet showConfirm:@"The keys are destroyed and the chat cannot be "
+							  @"reopened. The messages on your phone stay."
+						 title:@"Close Secret Chat"
+						action:@"Close"
+				   destructive:YES
+						inView:self.navigationController.view ?: self.view
+				   onConfirm:^{
+		[[TGClient shared] closeSecretChat:secretId];
+		// The chat turns empty rather than walking off the list, so the
+		// screen does not pretend it is still what it was.
+		[weakSelf.navigationController popViewControllerAnimated:YES];
+		[[TGClient shared] closeChat:chatId];
+	}];
 }
 
 #pragma mark - typing

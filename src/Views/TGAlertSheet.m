@@ -190,6 +190,30 @@ static const CGFloat kFieldTop = 8.0f;
 	  placeholder:(NSString *)placeholder text:(NSString *)text
 		   action:(NSString *)actionTitle inView:(UIView *)host
 		 onSubmit:(void (^)(NSString *))onSubmit {
+	[self showTextFieldInput:title message:message
+				   placeholder:placeholder text:text secure:NO
+					   action:actionTitle inView:host
+					 onSubmit:onSubmit];
+}
+
+/// The same card with dots instead of letters - what a password is worth
+/// asking for with. Everything else about the flow is the ordinary input.
++ (void)showSecureInput:(NSString *)title message:(NSString *)message
+			placeholder:(NSString *)placeholder
+				 action:(NSString *)actionTitle
+				 inView:(UIView *)host
+			  onSubmit:(void (^)(NSString *text))onSubmit {
+	[self showTextFieldInput:title message:message
+				   placeholder:placeholder text:nil secure:YES
+					   action:actionTitle inView:host
+					 onSubmit:onSubmit];
+}
+
++ (void)showTextFieldInput:(NSString *)title message:(NSString *)message
+			   placeholder:(NSString *)placeholder text:(NSString *)text
+					secure:(BOOL)secure
+					action:(NSString *)actionTitle inView:(UIView *)host
+				  onSubmit:(void (^)(NSString *text))onSubmit {
 	if (!host)
 		return;
 	TGTheme *theme = [TGTheme shared];
@@ -213,6 +237,8 @@ static const CGFloat kFieldTop = 8.0f;
 	field.autocorrectionType = UITextAutocorrectionTypeNo;
 	field.returnKeyType = UIReturnKeyDone;
 	field.clearButtonMode = UITextFieldViewModeWhileEditing;
+	field.secureTextEntry = secure;
+	field.autocapitalizationType = UITextAutocapitalizationTypeNone;
 	[card addSubview:field];
 	sheet->_field = field;
 	sheet->_onSubmit = [onSubmit copy];

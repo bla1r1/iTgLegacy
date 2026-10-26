@@ -21,9 +21,9 @@
 	// Tapping and getting nothing back reads as a broken button; an account
 	// with no folders has to say so.
 	if (!folders.count){
-		[TGAlertSheet showMessage:@"This account has no chat folders. They are set "
-								  @"up in Telegram on a desktop or a newer phone, "
-								  @"and appear here."
+		[TGAlertSheet showMessage:@"This account has no chat folders yet. They "
+								  @"are made in Settings, under Chat Folders, "
+								  @"and appear here as a strip."
 							title:@"Folders" inView:self.view];
 		return;
 	}

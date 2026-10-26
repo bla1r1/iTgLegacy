@@ -6,6 +6,7 @@
 
 #import "TGChatViewController.h"
 #import "TGClient.h"
+#import "TGSheet.h"
 #import "TGTheme.h"
 #import "TGIcons.h"
 #import "TGSnackbar.h"
@@ -75,6 +76,14 @@ static const CGFloat kComposeBannerHeight = 44.0f;
 @property (nonatomic, strong) UILabel *downloadHUD;
 @property (nonatomic, assign) NSInteger downloadingFileId;
 @property (nonatomic, strong) CLLocationManager *locationManager;
+/// The own live location this screen is holding open while it watches the
+/// GPS: the message id that gets edited, the period it was sent for, and
+/// the marks it is being edited against.
+@property (nonatomic, assign) int64_t liveLocationMessageId;
+@property (nonatomic, assign) NSInteger liveLocationSeconds;
+@property (nonatomic, assign) NSTimeInterval liveLocationSince;
+@property (nonatomic, assign) BOOL liveLocationInFlight;
+@property (nonatomic, assign) NSInteger liveLocationRestarts;
 @property (nonatomic, strong) UIImage *fullScreenImage;
 @property (nonatomic, strong) UIImageView *wallpaperView;
 @property (nonatomic, strong) UIButton *stickerButton;
@@ -121,6 +130,19 @@ static const CGFloat kComposeBannerHeight = 44.0f;
 
 @property (nonatomic, strong) UIView *savedTitleView;
 @property (nonatomic, strong) UIBarButtonItem *savedRightBarButtonItem;
+
+/// The secret chat behind this chat, 0 when it is not one. Its state is the
+/// header subtitle, and updates to it arrive while the chat is open.
+@property (nonatomic, assign) NSInteger secretChatId;
+- (void)refreshSecretState;
+
+/// The scheduled queue's size, known when the send was last held, and the
+/// picker sheet the hold's "Send At a Time..." opens.
+@property (nonatomic, assign) NSInteger scheduledCount;
+@property (nonatomic, strong) UIDatePicker *pickPicker;
+@property (nonatomic, strong) TGSheet *pickSheet;
+- (void)holdScheduledSheet;
+- (void)sendHeldText:(NSDictionary *)state;
 
 - (void)reload;
 - (void)showPlaybackFailure;

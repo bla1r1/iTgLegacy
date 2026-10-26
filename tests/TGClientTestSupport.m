@@ -31,31 +31,10 @@
 
 #pragma mark - TGClient (TestSupport)
 
+// +Account and +Auth are now compiled into this binary, so the stand-ins the
+// dialog tests once needed around them are gone: the real ones had better be
+// testable too, and they are - requests land in the outbox, answers come back
+// through handleUpdate the same way.
+
 @implementation TGClient (TestSupport)
-
-/// Saved Messages is keyed off the signed-in user; `me` is what a real
-/// session would carry. Tests set `me` when they care, default 0.
-- (int64_t)savedMessagesChatId {
-	return [self.me[@"id"] longLongValue];
-}
-
-- (NSString *)nameForUserId:(int64_t)userId {
-	NSString *name = self.usersById[@(userId)];
-	return name.length ? name : nil;
-}
-
-/// The real one asks TDLib for the user and rebuilds when the name lands.
-/// On the host the name simply never becomes known — which is the branch
-/// the chat-list render tests for anyway.
-- (void)ensureUserName:(int64_t)userId completion:(void (^)(void))completion {
-	if (completion)
-		completion();
-}
-
-/// updateUser photo wiring is +Account territory; nothing tests it here.
-- (void)cacheProfilePhoto:(NSDictionary *)user {}
-
-/// +Account territory as well.
-- (void)flushPendingPhoneNumber {}
-
 @end

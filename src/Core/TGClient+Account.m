@@ -539,6 +539,166 @@ static NSArray *TGPacksFrom(NSDictionary *target) {
 	[self send:@{@"@type" : @"clearImportedContacts"}];
 }
 
+#pragma mark - profile photos, link, groups in common
+
+/// A profile photo taken off the account by the id the chatPhoto carried.
+- (void)deleteProfilePhoto:(int64_t)photoId
+				completion:(void (^)(BOOL))completion {
+	if (!photoId){
+		if (completion) completion(NO);
+		return;
+	}
+	[self request:@{
+		@"@type"            : @"deleteProfilePhoto",
+		@"profile_photo_id" : @(photoId),
+	} completion:^(NSDictionary *result){
+		if (completion)
+			completion(![result[@"@type"] isEqualToString:@"error"]);
+	}];
+}
+
+/// The account's whole photo history: what the avatar tap shows, and the
+/// only place a photoId worth deleting answers from.
+- (void)userProfilePhotos:(int64_t)userId
+			   completion:(void (^)(NSArray *))completion {
+	[self request:@{
+		@"@type"   : @"getUserProfilePhotos",
+		@"user_id" : @(userId),
+		@"offset"  : @(0),
+		@"limit"   : @(50),
+	} completion:^(NSDictionary *result){
+		NSMutableArray *out = [NSMutableArray array];
+		for (NSDictionary *photo in result[@"photos"]){
+			int64_t photoId = [photo[@"id"] longLongValue];
+			NSNumber *fileId = photo[@"small"][@"id"];
+			if (!photoId || !fileId)
+				continue;
+			[out addObject:@{@"photoId" : @(photoId),
+							  @"fileId" : fileId}];
+		}
+		if (completion) completion(out);
+	}];
+}
+
+/// The signed-in account's own t.me link - Telegram gives it only for the
+/// current user, so there is no asking for someone else's.
+- (void)myUserLink:(void (^)(NSString *))completion {
+	[self request:@{
+		@"@type"                 : @"getUserLink",
+		@"remove_messages_fee"   : @NO,
+		@"return_permanent_link" : @YES,
+		@"revoke_previous_links" : @NO,
+	} completion:^(NSDictionary *result){
+		if (completion) completion(result[@"url"] ?: @"");
+	}];
+}
+
+/// The chats two accounts are in together, named off the answer itself, so
+/// a tap opens it like any chat the list holds.
+- (void)groupsInCommonWithUser:(int64_t)userId
+					completion:(void (^)(NSArray *))completion {
+	[self request:@{
+		@"@type"          : @"getGroupsInCommon",
+		@"user_id"        : @(userId),
+		@"offset_chat_id" : @(0),
+		@"limit"          : @(50),
+	} completion:^(NSDictionary *result){
+		NSMutableArray *out = [NSMutableArray array];
+		for (NSDictionary *chat in result[@"chats"]){
+			NSString *title = chat[@"title"] ?: @"";
+			if (!title.length)
+				continue;
+			[out addObject:@{@"chatId" : chat[@"id"] ?: @0,
+							  @"title" : title}];
+		}
+		if (completion) completion(out);
+	}];
+}
+
+#pragma mark - two-step verification
+
+/// The password written whole. A wrong old password is the error here, and
+/// the screen above is what says that to a human. An empty new password is
+/// how the password comes off, not a refusal to write one.
+- (void)setPassword:(NSString *)oldPassword
+				new:(NSString *)newPassword
+			  hint:(NSString *)hint
+	setEmailAddress:(BOOL)setEmailAddress
+			  email:(NSString *)recoveryEmail
+		 completion:(void (^)(BOOL))completion {
+	[self request:@{
+		@"@type"                      : @"setPassword",
+		@"old_password"               : oldPassword ?: @"",
+		@"new_password"               : newPassword ?: @"",
+		@"new_hint"                   : hint ?: @"",
+		@"set_recovery_email_address" : @(setEmailAddress),
+		@"new_recovery_email_address" : recoveryEmail ?: @"",
+	} completion:^(NSDictionary *result){
+		if (completion)
+			completion(![result[@"@type"] isEqualToString:@"error"]);
+	}];
+}
+
+/// What a recovery address says - and whether the password that asked for it
+/// was right, because a wrong one is answered with an empty class where the
+/// email would have been.
+- (void)recoveryEmailAddress:(NSString *)password
+				  completion:(void (^)(NSString *))completion {
+	[self request:@{
+		@"@type"    : @"getRecoveryEmailAddress",
+		@"password" : password ?: @"",
+	} completion:^(NSDictionary *result){
+		NSString *email = [result[@"@type"] isEqualToString:
+				@"recoveryEmailAddress"]
+				? (result[@"recovery_email_address"] ?: @"")
+				: @"";
+		if (completion) completion(email);
+	}];
+}
+
+/// Point the recovery address somewhere else. TDLib confirms the new one by
+/// letter afterwards, so the answer says the request landed, not that the
+/// address is live.
+- (void)setRecoveryEmailAddress:(NSString *)password
+							 to:(NSString *)email
+					 completion:(void (^)(BOOL))completion {
+	[self request:@{
+		@"@type"                      : @"setRecoveryEmailAddress",
+		@"password"                   : password ?: @"",
+		@"new_recovery_email_address" : email ?: @"",
+	} completion:^(NSDictionary *result){
+		if (completion)
+			completion(![result[@"@type"] isEqualToString:@"error"]);
+	}];
+}
+
+#pragma mark - the last of the account
+
+/// Every other device signs off in one request. This one is never its own
+/// victim - terminateAllOtherSessions answers for the rest only.
+- (void)terminateAllOtherSessions:(void (^)(BOOL))completion {
+	[self request:@{@"@type" : @"terminateAllOtherSessions"}
+	   completion:^(NSDictionary *result){
+		if (completion)
+			completion(![result[@"@type"] isEqualToString:@"error"]);
+	}];
+}
+
+/// The end of the road, asked with the reason Telegram's own form collects
+/// and the password two-step verification demands.
+- (void)deleteAccountWithReason:(NSString *)reason
+					   password:(NSString *)password
+					 completion:(void (^)(BOOL))completion {
+	[self request:@{
+		@"@type"    : @"deleteAccount",
+		@"reason"   : reason ?: @"",
+		@"password" : password ?: @"",
+	} completion:^(NSDictionary *result){
+		if (completion)
+			completion(![result[@"@type"] isEqualToString:@"error"]);
+	}];
+}
+
 /// Their Recent Calls page is a search across every chat for call messages -
 /// there is no separate call log in TDLib.
 - (void)recentCallsWithCompletion:(void (^)(NSArray *))completion {

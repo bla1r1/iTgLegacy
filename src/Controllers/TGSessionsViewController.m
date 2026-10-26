@@ -86,21 +86,29 @@
 #pragma mark - table
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
-	return 2;
+	// A third section only when there is more than this device to sign out.
+	return [self othersOnly].count ? 3 : 2;
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
 	if (section == 0) return @"This device";
-	return [self othersOnly].count ? @"Active sessions" : nil;
+	if (section == 1) return [self othersOnly].count ? @"Active sessions" : nil;
+	return nil;
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
-	return section == 1 && [self othersOnly].count
-			? @"Tap a session to sign that device out." : nil;
+	if (section == 1 && [self othersOnly].count)
+		return @"Tap a session to sign that device out.";
+	if (section == 2)
+		return @"Signs out every device but this one, including any this list "
+			   @"has not shown yet.";
+	return nil;
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-	return section == 0 ? ([self currentSession] ? 1 : 0) : [self othersOnly].count;
+	if (section == 0) return [self currentSession] ? 1 : 0;
+	if (section == 1) return [self othersOnly].count;
+	return 1;
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
@@ -108,6 +116,17 @@
 	if (!cell)
 		cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle
 									  reuseIdentifier:@"row"];
+
+	if (indexPath.section == 2){
+		[[TGTheme shared] styleCell:cell];
+		cell.textLabel.text = @"Terminate All Other Sessions";
+		cell.textLabel.textColor = [[TGTheme shared] destructiveColour];
+		cell.detailTextLabel.text = nil;
+		cell.textLabel.textAlignment = NSTextAlignmentCenter;
+		cell.selectionStyle = UITableViewCellSelectionStyleBlue;
+		return cell;
+	}
+	cell.textLabel.textAlignment = NSTextAlignmentLeft;
 
 	NSDictionary *session = indexPath.section == 0
 			? [self currentSession] : [self othersOnly][indexPath.row];
@@ -124,6 +143,30 @@
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
 	[tableView deselectRowAtIndexPath:indexPath animated:YES];
+
+	if (indexPath.section == 2){
+		__weak typeof(self) weakSelf = self;
+		[TGAlertSheet showConfirm:@"Every device but this one is signed out, "
+								  @"including any this list has not shown yet."
+							title:@"Terminate All Other Sessions"
+						   action:@"Terminate"
+					  destructive:YES
+						   inView:self.view
+						onConfirm:^{
+			[[TGClient shared] terminateAllOtherSessions:^(BOOL ok){
+				TGSessionsViewController *me = weakSelf;
+				if (!ok){
+					[TGAlertSheet showMessage:@"Telegram refused that."
+										title:@"Active Sessions" inView:me.view];
+					return;
+				}
+				// The server needs a moment before the list reflects it.
+				[me performSelector:@selector(refresh) withObject:nil afterDelay:1.0];
+			}];
+		}];
+		return;
+	}
+
 	if (indexPath.section != 1)
 		return;
 

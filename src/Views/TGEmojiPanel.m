@@ -100,6 +100,9 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 
 @property (nonatomic, strong) NSArray *stickerSets;      // installed, as TGClient gives them
 @property (nonatomic, strong) NSString *gifQuery;        // nil for the saved ones
+/// An emoji the sticker tab is searching for, or nil for the usual feed of
+/// favourites, recents and installed sets.
+@property (nonatomic, strong) NSString *stickerQuery;
 /// Bumped every time the grid is rebuilt, so an answer for an older grid
 /// is dropped rather than drawn into the wrong cell.
 @property (nonatomic, assign) NSUInteger generation;
@@ -212,6 +215,7 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 	self.tab = tab;
 	self.stripIndex = 0;
 	self.gifQuery = nil;
+	self.stickerQuery = nil;
 	self.backspace.hidden = tab != TGEmojiPanelTabEmoji;
 	TGTheme *theme = [TGTheme shared];
 	for (UIButton *button in self.tabButtons){
@@ -253,8 +257,11 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 			return out;
 		}
 		case TGEmojiPanelTabStickers: {
+			// The magnifier first, as their panel has it: the sets that
+			// follow are an index into one feed, and a search replaces it.
 			NSMutableArray *out = [NSMutableArray arrayWithObjects:
-					@{@"glyph" : @"star"}, @{@"glyph" : @"recent"}, nil];
+					@{@"glyph" : @"search"}, @{@"glyph" : @"star"},
+					@{@"glyph" : @"recent"}, nil];
 			for (NSDictionary *set in self.stickerSets){
 				NSDictionary *cover = set[@"cover"];
 				NSMutableDictionary *entry = [NSMutableDictionary dictionary];
@@ -322,6 +329,10 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 		[self askForGifSearch];
 		return;
 	}
+	if (self.tab == TGEmojiPanelTabStickers && button.tag == 0){
+		[self askForStickerSearch];
+		return;
+	}
 	if (self.tab == TGEmojiPanelTabGIFs)
 		self.gifQuery = nil;   // "Saved"
 
@@ -375,7 +386,11 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 		}
 		case TGEmojiPanelTabStickers:
 			// One feed, not one set at a time: the strip only moves within it.
-			[self loadStickerFeed];
+			// A search is the exception - it puts its results there instead.
+			if (self.stickerQuery.length)
+				[self loadStickerSearch];
+			else
+				[self loadStickerFeed];
 			break;
 		case TGEmojiPanelTabGIFs: {
 			show(@[], nil);
@@ -394,10 +409,91 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 /// Favourites, then Recently Used, then every installed set, in one scroll.
 /// The sets are asked for one after another rather than all at once: a dozen
 /// answers landing together rebuilt the feed a dozen times and froze the app.
+/// Stickers for an emoji: the installed sets first, because those are the
+/// ones already on the phone, then everything public under them.
+- (void)loadStickerSearch {
+	self.generation++;
+	NSUInteger generation = self.generation;
+	NSString *query = self.stickerQuery;
+
+	self.items = @[];
+	self.sections = nil;
+	self.emptyLabel.text = @"Searching...";
+	[self reloadGrid];
+
+	__weak typeof(self) weakSelf = self;
+	__block NSArray *mine = @[];
+	__block NSArray *everywhere = @[];
+	__block NSUInteger left = 2;
+
+	void (^show)(void) = ^{
+		TGEmojiPanel *me = weakSelf;
+		if (!me || me.generation != generation || --left > 0)
+			return;
+
+		NSMutableArray *flat = [NSMutableArray array];
+		NSMutableArray *sections = [NSMutableArray array];
+		NSArray *parts = @[mine, everywhere];
+		NSArray *titles = @[@"Yours", @"All stickers"];
+		for (NSUInteger i = 0; i < parts.count; i++){
+			NSArray *part = parts[i];
+			if (!part.count)
+				continue;
+			[sections addObject:[@{@"title"    : titles[i],
+								   @"strip"    : @(0),
+								   @"location" : @(flat.count),
+								   @"length"   : @(part.count)} mutableCopy]];
+			[flat addObjectsFromArray:part];
+		}
+		me.items = flat;
+		me.sections = sections;
+		me.emptyLabel.text = [NSString stringWithFormat:@"No stickers for %@", query];
+		[me setNeedsFeedRelayout];
+	};
+
+	[[TGClient shared] stickersForEmoji:query completion:^(NSArray *stickers){
+		mine = stickers ?: @[];
+		show();
+	}];
+	[[TGClient shared] searchStickersForEmoji:query completion:^(NSArray *stickers){
+		// What is already in "Yours" is not worth a second tile.
+		NSMutableSet *known = [NSMutableSet set];
+		for (NSDictionary *sticker in mine)
+			if (sticker[@"fileId"])
+				[known addObject:sticker[@"fileId"]];
+		NSMutableArray *rest = [NSMutableArray array];
+		for (NSDictionary *sticker in (stickers ?: @[]))
+			if (![known containsObject:sticker[@"fileId"]])
+				[rest addObject:sticker];
+		everywhere = rest;
+		show();
+	}];
+}
+
+/// An emoji rather than a word: that is what TDLib searches stickers by, and
+/// saying so in the sheet saves a round of confusion.
+- (void)askForStickerSearch {
+	__weak typeof(self) weakSelf = self;
+	[TGAlertSheet showInput:@"Search Stickers"
+					message:@"By emoji - the one a sticker is filed under."
+				placeholder:@"\U0001F603"
+					   text:self.stickerQuery
+					 action:@"Search"
+					 inView:(self.window ?: self)
+				   onSubmit:^(NSString *query){
+		TGEmojiPanel *panel = weakSelf;
+		panel.stickerQuery = query.length ? query : nil;
+		panel.stripIndex = 0;
+		[panel updateStripHighlight];
+		[panel loadItemsForStripIndex:0];
+	}];
+}
+
 - (void)loadStickerFeed {
 	self.generation++;
 	NSUInteger generation = self.generation;
 
+	// Strip slot 0 is the magnifier, so the feed's own sections start at 1.
 	NSMutableArray *titles = [NSMutableArray arrayWithObjects:@"Favourites", @"Recently Used", nil];
 	for (NSDictionary *set in self.stickerSets)
 		[titles addObject:[set[@"title"] length] ? set[@"title"] : @"Stickers"];
@@ -425,7 +521,7 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 			if (!part.count)
 				continue;   // an empty set keeps no header
 			[sections addObject:[@{@"title"    : titles[i],
-								   @"strip"    : @(i),
+								   @"strip"    : @(i + 1),
 								   @"location" : @(flat.count),
 								   @"length"   : @(part.count)} mutableCopy]];
 			[flat addObjectsFromArray:part];
@@ -756,10 +852,12 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 	}];
 }
 
-/// Holding a sticker opens the same kind of card the rest of the app uses,
-/// with the one thing that can be done to it from here.
+/// Holding a sticker or a GIF opens the same kind of card the rest of the
+/// app uses, with the things that can be done to it from here.
 - (void)gridHeld:(UILongPressGestureRecognizer *)hold {
-	if (hold.state != UIGestureRecognizerStateBegan || self.tab != TGEmojiPanelTabStickers)
+	BOOL isSticker = self.tab == TGEmojiPanelTabStickers;
+	BOOL isGif = self.tab == TGEmojiPanelTabGIFs;
+	if (hold.state != UIGestureRecognizerStateBegan || (!isSticker && !isGif))
 		return;
 	UIButton *button = (UIButton *)hold.view;
 	NSInteger index = button.tag - kItemTagBase;
@@ -775,26 +873,40 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 	}
 
 	// Which section it came from decides what can be done to it.
-	NSDictionary *section = [self sectionForItemIndex:index];
+	NSDictionary *section = isSticker ? [self sectionForItemIndex:index] : nil;
 	NSInteger strip = section ? [section[@"strip"] integerValue] : -1;
-	BOOL already = [self stickerIsFavourite:fileId];
 
 	NSMutableArray *items = [NSMutableArray array];
 	NSMutableArray *actions = [NSMutableArray array];
-	[items addObject:(already
-			? @{@"title" : @"Remove from Favourites", @"icon" : @"unpin", @"destructive" : @YES}
-			: @{@"title" : @"Add to Favourites", @"icon" : @"pin"})];
-	[actions addObject:already ? @"unfav" : @"fav"];
 
-	if (strip == 1){   // Recently Used
-		[items addObject:@{@"title" : @"Remove from Recent", @"icon" : @"delete",
-						   @"destructive" : @YES}];
-		[actions addObject:@"unrecent"];
+	if (isGif){
+		// The un-searched feed is the saved shelf; results of a query are
+		// strangers until they are saved.
+		BOOL inSaved = self.gifQuery.length == 0;
+		[items addObject:(inSaved
+				? @{@"title" : @"Remove from Saved GIFs", @"icon" : @"delete",
+					@"destructive" : @YES}
+				: @{@"title" : @"Save GIF", @"icon" : @"star"})];
+		[actions addObject:inSaved ? @"unsavegif" : @"savegif"];
 	}
-	if (strip >= 2 && (NSUInteger)(strip - 2) < self.stickerSets.count){
-		[items addObject:@{@"title" : @"Remove Sticker Pack", @"icon" : @"delete",
-						   @"destructive" : @YES}];
-		[actions addObject:@"unset"];
+	else {
+		BOOL already = [self stickerIsFavourite:fileId];
+		[items addObject:(already
+				? @{@"title" : @"Remove from Favourites", @"icon" : @"unpin",
+					@"destructive" : @YES}
+				: @{@"title" : @"Add to Favourites", @"icon" : @"pin"})];
+		[actions addObject:already ? @"unfav" : @"fav"];
+
+		if (strip == 1){   // Recently Used
+			[items addObject:@{@"title" : @"Remove from Recent", @"icon" : @"delete",
+							   @"destructive" : @YES}];
+			[actions addObject:@"unrecent"];
+		}
+		if (strip >= 2 && (NSUInteger)(strip - 2) < self.stickerSets.count){
+			[items addObject:@{@"title" : @"Remove Sticker Pack", @"icon" : @"delete",
+							   @"destructive" : @YES}];
+			[actions addObject:@"unset"];
+		}
 	}
 
 	UIView *host = self.window ?: (self.superview ?: self);
@@ -803,7 +915,7 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 	NSLog(@"TGEmojiPanel: hold on %ld (file %ld, strip %ld), menu in %@",
 			(long)index, (long)fileId, (long)strip, [host class]);
 
-	id setId = (strip >= 2 && (NSUInteger)(strip - 2) < self.stickerSets.count)
+	id setId = (isSticker && strip >= 2 && (NSUInteger)(strip - 2) < self.stickerSets.count)
 			? self.stickerSets[strip - 2][@"id"] : nil;
 	__weak typeof(self) weakSelf = self;
 	[TGPopupMenu showItems:items atPoint:where inView:host
@@ -819,7 +931,11 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 		else if ([action isEqualToString:@"unrecent"])
 			[[TGClient shared] removeRecentSticker:fileId];
 		else if ([action isEqualToString:@"unset"])
-			[[TGClient shared] removeStickerSet:setId];
+			[[TGClient shared] setStickerSet:setId installed:NO archived:NO];
+		else if ([action isEqualToString:@"savegif"])
+			[[TGClient shared] saveAnimationFileId:fileId saved:YES];
+		else if ([action isEqualToString:@"unsavegif"])
+			[[TGClient shared] saveAnimationFileId:fileId saved:NO];
 
 		// The answers come back as updates the panel does not listen for, so
 		// re-read the feed shortly after. A removed pack also changes the
@@ -827,8 +943,9 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 		dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.6 * NSEC_PER_SEC)),
 				dispatch_get_main_queue(), ^{
 			TGEmojiPanel *panel = weakSelf;
-			if (panel && panel.tab == TGEmojiPanelTabStickers)
-				[panel selectTab:TGEmojiPanelTabStickers];
+			if (panel && (panel.tab == TGEmojiPanelTabStickers ||
+						  panel.tab == TGEmojiPanelTabGIFs))
+			[panel selectTab:panel.tab];
 		});
 	}];
 }

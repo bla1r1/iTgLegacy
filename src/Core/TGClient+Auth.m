@@ -59,11 +59,19 @@
 	}];
 }
 
+/// passwordState has no "recovery_email_address_pattern": it carries a flag
+/// for whether there is an address, and a pattern only while a code sent to
+/// a new one is outstanding. Reading the absent key meant the Two-Step screen
+/// never once showed an address.
 - (void)hasPasswordWithCompletion:(void (^)(BOOL, NSString *))completion {
 	[self request:@{@"@type" : @"getPasswordState"} completion:^(NSDictionary *state){
-		if (completion)
-			completion([state[@"has_password"] boolValue],
-					   state[@"recovery_email_address_pattern"] ?: @"");
+		if (!completion)
+			return;
+		NSString *pattern = state[@"recovery_email_address_code_info"]
+				[@"email_address_pattern"];
+		NSString *email = pattern.length ? pattern
+				: ([state[@"has_recovery_email_address"] boolValue] ? @"set" : @"");
+		completion([state[@"has_password"] boolValue], email);
 	}];
 }
 

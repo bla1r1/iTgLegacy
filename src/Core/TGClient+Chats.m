@@ -1,7 +1,9 @@
 #import "TGClientInternal.h"
 
-/// Preview text for a chat's last message. TDLib nests the content by type.
-NSString *TGMessagePreview(NSDictionary *message) {
+/// Preview text for a chat's last message, for the types it knows by name.
+/// Returns nil for everything else, so callers can tell "known, said this"
+/// from "unknown, you are on your own". TDLib nests the content by type.
+NSString *TGKnownMessagePreview(NSDictionary *message) {
 	NSDictionary *content = message[@"content"];
 	NSString *ctype = content[@"@type"];
 
@@ -48,8 +50,15 @@ NSString *TGMessagePreview(NSDictionary *message) {
 		return @"pinned a message";
 	if ([ctype isEqualToString:@"messagePoll"])
 		return @"Poll";
-	// Everything else reads as its own type name turned back into a sentence,
-	// the same way the chat itself renders it.
+	return nil;
+}
+
+/// Preview text for a chat's last message. The unknown tail reads as its own
+/// type name turned back into a sentence, the same way the chat renders it.
+NSString *TGMessagePreview(NSDictionary *message) {
+	NSString *known = TGKnownMessagePreview(message);
+	if (known) return known;
+	NSString *ctype = message[@"content"][@"@type"];
 	return ctype.length ? TGPhraseFromTypeName(ctype) : @"";
 }
 
@@ -288,6 +297,108 @@ int64_t TGArchiveOrder(NSArray *positions) {
 	}];
 }
 
+/// A topic made: its thread id is what every later edit answers through.
+/// `colour` is one of TDLib's forum hues, 0-6; a topic made without a name
+/// is what tapping "General" makes, and TDLib names it itself.
+- (void)createForumTopicInChat:(int64_t)chatId
+						  name:(NSString *)name
+					  iconColour:(NSInteger)colour
+					  completion:(void (^)(int64_t threadId, NSString *name))completion {
+	if (!name.length){
+		if (completion) completion(0, nil);
+		return;
+	}
+	[self request:@{
+		@"@type"            : @"createForumTopic",
+		@"chat_id"          : @(chatId),
+		@"name"             : name,
+		@"is_name_implicit" : @NO,
+		@"icon"             : @{@"@type" : @"forumTopicIcon",
+								@"color" : @(colour % 7),
+								@"custom_emoji_id" : @(0)},
+	} completion:^(NSDictionary *info){
+		if (completion)
+			completion([info[@"forum_topic_id"] integerValue],
+					   info[@"name"] ?: name);
+	}];
+}
+
+/// Renaming a topic does not touch its icon; an emoji id renames with it.
+- (void)renameForumTopic:(int64_t)threadId
+				   inChat:(int64_t)chatId
+					 name:(NSString *)name
+			 iconEmojiId:(int64_t)iconEmojiId
+			  completion:(void (^)(BOOL ok))completion {
+	if (!name.length){
+		if (completion) completion(NO);
+		return;
+	}
+	[self request:@{
+		@"@type"                : @"editForumTopic",
+		@"chat_id"              : @(chatId),
+		@"forum_topic_id"       : @(threadId),
+		@"name"                 : name,
+		@"edit_icon_custom_emoji" : @(iconEmojiId != 0),
+		@"icon_custom_emoji_id"  : @(iconEmojiId),
+	} completion:^(NSDictionary *result){
+		if (completion)
+			completion(![result[@"@type"] isEqualToString:@"error"]);
+	}];
+}
+
+/// Closing, pinning and deleting a topic: the one topic, said plainly.
+- (void)toggleForumTopic:(int64_t)threadId inChat:(int64_t)chatId closed:(BOOL)closed {
+	[self send:@{
+		@"@type"          : @"toggleForumTopicIsClosed",
+		@"chat_id"        : @(chatId),
+		@"forum_topic_id" : @(threadId),
+		@"is_closed"      : @(closed),
+	}];
+}
+
+- (void)toggleForumTopic:(int64_t)threadId inChat:(int64_t)chatId pinned:(BOOL)pinned {
+	[self send:@{
+		@"@type"          : @"toggleForumTopicIsPinned",
+		@"chat_id"        : @(chatId),
+		@"forum_topic_id" : @(threadId),
+		@"is_pinned"      : @(pinned),
+	}];
+}
+
+- (void)deleteForumTopic:(int64_t)threadId inChat:(int64_t)chatId {
+	[self send:@{
+		@"@type"          : @"deleteForumTopic",
+		@"chat_id"        : @(chatId),
+		@"forum_topic_id" : @(threadId),
+	}];
+}
+
+/// A forum shown as one flow of messages instead of a list of topics - the
+/// channel's own trick. What it is now is read off the chat, so the flip
+/// asks first and then says what it did.
+- (void)setChatViewAsTopics:(int64_t)chatId
+			   viewAsTopics:(BOOL)viewAsTopics
+				 completion:(void (^)(BOOL ok))completion {
+	[self request:@{
+		@"@type"         : @"toggleChatViewAsTopics",
+		@"chat_id"       : @(chatId),
+		@"view_as_topics" : @(viewAsTopics),
+	} completion:^(NSDictionary *result){
+		if (completion)
+			completion(![result[@"@type"] isEqualToString:@"error"]);
+	}];
+}
+
+/// Whether a forum is being shown as topics right now, read off the chat.
+- (void)chatWithViewAsTopics:(int64_t)chatId
+				  completion:(void (^)(BOOL viewAsTopics))completion {
+	[self request:@{@"@type" : @"getChat", @"chat_id" : @(chatId)}
+	   completion:^(NSDictionary *chat){
+		if (completion)
+			completion([chat[@"view_as_topics"] boolValue]);
+	}];
+}
+
 - (void)chatProfile:(int64_t)chatId completion:(void (^)(NSDictionary *))completion {
 	__weak typeof(self) weakSelf = self;
 	[self request:@{@"@type" : @"getChat", @"chat_id" : @(chatId)}
@@ -455,6 +566,242 @@ int64_t TGArchiveOrder(NSArray *positions) {
 	} completion:^(NSDictionary *result){
 		if (completion)
 			completion(![result[@"@type"] isEqualToString:@"error"]);
+	}];
+}
+
+#pragma mark - reporting
+
+/// Reporting is a conversation, not a call: the first request comes back with
+/// the reasons to choose from, and the chosen one goes in the second. The
+/// completion is called either with a list of options to put to the user -
+/// each carrying "id" and "text" - or with an empty list once it is done.
+- (void)reportChat:(int64_t)chatId
+		  optionId:(NSString *)optionId
+			  text:(NSString *)text
+		completion:(void (^)(NSString *title, NSArray *options, BOOL done))completion {
+	[self request:@{
+		@"@type"       : @"reportChat",
+		@"chat_id"     : @(chatId),
+		// bytes travel as base64 in tdjson, and an option id is handed back
+		// exactly as it arrived, so it is carried as the string it came as.
+		@"option_id"   : optionId ?: @"",
+		@"message_ids" : @[],
+		@"text"        : text ?: @"",
+	} completion:^(NSDictionary *result){
+		if (!completion)
+			return;
+		NSString *kind = result[@"@type"] ?: @"";
+		if ([kind isEqualToString:@"reportChatResultOptionRequired"]){
+			NSMutableArray *options = [NSMutableArray array];
+			for (NSDictionary *option in result[@"options"]){
+				NSString *optionText = option[@"text"];
+				if (optionText.length)
+					[options addObject:@{@"id"   : option[@"id"] ?: @"",
+										 @"text" : optionText}];
+			}
+			completion(result[@"title"], options, NO);
+			return;
+		}
+		// Ok, or a kind this screen has no step for - a free-text reason, or
+		// a report that wants the messages named. Either way there is nothing
+		// more to ask here.
+		completion(nil, @[], [kind isEqualToString:@"reportChatResultOk"]);
+	}];
+}
+
+/// The "Report spam / Add to contacts" bar above a chat from someone unknown.
+- (void)removeActionBarInChat:(int64_t)chatId {
+	[self send:@{@"@type" : @"removeChatActionBar", @"chat_id" : @(chatId)}];
+}
+
+#pragma mark - recents
+
+/// The people row in search: who this account talks to most, as Telegram
+/// ranks it. Entries are the chat dictionaries the list already holds.
+- (void)topChatsWithCompletion:(void (^)(NSArray *chats))completion {
+	__weak typeof(self) weakSelf = self;
+	[self request:@{@"@type"    : @"getTopChats",
+					@"category" : @{@"@type" : @"topChatCategoryUsers"},
+					@"limit"    : @(12)}
+	   completion:^(NSDictionary *result){
+		TGClient *me = weakSelf;
+		NSMutableArray *out = [NSMutableArray array];
+		for (NSNumber *chatId in result[@"chat_ids"]){
+			NSDictionary *info = me.chatsById[chatId];
+			if (info)
+				[out addObject:info];
+		}
+		if (completion)
+			completion(out);
+	}];
+}
+
+/// Opening a chat from search puts it in the recently-found list, which is
+/// what their search shows before anything is typed.
+- (void)rememberFoundChat:(int64_t)chatId {
+	[self send:@{@"@type" : @"addRecentlyFoundChat", @"chat_id" : @(chatId)}];
+}
+
+/// Takes someone out of the frequent-contacts ranking.
+- (void)forgetTopChat:(int64_t)chatId {
+	[self send:@{@"@type" : @"removeTopChat",
+				 @"category" : @{@"@type" : @"topChatCategoryUsers"},
+				 @"chat_id"  : @(chatId)}];
+}
+
+#pragma mark - chat folders, the writing half
+
+/// A folder as TDLib wants one back. Every field of chatFolder has to be
+/// present on an edit - it replaces the folder rather than patching it - so
+/// this builds a whole one and the callers change what they mean to change.
+static NSDictionary *TGFolderObject(NSString *name, NSString *icon,
+									NSArray *chatIds, NSDictionary *basedOn) {
+	NSMutableDictionary *folder = [(basedOn ?: @{}) mutableCopy];
+	folder[@"@type"] = @"chatFolder";
+	if (name.length)
+		folder[@"name"] = @{@"@type" : @"chatFolderName",
+							@"text"  : @{@"@type" : @"formattedText",
+										 @"text"  : name},
+							@"animate_custom_emoji" : @NO};
+	if (icon.length)
+		folder[@"icon"] = @{@"@type" : @"chatFolderIcon", @"name" : icon};
+	if (chatIds)
+		folder[@"included_chat_ids"] = chatIds;
+
+	// Defaults for whatever a new folder did not say. A folder with every
+	// include_* off and no chats in it is one TDLib rejects.
+	NSDictionary *defaults = @{
+		@"color_id"             : @(-1),
+		@"is_shareable"         : @NO,
+		@"pinned_chat_ids"      : @[],
+		@"included_chat_ids"    : @[],
+		@"excluded_chat_ids"    : @[],
+		@"exclude_muted"        : @NO,
+		@"exclude_read"         : @NO,
+		@"exclude_archived"     : @NO,
+		@"include_contacts"     : @NO,
+		@"include_non_contacts" : @NO,
+		@"include_bots"         : @NO,
+		@"include_groups"       : @NO,
+		@"include_channels"     : @NO,
+	};
+	for (NSString *key in defaults)
+		if (!folder[key])
+			folder[key] = defaults[key];
+
+	// chatFolderInfo carries an id and chatFolder does not; an edit built on
+	// what getChatFolder answered would otherwise send it back.
+	[folder removeObjectForKey:@"id"];
+	[folder removeObjectForKey:@"has_my_invite_links"];
+	return folder;
+}
+
+- (void)createFolderNamed:(NSString *)name
+					 icon:(NSString *)icon
+				withChats:(NSArray *)chatIds
+			   completion:(void (^)(NSInteger folderId))completion {
+	if (!name.length){
+		if (completion) completion(0);
+		return;
+	}
+	[self request:@{@"@type"  : @"createChatFolder",
+					@"folder" : TGFolderObject(name, icon, chatIds ?: @[], nil)}
+	   completion:^(NSDictionary *result){
+		if (completion)
+			completion([result[@"id"] integerValue]);
+	}];
+}
+
+/// The folder as it stands, so an edit can be built on it rather than
+/// replacing the parts it was not asked about.
+- (void)folderDetails:(NSInteger)folderId
+		   completion:(void (^)(NSDictionary *folder))completion {
+	[self request:@{@"@type" : @"getChatFolder", @"chat_folder_id" : @(folderId)}
+	   completion:^(NSDictionary *result){
+		if (completion)
+			completion([result[@"@type"] isEqualToString:@"chatFolder"] ? result : nil);
+	}];
+}
+
+/// Reads the folder, changes the one thing, sends the whole of it back -
+/// which is the only way editChatFolder works.
+- (void)editFolder:(NSInteger)folderId
+			  name:(NSString *)name
+			 chats:(NSArray *)chatIds
+		completion:(void (^)(BOOL ok))completion {
+	__weak typeof(self) weakSelf = self;
+	[self folderDetails:folderId completion:^(NSDictionary *current){
+		TGClient *me = weakSelf;
+		if (!me || !current){
+			if (completion) completion(NO);
+			return;
+		}
+		[me request:@{@"@type"          : @"editChatFolder",
+					  @"chat_folder_id" : @(folderId),
+					  @"folder"         : TGFolderObject(name, nil, chatIds, current)}
+		completion:^(NSDictionary *result){
+			if (completion)
+				completion([result[@"@type"] isEqualToString:@"chatFolderInfo"]);
+		}];
+	}];
+}
+
+/// Deleting a folder does not leave the chats in it; `leaveChatIds` is for
+/// the ones you also want out of, and is usually empty.
+- (void)deleteFolder:(NSInteger)folderId leavingChats:(NSArray *)leaveChatIds {
+	[self send:@{
+		@"@type"          : @"deleteChatFolder",
+		@"chat_folder_id" : @(folderId),
+		@"leave_chat_ids" : leaveChatIds ?: @[],
+	}];
+}
+
+/// The order of the pill strip. "All chats" is a position in that order
+/// rather than a folder, which is what main_chat_list_position is.
+- (void)reorderFolderIds:(NSArray *)folderIds mainListAt:(NSInteger)position {
+	if (!folderIds.count)
+		return;
+	[self send:@{
+		@"@type"                  : @"reorderChatFolders",
+		@"chat_folder_ids"        : folderIds,
+		@"main_chat_list_position": @(position),
+	}];
+}
+
+/// Telegram's own suggestions - Unread, Personal, Groups and so on - each
+/// with the sentence their client shows under it. Entries carry "title",
+/// "description" and "folder", the last being ready for createChatFolder.
+- (void)recommendedFoldersWithCompletion:(void (^)(NSArray *folders))completion {
+	[self request:@{@"@type" : @"getRecommendedChatFolders"}
+	   completion:^(NSDictionary *result){
+		NSMutableArray *out = [NSMutableArray array];
+		for (NSDictionary *entry in result[@"chat_folders"]){
+			NSDictionary *folder = entry[@"folder"];
+			if (![folder isKindOfClass:NSDictionary.class])
+				continue;
+			[out addObject:@{
+				@"title"       : TGPlainTitle(folder[@"name"]) ?: @"",
+				@"description" : entry[@"description"] ?: @"",
+				@"folder"      : folder,
+			}];
+		}
+		if (completion)
+			completion(out);
+	}];
+}
+
+/// Adopts one of those suggestions as it stands.
+- (void)createRecommendedFolder:(NSDictionary *)folder
+					 completion:(void (^)(NSInteger folderId))completion {
+	if (![folder isKindOfClass:NSDictionary.class]){
+		if (completion) completion(0);
+		return;
+	}
+	[self request:@{@"@type"  : @"createChatFolder",
+					@"folder" : TGFolderObject(nil, nil, nil, folder)}
+	   completion:^(NSDictionary *result){
+		if (completion)
+			completion([result[@"id"] integerValue]);
 	}];
 }
 
@@ -637,9 +984,25 @@ int64_t TGArchiveOrder(NSArray *positions) {
 	int64_t sender = [last[@"sender_id"][@"user_id"] longLongValue];
 	NSString *who = [self nameForUserId:sender];
 	if (!who.length){
-		// not known yet - fetch, then rebuild so the row fills in
+		// Not known yet: fetch it, and put it on the row when it lands.
+		// Rebuilding alone was not enough - it re-sorts the lists and does
+		// not run this method again, so a group whose speaker was unknown
+		// when the chat arrived stayed nameless until some later update
+		// happened to rewrite its preview.
 		__weak typeof(self) weakSelf = self;
-		[self ensureUserName:sender completion:^{ [weakSelf rebuildChats]; }];
+		int64_t chatId = [info[@"id"] longLongValue];
+		[self ensureUserName:sender completion:^{
+			TGClient *me = weakSelf;
+			if (!me)
+				return;
+			NSString *name = [me nameForUserId:sender];
+			// mergeChat may have replaced the dictionary since; the one in
+			// the table is the one the list reads.
+			NSMutableDictionary *row = chatId ? me.chatsById[@(chatId)] : info;
+			if (name.length && [row isKindOfClass:NSMutableDictionary.class])
+				row[@"lastAuthor"] = name;
+			[me rebuildChats];
+		}];
 		return text;
 	}
 	info[@"lastAuthor"] = who;

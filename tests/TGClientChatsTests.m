@@ -328,6 +328,8 @@ static int64_t orderOf(NSArray *chats, int64_t id_) {
 
 - (void)testPreviewForLastMessage_UnknownSpeakerFetchesThenRebuilds {
 	TGClient *c = T();
+	[c.outbox removeAllObjects];
+	[c.pendingRequests removeAllObjects];
 	__block BOOL changed = NO;
 	c.onChatsChanged = ^{ changed = YES; };
 	deliverNewChat(c, @{ @"@type" : @"chat",
@@ -346,7 +348,33 @@ static int64_t orderOf(NSArray *chats, int64_t id_) {
 	XCTAssertNil(info[@"lastAuthor"],
 			@"an unknown speaker must not be invented");
 	XCTAssertEqualObjects(info[@"previewText"], @"?");
-	XCTAssertTrue(changed, @"ensureUserName leads to a rebuild");
+
+	// The fetch went out as a getUser; its answer is what rebuilds the list,
+	// and the name then rides the row.
+	NSDictionary *sent = nil;
+	for (NSData *d in c.outbox){
+		NSString *json = [[NSString alloc] initWithData:d
+											   encoding:NSUTF8StringEncoding];
+		NSString *trimmed = [json componentsSeparatedByString:@"\0"][0];
+		NSDictionary *request = [NSJSONSerialization JSONObjectWithData:
+				[trimmed dataUsingEncoding:NSUTF8StringEncoding]
+						options:0 error:nil];
+		if (request[@"@extra"]){
+			sent = request;
+			break;
+		}
+	}
+	XCTAssertEqualObjects(sent[@"@type"], @"getUser");
+	XCTAssertEqual([sent[@"user_id"] longLongValue], 999LL);
+	NSMutableDictionary *reply = [@{ @"@type"     : @"user",
+									 @"id"        : @(999),
+									 @"first_name": @"Taras",
+									 @"last_name" : @"" } mutableCopy];
+	reply[@"@extra"] = sent[@"@extra"];
+	[c handleUpdate:reply];
+	XCTAssertTrue(changed, @"the answered fetch leads to a rebuild");
+	// The name the fetch brought home, for the next render to use.
+	XCTAssertEqualObjects(c.usersById[@(999)], @"Taras");
 }
 
 // ──────────────────────────────────────────────────────────────────────────────

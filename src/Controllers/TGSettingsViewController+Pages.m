@@ -1,5 +1,6 @@
 #import "TGSettingsViewControllerInternal.h"
 #import "TGAlertSheet.h"
+#import "TGForwardPicker.h"
 
 @implementation TGSettingsViewController (Pages)
 
@@ -15,6 +16,9 @@
 		case TGSettingsPageBlocked:       return [self blockedSections];
 		case TGSettingsPagePowerSaving:   return [self powerSavingSections];
 		case TGSettingsPageRecentCalls:   return [self recentCallSections];
+		case TGSettingsPageFolders:       return [self folderSections];
+		case TGSettingsPageProxy:         return [self proxySections];
+		case TGSettingsPageDownloads:     return [self downloadSections];
 		case TGSettingsPageDebug:         return [self debugSections];
 		default:                          return [self rootSections];
 	}
@@ -54,7 +58,10 @@
 				[weakSelf.navigationController pushViewController:sessions animated:YES];
 			}),
 			TGIconRow(@"Chat Folders", @"folder", TGRGB(0.20, 0.75, 0.86), ^{
-				[weakSelf showFolders];
+				[weakSelf openPage:TGSettingsPageFolders];
+			}),
+			TGIconRow(@"Proxy", @"data", TGRGB(0.56, 0.56, 0.58), ^{
+				[weakSelf openPage:TGSettingsPageProxy];
 			}),
 		]),
 
@@ -199,6 +206,28 @@
 			}),
 		]),
 
+		TGSection(nil,
+				  @"Your own t.me link works without a username, and can be "
+				  @"given to someone who has no way to search for you.", @[
+			TGTapRow(@"My Link", nil, ^{
+				[[TGClient shared] myUserLink:^(NSString *link){
+					if (!link.length){
+						[weakSelf toast:@"Telegram did not answer with a link."];
+						return;
+					}
+					[TGAlertSheet showChoices:@[@"Copy"]
+										title:link
+									  message:nil
+							 destructiveIndex:-1
+									   inView:weakSelf.view
+									 onChoice:^(NSInteger index){
+						[UIPasteboard generalPasteboard].string = link;
+						[weakSelf toast:@"Copied."];
+					}];
+				}];
+			}),
+		]),
+
 		TGSection(@"Who can see", nil, rules),
 
 		TGSection(@"Contacts",
@@ -240,6 +269,9 @@
 					[weakSelf rebuild];
 				}];
 			}),
+			TGRedRow(@"Delete Account Now", ^{
+				[weakSelf askDeleteAccountNow];
+			}),
 		]),
 	];
 }
@@ -251,6 +283,9 @@
 
 	return @[
 		TGSection(@"Usage", nil, @[
+			TGTapRow(@"Downloads", nil, ^{
+				[weakSelf openPage:TGSettingsPageDownloads];
+			}),
 			TGTapRow(@"Storage Usage", nil, ^{
 				TGStorageViewController *storage = [[TGStorageViewController alloc] init];
 				storage.hidesBottomBarWhenPushed = YES;
@@ -594,6 +629,389 @@
 			}),
 		]),
 	];
+}
+
+#pragma mark - chat folders
+
+/// The name the chat list knows a chat under. A folder's own answer carries
+/// ids and nothing else, and an id is no use on a row.
+static NSString *TGChatNameForId(NSNumber *chatId) {
+	for (NSArray *list in @[[TGClient shared].chats ?: @[],
+							[TGClient shared].archivedChats ?: @[]])
+		for (NSDictionary *chat in list)
+			if ([chat[@"id"] longLongValue] == chatId.longLongValue){
+				NSString *title = chat[@"title"];
+				if (title.length)
+					return title;
+			}
+	return [NSString stringWithFormat:@"Chat %@", chatId];
+}
+
+/// Their Folders page: what this account has, then what Telegram suggests.
+/// A folder's own settings - which chats, which kinds - are a sheet on the
+/// row rather than a screen of their own: on a 3.5-inch display a second
+/// list of checkboxes reads worse than four plain choices.
+- (NSArray *)folderSections {
+	__weak typeof(self) weakSelf = self;
+	NSArray *folders = [TGClient shared].folders;
+
+	NSMutableArray *rows = [NSMutableArray array];
+	for (NSDictionary *folder in folders){
+		NSString *title = folder[@"title"];
+		if (!title.length)
+			continue;
+		[rows addObject:TGTapRow(title, nil, ^{
+			[weakSelf runFolderActionFor:folder];
+		})];
+	}
+	[rows addObject:TGActionRow(@"Create New Folder", ^{
+		[TGAlertSheet showInput:@"New Folder"
+						message:@"Folders appear as a strip above the chat list."
+					placeholder:@"Name"
+						   text:nil
+						 action:@"Create"
+						 inView:weakSelf.view
+					   onSubmit:^(NSString *name){
+			[[TGClient shared] createFolderNamed:name icon:nil withChats:@[]
+									  completion:^(NSInteger folderId){
+				if (!folderId){
+					[weakSelf toast:@"Telegram refused that name."];
+					return;
+				}
+				// updateChatFolders brings the new one back; the strip and
+				// this page both read from it.
+				[weakSelf toast:[NSString stringWithFormat:
+						@"%@ created. Tap it to choose its chats.", name]];
+			}];
+		}];
+	})];
+
+	NSMutableArray *sections = [NSMutableArray array];
+	[sections addObject:TGSection(folders.count ? @"Folders" : nil,
+			folders.count
+					? @"Tap a folder to rename it, choose its chats, or delete it."
+					: @"This account has no folders yet. A folder is a filter "
+					  @"over the chat list, not a copy of it: a chat in a "
+					  @"folder is still in All Chats.",
+			rows)];
+
+	NSMutableArray *suggested = [NSMutableArray array];
+	for (NSDictionary *entry in self.recommendedFolders){
+		NSString *title = entry[@"title"];
+		if (!title.length)
+			continue;
+		[suggested addObject:TGTapRow(title, entry[@"description"], ^{
+			[[TGClient shared] createRecommendedFolder:entry[@"folder"]
+											completion:^(NSInteger folderId){
+				[weakSelf toast:folderId ? [NSString stringWithFormat:@"%@ added.", title]
+										 : @"Telegram refused that folder."];
+			}];
+		})];
+	}
+	if (suggested.count)
+		[sections addObject:TGSection(@"Recommended",
+				@"Telegram's own, ready made. Adding one does not move any chat.",
+				suggested)];
+
+	return sections;
+}
+
+/// Four things can be done to a folder, and this is all four. Reordering is
+/// not among them: the strip's order needs dragging, which this list has no
+/// room for - see docs/feature_backlog.md.
+- (void)runFolderActionFor:(NSDictionary *)folder {
+	NSInteger folderId = [folder[@"id"] integerValue];
+	NSString *title = folder[@"title"] ?: @"Folder";
+	if (!folderId)
+		return;
+
+	__weak typeof(self) weakSelf = self;
+	[TGAlertSheet showChoices:@[@"Rename", @"Add a Chat", @"Remove a Chat",
+								@"Delete Folder"]
+						title:title
+			 destructiveIndex:3
+					   inView:self.view
+					 onChoice:^(NSInteger index){
+		TGSettingsViewController *me = weakSelf;
+		if (index == 0){
+			[TGAlertSheet showInput:@"Rename Folder" message:nil
+						placeholder:@"Name" text:title action:@"Save"
+							 inView:me.view onSubmit:^(NSString *name){
+				[[TGClient shared] editFolder:folderId name:name chats:nil
+								   completion:^(BOOL ok){
+					if (!ok)
+						[me toast:@"Telegram refused that name."];
+				}];
+			}];
+		} else if (index == 1){
+			[me addChatToFolder:folderId named:title];
+		} else if (index == 2){
+			[me removeChatFromFolder:folderId named:title];
+		} else {
+			[TGAlertSheet showConfirm:[NSString stringWithFormat:
+							@"%@ goes away. The chats in it stay where they are.",
+							title]
+								title:@"Delete Folder"
+							   action:@"Delete"
+						  destructive:YES
+							   inView:me.view
+							onConfirm:^{
+				[[TGClient shared] deleteFolder:folderId leavingChats:@[]];
+				[me toast:[NSString stringWithFormat:@"%@ deleted.", title]];
+			}];
+		}
+	}];
+}
+
+/// One chat at a time, through the picker the forward flow already uses -
+/// a multiple-selection list of every chat is its own screen, and this works
+/// today.
+- (void)addChatToFolder:(NSInteger)folderId named:(NSString *)title {
+	TGForwardPicker *picker = [[TGForwardPicker alloc] init];
+	__weak typeof(self) weakSelf = self;
+	picker.onPicked = ^(int64_t chatId){
+		[[TGClient shared] folderDetails:folderId completion:^(NSDictionary *current){
+			TGSettingsViewController *me = weakSelf;
+			if (!current){
+				[me toast:@"That folder is gone."];
+				return;
+			}
+			NSArray *included = current[@"included_chat_ids"] ?: @[];
+			if ([included containsObject:@(chatId)]){
+				[me toast:[NSString stringWithFormat:@"Already in %@.", title]];
+				return;
+			}
+			[[TGClient shared] editFolder:folderId
+									 name:nil
+									chats:[included arrayByAddingObject:@(chatId)]
+							   completion:^(BOOL ok){
+				[me toast:ok ? [NSString stringWithFormat:@"Added to %@.", title]
+							 : @"Telegram refused that change."];
+			}];
+		}];
+	};
+	picker.hidesBottomBarWhenPushed = YES;
+	[self.navigationController pushViewController:picker animated:YES];
+}
+
+/// The folder's own chats, by the names the chat list knows them under.
+- (void)removeChatFromFolder:(NSInteger)folderId named:(NSString *)title {
+	__weak typeof(self) weakSelf = self;
+	[[TGClient shared] folderDetails:folderId completion:^(NSDictionary *current){
+		TGSettingsViewController *me = weakSelf;
+		NSArray *included = current[@"included_chat_ids"] ?: @[];
+		if (!included.count){
+			[me toast:[NSString stringWithFormat:@"%@ holds no chats yet.", title]];
+			return;
+		}
+
+		NSMutableArray *names = [NSMutableArray array];
+		for (NSNumber *chatId in included)
+			[names addObject:TGChatNameForId(chatId)];
+		[TGAlertSheet showChoices:names
+							title:[NSString stringWithFormat:@"Remove from %@", title]
+				 destructiveIndex:-1
+						   inView:me.view
+						 onChoice:^(NSInteger index){
+			NSMutableArray *left = [included mutableCopy];
+			[left removeObjectAtIndex:(NSUInteger)index];
+			[[TGClient shared] editFolder:folderId name:nil chats:left
+							   completion:^(BOOL ok){
+				[me toast:ok ? [NSString stringWithFormat:@"Removed from %@.", title]
+							 : @"Telegram refused that change."];
+			}];
+		}];
+	}];
+}
+
+#pragma mark - downloads
+
+/// Their Download Manager: everything this account has pulled down, running
+/// or finished, with the two things worth doing to one - stopping it, and
+/// getting the disk back.
+- (NSArray *)downloadSections {
+	__weak typeof(self) weakSelf = self;
+
+	NSMutableArray *rows = [NSMutableArray array];
+	for (NSDictionary *download in self.downloads){
+		long long size = [download[@"size"] longLongValue];
+		NSString *state = [download[@"done"] boolValue] ? @"done"
+				: ([download[@"paused"] boolValue] ? @"paused" : @"downloading");
+		[rows addObject:TGTapRow(download[@"name"],
+				[NSString stringWithFormat:@"%@ - %@", TGBytes(size), state], ^{
+			[weakSelf runDownloadActionFor:download];
+		})];
+	}
+
+	NSMutableArray *sections = [NSMutableArray array];
+	[sections addObject:TGSection(self.downloads.count ? @"Files" : nil,
+			self.downloads.count
+					? @"Tap one to pause it, take it out of the list, or free "
+					  @"the disk it is using."
+					: @"Nothing has been downloaded yet. A picture or a file "
+					  @"opened in a chat appears here.",
+			rows)];
+
+	if (self.downloads.count)
+		[sections addObject:TGSection(nil, nil, @[
+			TGActionRow(self.activeDownloads > 0 ? @"Pause All" : @"Resume All", ^{
+				[[TGClient shared] setAllDownloadsPaused:
+						weakSelf.activeDownloads > 0];
+				[weakSelf loadForPage];
+			}),
+			TGRedRow(@"Clear List and Free Disk", ^{
+				[TGAlertSheet showConfirm:@"Every downloaded file is removed "
+										  @"from this device. They can be "
+										  @"fetched again from the chat."
+									title:@"Clear Downloads"
+								   action:@"Clear"
+							  destructive:YES
+								   inView:weakSelf.view
+								onConfirm:^{
+					[[TGClient shared] clearDownloadsDeletingFromCache:YES];
+					[weakSelf loadForPage];
+				}];
+			}),
+		])];
+
+	return sections;
+}
+
+- (void)runDownloadActionFor:(NSDictionary *)download {
+	NSInteger fileId = [download[@"fileId"] integerValue];
+	BOOL done = [download[@"done"] boolValue];
+	BOOL paused = [download[@"paused"] boolValue];
+	__weak typeof(self) weakSelf = self;
+
+	NSMutableArray *choices = [NSMutableArray array];
+	if (!done)
+		[choices addObject:paused ? @"Resume" : @"Pause"];
+	[choices addObject:@"Take Out of the List"];
+	[choices addObject:@"Delete the File"];
+
+	[TGAlertSheet showChoices:choices
+						title:download[@"name"]
+			 destructiveIndex:(NSInteger)choices.count - 1
+					   inView:self.view
+					 onChoice:^(NSInteger index){
+		NSString *choice = choices[(NSUInteger)index];
+		if ([choice isEqualToString:@"Pause"] || [choice isEqualToString:@"Resume"])
+			[[TGClient shared] setDownloadOfFile:fileId
+										  paused:[choice isEqualToString:@"Pause"]];
+		else if ([choice isEqualToString:@"Take Out of the List"])
+			[[TGClient shared] removeFileFromDownloads:fileId deleteFromCache:NO];
+		else
+			[[TGClient shared] removeFileFromDownloads:fileId deleteFromCache:YES];
+		[weakSelf loadForPage];
+	}];
+}
+
+#pragma mark - proxy
+
+/// Their Proxy Settings page: a direct row at the top, then one row per
+/// proxy, the one in use checked.
+- (NSArray *)proxySections {
+	__weak typeof(self) weakSelf = self;
+	BOOL anyEnabled = NO;
+	for (NSDictionary *proxy in self.proxies)
+		anyEnabled = anyEnabled || [proxy[@"enabled"] boolValue];
+
+	NSMutableArray *rows = [NSMutableArray array];
+	[rows addObject:TGCheckRow(@"No proxy", nil, !anyEnabled, ^{
+		[[TGClient shared] disableProxy];
+		[weakSelf loadForPage];
+	})];
+	for (NSDictionary *proxy in self.proxies){
+		NSString *name = [NSString stringWithFormat:@"%@:%@",
+				proxy[@"server"] ?: @"?", proxy[@"port"] ?: @0];
+		[rows addObject:TGCheckRow(name, proxy[@"kind"],
+				[proxy[@"enabled"] boolValue], ^{
+			[weakSelf runProxyActionFor:proxy];
+		})];
+	}
+
+	return @[
+		TGSection(@"Connection",
+				  @"A proxy is TDLib's own, not the system's: it applies to "
+				  @"this app and to nothing else on the phone.", rows),
+		TGSection(nil, nil, @[
+			TGActionRow(@"Add Proxy", ^{ [weakSelf addProxyByAsking]; }),
+		]),
+	];
+}
+
+/// One field takes both forms a proxy arrives in - the t.me link someone
+/// sent, or a bare host and port - because asking which it is first would be
+/// a screen of its own.
+- (void)addProxyByAsking {
+	__weak typeof(self) weakSelf = self;
+	[TGAlertSheet showInput:@"Add Proxy"
+					message:@"A t.me/proxy or tg://proxy link, or host:port "
+							@"for a SOCKS5 server."
+				placeholder:@"t.me/proxy?... or 1.2.3.4:1080"
+					   text:nil
+					 action:@"Add"
+					 inView:self.view
+				   onSubmit:^(NSString *text){
+		TGSettingsViewController *me = weakSelf;
+		void (^added)(NSInteger) = ^(NSInteger proxyId){
+			if (!proxyId){
+				[me toast:@"Telegram could not read that as a proxy."];
+				return;
+			}
+			[me loadForPage];
+		};
+
+		if ([text rangeOfString:@"proxy"].location != NSNotFound &&
+			[text rangeOfString:@"?"].location != NSNotFound){
+			if (![[TGClient shared] addProxyFromLink:text completion:added])
+				[me toast:@"That link carries no server and port."];
+			return;
+		}
+
+		NSArray *parts = [text componentsSeparatedByString:@":"];
+		NSInteger port = parts.count > 1 ? [parts[1] integerValue] : 0;
+		if (parts.count < 2 || port <= 0){
+			[me toast:@"A proxy needs a host and a port."];
+			return;
+		}
+		[[TGClient shared] addProxyAtServer:parts[0] port:port kind:@"socks5"
+								   username:nil password:nil secret:nil
+									 enable:YES completion:added];
+	}];
+}
+
+- (void)runProxyActionFor:(NSDictionary *)proxy {
+	NSInteger proxyId = [proxy[@"id"] integerValue];
+	NSString *name = [NSString stringWithFormat:@"%@:%@",
+			proxy[@"server"] ?: @"?", proxy[@"port"] ?: @0];
+	__weak typeof(self) weakSelf = self;
+
+	[TGAlertSheet showChoices:@[@"Use This Proxy", @"Check It Answers", @"Remove"]
+						title:name
+			 destructiveIndex:2
+					   inView:self.view
+					 onChoice:^(NSInteger index){
+		TGSettingsViewController *me = weakSelf;
+		if (index == 0){
+			[[TGClient shared] enableProxy:proxyId];
+			[me loadForPage];
+		} else if (index == 1){
+			[[TGClient shared] pingProxyAtServer:proxy[@"server"]
+											port:[proxy[@"port"] integerValue]
+											kind:proxy[@"kind"]
+										username:nil password:nil secret:nil
+									  completion:^(double seconds){
+				[me toast:seconds >= 0
+						? [NSString stringWithFormat:@"%@ answered in %.0f ms",
+								name, seconds * 1000.0]
+						: [NSString stringWithFormat:@"%@ did not answer", name]];
+			}];
+		} else {
+			[[TGClient shared] removeProxy:proxyId];
+			[me loadForPage];
+		}
+	}];
 }
 
 - (void)clearTemporaryFiles {

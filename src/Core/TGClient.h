@@ -109,6 +109,28 @@ typedef NS_ENUM(NSInteger, TGConnectionState) {
 /// Empty for a chat that is not a forum.
 - (void)forumTopicsForChat:(int64_t)chatId completion:(void (^)(NSArray *topics))completion;
 
+/// Making and minding a forum's topics. `colour` is one of TDLib's forum
+/// hues, 0-6.
+- (void)createForumTopicInChat:(int64_t)chatId
+						  name:(NSString *)name
+				   iconColour:(NSInteger)colour
+				   completion:(void (^)(int64_t threadId, NSString *name))completion;
+/// Renaming only, unless `iconEmojiId` says the icon changes with it.
+- (void)renameForumTopic:(int64_t)threadId
+				  inChat:(int64_t)chatId
+					name:(NSString *)name
+			iconEmojiId:(int64_t)iconEmojiId
+			 completion:(void (^)(BOOL ok))completion;
+- (void)toggleForumTopic:(int64_t)threadId inChat:(int64_t)chatId closed:(BOOL)closed;
+- (void)toggleForumTopic:(int64_t)threadId inChat:(int64_t)chatId pinned:(BOOL)pinned;
+- (void)deleteForumTopic:(int64_t)threadId inChat:(int64_t)chatId;
+/// A forum shown as one flow of messages instead of a list of topics.
+- (void)chatWithViewAsTopics:(int64_t)chatId
+				  completion:(void (^)(BOOL viewAsTopics))completion;
+- (void)setChatViewAsTopics:(int64_t)chatId
+			   viewAsTopics:(BOOL)viewAsTopics
+				 completion:(void (^)(BOOL ok))completion;
+
 /// Whether the signed-in user may post in a chat. A channel you only follow
 /// says NO, and the composer has to go away rather than fail on send.
 - (void)canSendInChat:(int64_t)chatId completion:(void (^)(BOOL canSend, BOOL isChannel))completion;
@@ -193,6 +215,11 @@ typedef NS_ENUM(NSInteger, TGDownloadPriority) {
 /// short phrase to show, or nil when they stopped.
 @property (nonatomic, copy) void (^onChatAction)(int64_t chatId, NSString *action);
 
+/// A secret chat changed state - the answer to a key exchange, or the
+/// moment one is closed. `secretChatId` is the secretchat's own id, and
+/// `state` is "pending", "ready" or "closed".
+@property (nonatomic, copy) void (^onSecretChat)(NSInteger secretChatId, NSString *state);
+
 /// The pinned message of a chat, flattened, or nil if there is none.
 - (void)pinnedMessageForChat:(int64_t)chatId
                   completion:(void (^)(NSDictionary *message))completion;
@@ -221,6 +248,28 @@ typedef NS_ENUM(NSInteger, TGDownloadPriority) {
 
 /// Erase the messages of a chat without leaving it.
 - (void)clearHistoryInChat:(int64_t)chatId;
+
+/// Reporting is a conversation: the first call answers with the reasons to
+/// choose from, and the chosen option id goes in the second. The completion
+/// gets either a title and a list of options - each with "id" and "text" -
+/// to put to the user, or an empty list and `done` once it is accepted.
+- (void)reportChat:(int64_t)chatId
+		  optionId:(NSString *)optionId
+			  text:(NSString *)text
+		completion:(void (^)(NSString *title, NSArray *options, BOOL done))completion;
+
+/// Dismisses the "Report spam / Add to contacts" bar above a chat from
+/// someone this account does not know.
+- (void)removeActionBarInChat:(int64_t)chatId;
+
+/// Who this account talks to most, as Telegram ranks it - the people row in
+/// search. Entries are the same chat dictionaries the chat list holds.
+- (void)topChatsWithCompletion:(void (^)(NSArray *chats))completion;
+
+/// Opening a chat from search puts it in the recently-found list.
+- (void)rememberFoundChat:(int64_t)chatId;
+/// Takes someone out of the frequent-contacts ranking.
+- (void)forgetTopChat:(int64_t)chatId;
 
 /// Messages in this chat delete themselves after `seconds`; 0 turns it off.
 - (void)setChat:(int64_t)chatId autoDeleteSeconds:(NSInteger)seconds;
@@ -266,6 +315,57 @@ typedef NS_ENUM(NSInteger, TGDownloadPriority) {
 
 /// Set the signed-in account's own picture from a local file.
 - (void)setProfilePhotoAtPath:(NSString *)path completion:(void (^)(BOOL ok))completion;
+
+/// Take one of this account's own profile photos off the account - the id a
+/// chatPhoto carries, which the photo gallery is what reads back.
+- (void)deleteProfilePhoto:(int64_t)photoId
+				completion:(void (^)(BOOL ok))completion;
+
+/// Every profile photo an account still has, oldest never first: each row
+/// carries "photoId" (what deleteProfilePhoto answers to) and "fileId" (the
+/// small file to download).
+- (void)userProfilePhotos:(int64_t)userId
+			   completion:(void (^)(NSArray *photos))completion;
+
+/// The t.me link of the signed-in account - Telegram answers for only the
+/// current user, so there is no asking for someone else's.
+- (void)myUserLink:(void (^)(NSString *link))completion;
+
+/// The chats this account shares with another user, each as an ordinary chat
+/// row ("id", "title"), so a tap opens it like any chat the list holds.
+- (void)groupsInCommonWithUser:(int64_t)userId
+					completion:(void (^)(NSArray *chats))completion;
+
+/// Two-step verification, written whole: the old password opens the gate, an
+/// empty new one removes the password, and the recovery email rides along
+/// only when `setEmailAddress` says so.
+- (void)setPassword:(NSString *)oldPassword
+								 new:(NSString *)newPassword
+							   hint:(NSString *)hint
+					setEmailAddress:(BOOL)setEmailAddress
+							 email:(NSString *)recoveryEmail
+						 completion:(void (^)(BOOL ok))completion;
+
+/// The recovery address a two-step password still points at - which is also
+/// TDLib's way of checking a password the user typed.
+- (void)recoveryEmailAddress:(NSString *)password
+				  completion:(void (^)(NSString *email))completion;
+
+/// Point the recovery address somewhere else; TDLib confirms the new one by
+/// letter, so the answer says the request landed, not that it is live.
+- (void)setRecoveryEmailAddress:(NSString *)password
+							 to:(NSString *)email
+					 completion:(void (^)(BOOL ok))completion;
+
+/// Sign every other device out in one stroke - the sessions screen keeps the
+/// per-device version.
+- (void)terminateAllOtherSessions:(void (^)(BOOL ok))completion;
+
+/// The end of the road: reason is what Telegram's form asks about, the
+/// password only when two-step verification is on.
+- (void)deleteAccountWithReason:(NSString *)reason
+					   password:(NSString *)password
+					 completion:(void (^)(BOOL ok))completion;
 
 /// The account's own birthday. Day 0 means it is not set; year 0 means it is
 /// set but the year was left out, which Telegram allows.
@@ -340,6 +440,25 @@ typedef NS_ENUM(NSInteger, TGDownloadPriority) {
 - (void)sendText:(NSString *)text toChat:(int64_t)chatId
           thread:(int64_t)threadId replyTo:(int64_t)replyToId;
 
+/// The two scheduling states a send can carry; nil fields are refused by
+/// TDLib, so the request without one is the send-now call in the header.
++ (NSDictionary *)scheduledAtDate:(NSTimeInterval)date;
++ (NSDictionary *)scheduledWhenOnline;
+/// The reply send with one of those states attached.
+- (void)sendText:(NSString *)text toChat:(int64_t)chatId
+          thread:(int64_t)threadId replyTo:(int64_t)replyToId
+        scheduled:(NSDictionary *)schedulingState;
+
+/// What a chat has waiting. Flattened like the history is.
+- (void)scheduledMessagesInChat:(int64_t)chatId
+                     completion:(void (^)(NSArray *messages))completion;
+/// Move a scheduled message: nil for `state` sends it now, which is TDLib's
+/// meaning of an absent scheduling state.
+- (void)setSchedulingState:(NSDictionary *)state
+                forMessage:(int64_t)messageId
+                    inChat:(int64_t)chatId
+                completion:(void (^)(BOOL ok))completion;
+
 /// Forward messages into another chat.
 - (void)forwardMessages:(NSArray *)messageIds
                fromChat:(int64_t)fromChatId
@@ -370,7 +489,25 @@ typedef NS_ENUM(NSInteger, TGDownloadPriority) {
 /// Drop one sticker out of Recently Used.
 - (void)removeRecentSticker:(NSInteger)fileId;
 /// Uninstall a sticker set, which is what removing a pack means.
-- (void)removeStickerSet:(id)setId;
+/// `archived` with `installed` NO moves it to the archived shelf instead of
+/// throwing it away; YES YES puts it back among the installed.
+- (void)setStickerSet:(id)setId installed:(BOOL)installed archived:(BOOL)archived;
+
+/// Installed sets whose titles match, for finding a pack the account has.
+- (void)installedStickerSetsNamed:(NSString *)query
+                       completion:(void (^)(NSArray *sets))completion;
+/// The archived shelf, which is where a set removed by accident survives.
+- (void)archivedStickerSetsWithCompletion:(void (^)(NSArray *sets))completion;
+/// The sets that used to be attached in a chat - what their client shows
+/// when you send media there.
+- (void)attachedStickerSetsInChat:(int64_t)chatId
+                       completion:(void (^)(NSArray *sets))completion;
+/// The installed order after a move. `setIds` is the whole list, the
+/// first id becoming the first strip slot.
+- (void)reorderInstalledStickerSets:(NSArray *)setIds;
+
+/// Put a GIF in Saved GIFs, and take one out again.
+- (void)saveAnimationFileId:(NSInteger)fileId saved:(BOOL)saved;
 
 /// GIFs: "fileId", "width", "height", "duration", optional "thumbId" (a
 /// still picture) and "minithumbnail" (NSData, a tiny inline JPEG). Search
@@ -391,6 +528,24 @@ typedef NS_ENUM(NSInteger, TGDownloadPriority) {
 /// Share a point on the map.
 - (void)sendLocation:(double)latitude longitude:(double)longitude toChat:(int64_t)chatId;
 
+/// A place that keeps changing, for `seconds` more. The send is answered
+/// with the message itself - its id is what every later edit answers
+/// through.
+- (void)sendLiveLocation:(NSInteger)seconds
+				latitude:(double)latitude
+			   longitude:(double)longitude
+				  toChat:(int64_t)chatId
+			  completion:(void (^)(int64_t messageId))completion;
+
+/// The moving pin, moved again, for `seconds` more of its period. 0 stops
+/// it. nil id is refused, because a pin nobody can move is a lie on the map.
+- (void)editLiveLocationOfMessage:(int64_t)messageId
+						   inChat:(int64_t)chatId
+						 latitude:(double)latitude
+						longitude:(double)longitude
+					   livePeriod:(NSInteger)seconds
+					   completion:(void (^)(BOOL ok))completion;
+
 /// Share someone from the address book.
 - (void)sendContactNamed:(NSString *)name phone:(NSString *)phone toChat:(int64_t)chatId;
 
@@ -398,6 +553,44 @@ typedef NS_ENUM(NSInteger, TGDownloadPriority) {
 - (void)sendPhotoAtPath:(NSString *)path toChat:(int64_t)chatId;
 /// Vote in a poll. `optionIds` are indexes into the poll's options.
 - (void)votePoll:(int64_t)messageId inChat:(int64_t)chatId options:(NSArray *)optionIds;
+
+/// Reports messages in a supergroup as spam. Reads the chat first: the
+/// request wants the supergroup's own id, which a chat id is not.
+- (void)reportSpamMessages:(NSArray *)messageIds
+				    inChat:(int64_t)chatId
+				completion:(void (^)(BOOL ok))completion;
+
+/// Blocks whoever sent a message from replying again, optionally deleting
+/// what they wrote and reporting it.
+- (void)blockSenderOfMessage:(int64_t)messageId
+			  deleteMessages:(BOOL)deleteMessages
+				  reportSpam:(BOOL)reportSpam;
+
+/// Closes a poll you sent; nobody can vote after that.
+- (void)stopPoll:(int64_t)messageId inChat:(int64_t)chatId;
+
+/// Who voted for one answer. `optionIndex` is the 0-based one; entries
+/// carry "id", "name", "date".
+- (void)pollVotersOfOption:(NSInteger)optionIndex
+                ofMessage:(int64_t)messageId
+                     inChat:(int64_t)chatId
+                completion:(void (^)(NSArray *voters, BOOL end))completion;
+
+/// An option added after the poll went out, for polls that allow it.
+- (void)addPollOption:(NSString *)text
+            toMessage:(int64_t)messageId
+                 inChat:(int64_t)chatId
+            completion:(void (^)(BOOL ok))completion;
+
+/// An option taken out again; `optionId` is the string id pollOption
+/// carries, not an index.
+- (void)deletePollOption:(NSString *)optionId
+               ofMessage:(int64_t)messageId
+                  inChat:(int64_t)chatId
+              completion:(void (^)(BOOL ok))completion;
+
+/// Every poll in the chat read up on, so the fresh-vote badge is gone.
+- (void)readAllChatPollVotes:(int64_t)chatId;
 
 /// React to a message with an emoji, as the current user.
 - (void)reactTo:(int64_t)messageId inChat:(int64_t)chatId emoji:(NSString *)emoji;
@@ -508,6 +701,237 @@ typedef NS_ENUM(NSInteger, TGDownloadPriority) {
 
 /// Premium state of the signed-in account: nil when it is not active.
 - (void)premiumStateWithCompletion:(void (^)(NSString *summary))completion;
+
+#pragma mark - stickers, searching rather than browsing (TGClient+Stickers)
+
+/// Stickers for an emoji, out of the sets this account has installed.
+- (void)stickersForEmoji:(NSString *)emoji
+			  completion:(void (^)(NSArray *stickers))completion;
+/// The same across every public set - the half that finds something new.
+- (void)searchStickersForEmoji:(NSString *)emoji
+					completion:(void (^)(NSArray *stickers))completion;
+/// Sets by name. Entries are shaped as -installedStickerSetsWithCompletion:
+/// answers: "id", "title", "cover".
+- (void)searchStickerSetsNamed:(NSString *)query
+					completion:(void (^)(NSArray *sets))completion;
+- (void)trendingStickerSetsWithCompletion:(void (^)(NSArray *sets))completion;
+
+#pragma mark - downloads (TGClient+Downloads)
+
+/// Stops a download. `onlyIfPending` leaves one that has already started.
+- (void)cancelDownloadOfFile:(NSInteger)fileId onlyIfPending:(BOOL)onlyIfPending;
+/// Deletes the local copy; the file can be fetched again.
+- (void)deleteLocalFile:(NSInteger)fileId;
+/// Puts a file in the download list their Download Manager shows.
+- (void)addFileToDownloads:(NSInteger)fileId
+					inChat:(int64_t)chatId
+				   message:(int64_t)messageId;
+/// The list. Entries carry "fileId", "name", "size", "paused" and "done".
+- (void)fileDownloadsMatching:(NSString *)query
+				   activeOnly:(BOOL)activeOnly
+				   completion:(void (^)(NSArray *downloads,
+										NSInteger activeCount))completion;
+- (void)setDownloadOfFile:(NSInteger)fileId paused:(BOOL)paused;
+- (void)setAllDownloadsPaused:(BOOL)paused;
+- (void)removeFileFromDownloads:(NSInteger)fileId deleteFromCache:(BOOL)deleteFromCache;
+- (void)clearDownloadsDeletingFromCache:(BOOL)deleteFromCache;
+
+#pragma mark - secret chats (TGClient+Secret)
+
+/// Starts one. The chat exists at once but stays "pending" until the other
+/// device answers the key exchange, and nothing can be sent before that.
+- (void)createSecretChatWithUser:(int64_t)userId
+					  completion:(void (^)(int64_t chatId))completion;
+/// "pending", "ready" or "closed", by the secret chat's own id.
+- (void)secretChatState:(NSInteger)secretChatId
+			 completion:(void (^)(NSString *state, BOOL outgoing))completion;
+/// Final: the key is gone and the chat cannot be reopened.
+- (void)closeSecretChat:(NSInteger)secretChatId;
+/// The secret chat id behind a chat, or 0 when it is not a secret chat. Every
+/// other call here takes that rather than the chat id.
+- (void)secretChatIdForChat:(int64_t)chatId
+				 completion:(void (^)(NSInteger secretChatId))completion;
+
+#pragma mark - groups and invite links (TGClient+Groups)
+
+/// Makes a basic group - their New Group - holding `userIds`. TDLib refuses
+/// an empty one, so at least one other person is required. The completion
+/// gets the new chat's id, and the ids of anyone whose privacy settings
+/// refused the invitation.
+- (void)createGroupNamed:(NSString *)title
+			   withUsers:(NSArray *)userIds
+			  completion:(void (^)(int64_t chatId, NSArray *failedUserIds))completion;
+
+/// A supergroup, or a channel with `isChannel`.
+- (void)createSupergroupNamed:(NSString *)title
+				  description:(NSString *)description
+					isChannel:(BOOL)isChannel
+				   completion:(void (^)(int64_t chatId))completion;
+
+/// Past 200 members, or for a username or admins with rights, a basic group
+/// has to become a supergroup. The chat id changes, hence the answer.
+- (void)upgradeGroupToSupergroup:(int64_t)chatId
+					  completion:(void (^)(int64_t newChatId))completion;
+
+- (void)addUser:(int64_t)userId
+		 toChat:(int64_t)chatId
+	 completion:(void (^)(BOOL ok, NSArray *failedUserIds))completion;
+
+/// The picker's batch, in one request. Same failed-half answer.
+- (void)addUsers:(NSArray *)userIds
+		  toChat:(int64_t)chatId
+	  completion:(void (^)(BOOL ok, NSArray *refused))completion;
+
+/// One member's own record; nil when there is no such member.
+- (void)chatMember:(int64_t)userId
+			 inChat:(int64_t)chatId
+		completion:(void (^)(NSDictionary *member))completion;
+
+/// What members may do, as a preset word: "all", "text" or "read". The
+/// fifteen booleans TDLib keeps are built from it.
++ (NSDictionary *)chatPermissionsForPreset:(NSString *)preset;
+- (void)setChatPermissionsFromPreset:(NSString *)preset
+							   inChat:(int64_t)chatId
+						  completion:(void (^)(BOOL ok))completion;
+
+/// Handing a chat over, with the password two-factor asks for. Final.
+- (void)transferOwnershipOfChat:(int64_t)chatId
+						 toUser:(int64_t)userId
+					   password:(NSString *)password
+					 completion:(void (^)(BOOL ok))completion;
+
+/// Members of a chat, filtered by `query`; an empty query is the whole list.
+/// Entries carry "id", "name" and "status" (owner/admin/member/...).
+- (void)searchMembersInChat:(int64_t)chatId
+					  query:(NSString *)query
+				 completion:(void (^)(NSArray *members))completion;
+
+/// Only the administrators - a different request, and the only one that says
+/// who the owner is. Entries carry "id", "name", "owner" and "editable".
+- (void)administratorsOfChat:(int64_t)chatId
+				  completion:(void (^)(NSArray *admins))completion;
+
+/// "administrator", "member" or "left". Anything else is refused rather than
+/// guessed at, because the wrong word here removes people.
+- (void)setMember:(int64_t)userId
+		   inChat:(int64_t)chatId
+		   status:(NSString *)status
+	   completion:(void (^)(BOOL ok))completion;
+
+/// Not the same as removing: a banned member cannot return on a link.
+- (void)banMember:(int64_t)userId
+		   inChat:(int64_t)chatId
+   revokeMessages:(BOOL)revokeMessages
+	   completion:(void (^)(BOOL ok))completion;
+
+- (void)setChat:(int64_t)chatId title:(NSString *)title
+	 completion:(void (^)(BOOL ok))completion;
+/// A supergroup or channel only; a basic group has nowhere to put one.
+- (void)setChat:(int64_t)chatId description:(NSString *)description
+	 completion:(void (^)(BOOL ok))completion;
+- (void)setChat:(int64_t)chatId photoAtPath:(NSString *)path
+	 completion:(void (^)(BOOL ok))completion;
+
+/// Every link the chat has, flattened to "link", "name", "members",
+/// "memberLimit", "primary", "revoked" and "requests".
+- (void)inviteLinksForChat:(int64_t)chatId
+				completion:(void (^)(NSArray *links))completion;
+
+/// A link of its own, revocable without taking the primary one down with it.
+/// A `memberLimit` of zero is no limit.
+- (void)createInviteLinkForChat:(int64_t)chatId
+						   name:(NSString *)name
+					memberLimit:(NSInteger)memberLimit
+					 completion:(void (^)(NSString *link))completion;
+
+/// Replaces the chat's primary link; the old one stops working at once.
+- (void)replacePrimaryInviteLinkForChat:(int64_t)chatId
+							 completion:(void (^)(NSString *link))completion;
+
+- (void)revokeInviteLink:(NSString *)link inChat:(int64_t)chatId
+			  completion:(void (^)(BOOL ok))completion;
+
+/// What is behind a link before joining it.
+- (void)checkInviteLink:(NSString *)link
+			 completion:(void (^)(NSString *title, NSInteger members,
+								  BOOL alreadyMember))completion;
+
+/// People waiting at a link that creates join requests: "id", "name", "date".
+- (void)joinRequestsForChat:(int64_t)chatId
+				 completion:(void (^)(NSArray *requests))completion;
+- (void)processJoinRequest:(int64_t)userId inChat:(int64_t)chatId approve:(BOOL)approve;
+
+#pragma mark - proxies (TGClient+Proxy)
+
+/// Every proxy TDLib has been told about. Entries carry "id", "server",
+/// "port", "kind" (socks5/http/mtproto/web), "enabled" and "lastUsed".
+- (void)proxiesWithCompletion:(void (^)(NSArray *proxies))completion;
+
+/// Adds one and, with `enable`, switches to it at once. The completion gets
+/// its id, or 0 when the server or port made no sense.
+- (void)addProxyAtServer:(NSString *)server
+					port:(NSInteger)port
+					kind:(NSString *)kind
+				username:(NSString *)username
+				password:(NSString *)password
+				  secret:(NSString *)secret
+				  enable:(BOOL)enable
+			  completion:(void (^)(NSInteger proxyId))completion;
+
+/// Adds a proxy out of a t.me/proxy or tg://proxy link, which is how one is
+/// nearly always passed around. NO when the link carries no server and port.
+- (BOOL)addProxyFromLink:(NSString *)link
+			  completion:(void (^)(NSInteger proxyId))completion;
+
+- (void)enableProxy:(NSInteger)proxyId;
+/// Back to a direct connection; there is no id in this one.
+- (void)disableProxy;
+- (void)removeProxy:(NSInteger)proxyId;
+
+/// How long the handshake takes, in seconds, or a negative number when the
+/// proxy does not answer.
+- (void)pingProxyAtServer:(NSString *)server
+					 port:(NSInteger)port
+					 kind:(NSString *)kind
+				 username:(NSString *)username
+				 password:(NSString *)password
+				   secret:(NSString *)secret
+			   completion:(void (^)(double seconds))completion;
+
+#pragma mark - chat folders, the writing half (TGClient+Chats)
+
+/// Makes a folder holding `chatIds`. `icon` is one of Telegram's own icon
+/// names and may be nil. The completion gets the new folder's id, or 0.
+- (void)createFolderNamed:(NSString *)name
+					 icon:(NSString *)icon
+				withChats:(NSArray *)chatIds
+			   completion:(void (^)(NSInteger folderId))completion;
+
+/// The folder as it stands - its chats, its flags - or nil if it is gone.
+- (void)folderDetails:(NSInteger)folderId
+		   completion:(void (^)(NSDictionary *folder))completion;
+
+/// Renames a folder, or changes which chats it holds, or both: a nil leaves
+/// that part as it was. An edit replaces the whole folder on Telegram's side,
+/// so this reads it first.
+- (void)editFolder:(NSInteger)folderId
+			  name:(NSString *)name
+			 chats:(NSArray *)chatIds
+		completion:(void (^)(BOOL ok))completion;
+
+/// Drops the folder. The chats in it stay; `leaveChatIds` is for the ones
+/// you also want out of, and is usually empty.
+- (void)deleteFolder:(NSInteger)folderId leavingChats:(NSArray *)leaveChatIds;
+
+/// The order of the pill strip. "All chats" is a position in that order
+/// rather than a folder of its own.
+- (void)reorderFolderIds:(NSArray *)folderIds mainListAt:(NSInteger)position;
+
+/// Telegram's own suggestions, each with the sentence their client shows
+/// under it: "title", "description", and "folder" ready to be created.
+- (void)recommendedFoldersWithCompletion:(void (^)(NSArray *folders))completion;
+- (void)createRecommendedFolder:(NSDictionary *)folder
+					 completion:(void (^)(NSInteger folderId))completion;
 
 #pragma mark - maintenance
 

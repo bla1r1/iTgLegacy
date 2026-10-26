@@ -145,6 +145,9 @@
 	// Opening clears unread; the @ and the reaction badges are counted apart
 	// from it and stay until they are read in their own right.
 	[[TGClient shared] readAllMentionsAndReactionsInChat:self.chatId];
+	// So are the votes: the badge on a fresh poll answer is the chat's to
+	// see, and the chat has now seen it.
+	[[TGClient shared] readAllChatPollVotes:self.chatId];
 
 	// Whatever was typed here last and not sent - here or on another device.
 	NSString *draft = [[TGClient shared] draftForChat:self.chatId];
@@ -185,6 +188,12 @@
 	header.userInteractionEnabled = YES;
 	[header addGestureRecognizer:[[UITapGestureRecognizer alloc]
 			initWithTarget:self action:@selector(openProfile)]];
+	// The tap opens the profile; the hold offers what a secret chat needs
+	// that no menu row reaches: ending it.
+	UILongPressGestureRecognizer *headerHold = [[UILongPressGestureRecognizer alloc]
+			initWithTarget:self action:@selector(headerHeld:)];
+	headerHold.minimumPressDuration = 0.6;
+	[header addGestureRecognizer:headerHold];
 	self.navigationItem.titleView = header;
 	[self buildAvatarButton];
 
@@ -211,6 +220,20 @@
 	[[NSNotificationCenter defaultCenter] addObserver:self
 			selector:@selector(themeChanged:)
 				name:TGThemeChangedNotification object:nil];
+
+	// A secret chat's state is its header, and it can change while you
+	// watch: the key exchange answers, or the other side closes the chat.
+	[[TGClient shared] secretChatIdForChat:self.chatId completion:^(NSInteger secretId){
+		if (!secretId)
+			return;
+		weakSelf.secretChatId = secretId;
+		[weakSelf refreshSecretState];
+	}];
+	[TGClient shared].onSecretChat = ^(NSInteger secretChatId, NSString *state){
+		if (secretChatId != weakSelf.secretChatId)
+			return;
+		[weakSelf refreshSecretState];
+	};
 
 	[self loadPinnedMessage];
 	[self applyPostingRights];
@@ -278,6 +301,9 @@
 	if (self.voicePlayer)
 		[self stopPlayback];
 	[self stopVideoNote];
+	// The GPS is the chat's, not the app's: a trace watched from this screen
+	// stops being watched when the screen is gone.
+	[self.locationManager stopUpdatingLocation];
 	[TGSnackbar commitNow];
 	[TGPopupMenu dismiss];
 
@@ -296,6 +322,7 @@
 		[[TGClient shared] closeChat:self.chatId];
 		[TGClient shared].onMessage = nil;
 		[TGClient shared].onChatAction = nil;
+		[TGClient shared].onSecretChat = nil;
 		[self stopChrome];
 		[TGClient shared].onFileProgress = nil;
 		[self.images removeAllObjects];

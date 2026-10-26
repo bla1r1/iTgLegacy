@@ -34,7 +34,9 @@ NSString *TGMyReactionEmoji(NSDictionary *m) {
 	return nil;
 }
 
-/// Converts camelCase message type name to readable phrase (e.g. "messageVideoChatStarted" -> "Video chat started").
+/// Converts camelCase message type name to readable phrase, the first letter
+/// capitalized ("messageVideoChatStarted" -> "Video chat started",
+/// "somethingElse" -> "Something else").
 NSString *TGPhraseFromTypeName(NSString *ctype) {
 	NSString *rest = [ctype hasPrefix:@"message"] ? [ctype substringFromIndex:7] : ctype;
 	if (!rest.length)
@@ -43,7 +45,9 @@ NSString *TGPhraseFromTypeName(NSString *ctype) {
 	NSMutableString *out = [NSMutableString stringWithCapacity:rest.length + 8];
 	for (NSUInteger i = 0; i < rest.length; i++){
 		unichar c = [rest characterAtIndex:i];
-		if (i > 0 && c >= 'A' && c <= 'Z'){
+		if (i == 0 && c >= 'a' && c <= 'z')
+			[out appendFormat:@"%C", (unichar)(c - 'a' + 'A')];
+		else if (i > 0 && c >= 'A' && c <= 'Z'){
 			[out appendString:@" "];
 			[out appendFormat:@"%C", (unichar)(c - 'A' + 'a')];
 		} else {
@@ -71,6 +75,8 @@ NSDictionary *TGFlattenMessage(NSDictionary *m) {
 	NSNumber *albumCoverId = nil;
 	BOOL isService = NO;
 	NSString *callState = nil;     // "missed" or "answered" on a call message
+	BOOL liveEditable = NO;        // a live location with time left to edit
+	NSDictionary *pollInfo = @{};  // what the poll of this message still allows
 
 	NSNumber *bigPhotoFileId = nil;
 	int mediaWidth = 0, mediaHeight = 0;
@@ -153,6 +159,7 @@ NSDictionary *TGFlattenMessage(NSDictionary *m) {
 		docFileId   = content[@"document"][@"document"][@"id"];
 		docName     = content[@"document"][@"file_name"];
 		NSNumber *size = content[@"document"][@"document"][@"size"];
+		docSize     = size ?: content[@"document"][@"document"][@"expected_size"];
 		extra = size.longLongValue > 0
 			? [NSString stringWithFormat:@"%@\n%.1f KB", docName ?: @"Document",
 					size.doubleValue / 1024.0]
@@ -298,15 +305,25 @@ NSDictionary *TGFlattenMessage(NSDictionary *m) {
 		NSMutableString *lines = [NSMutableString stringWithFormat:@"%@\n",
 				poll[@"question"][@"text"] ?: poll[@"question"] ?: @"Poll"];
 		NSInteger total = [poll[@"total_voter_count"] integerValue];
+		BOOL deletable = NO;
 		for (NSDictionary *option in poll[@"options"]){
 			[lines appendFormat:@"%@  %@%ld%%\n",
 					[option[@"is_chosen"] boolValue] ? @"\u25c9" : @"\u25cb",
 					option[@"text"][@"text"] ?: option[@"text"] ?: @"",
 					(long)[option[@"vote_percentage"] integerValue]];
+			if ([option[@"properties"][@"can_be_deleted"] boolValue])
+				deletable = YES;
 		}
 		[lines appendFormat:@"%ld voted", (long)total];
 		extra = lines;
 		isService = NO;
+		// The menu asks what the poll still allows: voters, an open vote,
+		// options deleted after the fact.
+		pollInfo = @{
+			@"voters"    : poll[@"can_get_voters"] ?: @NO,
+			@"open"      : @(![poll[@"is_closed"] boolValue]),
+			@"deletable" : @(deletable),
+		};
 
 	} else if ([ctype isEqualToString:@"messageLocation"]){
 		NSDictionary *loc = content[@"location"];
@@ -318,9 +335,11 @@ NSDictionary *TGFlattenMessage(NSDictionary *m) {
 		// The same card as a fixed point, said differently: a live location is
 		// a place that keeps changing, and the map is still worth drawing.
 		NSDictionary *loc = content[@"location"];
-		extra = @"Live location";
-		latitude  = loc[@"latitude"];
-		longitude = loc[@"longitude"];
+		extra = [NSString stringWithFormat:@"Live location · %ld s left",
+				(long)[content[@"expires_in"] integerValue]];
+		latitude  = loc[@"location"][@"latitude"];
+		longitude = loc[@"location"][@"longitude"];
+		liveEditable = [content[@"expires_in"] integerValue] > 0;
 
 	} else if ([ctype isEqualToString:@"messageInvoice"]){
 		NSInteger amount = [content[@"total_amount"] integerValue];
@@ -363,13 +382,20 @@ NSDictionary *TGFlattenMessage(NSDictionary *m) {
 	if (caption.length)      text = caption;
 	else if (extra.length)   text = extra;
 	else if (photoFileId)    text = @"";
-	else                     text = TGMessagePreview(m);
+	else {
+		// The preview knows the common types by name. When it does not,
+		// nobody has a branch for this content anywhere - the phrase
+		// fallback below speaks instead, and it is a system notice, not a
+		// regular message.
+		NSString *known = TGKnownMessagePreview(m);
+		text        = known ?: TGPhraseFromTypeName(ctype);
+		isService  |= known == nil;
+	}
 
-	// TDLib has over a hundred content types and gains more with every
-	// release, most of them one-line notices nobody has written a branch for.
-	// Anything that would otherwise be an empty bubble says what it is instead:
-	// messageVideoChatStarted reads as "Video chat started". Only content with
-	// nothing at all to show reaches this - text and media have already spoken.
+	// A content type with its own branch can still say nothing - an empty
+	// text message, say. An empty bubble reads as a bug, so it says what it
+	// is as a service line. The unknown types never reach this: the preview
+	// above already gave them their phrase, as a service line.
 	if (!text.length && !photoFileId && !docFileId && !latitude){
 		text = TGPhraseFromTypeName(ctype);
 		isService = YES;
@@ -437,7 +463,11 @@ NSDictionary *TGFlattenMessage(NSDictionary *m) {
 		@"pollQuestion" : m[@"content"][@"poll"][@"question"][@"text"] ?: @"",
 		@"pollTotal"    : m[@"content"][@"poll"][@"total_voter_count"] ?: @0,
 		@"pollClosed"   : m[@"content"][@"poll"][@"is_closed"] ?: @NO,
+		@"pollVoters"   : (pollInfo[@"voters"] ?: @NO),
+		@"pollOpen"     : (pollInfo[@"open"] ?: @NO),
+		@"pollDeletable": (pollInfo[@"deletable"] ?: @NO),
 		@"pollAnonymous": m[@"content"][@"poll"][@"is_anonymous"] ?: @YES,
+		@"liveEditable": @(liveEditable),
 		@"duration"  : duration ?: @0,
 		@"waveform"  : waveform ?: [NSData data],
 		@"audioTitle"     : audioTitle     ?: @"",
@@ -637,6 +667,81 @@ NSDictionary *TGFlattenMessage(NSDictionary *m) {
 	[self send:request];
 }
 
+/// The same send held back: at a date, or the moment the other side is next
+/// online. TDLib carries it as a scheduling state on the request itself, and
+/// echoes back a message that is pending rather than sent.
+- (void)sendText:(NSString *)text toChat:(int64_t)chatId
+           thread:(int64_t)threadId replyTo:(int64_t)replyToId
+        scheduled:(NSDictionary *)schedulingState {
+	NSMutableDictionary *request = [@{
+		@"@type"                : @"sendMessage",
+		@"chat_id"              : @(chatId),
+		@"message_thread_id"    : @(threadId),
+		@"input_message_content": @{
+			@"@type" : @"inputMessageText",
+			@"text"  : @{@"@type" : @"formattedText", @"text" : text ?: @""},
+		},
+	} mutableCopy];
+
+	if (replyToId != 0)
+		request[@"reply_to"] = @{@"@type" : @"inputMessageReplyToMessage",
+								 @"message_id" : @(replyToId)};
+	if (schedulingState[@"@type"])
+		request[@"scheduling_state"] = schedulingState;
+
+	[self send:request];
+}
+
+/// At a wall-clock date. The date is int32 seconds, which is what the
+/// request carries.
++ (NSDictionary *)scheduledAtDate:(NSTimeInterval)date {
+	return @{@"@type"     : @"messageSchedulingStateSendAtDate",
+			 @"send_date" : @(date),
+			 @"repeat_period" : @(0)};
+}
+
+/// The moment the other side is next seen. Private chats only; TDLib
+/// refuses it anywhere else, and the error is the answer.
++ (NSDictionary *)scheduledWhenOnline {
+	return @{@"@type" : @"messageSchedulingStateSendWhenOnline"};
+}
+
+/// What a chat has waiting. The answer is a message list flattened exactly
+/// as the history is, so the same rows draw from both.
+- (void)scheduledMessagesInChat:(int64_t)chatId
+					 completion:(void (^)(NSArray *messages))completion {
+	[self request:@{@"@type" : @"getChatScheduledMessages", @"chat_id" : @(chatId)}
+	   completion:^(NSDictionary *result){
+		NSMutableArray *out = [NSMutableArray array];
+		for (NSDictionary *m in result[@"messages"]){
+			NSDictionary *flat = TGFlattenMessage(m);
+			if (flat)
+				[out addObject:flat];
+		}
+		if (completion) completion(out);
+	}];
+}
+
+/// A scheduling state can change while there is nothing to send yet: null
+/// sends it now - TDLib's own meaning of the field - and a state moves it.
+- (void)setSchedulingState:(NSDictionary *)state
+			 forMessage:(int64_t)messageId
+					inChat:(int64_t)chatId
+				completion:(void (^)(BOOL ok))completion {
+	// An optional object reads back as the JSON null TDLib documents for
+	// "send immediately", which is not a dictionary.
+	id value = state[@"@type"] ? state : [NSNull null];
+	[self request:@{
+		@"@type"            : @"editMessageSchedulingState",
+		@"chat_id"          : @(chatId),
+		@"message_id"       : @(messageId),
+		@"scheduling_state" : value,
+	} completion:^(NSDictionary *result){
+		if (completion)
+			completion(![result[@"@type"] isEqualToString:@"error"]);
+	}];
+}
+
 - (void)forwardMessages:(NSArray *)messageIds
                fromChat:(int64_t)fromChatId
                  toChat:(int64_t)toChatId {
@@ -775,6 +880,68 @@ NSDictionary *TGFlattenMessage(NSDictionary *m) {
 				@"longitude" : @(longitude),
 			},
 		},
+	}];
+}
+
+/// A place that keeps changing, for `seconds` more. The send is answered
+/// with the message itself, whose id is what every later edit answers
+/// through - the one misstep here is a fire-and-forget send, which leaves
+/// the live location orphaned, editable by nobody.
+- (void)sendLiveLocation:(NSInteger)seconds
+			latitude:(double)latitude
+			longitude:(double)longitude
+				  toChat:(int64_t)chatId
+			 completion:(void (^)(int64_t messageId))completion {
+	[self request:@{
+		@"@type"                : @"sendMessage",
+		@"chat_id"              : @(chatId),
+		@"input_message_content": @{
+			@"@type"    : @"inputMessageLiveLocation",
+			@"location" : @{
+				@"@type"       : @"liveLocation",
+				@"location"    : @{@"@type"     : @"location",
+								   @"latitude"  : @(latitude),
+								   @"longitude" : @(longitude)},
+				@"live_period" : @(seconds),
+				@"heading"     : @(0),
+				@"proximity_alert_radius" : @(0),
+			},
+		},
+	} completion:^(NSDictionary *result){
+		if (completion)
+			completion([result[@"id"] longLongValue]);
+	}];
+}
+
+/// The moving pin, moved again, for `seconds` more of its period - and 0 is
+/// the stop that takes it off the map. Without the id the edit is refused,
+/// because a pin nobody can move is a lie on the map.
+- (void)editLiveLocationOfMessage:(int64_t)messageId
+						   inChat:(int64_t)chatId
+						 latitude:(double)latitude
+						longitude:(double)longitude
+					   livePeriod:(NSInteger)seconds
+					   completion:(void (^)(BOOL ok))completion {
+	if (!messageId){
+		if (completion) completion(NO);
+		return;
+	}
+	[self request:@{
+		@"@type"      : @"editMessageLiveLocation",
+		@"chat_id"    : @(chatId),
+		@"message_id" : @(messageId),
+		@"location"   : @{
+			@"@type"       : @"liveLocation",
+			@"location"    : @{@"@type"     : @"location",
+							   @"latitude"  : @(latitude),
+							   @"longitude" : @(longitude)},
+			@"live_period" : @(seconds),
+			@"heading"     : @(0),
+			@"proximity_alert_radius" : @(0),
+		},
+	} completion:^(NSDictionary *result){
+		if (completion)
+			completion(![result[@"@type"] isEqualToString:@"error"]);
 	}];
 }
 
@@ -959,6 +1126,150 @@ NSDictionary *TGFlattenMessage(NSDictionary *m) {
 		@"@type"       : @"resendMessages",
 		@"chat_id"     : @(chatId),
 		@"message_ids" : messageIds,
+	}];
+}
+
+/// Closes a poll you sent. Nobody can vote afterwards and the result stands.
+- (void)stopPoll:(int64_t)messageId inChat:(int64_t)chatId {
+	[self send:@{
+		@"@type"      : @"stopPoll",
+		@"chat_id"    : @(chatId),
+		@"message_id" : @(messageId),
+	}];
+}
+
+/// Who voted for one answer. `optionIndex` is the 0-based index the answer
+/// sits at; the voters come back as senders, flattened into ids and names
+/// the menu shows.
+- (void)pollVotersOfOption:(NSInteger)optionIndex
+				ofMessage:(int64_t)messageId
+					 inChat:(int64_t)chatId
+				completion:(void (^)(NSArray *voters, BOOL end))completion {
+	__weak typeof(self) weakSelf = self;
+	[self request:@{
+		@"@type"      : @"getPollVoters",
+		@"chat_id"    : @(chatId),
+		@"message_id" : @(messageId),
+		@"option_id"  : @(optionIndex),
+		@"offset"     : @(0),
+		@"limit"      : @(50),
+	} completion:^(NSDictionary *result){
+		TGClient *me = weakSelf;
+		NSMutableArray *out = [NSMutableArray array];
+		for (NSDictionary *voter in result[@"voters"]){
+			NSDictionary *sender = voter[@"voter_id"];
+			int64_t userId = [sender[@"user_id"] longLongValue];
+			if (!userId)
+				continue;
+			[out addObject:@{
+				@"id"   : @(userId),
+				@"name" : [me nameForUserId:userId] ?: @"",
+				@"date" : voter[@"date"] ?: @(0),
+			}];
+		}
+		if (completion)
+			completion(out, [out count] >= [result[@"total_count"] integerValue]);
+	}];
+}
+
+/// An option added after the poll went out, for polls that allow it. The
+/// option is a line of text in the same shaped envelope an input poll
+/// carries.
+- (void)addPollOption:(NSString *)text
+			toMessage:(int64_t)messageId
+				 inChat:(int64_t)chatId
+			completion:(void (^)(BOOL ok))completion {
+	if (!text.length){
+		if (completion) completion(NO);
+		return;
+	}
+	[self request:@{
+		@"@type"      : @"addPollOption",
+		@"chat_id"    : @(chatId),
+		@"message_id" : @(messageId),
+		@"option"     : @{@"@type" : @"inputPollOption",
+						  @"text"  : @{@"@type" : @"formattedText",
+									   @"text"  : text}},
+	} completion:^(NSDictionary *result){
+		if (completion)
+			completion(![result[@"@type"] isEqualToString:@"error"]);
+	}];
+}
+
+/// An option taken out again; `optionId` is the string id pollOption
+/// carries, not an index.
+- (void)deletePollOption:(NSString *)optionId
+			   ofMessage:(int64_t)messageId
+				  inChat:(int64_t)chatId
+			  completion:(void (^)(BOOL ok))completion {
+	if (!optionId.length){
+		if (completion) completion(NO);
+		return;
+	}
+	[self request:@{
+		@"@type"      : @"deletePollOption",
+		@"chat_id"    : @(chatId),
+		@"message_id" : @(messageId),
+		@"option_id"  : optionId,
+	} completion:^(NSDictionary *result){
+		if (completion)
+			completion(![result[@"@type"] isEqualToString:@"error"]);
+	}];
+}
+
+/// Every poll in the chat read up on: the votes are no longer new once the
+/// chat has been seen, which is what a badge on the answer options is.
+- (void)readAllChatPollVotes:(int64_t)chatId {
+	[self send:@{
+		@"@type"   : @"readAllChatPollVotes",
+		@"chat_id" : @(chatId),
+	}];
+}
+
+/// Reports messages in a supergroup as spam. It takes the supergroup's own
+/// id, not the chat id - a chat id for a supergroup is the negative of it
+/// with a prefix, so this reads the chat first rather than doing arithmetic
+/// on it.
+- (void)reportSpamMessages:(NSArray *)messageIds
+				    inChat:(int64_t)chatId
+				completion:(void (^)(BOOL ok))completion {
+	if (!messageIds.count){
+		if (completion) completion(NO);
+		return;
+	}
+	__weak typeof(self) weakSelf = self;
+	[self request:@{@"@type" : @"getChat", @"chat_id" : @(chatId)}
+	   completion:^(NSDictionary *chat){
+		TGClient *me = weakSelf;
+		NSNumber *supergroupId = chat[@"type"][@"supergroup_id"];
+		if (!me || !supergroupId){
+			// A basic group or a private chat has no supergroup to report to;
+			// reportChat is the route for those.
+			if (completion) completion(NO);
+			return;
+		}
+		[me request:@{@"@type"        : @"reportSupergroupSpam",
+					  @"supergroup_id": supergroupId,
+					  @"message_ids"  : messageIds}
+		 completion:^(NSDictionary *result){
+			if (completion)
+				completion([result[@"@type"] isEqualToString:@"ok"]);
+		}];
+	}];
+}
+
+/// Blocks whoever sent a message from replying again, and optionally takes
+/// what they wrote with them. Only for messages in the chats a reply reaches
+/// this account through.
+- (void)blockSenderOfMessage:(int64_t)messageId
+			  deleteMessages:(BOOL)deleteMessages
+				  reportSpam:(BOOL)reportSpam {
+	[self send:@{
+		@"@type"              : @"blockMessageSenderFromReplies",
+		@"message_id"         : @(messageId),
+		@"delete_message"     : @(deleteMessages),
+		@"delete_all_messages": @(deleteMessages),
+		@"report_spam"        : @(reportSpam),
 	}];
 }
 

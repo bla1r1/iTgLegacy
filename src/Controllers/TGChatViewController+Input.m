@@ -3,6 +3,9 @@
 #import "TGIcons.h"
 #import "UIImage+WebP.h"
 #import "TGAttachSheet.h"
+#import "TGAlertSheet.h"
+#import "TGSheet.h"
+#import "TGScheduledViewController.h"
 #import "TGStyle.h"
 
 @implementation TGChatViewController (Input)
@@ -65,6 +68,12 @@
 	self.sendButton.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
 	[self.sendButton addTarget:self action:@selector(sendTapped)
 			forControlEvents:UIControlEventTouchUpInside];
+	// The tap sends; the hold is where sending waits: a date, the other
+	// side's next appearance, or the queue already scheduled.
+	UILongPressGestureRecognizer *sendHold = [[UILongPressGestureRecognizer alloc]
+			initWithTarget:self action:@selector(sendHeld:)];
+	sendHold.minimumPressDuration = 0.5;
+	[self.sendButton addGestureRecognizer:sendHold];
 	[self.inputBar addSubview:self.sendButton];
 
 	// A sticker button beside the composer, as clients place it.
@@ -230,10 +239,106 @@ static const NSInteger kBannerSubtitleTag = 72;
 	});
 }
 
+#pragma mark - sending later
+
+/// Holding Send when there is text offers what a send can wait for. With an
+/// empty field there is nothing to wait with, and the hold says nothing.
+- (void)sendHeld:(UILongPressGestureRecognizer *)hold {
+	if (hold.state != UIGestureRecognizerStateBegan)
+		return;
+	NSString *text = [self.input.text stringByTrimmingCharactersInSet:
+			[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+	if (!text.length || self.editingId != 0)
+		return;
+
+	__weak typeof(self) weakSelf = self;
+	NSString *queue = self.scheduledCount > 0
+			? [NSString stringWithFormat:@"Scheduled Messages (%ld)", (long)self.scheduledCount]
+			: @"Scheduled Messages";
+	[TGAlertSheet showChoices:@[@"Send At a Time...", @"Send When Online", queue]
+						title:nil
+			 destructiveIndex:-1
+					   inView:self.navigationController.view ?: self.view
+					 onChoice:^(NSInteger index){
+		if (index == 0)
+			[weakSelf holdScheduledSheet];
+		else if (index == 1)
+			[weakSelf sendHeldText:[TGClient scheduledWhenOnline]];
+		else {
+			TGScheduledViewController *vc = [[TGScheduledViewController alloc] init];
+			vc.chatId = weakSelf.chatId;
+			vc.chatTitle = weakSelf.chatTitle;
+			[weakSelf.navigationController pushViewController:vc animated:YES];
+		}
+	}];
+}
+
+/// The composer's text, sent into whatever state was picked. The draft is
+/// lost with the field, which is the whole point: it is no longer waiting
+/// here to be sent.
+- (void)sendHeldText:(NSDictionary *)state {
+	NSString *text = [self.input.text stringByTrimmingCharactersInSet:
+			[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+	if (!text.length)
+		return;
+	[[TGClient shared] sendText:text toChat:self.chatId
+						 thread:self.threadId replyTo:self.replyToId
+					  scheduled:state];
+	self.input.text = @"";
+	[self clearComposeState];
+	[[TGClient shared] setDraft:@"" inChat:self.chatId thread:self.threadId replyTo:0];
+	[[TGClient shared] cancelTypingInChat:self.chatId thread:self.threadId];
+}
+
+/// The date the composer's text waits for. Done reads the picker, clears
+/// the field and sends the held-back send in one move.
+- (void)holdScheduledSheet {
+	static const CGFloat kBar = 44.0f, kPicker = 216.0f;
+
+	TGSheet *sheet = [TGSheet sheetForView:self.view.window ?: self.view];
+	UIView *card = [sheet addCardOfHeight:kBar + kPicker edgeToEdge:YES];
+
+	UIDatePicker *picker = [[UIDatePicker alloc] initWithFrame:
+			CGRectMake(0, kBar, card.bounds.size.width, kPicker)];
+	picker.datePickerMode = UIDatePickerModeDateAndTime;
+	picker.minimumDate = [NSDate dateWithTimeIntervalSinceNow:60];
+	picker.minuteInterval = 15;
+	picker.date = [NSDate dateWithTimeIntervalSinceNow:60 * 60];
+	[card addSubview:picker];
+
+	UIToolbar *bar = [[UIToolbar alloc] initWithFrame:
+			CGRectMake(0, 0, card.bounds.size.width, kBar)];
+	bar.items = @[
+		[[UIBarButtonItem alloc] initWithTitle:@"Cancel" style:UIBarButtonItemStylePlain
+				target:sheet action:@selector(dismiss)],
+		[[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace
+				target:nil action:nil],
+		[[UIBarButtonItem alloc] initWithTitle:@"Schedule" style:UIBarButtonItemStyleDone
+				target:self action:@selector(scheduleCommit:)],
+	];
+	[card addSubview:bar];
+	self.pickPicker = picker;
+	self.pickSheet = sheet;
+	[sheet present];
+}
+
+/// The bar's Done. The picker outlives the sheet just long enough to be
+/// read: the date is taken first, the sheet dismissed after.
+- (void)scheduleCommit:(UIBarButtonItem *)sender {
+	NSTimeInterval date = [self.pickPicker.date timeIntervalSince1970];
+	[self.pickSheet dismiss];
+	self.pickSheet = nil;
+	self.pickPicker = nil;
+	[self sendHeldText:[TGClient scheduledAtDate:date]];
+	// The queue has one more in it than the menu last said.
+	self.scheduledCount++;
+}
+
 - (BOOL)textFieldShouldReturn:(UITextField *)textField {
 	[self sendTapped];
 	return NO;
 }
+
 
 #pragma mark - emoji, stickers, GIFs
 

@@ -8,7 +8,7 @@
 /// formattedText, and only THAT "text" is the string. The old chain stopped
 /// one level short (B3 - every folder parsed as an empty string), and the
 /// pill strip had three nameless tabs to show for it.
-static NSString *TGPlainTitle(id value){
+NSString *TGPlainTitle(id value){
 	while ([value isKindOfClass:NSDictionary.class])
 		value = value[@"text"];
 	return [value isKindOfClass:NSString.class] ? value : nil;
@@ -304,6 +304,21 @@ NSString *const TGUserStatusChangedNotification = @"TGUserStatusChangedNotificat
 									   @"text"  : text ?: @""}];
 		return;
 	}
+	// The state of a secret chat - whether the other device has answered
+	// the exchange yet - is the one thing its header has to breathe.
+	if ([type isEqualToString:@"updateSecretChat"]){
+		NSDictionary *sc = obj[@"secret_chat"];
+		NSString *st = sc[@"state"][@"@type"] ?: @"";
+		NSString *word = @"pending";
+		if ([st isEqualToString:@"secretChatStatePending"])      word = @"pending";
+		else if ([st isEqualToString:@"secretChatStateReady"])   word = @"ready";
+		else if ([st isEqualToString:@"secretChatStateClosed"])  word = @"closed";
+		else                                                     word = @"unknown";
+		if (self.onSecretChat)
+			self.onSecretChat([sc[@"id"] integerValue], word);
+		return;
+	}
+
 	if ([type isEqualToString:@"updateNewCallSignalingData"]){
 		NSData *data = [[NSData alloc] initWithBase64EncodedString:obj[@"data"] options:0];
 		NSLog(@"TGClient: <<< updateNewCallSignalingData call_id=%@ len=%lu", obj[@"call_id"], (unsigned long)data.length);

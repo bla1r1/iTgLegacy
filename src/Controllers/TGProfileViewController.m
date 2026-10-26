@@ -141,6 +141,13 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 											   colourId:self.userId ?: self.chatId];
 	[header addSubview:self.avatarView];
 
+	// The picture is an address to what the account wears: tapping it shows
+	// every photo history this profile still holds.
+	UITapGestureRecognizer *avatarTap = [[UITapGestureRecognizer alloc]
+			initWithTarget:self action:@selector(avatarTapped)];
+	[self.avatarView addGestureRecognizer:avatarTap];
+	self.avatarView.userInteractionEnabled = YES;
+
 	UILabel *nameLabel = [[UILabel alloc] initWithFrame:
 			CGRectMake(10, 16 + side + 8, width - 20, 26)];
 	nameLabel.autoresizingMask = UIViewAutoresizingFlexibleWidth;
@@ -212,6 +219,7 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 		}];
 		// Group details: description, member count, invite link.
 		[[TGClient shared] chatProfile:self.chatId completion:^(NSDictionary *info){
+			weakSelf.chatDescription = info[@"description"] ?: @"";
 			NSMutableArray *rows = [NSMutableArray array];
 			if ([info[@"description"] length])
 				[rows addObject:@[@"about", info[@"description"]]];
@@ -589,6 +597,12 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 					  destructive:YES
 						   inView:self.view
 						onConfirm:^{ [[TGClient shared] logOut]; }];
+		return;
+	}
+
+	if (indexPath.section == kSectionMembers &&
+		indexPath.row < (NSInteger)self.members.count){
+		[self showMemberActionsFor:self.members[indexPath.row]];
 		return;
 	}
 

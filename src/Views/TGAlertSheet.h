@@ -41,6 +41,15 @@
 			 inView:(UIView *)host
 		   onChoice:(void (^)(NSInteger index))onChoice;
 
+/// The same list with a sentence above it, for a choice that needs saying
+/// what it is about before the rows make sense.
++ (void)showChoices:(NSArray *)titles
+			  title:(NSString *)title
+			message:(NSString *)message
+   destructiveIndex:(NSInteger)destructiveIndex
+			 inView:(UIView *)host
+		   onChoice:(void (^)(NSInteger index))choice;
+
 /// One text field. `onSubmit` gets what was typed, trimmed, and runs only on
 /// the action - never on Cancel, and never with an empty string.
 + (void)showInput:(NSString *)title
@@ -50,6 +59,15 @@
 		   action:(NSString *)actionTitle
 		   inView:(UIView *)host
 		 onSubmit:(void (^)(NSString *text))onSubmit;
+
+/// The same, drawing dots instead of letters - what a password is worth
+/// asking for with.
++ (void)showSecureInput:(NSString *)title
+				message:(NSString *)message
+			placeholder:(NSString *)placeholder
+				 action:(NSString *)actionTitle
+				 inView:(UIView *)host
+			  onSubmit:(void (^)(NSString *text))onSubmit;
 
 @end
 

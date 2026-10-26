@@ -11,6 +11,9 @@
 @property (nonatomic, strong) UISearchBar *bar;
 @property (nonatomic, strong) NSArray *chatHits;
 @property (nonatomic, strong) NSArray *messageHits;
+/// Who this account talks to most, shown before anything is typed - their
+/// search opens on this rather than on a blank screen.
+@property (nonatomic, strong) NSArray *frequent;
 @property (nonatomic, strong) NSMutableDictionary *avatars;
 @property (nonatomic, strong) NSMutableSet *avatarsRequested;
 @end
@@ -50,6 +53,7 @@
 		[weakSelf.tableView reloadData];
 	}];
 
+	[self loadFrequentChats];
 	[self.bar becomeFirstResponder];
 }
 
@@ -84,12 +88,33 @@
 	[self.navigationController popViewControllerAnimated:YES];
 }
 
+/// Before a query there is nothing to match, and a blank list reads as a
+/// broken screen. Telegram's own answer is the people you talk to most.
+- (void)loadFrequentChats {
+	__weak typeof(self) weakSelf = self;
+	[[TGClient shared] topChatsWithCompletion:^(NSArray *chats){
+		TGSearchViewController *me = weakSelf;
+		if (!me || me.bar.text.length)
+			return;
+		me.frequent = chats ?: @[];
+		[me.tableView reloadData];
+	}];
+}
+
+/// True while the search is empty, which is when the frequent list is what
+/// the table shows.
+- (BOOL)showsFrequent {
+	return !self.bar.text.length && self.frequent.count > 0;
+}
+
 #pragma mark - searching
 
 - (void)searchBar:(UISearchBar *)searchBar textDidChange:(NSString *)query {
 	if (!query.length) {
 		self.chatHits = @[];
 		self.messageHits = @[];
+		// Back to the frequent list rather than to nothing.
+		[self loadFrequentChats];
 		[self.tableView reloadData];
 		return;
 	}
@@ -121,10 +146,14 @@
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
+	if ([self showsFrequent])
+		return section == 0 ? self.frequent.count : 0;
 	return section == 0 ? self.chatHits.count : self.messageHits.count;
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
+	if ([self showsFrequent])
+		return section == 0 ? @"People" : nil;
 	if (section == 0)
 		return self.chatHits.count ? @"Chats" : nil;
 	return self.messageHits.count ? @"Messages" : nil;
@@ -196,7 +225,14 @@
 	cell.detailTextLabel.opaque = YES;
 	cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
 
-	if (indexPath.section == 0) {
+	if ([self showsFrequent]) {
+		NSDictionary *c = self.frequent[indexPath.row];
+		cell.textLabel.text = c[@"title"];
+		cell.detailTextLabel.text = c[@"previewText"];
+		cell.imageView.image = [self avatarForChat:[c[@"id"] longLongValue]
+											 title:c[@"title"]
+											fileId:c[@"photoFileId"]];
+	} else if (indexPath.section == 0) {
 		NSDictionary *c = self.chatHits[indexPath.row];
 		cell.textLabel.text = c[@"title"];
 		cell.detailTextLabel.text = c[@"text"];
@@ -227,15 +263,23 @@
 	[tableView deselectRowAtIndexPath:indexPath animated:YES];
 	[self.bar resignFirstResponder];
 
-	NSDictionary *row = indexPath.section == 0
-			? self.chatHits[indexPath.row] : self.messageHits[indexPath.row];
-	int64_t chatId = [(indexPath.section == 0 ? row[@"id"] : row[@"chatId"]) longLongValue];
+	BOOL fromFrequent = [self showsFrequent];
+	NSDictionary *row = fromFrequent ? self.frequent[indexPath.row]
+			: (indexPath.section == 0 ? self.chatHits[indexPath.row]
+									  : self.messageHits[indexPath.row]);
+	int64_t chatId = [((fromFrequent || indexPath.section == 0)
+			? row[@"id"] : row[@"chatId"]) longLongValue];
 	if (!chatId)
 		return;
 
+	// Opening a chat from search is what puts it in the recently-found list,
+	// which is the other half of what this screen shows when it is empty.
+	[[TGClient shared] rememberFoundChat:chatId];
+
 	TGChatViewController *chat = [[TGChatViewController alloc] init];
 	chat.chatId = chatId;
-	chat.chatTitle = indexPath.section == 0 ? row[@"title"] : row[@"chatTitle"];
+	chat.chatTitle = (fromFrequent || indexPath.section == 0)
+			? row[@"title"] : row[@"chatTitle"];
 	chat.isGroup = [row[@"isGroup"] boolValue];
 	chat.hidesBottomBarWhenPushed = YES;
 	[self.navigationController pushViewController:chat animated:YES];

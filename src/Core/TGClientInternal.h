@@ -64,8 +64,17 @@ extern double TGFileWaiterTimeoutSeconds;
 // Common helpers shared between TGClient and categories
 NSDictionary *TGFlattenMessage(NSDictionary *m);
 NSString *TGMessagePreview(NSDictionary *message);
+NSString *TGKnownMessagePreview(NSDictionary *message);
 NSString *TGPhraseFromTypeName(NSString *ctype);
 NSString *TGReactionSummary(NSDictionary *m);
+
+/// Unwraps whatever nesting a title arrived in - a plain string, a
+/// chatFolderName, a formattedText - down to the string. nil when there is
+/// none. Shared because the folder writing half builds these back up.
+NSString *TGPlainTitle(id value);
+
+/// stickerSetInfo entries down to "id", "title" and "cover".
+NSArray *TGFlattenStickerSets(NSArray *sets);
 
 /// The emoji of your own reaction on a message, or nil.
 NSString *TGMyReactionEmoji(NSDictionary *m);

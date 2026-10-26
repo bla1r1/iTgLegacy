@@ -5,12 +5,15 @@
 #import "TGTheme.h"
 #import <QuartzCore/QuartzCore.h>
 #import "TGStyle.h"
+#import "TGAlertSheet.h"
 
 
 @interface TGContactsViewController ()
 @property (nonatomic, strong) NSArray *users;
 @property (nonatomic, strong) NSMutableDictionary *photos;   // fileId -> UIImage
 @property (nonatomic, strong) NSMutableSet *photosRequested;
+/// Who is ticked, while this screen is picking rather than opening.
+@property (nonatomic, strong) NSMutableSet *picked;
 @end
 
 @implementation TGContactsViewController
@@ -21,7 +24,17 @@
 	if ([self respondsToSelector:@selector(setEdgesForExtendedLayout:)])
 		self.edgesForExtendedLayout = UIRectEdgeNone;
 
-	self.title = @"Contacts";
+	self.picked = [NSMutableSet set];
+	self.title = [self isPicking]
+			? (self.addingToChatId ? @"Add Members" : @"New Group")
+			: @"Contacts";
+	if ([self isPicking]){
+		self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc]
+				initWithTitle:(self.addingToChatId ? @"Add" : @"Create")
+						style:UIBarButtonItemStyleDone
+					   target:self action:@selector(commitPicking)];
+		self.navigationItem.rightBarButtonItem.enabled = NO;
+	}
 	[[TGTheme shared] styleNavigationBar:self.navigationController.navigationBar];
 	self.users = @[];
 	self.photos = [NSMutableDictionary dictionary];
@@ -137,7 +150,11 @@ static NSString *TGContactName(NSDictionary *u) {
 	cell.detailTextLabel.font = TGFontCaption();
 	cell.detailTextLabel.textColor = [[TGTheme shared] secondaryTextColour];
 	cell.textLabel.textColor = [[TGTheme shared] primaryTextColour];
-	cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+	cell.accessoryType = [self isPicking]
+			? ([self.picked containsObject:u[@"id"]]
+					? UITableViewCellAccessoryCheckmark
+					: UITableViewCellAccessoryNone)
+			: UITableViewCellAccessoryDisclosureIndicator;
 
 	NSNumber *fileId = u[@"photoFileId"];
 	UIImage *photo = [fileId isKindOfClass:NSNumber.class] ? self.photos[fileId] : nil;
@@ -163,10 +180,91 @@ static NSString *TGContactName(NSDictionary *u) {
 	return cell;
 }
 
+/// Either mode ticks rows; the difference is what the button at the top does
+/// with them.
+- (BOOL)isPicking {
+	return self.picksGroupMembers || self.addingToChatId != 0;
+}
+
+/// A group needs a name and at least one other person - TDLib refuses an
+/// empty one - so the name is asked for once the picking is done.
+- (void)commitPicking {
+	NSArray *userIds = self.picked.allObjects;
+	if (!userIds.count)
+		return;
+
+	__weak typeof(self) weakSelf = self;
+	if (self.addingToChatId){
+		int64_t chatId = self.addingToChatId;
+		// One request for the whole pick: the N-request loop this replaced
+		// answered the server once per contact and could strand half of the
+		// batch on a slow connection.
+		[[TGClient shared] addUsers:userIds toChat:chatId completion:^(BOOL ok, NSArray *refused){
+			TGContactsViewController *me = weakSelf;
+			if (refused.count)
+				[TGAlertSheet showMessage:[NSString stringWithFormat:
+								@"%lu of them could not be added - their "
+								@"privacy settings refuse group invitations.",
+								(unsigned long)refused.count]
+									title:@"Add Members" inView:me.view];
+			[me.navigationController popViewControllerAnimated:YES];
+		}];
+		return;
+	}
+
+	[TGAlertSheet showInput:@"New Group"
+					message:[NSString stringWithFormat:@"%lu %@ selected.",
+							(unsigned long)userIds.count,
+							userIds.count == 1 ? @"person" : @"people"]
+				placeholder:@"Group name"
+					   text:nil
+					 action:@"Create"
+					 inView:self.view
+				   onSubmit:^(NSString *title){
+		[[TGClient shared] createGroupNamed:title withUsers:userIds
+								 completion:^(int64_t chatId, NSArray *failed){
+			TGContactsViewController *me = weakSelf;
+			if (!chatId){
+				[TGAlertSheet showMessage:@"Telegram refused that group."
+									title:@"New Group" inView:me.view];
+				return;
+			}
+			TGChatViewController *chat = [[TGChatViewController alloc] init];
+			chat.chatId = chatId;
+			chat.chatTitle = title;
+			chat.hidesBottomBarWhenPushed = YES;
+			// Replaces this screen rather than stacking on it: going back
+			// from the new group belongs in the chat list.
+			NSMutableArray *stack = [me.navigationController.viewControllers mutableCopy];
+			[stack removeLastObject];
+			[stack addObject:chat];
+			[me.navigationController setViewControllers:stack animated:YES];
+
+			if (failed.count)
+				[TGAlertSheet showMessage:[NSString stringWithFormat:
+								@"%lu of them could not be added - their privacy "
+								@"settings refuse group invitations.",
+								(unsigned long)failed.count]
+									title:@"New Group" inView:chat.view];
+		}];
+	}];
+}
+
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
 	[tableView deselectRowAtIndexPath:indexPath animated:YES];
 
 	NSDictionary *u = self.users[indexPath.row];
+	if ([self isPicking]){
+		NSNumber *userId = u[@"id"];
+		if ([self.picked containsObject:userId])
+			[self.picked removeObject:userId];
+		else
+			[self.picked addObject:userId];
+		self.navigationItem.rightBarButtonItem.enabled = self.picked.count > 0;
+		[tableView reloadRowsAtIndexPaths:@[indexPath]
+						 withRowAnimation:UITableViewRowAnimationNone];
+		return;
+	}
 	NSString *name = TGContactName(u);
 	__weak typeof(self) weakSelf = self;
 

@@ -13,6 +13,9 @@ typedef NS_ENUM(NSInteger, TGSettingsPage) {
 	TGSettingsPageBlocked,
 	TGSettingsPagePowerSaving,
 	TGSettingsPageRecentCalls,
+	TGSettingsPageFolders,
+	TGSettingsPageProxy,
+	TGSettingsPageDownloads,
 	/// Reached by tapping the version under the root list ten times, the way
 	/// their Debug Menu is. Not linked from anywhere.
 	TGSettingsPageDebug

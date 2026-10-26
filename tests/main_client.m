@@ -13,6 +13,10 @@
 #import "TGClientFilesTests.m"
 #import "TGStatusTextTests.m"
 #import "TGClientDraftsTests.m"
+#import "TGClientFoldersTests.m"
+#import "TGClientGroupsTests.m"
+#import "TGMessageParserTests.m"
+#import "TGClientAccountTests.m"
 
 int main(int argc, char *argv[]) {
 	@autoreleasepool {

@@ -183,6 +183,10 @@ APP_SRC_M := \
 	src/Core/TGStatusText.m \
 	src/Controllers/TGNavController.m \
 	src/Core/TGClient+Account.m \
+	src/Core/TGClient+Proxy.m \
+	src/Core/TGClient+Groups.m \
+	src/Core/TGClient+Downloads.m \
+	src/Core/TGClient+Secret.m \
 	src/Core/TGClient+Stickers.m \
 	src/Core/TGDevice.m \
 	src/Core/TGCapabilities.m \
@@ -225,6 +229,7 @@ APP_SRC_M := \
 	src/Controllers/TGChatViewController+Chrome.m \
 	src/Controllers/TGContactsViewController.m \
 	src/Controllers/TGTopicsViewController.m \
+	src/Controllers/TGScheduledViewController.m \
 	src/Controllers/TGForwardPicker.m \
 	src/Controllers/TGCallViewController.m \
 	src/Controllers/TGProfileViewController.m \
@@ -234,6 +239,7 @@ APP_SRC_M := \
 	src/Controllers/TGDeviceViewController.m \
 	src/Controllers/TGStorageViewController.m \
 	src/Controllers/TGSessionsViewController.m \
+	src/Controllers/TGProfilePhotosViewController.m \
 	src/Controllers/TGSettingsViewController.m \
 	src/Controllers/TGSettingsViewController+Pages.m \
 	src/Controllers/TGSettingsViewController+Actions.m \

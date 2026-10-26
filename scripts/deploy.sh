@@ -42,7 +42,7 @@ if [ "$DO_FULL" -eq 1 ]; then
 fi
 
 echo "[+] Locating installed app bundle on device..."
-REMOTE_APP_DIR="$($SSH_CMD "find /var/mobile/Applications \( -name 'LegacyTG.app' -o -name 'iTgLegacy.app' \) 2>/dev/null | head -1" 2>/dev/null | tr -d '\r')"
+REMOTE_APP_DIR="$($SSH_CMD "find /var/containers/Bundle/Application /var/mobile/Containers/Bundle/Application /var/mobile/Applications /Applications \( -name 'LegacyTG.app' -o -name 'iTgLegacy.app' \) 2>/dev/null | head -1" 2>/dev/null | tr -d '\r')"
 
 if [ -z "$REMOTE_APP_DIR" ]; then
     echo "[!] App not found on device. Performing first-time full install..."

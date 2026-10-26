@@ -69,6 +69,9 @@
 	switch (self.page){
 		case TGSettingsPageAppearance:    return @"Appearance";
 		case TGSettingsPageData:          return @"Data and Storage";
+		case TGSettingsPageFolders:       return @"Chat Folders";
+		case TGSettingsPageProxy:         return @"Proxy";
+		case TGSettingsPageDownloads:     return @"Downloads";
 		case TGSettingsPageNotifications: return @"Notifications and Sounds";
 		case TGSettingsPagePrivacy:       return @"Privacy and Security";
 		case TGSettingsPageLanguage:      return @"Language";
@@ -103,6 +106,43 @@
 	[super viewWillAppear:animated];
 	[[TGTheme shared] styleNavigationBar:self.navigationController.navigationBar];
 	[self rebuild];
+}
+
+#pragma mark - reordering, where a page has an order
+
+/// Only the folders page has one, and the order belongs to the pill strip
+/// above the chat list. A table already knows how to drag rows, so this is
+/// the Edit button and the two delegate methods rather than a gesture.
+- (BOOL)tableView:(UITableView *)tableView
+		canMoveRowAtIndexPath:(NSIndexPath *)indexPath {
+	return self.page == TGSettingsPageFolders &&
+		   indexPath.section == 0 &&
+		   indexPath.row < (NSInteger)[TGClient shared].folders.count;
+}
+
+- (void)tableView:(UITableView *)tableView
+		moveRowAtIndexPath:(NSIndexPath *)from
+			   toIndexPath:(NSIndexPath *)to {
+	NSMutableArray *order = [NSMutableArray array];
+	for (NSDictionary *folder in [TGClient shared].folders)
+		if ([folder[@"id"] integerValue])
+			[order addObject:folder[@"id"]];
+	if (from.row >= (NSInteger)order.count || to.row >= (NSInteger)order.count)
+		return;
+
+	NSNumber *moved = order[(NSUInteger)from.row];
+	[order removeObjectAtIndex:(NSUInteger)from.row];
+	[order insertObject:moved atIndex:(NSUInteger)to.row];
+
+	// All Chats stays first: this app's strip draws it as the leading pill and
+	// has nowhere to put it in the middle.
+	[[TGClient shared] reorderFolderIds:order mainListAt:0];
+}
+
+/// Dragging needs no delete control beside it; the folder's own sheet deletes.
+- (UITableViewCellEditingStyle)tableView:(UITableView *)tableView
+		   editingStyleForRowAtIndexPath:(NSIndexPath *)indexPath {
+	return UITableViewCellEditingStyleNone;
 }
 
 - (void)openPage:(TGSettingsPage)page {
@@ -173,6 +213,38 @@
 
 - (void)loadForPage {
 	__weak typeof(self) weakSelf = self;
+
+	if (self.page == TGSettingsPageFolders){
+		// Nothing to reorder until there are two.
+		if ([TGClient shared].folders.count > 1)
+			self.navigationItem.rightBarButtonItem = self.editButtonItem;
+		// The folders themselves arrive through updateChatFolders, which the
+		// client already keeps; only the suggestions have to be asked for.
+		[[TGClient shared] recommendedFoldersWithCompletion:^(NSArray *folders){
+			weakSelf.recommendedFolders = folders;
+			[weakSelf rebuild];
+		}];
+		[TGClient shared].onChatsChanged = ^{ [weakSelf rebuild]; };
+		return;
+	}
+
+	if (self.page == TGSettingsPageDownloads){
+		[[TGClient shared] fileDownloadsMatching:nil activeOnly:NO
+									  completion:^(NSArray *downloads, NSInteger active){
+			weakSelf.downloads = downloads;
+			weakSelf.activeDownloads = active;
+			[weakSelf rebuild];
+		}];
+		return;
+	}
+
+	if (self.page == TGSettingsPageProxy){
+		[[TGClient shared] proxiesWithCompletion:^(NSArray *proxies){
+			weakSelf.proxies = proxies;
+			[weakSelf rebuild];
+		}];
+		return;
+	}
 
 	if (self.page == TGSettingsPageNotifications){
 		for (NSString *scope in @[@"private", @"groups", @"channels"]){

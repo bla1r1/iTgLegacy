@@ -55,6 +55,13 @@ static const NSInteger kSectionLogout  = 5;
 - (void)loadDetails;
 - (void)reloadTableDebounced;
 - (void)doReloadTable;
+- (void)showMemberActionsFor:(NSDictionary *)member;
+- (void)runMemberAction:(NSString *)action onUser:(int64_t)userId named:(NSString *)name;
+- (void)showInviteLink;
+
+/// The photo-library picker the group photo opens, and the text it edits.
+@property (nonatomic, assign) BOOL pickingChatPhoto;
+@property (nonatomic, copy) NSString *chatDescription;
 
 @end
 

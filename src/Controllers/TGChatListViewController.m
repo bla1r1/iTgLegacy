@@ -1,6 +1,7 @@
 #import "TGChatListViewControllerInternal.h"
 #import "TGStatusText.h"
 #import "TGStyle.h"
+#import "TGAlertSheet.h"
 
 // Height of the folder pill strip above the chat list (official-style tabs).
 static const CGFloat kFolderTabRow = 40.0f;
@@ -379,9 +380,93 @@ static const CGFloat kFolderTabRow = 40.0f;
 }
 
 - (void)composeTapped {
-	TGContactsViewController *contacts = [[TGContactsViewController alloc] init];
-	contacts.title = @"New Message";
-	[self.navigationController pushViewController:contacts animated:YES];
+	__weak typeof(self) weakSelf = self;
+	[TGAlertSheet showChoices:@[@"New Message", @"New Group", @"Join by Invite Link"]
+						title:nil
+			 destructiveIndex:-1
+					   inView:self.navigationController.view ?: self.view
+					 onChoice:^(NSInteger index){
+		TGChatListViewController *me = weakSelf;
+		if (index != 2){
+			TGContactsViewController *contacts = [[TGContactsViewController alloc] init];
+			if (index == 1)
+				contacts.picksGroupMembers = YES;
+			else
+				contacts.title = @"New Message";
+			[me.navigationController pushViewController:contacts animated:YES];
+			return;
+		}
+		// A link is joined from anywhere: the sheet starts from the
+		// pasteboard, which is where a copied link already sits.
+		[TGAlertSheet showInput:@"Join by Invite Link"
+						message:nil
+					placeholder:@"t.me/joinchat/… or t.me/+…"
+						   text:[UIPasteboard generalPasteboard].string
+						 action:@"Check"
+						 inView:me.view
+					   onSubmit:^(NSString *link){
+			[me joinByInviteLink:link];
+		}];
+	}];
+}
+
+/// A pasted t.me link joined: what it is first, then the chat. The account
+/// already in the chat does not join again - it only opens it.
+- (void)joinByInviteLink:(NSString *)rawLink {
+	NSString *link = [rawLink stringByTrimmingCharactersInSet:
+			[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+	if (![link hasPrefix:@"http"])
+		link = [@"https://" stringByAppendingString:link];
+	__weak typeof(self) weakSelf = self;
+	[[TGClient shared] checkInviteLink:link completion:
+			^(NSString *title, NSInteger members, BOOL alreadyMember){
+		TGChatListViewController *me = weakSelf;
+		if (!me)
+			return;
+		if (!title.length){
+			[TGAlertSheet showMessage:@"That link answers nothing - expired, "
+									  @"revoked, or mistyped."
+								title:@"Invite Link" inView:me.view];
+			return;
+		}
+		NSString *say = [NSString stringWithFormat:@"%@ · %ld members",
+						 title, (long)members];
+		NSString *action = alreadyMember ? @"Open Chat" : @"Join";
+		[TGAlertSheet showConfirm:say
+							title:@"Invite Link"
+						   action:action
+					  destructive:NO
+						   inView:me.view
+						onConfirm:^{
+			TGChatListViewController *inner = weakSelf;
+			[[TGClient shared] joinChatByInviteLink:link completion:^(int64_t chatId, NSString *name){
+				if (!chatId){
+					if (inner)
+						[TGAlertSheet showMessage:@"Telegram refused the join."
+											title:@"Invite Link" inView:inner.view];
+					return;
+				}
+				dispatch_async(dispatch_get_main_queue(), ^{
+					TGChatListViewController *after = weakSelf;
+					if (!after)
+						return;
+					// The chat appears in the list with the update; it is
+					// used straight out of it when it has arrived, forced
+					// into the shape a joined group has when it has not.
+					NSDictionary *found = nil;
+					for (NSDictionary *c in [TGClient shared].chats)
+						if ([c[@"id"] longLongValue] == chatId){
+							found = c;
+							break;
+						}
+					NSDictionary *c = found ?: (@{@"id" : @(chatId),
+												  @"title" : (name ?: title ?: @""),
+												  @"isGroup" : @YES});
+					[after openChatInfo:c];
+				});
+			}];
+		}];
+	}];
 }
 
 - (void)reload {
@@ -653,7 +738,12 @@ static NSString *TGChatDate(NSTimeInterval unix) {
 
 	NSDictionary *c = [self visibleChats][indexPath.row - header.count];
 	NSLog(@"open chat: group=%@ forum=%@", c[@"isGroup"], c[@"isForum"] ?: @"(absent)");
+	[self openChatInfo:c];
+}
 
+/// The one place a chat dictionary becomes a screen: the forum check is what
+/// decides a topics list from a plain chat, and both push the same way.
+- (void)openChatInfo:(NSDictionary *)c {
 	if ([c[@"isForum"] boolValue]){
 		TGTopicsViewController *topics = [[TGTopicsViewController alloc] init];
 		topics.chatId = [c[@"id"] longLongValue];

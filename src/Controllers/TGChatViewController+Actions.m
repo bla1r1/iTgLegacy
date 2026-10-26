@@ -91,10 +91,34 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 	if (![m[@"service"] boolValue])
 		[items addObject:@{@"title" : (heldId == self.pinnedMessageId ? @"Unpin" : @"Pin"),
 						   @"icon" : @"pin"}];
+	// Closing a poll is the sender's to do, and only while it is still open.
+	if (mine && [m[@"pollOptions"] count] && ![m[@"pollClosed"] boolValue])
+		[items addObject:@{@"title" : @"Stop Poll", @"icon" : @"select"}];
+	// A live pin of your own stays on the map until you take it off.
+	if (mine && [m[@"kind"] isEqualToString:@"messageLiveLocation"]
+			 && [m[@"liveEditable"] boolValue])
+		[items addObject:@{@"title" : @"Stop Live Location", @"icon" : @"delete",
+						   @"destructive" : @YES}];
+	// A poll's crowd and its options: voters answered, an option made after
+	// the fact, an option taken out of it.
+	if ([m[@"pollOptions"] count]){
+		if ([m[@"pollClosed"] boolValue] || [m[@"pollVoters"] boolValue])
+			[items addObject:@{@"title" : @"Poll Voters", @"icon" : @"select"}];
+		if (mine && [m[@"pollOpen"] boolValue])
+			[items addObject:@{@"title" : @"Add Option", @"icon" : @"edit"}];
+		if (mine && [m[@"pollOpen"] boolValue] && [m[@"pollDeletable"] boolValue])
+			[items addObject:@{@"title" : @"Delete Option", @"icon" : @"delete",
+							   @"destructive" : @YES}];
+	}
 	[items addObject:@{@"title" : @"Copy Link", @"icon" : @"copy"}];
 	// A sticker you are holding is a sticker you may want to keep.
 	if ([m[@"kind"] isEqualToString:@"messageSticker"] && TGStickerFileId(m) > 0)
 		[items addObject:@{@"title" : @"Add to Favourites", @"icon" : @"pin"}];
+	// Someone else's message in a group is the only place a spam report has
+	// anywhere to go: reportSupergroupSpam wants a supergroup behind it.
+	if (!mine && self.isGroup)
+		[items addObject:@{@"title" : @"Report Spam", @"icon" : @"privacy",
+						   @"destructive" : @YES}];
 	if (mine)
 		[items addObject:@{@"title" : @"Delete", @"icon" : @"delete",
 						   @"destructive" : @YES}];
@@ -163,6 +187,174 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 		self.pinnedMessageId = 0;
 		[self hidePinnedBanner];
 
+	} else if ([action isEqualToString:@"Stop Poll"]){
+		__weak typeof(self) weakSelf = self;
+		[TGAlertSheet showConfirm:@"Nobody can vote after this, and the result "
+								  @"stands as it is."
+							title:@"Stop Poll"
+						   action:@"Stop"
+					  destructive:YES
+						   inView:self.view
+						onConfirm:^{
+			[[TGClient shared] stopPoll:messageId inChat:weakSelf.chatId];
+		}];
+
+	} else if ([action isEqualToString:@"Stop Live Location"]){
+		// The pin comes off the map: an edit whose period says zero, which
+		// is what ending a live location is on the wire.
+		int64_t chatId = self.chatId;
+		__weak typeof(self) weakSelf = self;
+		[TGAlertSheet showConfirm:@"Your location stops updating for everyone, "
+								  @"right now."
+							title:@"Stop Live Location"
+						   action:@"Stop"
+					  destructive:YES
+						   inView:self.view
+						onConfirm:^{
+			[[TGClient shared] editLiveLocationOfMessage:messageId
+												  inChat:chatId
+												latitude:0.0
+											   longitude:0.0
+											  livePeriod:0
+											  completion:nil];
+			TGChatViewController *me = weakSelf;
+			if (me){
+				me.liveLocationMessageId = 0;
+				me.liveLocationSeconds = 0;
+				[me.locationManager stopUpdatingLocation];
+			}
+		}];
+	} else if ([action isEqualToString:@"Poll Voters"]){
+		// Who voted which way: the answers first, the people behind one of
+		// them next. A poll without answers to look at says so.
+		NSArray *options = m[@"pollOptions"];
+		NSMutableArray *titles = [NSMutableArray array];
+		for (NSDictionary *option in options)
+			[titles addObject:option[@"text"][@"text"] ?: option[@"text"] ?: @"?"];
+		if (!titles.count){
+			[TGAlertSheet showMessage:@"This poll has no answers to look "
+									  @"behind." title:@"Poll Voters"
+								inView:self.view];
+			return;
+		}
+		int64_t chatId = self.chatId;
+		__weak typeof(self) weakSelf = self;
+		[TGAlertSheet showChoices:titles
+							title:m[@"pollQuestion"] ?: @"Poll"
+				 destructiveIndex:-1
+						   inView:self.view
+						 onChoice:^(NSInteger index){
+			[[TGClient shared] pollVotersOfOption:index ofMessage:messageId inChat:chatId
+									   completion:^(NSArray *voters, BOOL end){
+				TGChatViewController *me = weakSelf;
+				if (!me)
+					return;
+				if (!voters.count){
+					[TGAlertSheet showMessage:@"Nobody voted for that."
+										title:@"Poll Voters" inView:me.view];
+					return;
+				}
+				NSMutableArray *rows = [NSMutableArray array];
+				for (NSDictionary *voter in voters)
+					[rows addObject:voter[@"name"] ?: @"?"];
+				NSString *head = [NSString stringWithFormat:@"%@ · %lu%@",
+						titles[index], (unsigned long)voters.count,
+						end ? @"" : @"…"];
+				[TGAlertSheet showChoices:rows
+									title:head
+						 destructiveIndex:-1
+								   inView:me.view
+								 onChoice:^(NSInteger pick){}];
+			}];
+		}];
+
+	} else if ([action isEqualToString:@"Add Option"]){
+		// A poll that grew after the fact: the line asked for, sent, and the
+		// message re-answered by the update the client does not watch for.
+		int64_t chatId = self.chatId;
+		__weak typeof(self) weakSelf = self;
+		[TGAlertSheet showInput:@"Add Option"
+						message:nil
+					placeholder:@"New answer"
+						   text:nil
+						 action:@"Add"
+						 inView:self.view
+					   onSubmit:^(NSString *text){
+			NSString *what = [text stringByTrimmingCharactersInSet:
+					[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+			[[TGClient shared] addPollOption:what toMessage:messageId inChat:chatId
+								  completion:^(BOOL ok){
+				TGChatViewController *me = weakSelf;
+				if (!ok)
+					[TGAlertSheet showMessage:@"Telegram refused the new answer - "
+											  @"this poll does not grow."
+										title:@"Add Option" inView:me.view];
+			}];
+		}];
+
+	} else if ([action isEqualToString:@"Delete Option"]){
+		// The answer taken out: the options with votes on them are not this
+		// menu's to guess at - the server owns the refusal, this sheet owns
+		// the confirm.
+		NSArray *options = m[@"pollOptions"];
+		NSMutableArray *titles = [NSMutableArray array];
+		for (NSDictionary *option in options)
+			[titles addObject:option[@"text"][@"text"] ?: option[@"text"] ?: @"?"];
+		int64_t chatId = self.chatId;
+		__weak typeof(self) weakSelf = self;
+		[TGAlertSheet showChoices:titles
+							title:m[@"pollQuestion"] ?: @"Poll"
+				 destructiveIndex:-1
+						   inView:self.view
+						 onChoice:^(NSInteger index){
+			NSString *optionId = (NSString *)options[index][@"id"];
+			NSString *which = titles[index];
+			[TGAlertSheet showConfirm:[NSString stringWithFormat:
+					@"The answer \"%@\" is removed from the poll, along "
+					@"with what it collected so far.", which]
+								title:@"Delete Option"
+							   action:@"Delete"
+						  destructive:YES
+							   inView:weakSelf.view
+							onConfirm:^{
+				[[TGClient shared] deletePollOption:optionId
+										  ofMessage:messageId
+											 inChat:chatId
+										 completion:^(BOOL ok){
+					TGChatViewController *me = weakSelf;
+					if (!ok)
+						[TGAlertSheet showMessage:@"Telegram refused to remove "
+												  @"that answer."
+											title:@"Delete Option" inView:me.view];
+				}];
+			}];
+		}];
+
+	} else if ([action isEqualToString:@"Report Spam"]){
+		int64_t chatId = self.chatId;
+		__weak typeof(self) weakSelf = self;
+		[TGAlertSheet showChoices:@[@"Report", @"Report and Block Sender"]
+							title:@"Report Spam"
+						  message:@"Telegram's moderators see the message. "
+								  @"Blocking also stops them replying to you "
+								  @"again."
+				 destructiveIndex:1
+						   inView:self.view
+						 onChoice:^(NSInteger index){
+			TGChatViewController *me = weakSelf;
+			if (index == 1)
+				[[TGClient shared] blockSenderOfMessage:messageId
+										 deleteMessages:YES
+											 reportSpam:YES];
+			[[TGClient shared] reportSpamMessages:@[@(messageId)]
+										   inChat:chatId
+									   completion:^(BOOL ok){
+				[TGSnackbar showInView:me.view
+								  text:(ok ? @"Reported" : @"Telegram refused that")
+							   seconds:2 onCommit:nil];
+			}];
+		}];
+
 	} else if ([action isEqualToString:@"Copy Link"]){
 		__weak typeof(self) weakSelf = self;
 		[[TGClient shared] linkToMessage:messageId inChat:self.chatId
@@ -230,25 +422,100 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 	[self presentViewController:picker animated:YES completion:nil];
 }
 
-/// One fix, then stop - a chat wants a pin, not a running trace.
+/// One fix, or a trace that keeps moving: the sheet is where the two live
+/// apart, the trace with the period a live location is allowed.
 - (void)sendCurrentLocation {
 	if (!self.locationManager){
 		self.locationManager = [[CLLocationManager alloc] init];
 		self.locationManager.delegate = self;
 		self.locationManager.desiredAccuracy = kCLLocationAccuracyHundredMeters;
 	}
+	__weak typeof(self) weakSelf = self;
+	[TGAlertSheet showChoices:@[@"Share a Fixed Pin", @"Share Live Location..."]
+						title:nil
+			 destructiveIndex:-1
+					   inView:self.view
+					 onChoice:^(NSInteger index){
+		if (index == 0)
+			[weakSelf startLocationUpdates];
+		else {
+			[TGAlertSheet showChoices:@[@"for 15 minutes", @"for 1 hour", @"for 8 hours"]
+								title:@"Live for..."
+					 destructiveIndex:-1
+							   inView:weakSelf.view
+							 onChoice:^(NSInteger periodIndex){
+				weakSelf.liveLocationSeconds =
+						periodIndex == 0 ? 15 * 60 : (periodIndex == 1 ? 3600 : 28800);
+				weakSelf.liveLocationMessageId = 0;
+				weakSelf.liveLocationRestarts = 0;
+				[weakSelf startLocationUpdates];
+			}];
+		}
+	}];
+}
+
+/// The manager itself runs until it has what its caller needs: one fix ends
+/// it, a live trace keeps it going until the pin is stopped.
+- (void)startLocationUpdates {
+	if ([self.locationManager respondsToSelector:@selector(requestWhenInUseAuthorization)])
+		[self.locationManager requestWhenInUseAuthorization];
 	[self.locationManager startUpdatingLocation];
 }
 
 - (void)locationManager:(CLLocationManager *)manager
 	 didUpdateLocations:(NSArray *)locations {
 	CLLocation *fix = [locations lastObject];
-	[manager stopUpdatingLocation];
 	if (!fix)
 		return;
-	[[TGClient shared] sendLocation:fix.coordinate.latitude
-						  longitude:fix.coordinate.longitude
-							 toChat:self.chatId];
+	double lat = fix.coordinate.latitude, lon = fix.coordinate.longitude;
+
+	if (self.liveLocationSeconds){
+		// Live: the first fix makes the message, the rest move it - and the
+		// queued-up fixes are dropped while TDLib has one in flight, since
+		// each edit answers with the message in full.
+		if (self.liveLocationInFlight)
+			return;
+		self.liveLocationInFlight = YES;
+		int64_t chatId = self.chatId;
+		NSInteger remaining = (NSInteger)(self.liveLocationSeconds -
+				([[NSDate date] timeIntervalSince1970] - self.liveLocationSince));
+		if (remaining < 1)
+			remaining = 0;
+		__weak typeof(self) weakSelf = self;
+		if (self.liveLocationMessageId){
+			[[TGClient shared] editLiveLocationOfMessage:self.liveLocationMessageId
+												  inChat:chatId
+												latitude:lat
+											   longitude:lon
+											  livePeriod:remaining
+											  completion:^(BOOL ok){
+				TGChatViewController *me = weakSelf;
+				if (!me)
+					return;
+				me.liveLocationInFlight = NO;
+				if (!ok)
+					me.liveLocationRestarts++;
+			}];
+			return;
+		}
+		self.liveLocationSince = [[NSDate date] timeIntervalSince1970];
+		[[TGClient shared] sendLiveLocation:self.liveLocationSeconds
+								   latitude:lat
+								  longitude:lon
+									 toChat:chatId
+								  completion:^(int64_t messageId){
+			TGChatViewController *me = weakSelf;
+			if (!me)
+				return;
+			me.liveLocationInFlight = NO;
+			me.liveLocationMessageId = messageId;
+		}];
+		return;
+	}
+
+	// Fixed: one fix is the pin, and the manager is done.
+	[manager stopUpdatingLocation];
+	[[TGClient shared] sendLocation:lat longitude:lon toChat:self.chatId];
 }
 
 - (void)locationManager:(CLLocationManager *)manager didFailWithError:(NSError *)error {

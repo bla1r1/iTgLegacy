@@ -164,6 +164,14 @@ static inline NSString *TGBytes(long long bytes) {
 @property (nonatomic, strong) NSString *tdlibVersion;
 @property (nonatomic, assign) BOOL pickingProfilePhoto;
 @property (nonatomic, assign) CGFloat lastScrollY;
+/// The folders page: the account's own folders and Telegram's suggestions,
+/// each loaded once the page opens.
+@property (nonatomic, strong) NSArray *recommendedFolders;
+/// The proxy page: every proxy TDLib knows, and whether one is on.
+@property (nonatomic, strong) NSArray *proxies;
+/// The downloads page: the list Telegram keeps, and how many are running.
+@property (nonatomic, strong) NSArray *downloads;
+@property (nonatomic, assign) NSInteger activeDownloads;
 
 + (NSArray *)privacySettings;
 + (NSArray *)privacyTitles;
@@ -180,9 +188,20 @@ static inline NSString *TGBytes(long long bytes) {
 - (void)openURL:(NSString *)url;
 - (void)openSavedMessages;
 - (void)openChat:(int64_t)chatId title:(NSString *)title;
-- (void)showFolders;
+- (void)addProxyByAsking;
+- (void)addChatToFolder:(NSInteger)folderId named:(NSString *)title;
+- (void)removeChatFromFolder:(NSInteger)folderId named:(NSString *)title;
+- (void)runFolderActionFor:(NSDictionary *)folder;
+- (void)runProxyActionFor:(NSDictionary *)proxy;
+- (void)runDownloadActionFor:(NSDictionary *)download;
 - (void)showPremiumState;
 - (void)showTwoStepState;
+- (void)askCurrentPasswordThen:(void (^)(NSString *current))next;
+- (void)askNewPasswordReplacing:(NSString *)current;
+- (void)commitPassword:(NSString *)new replacing:(NSString *)current hint:(NSString *)hint;
+- (void)askTurnPasswordOff;
+- (void)askRecoveryAddress;
+- (void)askDeleteAccountNow;
 - (void)openSupport;
 - (void)askPrivacyRuleAtIndex:(NSUInteger)index;
 - (void)chooseAutoNight;
