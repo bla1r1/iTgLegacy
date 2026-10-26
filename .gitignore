@@ -43,3 +43,6 @@ state/
 stamp-h1
 libtool
 libs/libtgvoip
+*.ips
+*.log
+/Baseband
