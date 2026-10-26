@@ -140,10 +140,13 @@ Groups, folders and the write half of screens the app already shows read-only.
   favourites or unfavourites it (`addFavoriteSticker`,
   `removeFavoriteSticker`), and a held set uninstalls, archives and
   restores (`changeStickerSet` both ways), with the archived shelf behind
-  `getArchivedStickerSets` and the install order behind
-  `reorderInstalledStickerSets` — a "move" the strip still wants a drag
-  for. `getAttachedStickerSets` is in the client; the media composer that
-  would show the sets is still to come.
+  `getArchivedStickerSets` — and the strip is drag-ordered now: holding a
+  set's pill picks it up, it follows the finger along the strip, and a
+  drop rebuilds the local `stickerSets` before
+  `reorderInstalledStickerSets` carries the dragged order, with the lit
+  pill staying lit across its own tag shuffle. `getAttachedStickerSets`
+  is in the client; the media composer that would show the sets is still
+  to come.
 - **Scheduled messages** — **done**. Holding Send offers a date, "when
   online" for private chats, and the queue:
   `editMessageSchedulingState` with the state spelled (an absent one is

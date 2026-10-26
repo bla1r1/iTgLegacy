@@ -106,6 +106,10 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 /// Bumped every time the grid is rebuilt, so an answer for an older grid
 /// is dropped rather than drawn into the wrong cell.
 @property (nonatomic, assign) NSUInteger generation;
+// A set pill being dragged along the strip: where the finger grabbed it,
+// and the frame it lifted from.
+@property (nonatomic, assign) CGFloat stickerDragOffset;
+@property (nonatomic, assign) CGRect stickerDragFrame;
 @end
 
 @implementation TGEmojiPanel
@@ -314,6 +318,16 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 			[button setTitle:entry[@"emoji"] forState:UIControlStateNormal];
 		}
 		[button addTarget:self action:@selector(stripTapped:) forControlEvents:UIControlEventTouchUpInside];
+		// A set can be picked up and put elsewhere: held, it follows the
+		// finger, and a drop right of its neighbours is the new installed
+		// order. Favourites, recents, the magnifier stay put - they are
+		// panels of the strip, not part of the installed order.
+		if (self.tab == TGEmojiPanelTabStickers && (NSInteger)i >= 3){
+			UILongPressGestureRecognizer *drag = [[UILongPressGestureRecognizer alloc]
+					initWithTarget:self action:@selector(stickerSetDragged:)];
+			drag.minimumPressDuration = 0.45;
+			[button addGestureRecognizer:drag];
+		}
 		[self.strip addSubview:button];
 
 		NSNumber *thumbId = entry[@"thumbId"];
@@ -357,6 +371,101 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 	self.stripIndex = button.tag;
 	[self updateStripHighlight];
 	[self loadItemsForStripIndex:button.tag];
+}
+
+/// A held set pill follows the finger along the strip; where it drops is
+/// its slot in the installed order. The strip's own scrolling is pinned
+/// shut while the pill is up, one finger cannot steer a pill and pan a
+/// scrollview at once - the same school of geometry the folder strip's
+/// drag learned the hard way.
+- (void)stickerSetDragged:(UILongPressGestureRecognizer *)gesture {
+	UIButton *pill = (UIButton *)gesture.view;
+	UIScrollView *strip = (UIScrollView *)pill.superview;
+	if (![strip isKindOfClass:UIScrollView.class] ||
+			self.tab != TGEmojiPanelTabStickers || pill.tag < 3)
+		return;
+
+	if (gesture.state == UIGestureRecognizerStateBegan){
+		CGPoint here = [gesture locationInView:pill];
+		self.stickerDragOffset = here.x - pill.bounds.size.width / 2.0f;
+		self.stickerDragFrame = pill.frame;
+		self.strip.scrollEnabled = NO;
+		pill.transform = CGAffineTransformMakeScale(1.08f, 1.08f);
+		pill.alpha = 0.85f;
+	}
+	else if (gesture.state == UIGestureRecognizerStateChanged){
+		CGPoint here = [gesture locationInView:strip];
+		// Content coordinates, the strip's own currency: the frame lives
+		// in them and the finger's press point rides along.
+		CGFloat x = here.x - strip.contentOffset.x - self.stickerDragOffset;
+		CGFloat first = 4, last = strip.contentSize.width
+				- self.stickerDragFrame.size.width - 4;
+		if (x < first) x = first;
+		if (x > last)  x = last;
+		pill.frame = CGRectMake(x, self.stickerDragFrame.origin.y,
+				self.stickerDragFrame.size.width,
+				self.stickerDragFrame.size.height);
+	}
+	else if (gesture.state == UIGestureRecognizerStateEnded ||
+			 gesture.state == UIGestureRecognizerStateCancelled){
+		strip.scrollEnabled = YES;
+		pill.transform = CGAffineTransformIdentity;
+		pill.alpha = 1.0f;
+
+		NSInteger from = pill.tag - 3;
+		NSArray *sets = self.stickerSets;
+		if (gesture.state == UIGestureRecognizerStateCancelled ||
+				from < 0 || from >= (NSInteger)sets.count)
+			return;   // reloadStrip puts the pill back where the data says
+
+		// The slot is what the pill's centre cleared on the way over:
+		// every other set pill it passed counts one slot ahead.
+		CGPoint here = [gesture locationInView:strip];
+		CGFloat centre = here.x - strip.contentOffset.x;
+		NSInteger slot = 0;
+		for (UIView *view in strip.subviews){
+			if (![view isKindOfClass:UIButton.class])
+				continue;
+			NSInteger tag = view.tag;
+			if (tag < 3 || tag - 3 == from)
+				continue;
+			if (view.center.x < centre)
+				slot++;
+		}
+		if (slot == from)
+			return;   // a hand back down on its own slot
+
+		// Whatever pill is lit stays lit, even after the tags have moved
+		// underneath it: the selection belongs to the set, not the index.
+		NSDictionary *selected = nil;
+		NSInteger selectedSet = self.stripIndex - 3;
+		if (selectedSet >= 0 && selectedSet < (NSInteger)sets.count)
+			selected = sets[selectedSet];
+
+		NSMutableArray *order = [NSMutableArray array];
+		[sets enumerateObjectsUsingBlock:^(NSDictionary *set, NSUInteger idx,
+										   BOOL *stop __unused){
+			if ((NSInteger)idx != from)
+				[order addObject:set];
+		}];
+		[order insertObject:sets[from] atIndex:MIN(slot, (NSInteger)order.count)];
+
+		// Local first: the strip re-renders off stickerSets, so a change
+		// that only went to TDLib would snap the pills back mid-flight.
+		self.stickerSets = order;
+		if (selected){
+			NSInteger found = (NSInteger)[order indexOfObject:selected];
+			if (found != NSNotFound)
+				self.stripIndex = found + 3;
+		}
+		[self reloadStrip];
+
+		NSMutableArray *ids = [NSMutableArray array];
+		for (NSDictionary *set in order)
+			if (set[@"id"])
+				[ids addObject:set[@"id"]];
+		[[TGClient shared] reorderInstalledStickerSets:ids];
+	}
 }
 
 #pragma mark - items
