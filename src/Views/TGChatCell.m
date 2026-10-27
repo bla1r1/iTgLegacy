@@ -153,10 +153,10 @@ static UIFont *TGChatCellTitleFont(void) {
 			ceilf(date.width), TGMetricLineBody);
 	CGFloat titleRight = CGRectGetMinX(self.dateLabel.frame) - TGMetricChatCellDateGap;
 	if (!self.tick.hidden) {
-		self.tick.frame = CGRectMake(titleRight - TGMetricMediaStampCheckWidth,
-				kFirstLineTop + TGMetricPadSmall, TGMetricMediaStampCheckWidth,
-				TGMetricMediaStampCheckHeight);
-		titleRight -= (TGMetricMediaStampCheckWidth + TGMetricPadSmall);
+		self.tick.frame = CGRectMake(titleRight - TGMetricTicksWidth,
+				kFirstLineTop + TGMetricPadSmall, TGMetricTicksWidth,
+				TGMetricTicksHeight);
+		titleRight -= (TGMetricTicksWidth + TGMetricPadSmall);
 	}
 
 	CGFloat muteW = self.muteIcon.hidden ? 0 : kMuteRoom;

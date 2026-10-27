@@ -12,6 +12,35 @@
 // two siblings. Those take a computed value, never a literal: scripts/lint_tokens.sh
 // fails the build on a literal anywhere, here included.
 //
+// ── on two names holding the same number ────────────────────────────────────
+//
+// There are 245 names here over about a hundred values, so most numbers are
+// spelled more
+// than once, and the obvious reading - that the extras are duplicates - is
+// the wrong one. TGMetricButtonHeight, TGMetricInputBarHeight and
+// TGMetricPlayerBarHeight are all 48 and all have to stay: raising the music
+// player's strip must not silently move every button in the app. A name
+// answers to a drawing, not to a number, and two drawings that happen to
+// agree today are still two drawings.
+//
+// So a name is merged only when the two are the same thing and cannot come
+// apart - the ticks on a bubble and the ticks on a stamp over a picture are
+// one glyph, drawn once, and had no business having two pairs of names; a map
+// card's height and the height it is displayed at cannot differ without the
+// image being stretched. Both of those are gone.
+//
+// Where a name does belong to a scale - any gap, inset or margin; the box
+// given to one line of text - it does not repeat the number, it derives from
+// the step, so TGMetricAlertPad still says what it is for while sitting on
+// the 16pt step and cannot drift off it in silence. Three scales carry most
+// of this: spacing, the line boxes, and the corner radii.
+//
+// What does not go here at all is a dimension only one screen has any use
+// for. A call bubble's width allowance and a map pin's 28 by 36 live beside
+// the code that draws them - in TGChatViewControllerInternal.h and the rest -
+// because a name in this file that one file reads is how the layer came to
+// hold more names than values in the first place.
+//
 #import <UIKit/UIKit.h>
 
 #pragma mark - type scale
@@ -242,15 +271,14 @@ static const CGFloat TGMetricCornerBubbleJoined  = 5.0f;
 static const CGFloat TGMetricCallAvatarSide      = 120.0f;
 /// Round call action button square side (60 pt).
 static const CGFloat TGMetricCallButtonSide      = 60.0f;
-/// Call screen bottom action buttons baseline offset (130 pt).
-/// The call screen laid out as a cursor from the top, then two rows measured
-/// up from the bottom: the toggles with their captions, and End under them.
+/// The call screen reads as a cursor from the top - the emoji that confirm
+/// the key, the picture, the name, what the call is doing - and then one row
+/// of buttons measured up from the bottom, End among them.
 static const CGFloat TGMetricCallEmojiTop        = 26.0f;
 static const CGFloat TGMetricCallEmojiHeight     = 30.0f;
-static const CGFloat TGMetricCallNameHeight      = 30.0f;
-static const CGFloat TGMetricCallStatusHeight    = TGMetricLineRow;
+static const CGFloat TGMetricCallNameHeight      = TGMetricLineHero;
+static const CGFloat TGMetricCallStatusHeight    = TGMetricLineBody;
 static const CGFloat TGMetricCallTogglesBottom   = 150.0f;
-static const CGFloat TGMetricCallEndBottom       = 70.0f;
 /// Call button label vertical gap from button origin (65 pt).
 static const CGFloat TGMetricCallLabelGap        = 65.0f;
 /// Call button caption label width (80 pt).
@@ -286,6 +314,9 @@ static const CGFloat TGMetricPollRow            = 30.0f;
 /// Compose banner text right margin (leaving room for cancel button) (66 pt).
 static const CGFloat TGMetricComposeBannerTextMarginRight = 66.0f;
 /// Pinned message banner text right padding (24 pt).
+/// Not a step on the spacing scale: it is the room a banner's text leaves on
+/// the right for the cross that dismisses it, so it tracks that button's
+/// width and not any gap.
 static const CGFloat TGMetricPinnedBannerTextPadRight = 24.0f;
 
 #pragma mark - input and picker metrics
@@ -389,8 +420,6 @@ static const CGFloat TGAlphaDisabled          = 0.40f;
 static const CGFloat TGAlphaHighlight         = 0.30f;
 /// Pulse ring / track trace opacity (0.25).
 static const CGFloat TGAlphaRingTrack         = 0.25f;
-/// Subtle card / background tint (0.18).
-static const CGFloat TGAlphaSubtle            = 0.18f;
 /// Minimum threshold alpha to consider non-empty (0.01).
 static const CGFloat TGAlphaEpsilon           = 0.01f;
 /// Fully transparent (0.0).
@@ -499,6 +528,9 @@ static const CGFloat TGMetricLoginLinkHeight     = 30.0f;
 /// Where the QR code sits, which is below a one-line instruction rather than
 /// the two the other steps carry.
 static const CGFloat TGMetricStackQRTop          = 64.0f;
+/// The longest side a photo is scaled to before it is sent. Telegram's own
+/// limit, so a picture that leaves this app is the size their clients expect.
+static const CGFloat TGMetricUploadPhotoSide     = 640.0f;
 /// An unbounded height to measure wrapped text against.
 static const CGFloat TGMetricTextMeasureHeight   = 10000.0f;
 /// Selected photo checkmark badge side in attach sheet.
@@ -530,6 +562,8 @@ static const CGFloat TGMetricBubbleDiscColumn   = 24.0f;
 /// height-17 and one at a counted offset, and each worked out the room the
 /// ticks take beside it with its own "mine ? 18 : 0".
 static const CGFloat TGMetricStampHeight        = 12.0f;
+/// Not a step on the spacing scale: a position, measured up from the bottom
+/// of a bubble to the baseline the stamp sits on.
 static const CGFloat TGMetricStampBottomInset   = 17.0f;
 static const CGFloat TGMetricStampTicksRoom     = 18.0f;
 /// Radio dot indicator side in polls.
@@ -557,8 +591,10 @@ static const CGFloat TGMetricFolderPillInset    = TGMetricPadSmall;
 /// How much history to fetch around a pinned message when going to it.
 static const CGFloat TGMetricHistoryPageAroundPinned = 40.0f;
 static const CGFloat TGMetricFloatingDateHeight = 22.0f;
-/// Height of an inline location map preview.
-static const CGFloat TGMetricMapHeight          = 130.0f;
+// The map card's own height is TGMetricMapCardHeight, and the bubble shows it
+// at that height. They were two names, and two names for the height a drawn
+// image is displayed at is how an image comes to be drawn at one size and
+// stretched to another.
 /// Width of the audio record lock pill capsule.
 static const CGFloat TGMetricVoicePillWidth     = 32.0f;
 /// Height of the audio record lock pill capsule.
@@ -585,13 +621,10 @@ static const CGFloat TGMetricVoiceSlideCancelDistance = 45.0f;
 static const CGFloat TGMetricVoiceSlideMaxShift = 40.0f;
 /// Maximum visual slide shift during voice lock (12 pt).
 static const CGFloat TGMetricVoiceLockMaxShift  = 12.0f;
-/// Width of small delivery tick marks in media stamp plate (15 pt).
-static const CGFloat TGMetricMediaStampCheckWidth  = 15.0f;
-/// Height of small delivery tick marks in media stamp plate (9 pt).
-static const CGFloat TGMetricMediaStampCheckHeight = 9.0f;
-/// Horizontal inset for ticks inside media stamp plate (16 pt).
-static const CGFloat TGMetricMediaStampCheckInset  = 16.0f;
-/// Horizontal inset for ticks inside photo media stamp plate (17 pt).
+/// How far back the ticks sit from the right edge of a stamp plate drawn on
+/// a picture. The ticks themselves are TGMetricTicksWidth by
+/// TGMetricTicksHeight here as everywhere: it is one glyph, so it had no
+/// business having a second pair of names.
 static const CGFloat TGMetricMediaStampCheckPhotoInset = 17.0f;
 /// Jump button right margin from edge (8 pt).
 static const CGFloat TGMetricJumpMarginRight       = TGMetricPad;
@@ -664,8 +697,6 @@ static const CGFloat TGMetricViewerDismissDistance = 110.0f;
 static const CGFloat TGMetricViewerFadeDistance    = 420.0f;
 /// Video note drag max fade ratio (0.66).
 static const CGFloat TGMetricViewerMaxFadeRatio    = 0.66f;
-/// Slow drag friction damping (0.50).
-static const CGFloat TGDampingDragSlow             = 0.50f;
 /// Horizontal vs vertical velocity ratio to accept reply swipe (1.50).
 static const CGFloat TGDampingReplySwipeSlope      = 1.50f;
 

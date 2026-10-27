@@ -5,6 +5,9 @@
 
 // Height of the folder pill strip above the chat list (official-style tabs).
 static const CGFloat kFolderTabRow = TGMetricFolderTabRow;
+/// The mute and pin marks on a row are drawn at this side and then fitted into
+/// the smaller box the cell gives them, which is what keeps their strokes even.
+static const CGFloat kRowGlyph     = 28.0f;
 
 @implementation TGChatListViewController
 
@@ -32,7 +35,7 @@ static const CGFloat kFolderTabRow = TGMetricFolderTabRow;
 			initWithBarButtonSystemItem:UIBarButtonSystemItemCompose
 				   target:self action:@selector(composeTapped)];
 
-	self.searchBar = [[UISearchBar alloc] initWithFrame:CGRectMake(0, 0, 320, 44)];
+	self.searchBar = [[UISearchBar alloc] initWithFrame:CGRectMake(0, 0, TGMetricScreenWidth, TGMetricRow)];
 	self.searchBar.delegate = self;
 	self.searchBar.placeholder = @"Search";
 	[self styleSearchBar];
@@ -260,7 +263,7 @@ static const CGFloat kFolderTabRow = TGMetricFolderTabRow;
 	if (self.showsArchive || [TGClient shared].folders.count == 0)
 		return nil;
 	UIView *strip = [[UIView alloc] initWithFrame:CGRectMake(0, 0,
-			tableView.bounds.size.width ?: 320, kFolderTabRow)];
+			tableView.bounds.size.width ?: TGMetricScreenWidth, kFolderTabRow)];
 	strip.backgroundColor = [[TGTheme shared] listBackgroundColour];
 	[self buildFolderTabsInto:strip atY:0 width:strip.bounds.size.width
 			folders:[TGClient shared].folders];
@@ -274,9 +277,9 @@ static const CGFloat kFolderTabRow = TGMetricFolderTabRow;
 	CGFloat width = self.tableView.bounds.size.width ?: 320;
 	UIColor *bg = [[TGTheme shared] listBackgroundColour];
 
-	UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0, 0, width, 44)];
+	UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0, 0, width, TGMetricRow)];
 	header.backgroundColor = bg;
-	self.searchBar.frame = CGRectMake(0, 0, width, 44);
+	self.searchBar.frame = CGRectMake(0, 0, width, TGMetricRow);
 	[header addSubview:self.searchBar];
 
 	CGFloat wasHidingHeader = self.headerHeight;
@@ -790,13 +793,15 @@ static NSString *TGChatDate(NSTimeInterval unix) {
 	BOOL muted = [c[@"isMuted"] boolValue];
 	cell.muteIcon.hidden = !muted;
 	if (muted)
-		cell.muteIcon.image = [TGIcons glyphNamed:@"mute" colour:[theme listDateColour] side:28];
+		cell.muteIcon.image = [TGIcons glyphNamed:@"mute" colour:[theme listDateColour]
+											 side:kRowGlyph];
 
 	NSInteger unread = [c[@"unread"] integerValue];
 	cell.badge.hidden = (unread <= 0);
 	cell.pin.hidden = !([c[@"isPinned"] boolValue] && unread <= 0);
 	if (!cell.pin.hidden)
-		cell.pin.image = [TGIcons glyphNamed:@"pin" colour:[theme listDateColour] side:28];
+		cell.pin.image = [TGIcons glyphNamed:@"pin" colour:[theme listDateColour]
+									  side:kRowGlyph];
 	cell.badge.text = unread > 0 ? [NSString stringWithFormat:@"%ld", (long)unread] : @"";
 	// A muted chat still counts, it just stops shouting about it.
 	cell.badge.backgroundColor = [c[@"isMuted"] boolValue]

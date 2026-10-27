@@ -13,7 +13,7 @@
 	}
 
 	CGRect b = self.view.bounds;
-	self.chatSearchBar = [[UISearchBar alloc] initWithFrame:CGRectMake(0, 0, b.size.width, 44)];
+	self.chatSearchBar = [[UISearchBar alloc] initWithFrame:CGRectMake(0, 0, b.size.width, TGMetricRow)];
 	self.chatSearchBar.delegate = self;
 	self.chatSearchBar.placeholder = @"Search in chat";
 	self.chatSearchBar.showsCancelButton = YES;

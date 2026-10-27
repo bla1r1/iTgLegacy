@@ -105,6 +105,11 @@ static AVPlayerLayer *sStoryLayer = nil;
 }
 
 static const CGFloat kStoryGridGap     = TGMetricCollageGap;
+/// The poster's face in the corner of a story tile, and the mark that says a
+/// tile is a video rather than a picture.
+static const CGFloat kStoryFace      = 26.0f;
+static const CGFloat kVideoMark      = 16.0f;
+static const CGFloat kVideoMarkInset = TGMetricPadWide;
 static const NSInteger kStoryGridCols  = 3;
 
 /// Edge to edge, like the media strip: the tile is whatever is left after the
@@ -131,7 +136,7 @@ static const NSInteger kStoryGridCols  = 3;
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
 	CGFloat inset = side * TGMetricEmojiArtworkInsetRatio * 2;
-	[emoji drawInRect:CGRectMake(inset, inset, side - inset * 2, side - inset * 2)
+	[emoji drawInRect:CGRectMake(inset, inset, side - TGDoubled(inset), side - TGDoubled(inset))
 			 withFont:TGFontBoldAtSize(TGHalf(side))
 		lineBreakMode:NSLineBreakByClipping
 		   alignment:NSTextAlignmentCenter];
@@ -211,11 +216,11 @@ static const NSInteger kStoryGridCols  = 3;
 			NSString *first = name.length
 					? [name substringToIndex:1].uppercaseString : @"?";
 			UIButton *face = [UIButton buttonWithType:UIButtonTypeCustom];
-			face.frame = CGRectMake(4, 4, 26, 26);
+			face.frame = CGRectMake(TGMetricPadSmall, TGMetricPadSmall, kStoryFace, kStoryFace);
 			face.layer.cornerRadius = TGMetricCornerCard;
 			face.layer.masksToBounds = YES;
 			face.enabled = NO;
-			[face setImage:[TGIcons avatarWithInitials:first size:26
+			[face setImage:[TGIcons avatarWithInitials:first size:kStoryFace
 											  colourId:userId]
 				  forState:UIControlStateNormal];
 			[cell.contentView addSubview:face];
@@ -246,8 +251,9 @@ static const NSInteger kStoryGridCols  = 3;
 		if (storyKind){
 			if ([tile[@"isVideo"] boolValue]){
 				UIImageView *mark = [[UIImageView alloc] initWithFrame:
-						CGRectMake(side - 20, side - 20, 16, 16)];
-				mark.image = [TGIcons glyphNamed:@"video" colour:[UIColor whiteColor] side:16];
+						CGRectMake(side - kVideoMarkInset, side - kVideoMarkInset, kVideoMark, kVideoMark)];
+				mark.image = [TGIcons glyphNamed:@"video" colour:[UIColor whiteColor]
+									  side:kVideoMark];
 				[thumb addSubview:mark];
 			}
 
@@ -368,7 +374,7 @@ static const NSInteger kStoryGridCols  = 3;
 	backdrop.alpha = 0;
 
 	UIImageView *picture = [[UIImageView alloc] initWithFrame:
-			CGRectInset(window.bounds, 0, 40)];
+			CGRectInset(window.bounds, 0, TGMetricListAvatar)];
 	picture.contentMode = UIViewContentModeScaleAspectFit;
 	[backdrop addSubview:picture];
 
@@ -388,7 +394,8 @@ static const NSInteger kStoryGridCols  = 3;
 	UILabel *note = nil;
 	if ([story[@"isVideo"] boolValue]){
 		note = [[UILabel alloc] initWithFrame:
-				CGRectMake(0, 24, window.bounds.size.width, 18)];
+				CGRectMake(0, TGMetricBubbleDiscColumn, window.bounds.size.width,
+					TGMetricLineBody)];
 		note.text = story[@"videoId"] ? @"Loading video..."
 									  : @"Video story - showing the first frame";
 		note.font = TGFontMeta();

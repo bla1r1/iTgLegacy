@@ -14,6 +14,19 @@ static const CGFloat kButton  = TGMetricButtonHeight;
 static const CGFloat kClose   = TGMetricCloseSide;
 static const CGFloat kAvatar  = TGMetricGiftAvatar;
 static const CGFloat kStar    = TGMetricGiftStar;
+static const CGFloat kCloseGlyph = 16.0f;   ///< the cross inside kClose
+/// The caption column on the left of a row, and the gap between a value and
+/// the face or star that sits in front of it.
+static const CGFloat kCaptionW   = 100.0f;
+static const CGFloat kValueGap   = 6.0f;
+static const CGFloat kStarGap    = TGMetricPadSmall;
+/// A value's own line, which is set against the middle of its row.
+static const CGFloat kValueLine  = TGMetricLineRow;
+/// The heading, which is one line of title type set a little tight.
+static const CGFloat kTitleLine  = 24.0f;
+/// The note a gift may carry, padded as a service plate is.
+static const CGFloat kNotePadH   = TGMetricPadMedium + TGMetricPadTiny;
+static const CGFloat kNotePadV   = TGMetricPadMedium;
 
 /// sizeWithFont: is gone from iOS 7 on, and sizeWithAttributes: does not
 /// exist before it - TGChatCell picks between them the same way.
@@ -32,14 +45,14 @@ static CGFloat TGGiftTextHeight(NSString *text, UIFont *font, CGFloat width) {
 	if (!text.length)
 		return 0;
 	if ([text respondsToSelector:@selector(boundingRectWithSize:options:attributes:context:)])
-		return ceilf([text boundingRectWithSize:CGSizeMake(width, 10000)
+		return ceilf([text boundingRectWithSize:CGSizeMake(width, TGMetricTextMeasureHeight)
 									   options:NSStringDrawingUsesLineFragmentOrigin
 									attributes:@{NSFontAttributeName: font}
 									   context:nil].size.height);
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
 	return ceilf([text sizeWithFont:font
-				 constrainedToSize:CGSizeMake(width, 10000)
+				 constrainedToSize:CGSizeMake(width, TGMetricTextMeasureHeight)
 					 lineBreakMode:NSLineBreakByWordWrapping].height);
 #pragma clang diagnostic pop
 }
@@ -135,7 +148,7 @@ static NSString *TGGiftStamp(NSNumber *unix) {
 	close.backgroundColor = [theme fileTileColour];
 	[close setImage:[TGIcons glyphNamed:@"close"
 								 colour:[[TGTheme shared] secondaryTextColour]
-								   side:16]
+								   side:kCloseGlyph]
 		   forState:UIControlStateNormal];
 	[close setTitleColor:[theme secondaryTextColour] forState:UIControlStateNormal];
 	[close setTitleColor:[theme placeholderColour] forState:UIControlStateHighlighted];
@@ -178,7 +191,7 @@ static NSString *TGGiftStamp(NSNumber *unix) {
 	// The schema carries no gift name, so the heading is the plain word and
 	// the stars ride the Value row, as they do officially.
 	UILabel *titleLabel = [[UILabel alloc] initWithFrame:CGRectMake(
-			kSide, titleY, inner, 24)];
+			kSide, titleY, inner, kTitleLine)];
 	titleLabel.text = @"Gift";
 	titleLabel.font = TGFontTitle();
 	titleLabel.textColor = [theme primaryTextColour];
@@ -199,7 +212,8 @@ static NSString *TGGiftStamp(NSNumber *unix) {
 		[_card addSubview:note];
 
 		UILabel *text = [[UILabel alloc] initWithFrame:CGRectMake(
-				12, 10, inner - 24, messageH - 20)];
+				kNotePadH, kNotePadV, inner - TGDoubled(kNotePadH),
+				messageH - TGDoubled(kNotePadV))];
 		text.text = message;
 		text.font = messageFont;
 		text.textColor = [theme serviceTextColour];
@@ -237,7 +251,7 @@ static NSString *TGGiftStamp(NSNumber *unix) {
 		CGFloat y = tableY + kRow * i;
 
 		UILabel *name = [[UILabel alloc] initWithFrame:CGRectMake(
-				kSide, y, 100, kRow)];
+				kSide, y, kCaptionW, kRow)];
 		name.text = labels[i];
 		name.font = TGFontBody();
 		name.textColor = [theme secondaryTextColour];
@@ -268,7 +282,7 @@ static NSString *TGGiftStamp(NSNumber *unix) {
 						 colour:[theme primaryTextColour]];
 			// Telegram Stars are gold wherever they appear, theme or not.
 			UIImageView *star = [[UIImageView alloc] initWithFrame:CGRectMake(
-					right - countW - 4 - kStar, y + TGCenteredOrigin(kRow, kStar),
+					right - countW - kStarGap - kStar, y + TGCenteredOrigin(kRow, kStar),
 					kStar, kStar)];
 			star.image = [TGIcons glyphNamed:@"star"
 									  colour:[[TGTheme shared] giftStarColour]
@@ -288,7 +302,7 @@ static NSString *TGGiftStamp(NSNumber *unix) {
 						: TGFontBody();
 	CGFloat w = ceilf(TGGiftTextSize(text, font).width) + 1;
 	UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(
-			rightCentre.x - w, rightCentre.y - 10, w, 20)];
+			rightCentre.x - w, rightCentre.y - TGHalf(kValueLine), w, kValueLine)];
 	label.text = text;
 	label.font = font;
 	label.textColor = colour;
@@ -307,10 +321,10 @@ static NSString *TGGiftStamp(NSNumber *unix) {
 		name = @"Unknown";
 
 	UIFont *font = TGFontBodyStrong();
-	CGFloat available = right - kSide - 100 - kAvatar - 6;
+	CGFloat available = right - kSide - kCaptionW - kAvatar - kValueGap;
 	CGFloat nameW = MIN(ceilf(TGGiftTextSize(name, font).width) + 1, available);
 	UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(
-			right - nameW, y + TGHalf(kRow) - 10, nameW, 20)];
+			right - nameW, y + TGHalf(kRow) - TGHalf(kValueLine), nameW, kValueLine)];
 	label.text = name;
 	label.font = font;
 	label.textColor = [[TGTheme shared] accentColour];
@@ -320,7 +334,7 @@ static NSString *TGGiftStamp(NSNumber *unix) {
 	[_card addSubview:label];
 
 	UIImageView *face = [[UIImageView alloc] initWithFrame:CGRectMake(
-			right - nameW - 6 - kAvatar, y + TGCenteredOrigin(kRow, kAvatar),
+			right - nameW - kValueGap - kAvatar, y + TGCenteredOrigin(kRow, kAvatar),
 			kAvatar, kAvatar)];
 	face.layer.cornerRadius = TGHalf(kAvatar);
 	face.clipsToBounds = YES;

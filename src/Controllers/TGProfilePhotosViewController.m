@@ -15,6 +15,10 @@
 @property (nonatomic, strong) NSArray *photos;   // @{"photoId", "fileId"}
 @end
 
+/// Where "No photos" sits when there are none: a third of the way down, not
+/// centred, so it reads as a caption to the empty grid above it.
+static const CGFloat kEmptyLabelTop = 130.0f;
+
 @implementation TGProfilePhotosViewController
 
 - (instancetype)initWithUserId:(int64_t)userId {
@@ -85,7 +89,7 @@
 		CGFloat side = TGMetricProfilePhotoSide;
 		CGFloat x = TGCenteredOrigin(UIScreen.mainScreen.bounds.size.width, side);
 		UIImageView *image = [[UIImageView alloc] initWithFrame:
-				CGRectMake(x, 20, side, side)];
+				CGRectMake(x, TGMetricPadWide, side, side)];
 		image.tag = 1;
 		image.layer.cornerRadius = TGHalf(side);
 		image.clipsToBounds = YES;
@@ -94,8 +98,10 @@
 				UIViewAutoresizingFlexibleRightMargin;
 		[cell.contentView addSubview:image];
 
-		UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(TGMetricPadMedium, 130,
-				UIScreen.mainScreen.bounds.size.width - TGDoubled(TGMetricPadMedium), 16)];
+		UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(TGMetricPadMedium,
+			kEmptyLabelTop,
+				UIScreen.mainScreen.bounds.size.width - TGDoubled(TGMetricPadMedium),
+				TGMetricLineCaption)];
 		label.tag = 2;
 		label.font = TGFontMeta();
 		label.textAlignment = NSTextAlignmentCenter;

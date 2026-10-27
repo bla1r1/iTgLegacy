@@ -1,4 +1,8 @@
 #import "AppDelegate+URL.h"
+
+/// The side the debug icon dump draws a sized avatar at - a preview for the
+/// gallery, not a size any screen uses.
+static const CGFloat kIconDumpSide = 52.0f;
 #import "RootViewController.h"
 #import "TGClient.h"
 #import "TGTheme.h"
@@ -503,9 +507,9 @@ static NSString *TGBase64FromImage(UIImage *img) {
 			}
 
 			// Avatars & Maps
-			addIcon(@"archiveAvatar", @"Avatars & Badges", @"Archived chats row disc avatar", [TGIcons archiveAvatarOfSide:52]);
-			addIcon(@"savedMessagesAvatar", @"Avatars & Badges", @"Saved Messages ribbon disc avatar", [TGIcons savedMessagesAvatarOfSide:52]);
-			addIcon(@"avatarWithInitials", @"Avatars & Badges", @"Initials placeholder avatar", [TGIcons avatarWithInitials:@"TG" size:52 colourId:1]);
+			addIcon(@"archiveAvatar", @"Avatars & Badges", @"Archived chats row disc avatar", [TGIcons archiveAvatarOfSide:kIconDumpSide]);
+			addIcon(@"savedMessagesAvatar", @"Avatars & Badges", @"Saved Messages ribbon disc avatar", [TGIcons savedMessagesAvatarOfSide:kIconDumpSide]);
+			addIcon(@"avatarWithInitials", @"Avatars & Badges", @"Initials placeholder avatar", [TGIcons avatarWithInitials:@"TG" size:kIconDumpSide colourId:1]);
 			addIcon(@"mapPinBadge", @"Avatars & Badges", @"Location map pin marker badge", [TGIcons mapPinBadge]);
 
 			NSData *json = [NSJSONSerialization dataWithJSONObject:items options:NSJSONWritingPrettyPrinted error:nil];

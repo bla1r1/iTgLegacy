@@ -827,7 +827,9 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 	}
 	if (!avatarImg) {
 		NSString *initials = fullName.length ? [fullName substringToIndex:1] : @"?";
-		avatarImg = [TGIcons avatarWithInitials:initials.uppercaseString size:120 colourId:uid ?: (int64_t)[fullName hash]];
+		avatarImg = [TGIcons avatarWithInitials:initials.uppercaseString
+										   size:TGMetricCallAvatarSide
+									   colourId:uid ?: (int64_t)[fullName hash]];
 	}
 	if (avatarImg) {
 		NSData *imgData = UIImagePNGRepresentation(avatarImg);
@@ -897,7 +899,8 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 	[backdrop addGestureRecognizer:hold];
 
 	UILabel *hint = [[UILabel alloc] initWithFrame:
-			CGRectMake(0, backdrop.bounds.size.height - TGMetricImageHintBottomOffset, backdrop.bounds.size.width, 20)];
+			CGRectMake(0, backdrop.bounds.size.height - TGMetricImageHintBottomOffset,
+					backdrop.bounds.size.width, TGMetricLineRow)];
 	hint.text = @"Hold to save";
 	hint.font = TGFontMeta();
 	hint.textAlignment = NSTextAlignmentCenter;

@@ -12,6 +12,10 @@
 static const CGFloat kStripHeight = TGMetricEmojiStripHeight;   // categories / sets along the top
 static const CGFloat kTabsHeight  = TGMetricEmojiTabsHeight;   // Emoji | Stickers | GIFs
 static const CGFloat kEmojiCell   = TGMetricEmojiCell;
+/// The backspace key at the end of the tab row, and the arrow drawn on it.
+static const CGFloat kBackspaceWidth  = 46.0f;
+static const CGFloat kBackspaceGlyphW = TGMetricBubbleDiscColumn;
+static const CGFloat kBackspaceGlyphH = TGMetricStampTicksRoom;
 
 static const NSInteger kItemTagBase = 1000;  // grid buttons carry their index
 static const NSInteger kHeaderTag   = 900;   // a section title in the feed
@@ -43,7 +47,7 @@ static UIImage *TGPanelDecode(NSString *path) {
 
 /// The key that deletes backwards: a pentagon pointing left with a cross.
 static UIImage *TGBackspaceImage(UIColor *colour) {
-	CGSize size = CGSizeMake(24, 18);
+	CGSize size = CGSizeMake(kBackspaceGlyphW, kBackspaceGlyphH);
 	UIGraphicsBeginImageContextWithOptions(size, NO, 0);
 	CGContextRef ctx = UIGraphicsGetCurrentContext();
 	CGContextSetStrokeColorWithColor(ctx, colour.CGColor);
@@ -179,7 +183,7 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 	self.tabButtons = buttons;
 
 	self.backspace = [UIButton buttonWithType:UIButtonTypeCustom];
-	self.backspace.frame = CGRectMake(w - 46, 0, 46, kTabsHeight);
+	self.backspace.frame = CGRectMake(w - kBackspaceWidth, 0, kBackspaceWidth, kTabsHeight);
 	self.backspace.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
 	[self.backspace addTarget:self action:@selector(backspaceTapped)
 			 forControlEvents:UIControlEventTouchUpInside];
@@ -294,7 +298,8 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 		NSDictionary *entry = entries[i];
 		UIButton *button = [UIButton buttonWithType:UIButtonTypeCustom];
 		CGFloat width = entry[@"title"] ? 80 : 38;
-		button.frame = CGRectMake(x, 3, width, kStripHeight - 6);
+		button.frame = CGRectMake(x, TGMetricBubbleRowInset, width,
+				kStripHeight - TGDoubled(TGMetricBubbleRowInset));
 		button.tag = (NSInteger)i;
 		button.layer.cornerRadius = TGMetricCornerMedium;
 		button.backgroundColor = (NSInteger)i == self.stripIndex
@@ -311,7 +316,7 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 			[button setImage:[TGIcons glyphNamed:entry[@"glyph"]
 										  colour:((NSInteger)i == self.stripIndex
 												  ? [theme accentColour] : [theme secondaryTextColour])
-											side:22]
+											side:TGMetricMenuGlyph]
 					forState:UIControlStateNormal];
 		} else {
 			button.titleLabel.font = TGFontEmojiSmall();
@@ -335,7 +340,7 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 			[self loadImageForFile:thumbId.integerValue into:button generation:NSNotFound];
 		x += width + 2;
 	}
-	self.strip.contentSize = CGSizeMake(x + 4, kStripHeight);
+	self.strip.contentSize = CGSizeMake(x + TGMetricPadSmall, kStripHeight);
 }
 
 - (void)stripTapped:(UIButton *)button {
@@ -681,7 +686,7 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 			return CGSizeMake(side, floorf(side * TGMetricGIFCellAspect));
 		}
 	}
-	return CGSizeMake(40, 40);
+	return CGSizeMake(kEmojiCell, kEmojiCell);
 }
 
 /// Several sets answer in one run loop turn; lay out once for all of them.
@@ -723,7 +728,8 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 		for (NSMutableDictionary *section in self.sections){
 			section[@"headerY"] = @(y);
 			UILabel *header = [[UILabel alloc] initWithFrame:
-					CGRectMake(8, y + 4, w - 16, kHeaderHeight - 6)];
+					CGRectMake(TGMetricPad, y + TGMetricPadSmall, w - TGDoubled(TGMetricPad),
+					kHeaderHeight - TGDoubled(TGMetricBubbleRowInset))];
 			header.tag = kHeaderTag;
 			header.text = [section[@"title"] uppercaseString];
 			header.font = TGFontMicroStrong();

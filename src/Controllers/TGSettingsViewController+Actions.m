@@ -467,7 +467,7 @@
 /// anyone will ever see as an avatar - so it is scaled before it is written.
 - (void)uploadProfilePhoto:(UIImage *)image {
 	UIImage *scaled = [TGIcons decodedImage:image
-								fittingSize:CGSizeMake(640, 640)
+								fittingSize:CGSizeMake(TGMetricUploadPhotoSide, TGMetricUploadPhotoSide)
 									   fill:NO scale:TGMetricScaleFull];
 	NSString *path = [NSTemporaryDirectory()
 			stringByAppendingPathComponent:@"profile-photo.jpg"];

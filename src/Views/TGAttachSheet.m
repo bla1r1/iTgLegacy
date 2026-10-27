@@ -137,7 +137,7 @@ static const NSUInteger kRecentPhotos = 24;
 }
 
 - (void)showStripMessage:(NSString *)text {
-	UILabel *label = [[UILabel alloc] initWithFrame:CGRectInset(self.strip.bounds, 16, 0)];
+	UILabel *label = [[UILabel alloc] initWithFrame:CGRectInset(self.strip.bounds, TGMetricPadLarge, 0)];
 	label.text = text;
 	label.numberOfLines = 2;
 	label.textAlignment = NSTextAlignmentCenter;
@@ -176,7 +176,7 @@ static const NSUInteger kRecentPhotos = 24;
 		[self.strip addSubview:button];
 		x += kThumb + 5;
 	}
-	self.strip.contentSize = CGSizeMake(x + 2, kStrip);
+	self.strip.contentSize = CGSizeMake(x + TGMetricPadTiny, kStrip);
 }
 
 /// The tick drawn over a chosen tile, and its number - which is the order

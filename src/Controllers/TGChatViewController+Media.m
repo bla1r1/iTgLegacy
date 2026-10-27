@@ -317,7 +317,7 @@
 	self.downloadingFileId = fileId;
 
 	if (!self.downloadHUD){
-		self.downloadHUD = [[UILabel alloc] initWithFrame:CGRectMake(0, 0, 110, 40)];
+		self.downloadHUD = [[UILabel alloc] initWithFrame:CGRectMake(0, 0, kHUDWidth, kHUDHeight)];
 		self.downloadHUD.center = CGPointMake(TGHalf(self.view.bounds.size.width),
 											  TGHalf(self.view.bounds.size.height));
 		self.downloadHUD.textAlignment = NSTextAlignmentCenter;

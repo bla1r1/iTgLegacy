@@ -14,6 +14,10 @@
 @property (nonatomic, assign) BOOL handled;
 @end
 
+/// The hint under the viewfinder keeps further in from the sides than the
+/// table gutter, so it reads as a caption to the window above it.
+static const CGFloat kQRTextInset = 24.0f;
+
 @implementation TGQRViewController
 
 - (void)viewDidLoad {
@@ -65,7 +69,8 @@
 	CGRect b = self.view.bounds;
 	CGFloat side = MIN(b.size.width, b.size.height) * TGMetricQRViewfinderRatio;
 	CGRect window = CGRectMake(TGCenteredOrigin(b.size.width, side),
-							   TGCenteredOrigin(b.size.height, side) - 20, side, side);
+							   TGCenteredOrigin(b.size.height, side) - TGMetricPadWide,
+							   side, side);
 
 	UIView *wash = [[UIView alloc] initWithFrame:b];
 	wash.backgroundColor = [[TGTheme shared] scrimColour];
@@ -101,7 +106,7 @@
 
 - (void)showFailure:(NSString *)message {
 	UILabel *label = [[UILabel alloc] initWithFrame:
-			CGRectInset(self.view.bounds, 24, 0)];
+			CGRectInset(self.view.bounds, kQRTextInset, 0)];
 	label.text = message;
 	label.numberOfLines = 0;
 	label.textAlignment = NSTextAlignmentCenter;

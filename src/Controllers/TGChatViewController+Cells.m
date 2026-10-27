@@ -479,7 +479,7 @@ static void TGPlaceTitleDetail(TGBubbleCell *cell, CGFloat x, CGFloat top,
 		cell.bubble.layer.cornerRadius = [locTheme bubbleCornerRadius];
 
 		CGFloat mapW = layout.bubbleFrame.size.width;
-		CGFloat mapH = TGMetricMapHeight;
+		CGFloat mapH = TGMetricMapCardHeight;
 
 		double lat = [m[@"lat"] doubleValue];
 		double lon = [m[@"lon"] doubleValue];
@@ -994,8 +994,8 @@ static void TGPlaceTitleDetail(TGBubbleCell *cell, CGFloat x, CGFloat top,
 	if (mine && onPicture) {
 		cell.ticks.image = [self ticksForMessage:m white:YES];
 		cell.ticks.frame = CGRectMake(CGRectGetMaxX(cell.mediaStamp.frame) - TGMetricMediaStampCheckPhotoInset,
-									  CGRectGetMidY(cell.mediaStamp.frame) - TGHalf(TGMetricMediaStampCheckHeight),
-									  TGMetricMediaStampCheckWidth, TGMetricMediaStampCheckHeight);
+									  CGRectGetMidY(cell.mediaStamp.frame) - TGHalf(TGMetricTicksHeight),
+									  TGMetricTicksWidth, TGMetricTicksHeight);
 		[cell.bubble bringSubviewToFront:cell.ticks];
 	} else if (mine) {
 		cell.ticks.image = [self ticksForMessage:m white:NO];

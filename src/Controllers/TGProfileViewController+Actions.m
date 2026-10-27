@@ -7,6 +7,9 @@
 #import "TGChatViewController.h"
 #import "TGProfilePhotosViewController.h"
 
+/// The glyph on an action tile, over the word that names it.
+static const CGFloat kTileGlyph = TGMetricMenuGlyph;
+
 @implementation TGProfileViewController (Actions)
 
 /// The avatar's tap: other accounts' profiles go straight to the photo
@@ -111,14 +114,14 @@
 		[header addSubview:tile];
 
 		UIImageView *glyph = [[UIImageView alloc] initWithFrame:
-				CGRectMake(TGCenteredOrigin(tileW, 22), 8, 22, 22)];
+				CGRectMake(TGCenteredOrigin(tileW, kTileGlyph), TGMetricPad, kTileGlyph, kTileGlyph)];
 		glyph.image = [TGIcons menuGlyphNamed:tiles[i][0]];
 		glyph.contentMode = UIViewContentModeScaleAspectFit;
 		glyph.tintColor = [theme accentColour];
 		[tile addSubview:glyph];
 
 		UILabel *label = [[UILabel alloc] initWithFrame:
-				CGRectMake(0, kActionTile - 18, tileW, 14)];
+				CGRectMake(0, kActionTile - TGMetricQuoteForwardLine, tileW, TGMetricLineMicro)];
 		label.text = tiles[i][1];
 		label.font = TGFontMicro();
 		label.textAlignment = NSTextAlignmentCenter;
@@ -849,7 +852,7 @@
 	if (!image)
 		return;
 	UIImage *scaled = [TGIcons decodedImage:image
-								fittingSize:CGSizeMake(640, 640)
+								fittingSize:CGSizeMake(TGMetricUploadPhotoSide, TGMetricUploadPhotoSide)
 									   fill:NO scale:TGMetricScaleFull];
 	NSString *path = [NSTemporaryDirectory()
 			stringByAppendingPathComponent:@"group-photo.jpg"];

@@ -10,6 +10,10 @@ static const CGFloat kMenuWidth  = TGMetricMenuWidth;
 static const CGFloat kMenuRow    = TGMetricMenuRow;
 static const CGFloat kMenuGlyph  = TGMetricMenuGlyph;
 static const CGFloat kMenuInset  = TGMetricMenuInset;
+/// The gap between a row's glyph and its word, and the room kept past the
+/// word on the right.
+static const CGFloat kGlyphGap   = TGMetricPadLarge;
+static const CGFloat kLabelRoom  = 22.0f;
 
 static TGPopupMenu *sOpenMenu = nil;
 
@@ -111,7 +115,8 @@ static TGPopupMenu *sOpenMenu = nil;
 		}
 
 		UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(
-				kMenuInset + kMenuGlyph + 14, 0, kMenuWidth - kMenuInset - kMenuGlyph - 22,
+				kMenuInset + kMenuGlyph + kGlyphGap, 0,
+				kMenuWidth - kMenuInset - kMenuGlyph - kLabelRoom,
 				kMenuRow)];
 		label.text = item[@"title"];
 		label.font = TGFontRow();

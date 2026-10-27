@@ -175,6 +175,70 @@ if [ -n "$hits" ]; then
     echo "$hits"
 fi
 
+# ── 15. a size written out inside a frame ───────────────────────────────────
+# The one that matters most, and the one the other fourteen were standing in
+# for. A screen that writes CGRectMake(10, 16 + side + 8, width - 20, 26) has
+# named four sizes in passing, and the next screen wanting the same stack will
+# name four more, slightly different ones. That is how the app came to space
+# things at thirteen different values and give a one-line label ten different
+# heights. So no literal goes inside CGRectMake, CGSizeMake, CGPointMake,
+# UIEdgeInsetsMake or CGRectInset.
+#
+# Allowed there: 0, 1 and 0.5 - an origin, a hairline, a midpoint, none of
+# which can mean anything else - and any name, whether from a scale in TGStyle
+# or from the file's own constants, which is where a dimension that belongs to
+# one screen goes.
+#
+# Drawing is not laying out and is left alone: an icon draws inside the box it
+# is handed, and a path's control points are the shape itself.
+geom() {
+    for f in $(find src -name '*.m' \
+            | grep -vE 'src/Views/TGIcons|src/Views/TGLottieView'); do
+        # One statement per line first: a frame is often spread over three of
+        # them, and the literal is rarely on the one naming CGRectMake. Then
+        # only what is inside the brackets is read, so a colour mixed in the
+        # same statement is rule 3's business and not this one's.
+        awk -v file="$f" '
+            function args(s,    out, i, c, d, n) {
+                out = ""
+                while (match(s, /CG(Rect|Size|Point)Make\(|UIEdgeInsetsMake\(|CGRectInset\(/)) {
+                    i = RSTART + RLENGTH
+                    s = substr(s, i)
+                    d = 1
+                    for (n = 1; n <= length(s) && d > 0; n++) {
+                        c = substr(s, n, 1)
+                        if (c == "(") d++
+                        else if (c == ")") d--
+                        if (d > 0) out = out c
+                    }
+                    s = substr(s, n)
+                }
+                return out
+            }
+            { sub(/\/\/.*/, "") }
+            buf == "" { start = FNR }
+            { buf = buf " " $0 }
+            /;[[:space:]]*$/ {
+                if (buf !~ /CGContext|CGPath|addArc|UIBezierPath|drawInRect|drawAtPoint|Ellipse/) {
+                    code = args(buf)
+                    gsub(/"[^"]*"/, "", code)
+                    gsub(/[A-Za-z_][A-Za-z0-9_.]*/, "_", code)
+                    gsub(/(^|[^0-9.])(0|1)(\.(0|00|5))?f?([^0-9.]|$)/, " ", code)
+                    gsub(/(^|[^0-9.])(0|1)(\.(0|00|5))?f?([^0-9.]|$)/, " ", code)
+                    if (code ~ /[0-9]/) print file ":" start
+                }
+                buf = ""
+            }
+        ' "$f"
+    done
+}
+hits=$(geom)
+if [ -n "$hits" ]; then
+    report "A size is written out inside a frame instead of being named:" \
+            "take it from a scale in src/Core/TGStyle.h, or name it in this file"
+    echo "$hits"
+fi
+
 if [ "$status" -eq 0 ]; then
     echo "  design tokens: clean"
 fi

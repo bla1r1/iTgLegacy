@@ -23,6 +23,10 @@
 @property (nonatomic, strong) NSMutableSet *avatarsRequested;
 @end
 
+/// The bar in the navigation item, which is narrower than the screen so the
+/// Cancel button has somewhere to sit.
+static const CGFloat kSearchBarWidth = 240.0f;
+
 @implementation TGSearchViewController
 
 - (void)viewDidLoad {
@@ -39,7 +43,7 @@
 	if ([self.tableView respondsToSelector:@selector(setKeyboardDismissMode:)])
 		self.tableView.keyboardDismissMode = UIScrollViewKeyboardDismissModeOnDrag;
 
-	self.bar = [[UISearchBar alloc] initWithFrame:CGRectMake(0, 0, 240, 44)];
+	self.bar = [[UISearchBar alloc] initWithFrame:CGRectMake(0, 0, kSearchBarWidth, TGMetricRow)];
 	self.bar.delegate = self;
 	self.bar.placeholder = @"Search";
 	self.navigationItem.titleView = self.bar;

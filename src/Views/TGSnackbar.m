@@ -9,6 +9,12 @@
 static const CGFloat kBarHeight = TGMetricRow;
 static const CGFloat kBarInset  = TGMetricSnackbarInset;
 static const CGFloat kRingSide  = TGMetricSnackbarRing;
+/// The Undo button at the right end of the bar.
+static const CGFloat kUndoWidth = 70.0f;
+/// The text column, which starts clear of the ring and stops clear of Undo.
+static const CGFloat kTextLeft  = 46.0f;
+/// The arrow drawn on the Undo button.
+static const CGFloat kUndoGlyph = 18.0f;
 
 static TGSnackbar *sOpenBar = nil;
 
@@ -76,7 +82,8 @@ static TGSnackbar *sOpenBar = nil;
 	self.backgroundColor = [[TGTheme shared] snackbarBackgroundColour];
 	self.layer.cornerRadius = TGMetricCornerMedium;
 
-	CGRect ring = CGRectMake(14, TGCenteredOrigin(kBarHeight, kRingSide), kRingSide, kRingSide);
+	CGRect ring = CGRectMake(TGMetricPadLarge, TGCenteredOrigin(kBarHeight, kRingSide),
+			kRingSide, kRingSide);
 	_ring = [CAShapeLayer layer];
 	_ring.frame = ring;
 	_ring.path = [UIBezierPath bezierPathWithOvalInRect:
@@ -99,7 +106,8 @@ static TGSnackbar *sOpenBar = nil;
 	[self addSubview:_count];
 
 	UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(
-			46, 0, self.bounds.size.width - 46 - 76, kBarHeight)];
+			kTextLeft, 0, self.bounds.size.width - kTextLeft - kUndoWidth - kBarInset,
+			kBarHeight)];
 	label.text = text;
 	label.font = TGFontBody();
 	label.textColor = [[TGTheme shared] snackbarTextColour];
@@ -108,7 +116,8 @@ static TGSnackbar *sOpenBar = nil;
 	[self addSubview:label];
 
 	UIButton *undo = [UIButton buttonWithType:UIButtonTypeCustom];
-	undo.frame = CGRectMake(self.bounds.size.width - 76, 0, 70, kBarHeight);
+	undo.frame = CGRectMake(self.bounds.size.width - kUndoWidth - kBarInset, 0,
+			kUndoWidth, kBarHeight);
 	undo.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
 	[undo setTitle:@"UNDO" forState:UIControlStateNormal];
 	[undo setTitleColor:[[TGTheme shared] accentColour]
@@ -120,7 +129,8 @@ static TGSnackbar *sOpenBar = nil;
 	[self addSubview:undo];
 
 	UIImageView *arrow = [[UIImageView alloc] initWithFrame:CGRectMake(
-			self.bounds.size.width - 74, TGCenteredOrigin(kBarHeight, 18), 18, 18)];
+			self.bounds.size.width - kUndoGlyph - kUndoWidth - TGMetricPadTiny,
+			TGCenteredOrigin(kBarHeight, kUndoGlyph), kUndoGlyph, kUndoGlyph)];
 	arrow.image = [TGIcons menuGlyphNamed:@"undo"];
 	arrow.contentMode = UIViewContentModeScaleAspectFit;
 	arrow.tintColor = [[TGTheme shared] accentColour];

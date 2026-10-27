@@ -8,6 +8,9 @@
 
 // Profile editing: avatar photo, names, bio, birthday, and username.
 static const CGFloat kPhotoSide = TGMetricProfileAvatar;
+/// A field in a row: the table's gutter on the left, and enough room for the
+/// Done button on the right.
+static const CGFloat kFieldWidth = 290.0f;
 
 @interface TGEditProfileViewController () <UITextFieldDelegate,
 		UIImagePickerControllerDelegate, UINavigationControllerDelegate>
@@ -99,7 +102,8 @@ static const CGFloat kPhotoSide = TGMetricProfileAvatar;
 }
 
 - (UITextField *)fieldWithPlaceholder:(NSString *)placeholder text:(NSString *)text {
-	UITextField *field = [[UITextField alloc] initWithFrame:CGRectMake(15, 0, 290, 44)];
+	UITextField *field = [[UITextField alloc] initWithFrame:CGRectMake(TGMetricGutter, 0,
+			kFieldWidth, TGMetricRow)];
 	field.text = [text isKindOfClass:NSString.class] ? text : @"";
 	field.font = TGFontRow();
 	field.delegate = self;
@@ -287,7 +291,7 @@ static const CGFloat kPhotoSide = TGMetricProfileAvatar;
 		return;
 
 	UIImage *scaled = [TGIcons decodedImage:image
-								fittingSize:CGSizeMake(640, 640) fill:NO scale:TGMetricScaleFull];
+								fittingSize:CGSizeMake(TGMetricUploadPhotoSide, TGMetricUploadPhotoSide) fill:NO scale:TGMetricScaleFull];
 	NSString *path = [NSTemporaryDirectory()
 			stringByAppendingPathComponent:@"profile-photo.jpg"];
 	if (![UIImageJPEGRepresentation(scaled, TGCompressionQualityStandard) writeToFile:path atomically:YES])
@@ -405,7 +409,7 @@ static const CGFloat kPhotoSide = TGMetricProfileAvatar;
 	NSString *name = [me[@"first_name"] length] ? me[@"first_name"] : @"?";
 
 	self.photoView = [[UIImageView alloc] initWithFrame:
-			CGRectMake(TGCenteredOrigin(width, kPhotoSide), 8, kPhotoSide, kPhotoSide)];
+			CGRectMake(TGCenteredOrigin(width, kPhotoSide), TGMetricPad, kPhotoSide, kPhotoSide)];
 	self.photoView.layer.cornerRadius = TGHalf(kPhotoSide);
 	self.photoView.clipsToBounds = YES;
 	self.photoView.layer.shouldRasterize = YES;
@@ -426,7 +430,7 @@ static const CGFloat kPhotoSide = TGMetricProfileAvatar;
 		}];
 
 	UIButton *change = [UIButton buttonWithType:UIButtonTypeCustom];
-	change.frame = CGRectMake(0, kPhotoSide + 12, width, 26);
+	change.frame = CGRectMake(0, kPhotoSide + TGMetricPadMedium, width, TGMetricLineTitle);
 	[change setTitle:(fileId ? @"Change Photo" : @"Set Photo")
 			forState:UIControlStateNormal];
 	[change setTitleColor:[theme accentColour] forState:UIControlStateNormal];

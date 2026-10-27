@@ -172,13 +172,13 @@ CGSize TGTextSizeWithEntities(NSString *text, NSArray *entities, UIFont *font, C
 
 	if (width > 0) {
 		if (rich) {
-			CGRect rect = [rich boundingRectWithSize:CGSizeMake(width, 10000)
+			CGRect rect = [rich boundingRectWithSize:CGSizeMake(width, TGMetricTextMeasureHeight)
 											 options:NSStringDrawingUsesLineFragmentOrigin | NSStringDrawingUsesFontLeading
 											 context:nil];
 			size = CGSizeMake(ceilf(rect.size.width) + TGMetricTextPadH, ceilf(rect.size.height) + TGMetricTextPadV);
 		} else {
 			size = [text sizeWithFont:font
-					constrainedToSize:CGSizeMake(width, 10000)
+					constrainedToSize:CGSizeMake(width, TGMetricTextMeasureHeight)
 						lineBreakMode:NSLineBreakByWordWrapping];
 			size = CGSizeMake(ceilf(size.width) + TGMetricTextPadH, ceilf(size.height) + TGMetricTextPadV);
 		}

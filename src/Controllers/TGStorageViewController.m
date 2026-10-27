@@ -10,6 +10,10 @@
 // says the same thing and none of it at a glance.
 static const CGFloat kRingSide  = TGMetricStorageRingSide;
 static const CGFloat kRingWidth = TGMetricStorageRingWidth;
+/// Room under the ring for the total it holds, and the box that total is set
+/// in - a line and a half, because it is two lines when the figure is long.
+static const CGFloat kRingHeaderRoom = 54.0f;
+static const CGFloat kRingTotalLine  = TGMetricVoicePillWidth;
 
 @interface TGStorageViewController ()
 @property (nonatomic, strong) NSArray *categories;   // name / bytes / kinds
@@ -102,10 +106,11 @@ static UIColor *TGSliceColour(NSUInteger index) {
 	TGTheme *theme = [TGTheme shared];
 	CGFloat width = self.tableView.bounds.size.width ?: 320;
 	UIView *header = [[UIView alloc] initWithFrame:
-			CGRectMake(0, 0, width, kRingSide + 54)];
+			CGRectMake(0, 0, width, kRingSide + kRingHeaderRoom)];
 	header.backgroundColor = [UIColor clearColor];
 
-	CGRect box = CGRectMake(TGCenteredOrigin(width, kRingSide), 8, kRingSide, kRingSide);
+	CGRect box = CGRectMake(TGCenteredOrigin(width, kRingSide), TGMetricPad,
+			kRingSide, kRingSide);
 	CGPoint centre = CGPointMake(CGRectGetMidX(box), CGRectGetMidY(box));
 	CGFloat radius = TGHalf(kRingSide - kRingWidth);
 
@@ -138,7 +143,8 @@ static UIColor *TGSliceColour(NSUInteger index) {
 	}
 
 	UILabel *totalLabel = [[UILabel alloc] initWithFrame:
-			CGRectMake(box.origin.x, centre.y - 16, kRingSide, 32)];
+			CGRectMake(box.origin.x, centre.y - TGHalf(kRingTotalLine), kRingSide,
+					kRingTotalLine)];
 	totalLabel.text = self.loaded ? TGHumanSize(self.total) : @"...";
 	totalLabel.font = TGFontTitle();
 	totalLabel.textAlignment = NSTextAlignmentCenter;
@@ -148,7 +154,8 @@ static UIColor *TGSliceColour(NSUInteger index) {
 	[header addSubview:totalLabel];
 
 	UILabel *caption = [[UILabel alloc] initWithFrame:
-			CGRectMake(10, kRingSide + 16, width - 20, 20)];
+			CGRectMake(TGMetricPadMedium, kRingSide + TGMetricPadLarge,
+					width - TGDoubled(TGMetricPadMedium), TGMetricLineRow)];
 	caption.text = self.loaded
 			? @"Telegram's cache on this device."
 			: @"Reading the database...";

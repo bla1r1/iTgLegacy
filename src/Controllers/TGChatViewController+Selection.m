@@ -31,7 +31,9 @@
 		[self.editToolbar addSubview:hair];
 
 		self.editDeleteButton = [UIButton buttonWithType:UIButtonTypeCustom];
-		self.editDeleteButton.frame = CGRectMake(TGMetricPadLarge, 6, TGMetricEditToolbarButtonWidth, TGMetricButtonHeightSmall);
+		self.editDeleteButton.frame = CGRectMake(TGMetricPadLarge,
+			TGCenteredOrigin(kInputHeight, TGMetricButtonHeightSmall),
+			TGMetricEditToolbarButtonWidth, TGMetricButtonHeightSmall);
 		self.editDeleteButton.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeft;
 		self.editDeleteButton.titleLabel.font = TGFontRow();
 		[self.editDeleteButton setTitleColor:[[TGTheme shared] destructiveColour] forState:UIControlStateNormal];
@@ -40,7 +42,10 @@
 		[self.editToolbar addSubview:self.editDeleteButton];
 
 		self.editForwardButton = [UIButton buttonWithType:UIButtonTypeCustom];
-		self.editForwardButton.frame = CGRectMake(b.size.width - TGMetricEditToolbarButtonWidth - TGMetricPadLarge, 6, TGMetricEditToolbarButtonWidth, TGMetricButtonHeightSmall);
+		self.editForwardButton.frame =
+				CGRectMake(b.size.width - TGMetricEditToolbarButtonWidth - TGMetricPadLarge,
+						TGCenteredOrigin(kInputHeight, TGMetricButtonHeightSmall),
+						TGMetricEditToolbarButtonWidth, TGMetricButtonHeightSmall);
 		self.editForwardButton.contentHorizontalAlignment = UIControlContentHorizontalAlignmentRight;
 		self.editForwardButton.titleLabel.font = TGFontRowStrong();
 		[self.editForwardButton setTitleColor:[[TGTheme shared] accentColour] forState:UIControlStateNormal];

@@ -188,7 +188,7 @@
 		return nil;
 	CGSize size = [self footerTextSize:text];
 	UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(
-			kFooterInset, 8, self.tableView.bounds.size.width - TGDoubled(kFooterInset),
+			kFooterInset, TGMetricPad, self.tableView.bounds.size.width - TGDoubled(kFooterInset),
 			size.height)];
 	label.text = text;
 	label.font = TGFontMeta();
@@ -197,7 +197,7 @@
 	label.backgroundColor = [UIColor clearColor];
 
 	UIView *holder = [[UIView alloc] initWithFrame:CGRectMake(0, 0,
-			self.tableView.bounds.size.width, size.height + 16)];
+			self.tableView.bounds.size.width, size.height + TGMetricPadLarge)];
 	holder.backgroundColor = [UIColor clearColor];
 	[holder addSubview:label];
 	return holder;

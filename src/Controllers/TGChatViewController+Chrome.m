@@ -10,6 +10,14 @@
 #import "TGStyle.h"
 
 static const CGFloat kJumpSide = TGMetricJumpSide;
+/// The ticks are drawn a point shorter than the box they sit in, so the two
+/// strokes do not touch its edge.
+static const CGFloat kTicksDrawnHeight = 11.0f;
+/// The widest the unread count on the jump button goes before it truncates.
+static const CGFloat kJumpBadgeMaxW    = 60.0f;
+/// The arrow that appears while a bubble is dragged to be replied to.
+static const CGFloat kReplyHintGlyph   = 20.0f;
+static const CGFloat kReplyHintInset   = 24.0f;
 
 @implementation TGChatViewController (Chrome)
 
@@ -137,7 +145,7 @@ static NSInteger TGDayNumber(NSTimeInterval stamp) {
 
 /// A chevron pointing down, for the jump button.
 static UIImage *TGJumpChevron(UIColor *colour) {
-	CGSize size = CGSizeMake(18, 11);
+	CGSize size = CGSizeMake(TGMetricStampTicksRoom, kTicksDrawnHeight);
 	UIGraphicsBeginImageContextWithOptions(size, NO, 0);
 	CGContextRef ctx = UIGraphicsGetCurrentContext();
 	CGContextSetStrokeColorWithColor(ctx, colour.CGColor);
@@ -178,14 +186,16 @@ static UIImage *TGJumpChevron(UIColor *colour) {
 	}
 	self.jumpButton.frame = CGRectMake(CGRectGetMaxX(table) - kJumpSide - TGMetricJumpMarginRight,
 									   bottom - kJumpSide - TGMetricJumpMarginBottom, kJumpSide, kJumpSide);
-	CGSize badge = [self.jumpBadge sizeThatFits:CGSizeMake(60, 18)];
+	CGSize badge = [self.jumpBadge sizeThatFits:CGSizeMake(kJumpBadgeMaxW,
+			TGMetricJumpBadgeHeight)];
 	CGFloat bw = MAX(18, ceilf(badge.width) + TGMetricPadMedium);
 	self.jumpBadge.frame = CGRectMake(TGCenteredOrigin(kJumpSide, bw),
 			TGMetricBadgeOffsetTop, bw, TGMetricJumpBadgeHeight);
 	// The badge pokes out above the button.
 	self.jumpButton.clipsToBounds = NO;
 
-	CGSize date = [self.floatingDate sizeThatFits:CGSizeMake(table.size.width, 22)];
+	CGSize date = [self.floatingDate sizeThatFits:CGSizeMake(table.size.width,
+			TGMetricFloatingDateHeight)];
 	CGFloat dw = ceilf(date.width) + TGMetricPadWide;
 	CGFloat top = self.pinnedBannerView.hidden || !self.pinnedBannerView ? TGMetricZero : CGRectGetMaxY(self.pinnedBannerView.frame);
 	self.floatingDate.frame = CGRectMake(TGCenteredOrigin(table.size.width, dw), top + TGMetricFloatingDateTopOffset, dw,
@@ -329,9 +339,11 @@ static const CGFloat kReplyPull = TGMetricReplyPull;   // how far a bubble trave
 		}
 		TGTheme *theme = [TGTheme shared];
 		self.replyHint.backgroundColor = [theme serviceBubbleColour];
-		self.replyHint.image = [TGIcons glyphNamed:@"reply" colour:[theme serviceTextColour] side:20];
+		self.replyHint.image = [TGIcons glyphNamed:@"reply" colour:[theme serviceTextColour]
+										  side:kReplyHintGlyph];
 		self.replyHint.alpha = TGAlphaTransparent;
-		self.replyHint.center = CGPointMake(cell.bounds.size.width - 24, TGHalf(cell.bounds.size.height));
+		self.replyHint.center = CGPointMake(cell.bounds.size.width - kReplyHintInset,
+			TGHalf(cell.bounds.size.height));
 		[cell addSubview:self.replyHint];
 		return;
 	}

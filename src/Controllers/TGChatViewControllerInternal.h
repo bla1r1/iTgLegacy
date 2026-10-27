@@ -67,7 +67,7 @@ static const CGFloat kContactBubble   = 230.0f;
 static const CGFloat kContactBubbleH  = TGMetricPersonRow + TGMetricButtonHeightSmall;
 /// A location bubble: the map card, with a caption strip beneath it.
 static const CGFloat kLocationBubble  = 224.0f;
-static const CGFloat kLocationBubbleH = TGMetricMapHeight + TGMetricRow;
+static const CGFloat kLocationBubbleH = TGMetricMapCardHeight + TGMetricRow;
 /// A round video message, and an animated sticker. Both square.
 static const CGFloat kRoundSide       = 180.0f;
 static const CGFloat kLottieSide      = 128.0f;
@@ -171,6 +171,9 @@ static const CGFloat kBannerStripeX   = TGMetricPadMedium + TGMetricPadTiny;
 static const CGFloat kBannerStripeTop = TGMetricPad;
 static const CGFloat kBannerTextX     = 22.0f;
 static const CGFloat kBannerTitleTop  = TGMetricPadSmall;
+/// The little plate that says a file is being fetched.
+static const CGFloat kHUDWidth        = 110.0f;
+static const CGFloat kHUDHeight       = TGMetricListAvatar;
 /// The title view in the navigation bar: the chat's name over who is there.
 static const CGFloat kTitleWidth      = 200.0f;
 static const CGFloat kTitleRow        = TGMetricListAvatar;

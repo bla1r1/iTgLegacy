@@ -66,7 +66,7 @@ static const CGFloat kFieldTop = TGMetricAlertFieldTop;
 
 /// Text height, through whichever measuring call this OS has.
 + (CGSize)sizeOfText:(NSString *)text font:(UIFont *)font width:(CGFloat)width {
-	CGSize bound = CGSizeMake(width, 10000);
+	CGSize bound = CGSizeMake(width, TGMetricTextMeasureHeight);
 	if ([text respondsToSelector:@selector(boundingRectWithSize:options:attributes:context:)]){
 		CGRect rect = [text boundingRectWithSize:bound
 										 options:NSStringDrawingUsesLineFragmentOrigin
