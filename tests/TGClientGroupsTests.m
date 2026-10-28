@@ -532,6 +532,25 @@ static void answerG(TGClient *c, NSDictionary *answer) {
 	XCTAssertEqual(flattened.count, (NSUInteger)1);
 	XCTAssertEqualObjects(flattened[0][@"title"], @"Cats");
 	XCTAssertNotNil(flattened[0][@"cover"]);
+	// The fields an install sheet reads: how many, whether it is installed
+	// already, and the short name a link met the pack by.
+	XCTAssertEqual([flattened[0][@"count"] integerValue], 0);
+	XCTAssertFalse([flattened[0][@"installed"] boolValue]);
+	XCTAssertEqualObjects(flattened[0][@"shortName"], @"");
+}
+
+/// A pack met through a t.me/addstickers link is looked up by its short
+/// name, and the lookup sends the short-name input, not a bare id.
+- (void)testStickerSets_LookupByShortNameSendsTheShortNameInputAndFlags {
+	TGClient *c = G();
+	[c stickerSetByShortName:@"" completion:^(NSDictionary *set){
+			XCTAssertNil(set); }];
+	XCTAssertEqual(countG(c, @"getStickerSet"), (NSUInteger)0);
+
+	[c stickerSetByShortName:@"ducks" completion:^(NSDictionary *set){; }];
+	NSDictionary *asked = lastG(c, @"getStickerSet");
+	XCTAssertEqualObjects(asked[@"set_id"][@"@type"], @"inputStickerSetShortName");
+	XCTAssertEqualObjects(asked[@"set_id"][@"short_name"], @"ducks");
 }
 
 #pragma mark - favourites, the archive shelf and the order

@@ -128,10 +128,6 @@ static inline NSDictionary *TGIconRow(NSString *title, NSString *icon, UIColor *
 	return row;
 }
 
-static inline UIColor *TGRGB(CGFloat r, CGFloat g, CGFloat b) {
-	return [UIColor colorWithRed:r green:g blue:b alpha:1.0f];
-}
-
 static inline NSString *TGBytes(long long bytes) {
 	if (bytes <= 0)              return @"0 KB";
 	if (bytes < 1024 * 1024)     return [NSString stringWithFormat:@"%.0f KB",

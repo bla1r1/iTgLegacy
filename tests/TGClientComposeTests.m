@@ -381,14 +381,98 @@ static void answerTyped(TGClient *c, NSString *type, NSDictionary *answer) {
 
 /// A kind this app has no step for must say so, so the caller falls back to
 /// the paths it matches by hand rather than doing nothing.
-- (void)testInternalLink_AnUnhandledKindIsUnknown {
+- (void)testInternalLink_AnUnhandledKindAsksTelegramWhatTheLinkMeans {
 	TGClient *c = C();
 	c.td_exec = NULL;
 	__block NSString *kind = nil;
 	[c internalLinkKind:@"https://t.me/proxy?server=x"
 			 completion:^(NSString *k, NSString *v){ kind = k; }];
 	answerTyped(c, @"getInternalLinkType", @{@"@type" : @"internalLinkTypeProxy"});
+	XCTAssertNil(kind);
+	answerTyped(c, @"getDeepLinkInfo",
+			@{@"@type" : @"error", @"message" : @"refused"});
 	XCTAssertEqualObjects(kind, @"unknown");
+}
+
+/// a link with no schema still has a meaning, stated in prose on Telegram's
+/// side - which is what the tap answers with rather than guessing from the
+/// path.
+- (void)testInternalLink_ADeepLinkNoteIsTheMeaning {
+	TGClient *c = C();
+	c.td_exec = NULL;
+	__block NSString *kind = nil;
+	__block NSString *note = nil;
+	[c internalLinkKind:@"https://t.me/something"
+			 completion:^(NSString *k, NSString *v){ kind = k; note = v; }];
+	answerTyped(c, @"getInternalLinkType",
+			@{@"@type" : @"internalLinkTypeUnsupported"});
+	answerTyped(c, @"getDeepLinkInfo",
+			@{@"@type" : @"deepLinkInfo",
+			  @"message" : @{@"text" : @"This link carries a private secret."},
+			  @"update_app" : @NO});
+	XCTAssertEqualObjects(kind, @"deepLink");
+	XCTAssertEqualObjects(note, @"This link carries a private secret.");
+}
+
+/// A prompt to update the app is not the payload's meaning: TDLib said so
+/// because its copy is stale. None the wiser, the tap falls back.
+- (void)testInternalLink_ADeepLinkAndUpdatePromptIsNotAMeaning {
+	TGClient *c = C();
+	c.td_exec = NULL;
+	__block NSString *kind = nil;
+	[c internalLinkKind:@"https://t.me/something"
+			 completion:^(NSString *k, NSString *v){ kind = k; }];
+	answerTyped(c, @"getInternalLinkType",
+			@{@"@type" : @"internalLinkTypeUnsupported"});
+	answerTyped(c, @"getDeepLinkInfo",
+			@{@"@type" : @"deepLinkInfo",
+			  @"message" : @{@"text" : @"Update Telegram"},
+			  @"update_app" : @YES});
+	XCTAssertEqualObjects(kind, @"unknown");
+}
+
+#pragma mark - markdown of a received message
+
+/// A message whose sender composed it on a modern client stores entities -
+/// which is what Edit should put back into the composer, the markdown out
+/// of it, rather than the render.
+- (void)testMarkdownOfMessage_AFormattedTextComesBackAsItsMarkdown {
+	TGClient *c = C();
+	c.td_exec = NULL;
+	__block NSString *md = nil;
+	[c markdownOfMessage:9 inChat:7 completion:^(NSString *m){ md = m; }];
+	XCTAssertNil(md);
+	answerTyped(c, @"getMessage",
+			@{@"@type" : @"message",
+			  @"content" : @{@"@type" : @"messageText",
+							 @"text" : @{@"@type" : @"formattedText",
+										 @"text" : @"bold and plain",
+										 @"entities" : @[@{@"@type" : @"textEntity",
+														  @"offset" : @0,
+														  @"length" : @4,
+														  @"entity" : @{@"@type" : @"entityBold"}}]}}});
+	answerTyped(c, @"getMarkdownText",
+			@{@"@type" : @"formattedText", @"text" : @"*bold* and plain"});
+	XCTAssertEqualObjects(md, @"*bold* and plain");
+}
+
+/// No entities, no round trip: a plain message is already the origin, and
+/// a getMarkdownText asked about it would be a question with one answer.
+- (void)testMarkdownOfMessage_APlainMessageIsNotWorthARoundTrip {
+	TGClient *c = C();
+	c.td_exec = NULL;
+	__block NSString *md = nil;
+	[c markdownOfMessage:9 inChat:7 completion:^(NSString *m){ md = m; }];
+	answerTyped(c, @"getMessage",
+			@{@"@type" : @"message",
+			  @"content" : @{@"@type" : @"messageText",
+							 @"text" : @{@"@type" : @"formattedText",
+										 @"text" : @"plain",
+										 @"entities" : @[]}}});
+	[c.outbox removeAllObjects];
+	answerTyped(c, @"getMarkdownText", @{@"@type" : @"ok"});
+	XCTAssertEqualObjects(md, @"plain");
+	XCTAssertEqual(countC(c, @"getMarkdownText"), (NSUInteger)0);
 }
 
 #pragma mark - signing up

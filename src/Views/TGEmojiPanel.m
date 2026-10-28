@@ -538,7 +538,8 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 	__weak typeof(self) weakSelf = self;
 	__block NSArray *mine = @[];
 	__block NSArray *everywhere = @[];
-	__block NSUInteger left = 2;
+	__block NSArray *packs = @[];
+	__block NSUInteger left = 3;
 
 	void (^show)(void) = ^{
 		TGEmojiPanel *me = weakSelf;
@@ -547,14 +548,17 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 
 		NSMutableArray *flat = [NSMutableArray array];
 		NSMutableArray *sections = [NSMutableArray array];
-		NSArray *parts = @[mine, everywhere];
-		NSArray *titles = @[@"Yours", @"All stickers"];
+		// A pack tile carries a pack, not a sticker: it is its own section,
+		// and strip -9 is no strip's slot, so the highlight stays on the pill
+		// already lit.
+		NSArray *parts = @[mine, everywhere, packs];
+		NSArray *titles = @[@"Yours", @"All stickers", @"Packs"];
 		for (NSUInteger i = 0; i < parts.count; i++){
 			NSArray *part = parts[i];
 			if (!part.count)
 				continue;
 			[sections addObject:[@{@"title"    : titles[i],
-								   @"strip"    : @(0),
+								   @"strip"    : (i == 2 ? @(-9) : @(0)),
 								   @"location" : @(flat.count),
 								   @"length"   : @(part.count)} mutableCopy]];
 			[flat addObjectsFromArray:part];
@@ -580,6 +584,32 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 			if (![known containsObject:sticker[@"fileId"]])
 				[rest addObject:sticker];
 		everywhere = rest;
+		show();
+	}];
+
+	// The word side of the query finds packs: a search meant to install
+	// something ends here, given the same query TDLib's set search also
+	// takes. Each entry carries the whole record the install sheet needs -
+	// id, count, covers, and whether it is already installed.
+	[[TGClient shared] searchStickerSetsNamed:query completion:^(NSArray *sets){
+		NSMutableArray *found = [NSMutableArray array];
+		for (NSDictionary *set in (sets ?: @[])){
+			if (![set isKindOfClass:NSDictionary.class] || !set[@"id"])
+				continue;
+			NSMutableDictionary *tile = [NSMutableDictionary dictionary];
+			tile[@"pack"] = set;
+			NSDictionary *cover = set[@"cover"];
+			NSString *icon = cover[@"emoji"];
+			if ([icon length])
+				tile[@"emoji"] = icon;
+			else if ([set[@"title"] length])
+				tile[@"emoji"] = [set[@"title"] substringToIndex:1];
+			NSNumber *thumbId = cover[@"thumbId"];
+			if ([thumbId isKindOfClass:NSNumber.class])
+				tile[@"thumbId"] = thumbId;
+			[found addObject:tile];
+		}
+		packs = found;
 		show();
 	}];
 }
@@ -1065,6 +1095,31 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 	}];
 }
 
+/// A pack found by search, installed on one confirm. The answer comes back
+/// as an update the panel does not listen for, so the shelf is re-read
+/// shortly after - one highlight's length, the same beat the hold menu uses.
+- (void)askInstallForStickerSet:(NSDictionary *)set {
+	NSString *title = [set[@"title"] length] ? set[@"title"] : @"This pack";
+	NSString *counted = [NSString stringWithFormat:@"%@ - %lu stickers",
+			title, (unsigned long)[set[@"count"] unsignedIntegerValue]];
+	__weak typeof(self) weakSelf = self;
+	[TGAlertSheet showChoices:@[@"Install", @"Not now"]
+						title:counted
+			  destructiveIndex:-1
+						inView:(self.window ?: self)
+					  onChoice:^(NSInteger index){
+		TGEmojiPanel *panel = weakSelf;
+		if (index != 0 || !panel)
+			return;
+		[[TGClient shared] setStickerSet:set[@"id"] installed:YES archived:NO];
+		dispatch_after(dispatch_time(DISPATCH_TIME_NOW,
+				(int64_t)(TGAnimationDurationHighlight * NSEC_PER_SEC)),
+				dispatch_get_main_queue(), ^{
+			[weakSelf selectTab:TGEmojiPanelTabStickers];
+		});
+	}];
+}
+
 /// The section a flat index falls in, so a hold knows where it was made.
 - (NSDictionary *)sectionForItemIndex:(NSInteger)index {
 	for (NSDictionary *section in self.sections){
@@ -1107,6 +1162,11 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 			[self.delegate emojiPanel:self didPickEmoji:item];
 			break;
 		case TGEmojiPanelTabStickers:
+			// A pack tile installs the pack; picking a sticker sends it.
+			if ([item isKindOfClass:NSDictionary.class] && item[@"pack"]){
+				[self askInstallForStickerSet:item[@"pack"]];
+				return;
+			}
 			[self.delegate emojiPanel:self didPickSticker:item];
 			break;
 		case TGEmojiPanelTabGIFs:

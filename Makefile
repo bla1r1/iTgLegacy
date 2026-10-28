@@ -93,7 +93,7 @@ INCLUDES  := -I$(ROOT_DIR)/include \
 DEFINES   :=
 
 WEBP_ARMV7 := -F$(ROOT_DIR)/libs -framework WebP
-WEBP_ARM64 := -lwebp
+WEBP_ARM64 := -F$(ROOT_DIR)/libs -framework WebP
 
 FRAMEWORKS := -framework UIKit -framework Foundation -framework QuickLook \
               -framework SystemConfiguration -framework CoreGraphics \

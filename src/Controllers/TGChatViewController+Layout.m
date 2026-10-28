@@ -324,7 +324,11 @@ UIColor *TGSenderColour(int64_t userId) {
 		layout.picSize = CGSizeMake(side, side);
 		layout.bubbleFrame = CGRectMake(mine ? (tableW - side - TGMetricPad) : TGMetricPad,
 				TGMetricBubbleRowInset, side, side);
-		layout.rowHeight = side + TGDoubled(TGMetricBubbleRowInset);
+		// The stamp line lives under the circle now: every other bubble
+		// carries its clock under the message, and a round note hanging its
+		// clock out to the side read as drifting off the row.
+		layout.rowHeight = side + TGMetricStampHeight + TGMetricPadSmall
+				+ TGDoubled(TGMetricBubbleRowInset);
 		layout.stamp = [self stampFor:m];
 		if (msgId) self.layoutCache[msgId] = layout;
 		return layout;

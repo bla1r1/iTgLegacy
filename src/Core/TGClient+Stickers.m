@@ -89,7 +89,8 @@ static NSDictionary *TGAnimationInfo(NSDictionary *animation) {
 
 /// stickerSetInfo down to the three things a row needs. Shared by the
 /// installed list, the search and the trending list, which all answer with
-/// the same shape.
+/// the same shape. The count, the flags and the short name ride along, which
+/// is what an install sheet - and a refusal for an installed pack - needs.
 NSArray *TGFlattenStickerSets(NSArray *sets) {
 	NSMutableArray *out = [NSMutableArray array];
 	for (NSDictionary *set in sets){
@@ -99,6 +100,10 @@ NSArray *TGFlattenStickerSets(NSArray *sets) {
 		NSMutableDictionary *info = [NSMutableDictionary dictionary];
 		info[@"id"] = set[@"id"];
 		info[@"title"] = set[@"title"] ?: @"";
+		info[@"count"] = set[@"count"] ?: @(0);
+		info[@"installed"] = @([set[@"is_installed"] boolValue]);
+		info[@"archived"] = @([set[@"is_archived"] boolValue]);
+		info[@"shortName"] = set[@"short_name"] ?: @"";
 		if (covers.count)
 			info[@"cover"] = covers.firstObject;
 		[out addObject:info];
@@ -195,6 +200,31 @@ NSArray *TGFlattenStickerSets(NSArray *sets) {
 	[self request:@{@"@type" : @"getStickerSet", @"set_id" : setId}
 	   completion:^(NSDictionary *result){
 		if (completion) completion(TGStickerList(result[@"stickers"]));
+	}];
+}
+
+/// A pack by the name a t.me/addstickers link carries. The record Telegram
+/// answers with carries everything the sheet needs - the id to install by,
+/// the count, and whether the account already has it.
+- (void)stickerSetByShortName:(NSString *)shortName
+				   completion:(void (^)(NSDictionary *set))completion {
+	if (!shortName.length){
+		if (completion) completion(nil);
+		return;
+	}
+	[self request:@{
+		@"@type"  : @"getStickerSet",
+		@"set_id" : @{@"@type" : @"inputStickerSetShortName",
+					  @"short_name" : shortName},
+	} completion:^(NSDictionary *result){
+		if (!completion)
+			return;
+		if (![result[@"@type"] isEqualToString:@"stickerSet"] || !result[@"id"]){
+			completion(nil);
+			return;
+		}
+		NSArray *flattened = TGFlattenStickerSets(@[result]);
+		completion(flattened.firstObject);
 	}];
 }
 

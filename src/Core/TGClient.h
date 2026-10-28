@@ -539,6 +539,12 @@ typedef NS_ENUM(NSInteger, TGDownloadPriority) {
 /// throwing it away; YES YES puts it back among the installed.
 - (void)setStickerSet:(id)setId installed:(BOOL)installed archived:(BOOL)archived;
 
+/// A pack by the name a t.me/addstickers link carries: "id", "title",
+/// "count", "shortName", "cover", and "installed" - whether this account
+/// already has it. nil when Telegram does not know the name at all.
+- (void)stickerSetByShortName:(NSString *)shortName
+				   completion:(void (^)(NSDictionary *set))completion;
+
 /// Installed sets whose titles match, for finding a pack the account has.
 - (void)installedStickerSetsNamed:(NSString *)query
                        completion:(void (^)(NSArray *sets))completion;
@@ -612,6 +618,13 @@ typedef NS_ENUM(NSInteger, TGDownloadPriority) {
 /// the piece of it worth acting on.
 - (void)internalLinkKind:(NSString *)link
 			  completion:(void (^)(NSString *kind, NSString *value))completion;
+
+/// A received formatted message handed back as the markdown its sender
+/// typed: *bold*, `_italic_`, `code` - so Edit edits the origin, not the
+/// render. A message with no markup comes back as its plain text.
+- (void)markdownOfMessage:(int64_t)messageId
+				   inChat:(int64_t)chatId
+				completion:(void (^)(NSString *markdown))completion;
 
 /// Telegram's own static map of a place, as a PNG, answered as a local path
 /// once it is down - or nil, which on this device is ordinary. The drawn card
@@ -1099,6 +1112,13 @@ typedef NS_ENUM(NSInteger, TGDownloadPriority) {
 /// A notification that arrived while the app was running: TDLib turns it
 /// into the ordinary updates.
 - (void)processPushPayload:(NSDictionary *)payload;
+
+/// What a push belongs to, decoded on Telegram's side: whether it went
+/// through ("ok") and the chat and message it names. Answered even when the
+/// push is undeliverable, which is how the half-configured certificate gets
+/// told apart from a payload TDLib cannot read.
+- (void)pushReceiverOfPayload:(NSDictionary *)payload
+				   completion:(void (^)(BOOL ok, int64_t chatId, int64_t messageId))completion;
 - (void)destroySession;
 - (void)logOut;
 

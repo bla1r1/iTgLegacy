@@ -68,8 +68,10 @@ static const CGFloat kContactBubbleH  = TGMetricPersonRow + TGMetricButtonHeight
 /// A location bubble: the map card, with a caption strip beneath it.
 static const CGFloat kLocationBubble  = 224.0f;
 static const CGFloat kLocationBubbleH = TGMetricMapCardHeight + TGMetricRow;
-/// A round video message, and an animated sticker. Both square.
-static const CGFloat kRoundSide       = 180.0f;
+/// A round video message, and an animated sticker. Both square; the round
+/// note reads its side from the token so the bubble and the full-screen
+/// player cannot drift apart by two points again.
+static const CGFloat kRoundSide       = TGMetricRoundVideoSide;
 static const CGFloat kLottieSide      = 128.0f;
 /// The narrowest a text bubble will be, so one word is still a bubble.
 static const CGFloat kBubbleMinW      = 170.0f;
@@ -108,7 +110,7 @@ static const CGFloat kMapCreditWidth  = 68.0f;
 static const CGFloat kVoiceDisc       = 36.0f;
 static const CGFloat kVoiceWaveHeight = TGMetricLineBody;
 static const CGFloat kVoiceWaveTop    = TGMetricPadMedium;
-static const CGFloat kVoiceClockWidth = 44.0f;
+static const CGFloat kVoiceClockMinimum = 44.0f;
 /// The play disc over a video, and the one over an animation.
 static const CGFloat kVideoDisc       = 48.0f;
 static const CGFloat kGifDisc         = 42.0f;

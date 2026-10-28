@@ -222,7 +222,11 @@ static double TGScalarAt(NSDictionary *prop, double frame, double fallback) {
 
 	CGContextSaveGState(ctx);
 	[self applyTransform:layer[@"ks"] atFrame:frame inContext:ctx];
+	// Additive masks clip before anything paints; subtractive ones erase
+	// after, since there is nothing to erase from yet otherwise.
+	[self clipByMasks:layer[@"masksProperties"] atFrame:frame inContext:ctx];
 	[self drawShapes:layer[@"shapes"] atFrame:frame inContext:ctx];
+	[self eraseByMasks:layer[@"masksProperties"] atFrame:frame inContext:ctx];
 	CGContextRestoreGState(ctx);
 }
 
@@ -303,6 +307,9 @@ static double TGScalarAt(NSDictionary *prop, double frame, double fallback) {
 		} else if ([ty isEqualToString:@"fl"]){
 			[self fillPath:path withShape:shape atFrame:frame inContext:ctx];
 
+		} else if ([ty isEqualToString:@"gf"]){
+			[self gradientFillPath:path withShape:shape atFrame:frame inContext:ctx];
+
 		} else if ([ty isEqualToString:@"st"]){
 			[self strokePath:path withShape:shape atFrame:frame inContext:ctx];
 		}
@@ -376,6 +383,201 @@ static double TGScalarAt(NSDictionary *prop, double frame, double fallback) {
 	CGContextAddPath(ctx, path);
 	// Lottie fills use even-odd, which is what makes holes work.
 	CGContextEOFillPath(ctx);
+}
+
+// MARK: masks
+
+/// The masks of a layer, as one clip: everything drawn in the layer stays
+/// inside the additive masks and out of the subtractive ones. Lottie supports
+/// opacity and invert per mask - "i"/darken/lighten are folded in as facts
+/// rather than formulas, which is the approximation this renderer already
+/// speaks.
+///
+/// The trick for "out of the subtractive ones" is a clear-blend fill done
+/// after the layer painted: the region is erased back to transparent, which
+/// is exactly what a subtracted mask means against the canvas behind.
+- (void)collectMaskPaths:(NSArray *)masks atFrame:(double)frame
+				   inside:(CGMutablePathRef)inside
+				   outside:(CGMutablePathRef)outside
+				 counted:(NSUInteger *)counted {
+	for (NSDictionary *mask in masks){
+		if (![mask isKindOfClass:NSDictionary.class])
+			continue;
+		NSString *mode = mask[@"mode"] ?: @"";
+		if ([mode isEqualToString:@"n"] || !mode.length)
+			continue;
+		BOOL erase = [mode isEqualToString:@"s"] ||
+					 [mode isEqualToString:@"d"];
+		// An inverted mask flips which side lives: an inverted additive
+		// mask keeps what is outside it, which erasing its own shape does.
+		if ([mask[@"inv"] boolValue] && !erase)
+			erase = YES;
+
+		CGMutablePathRef sink = erase ? outside : inside;
+		CGMutablePathRef maskPath = CGPathCreateMutable();
+		[self appendBezier:mask[@"pt"] atFrame:frame toPath:maskPath];
+		CGPathAddPath(sink, NULL, maskPath);
+		CGPathRelease(maskPath);
+		(*counted)++;
+	}
+}
+
+/// The additive half: one clip the layer's shapes paint inside of. The
+/// subtractive halves are erased after the paint, which eraseByMasks does.
+- (void)clipByMasks:(NSArray *)masks atFrame:(double)frame inContext:(CGContextRef)ctx {
+	if (![masks isKindOfClass:NSArray.class] || !masks.count)
+		return;
+
+	NSUInteger counted = 0;
+	CGMutablePathRef inside  = CGPathCreateMutable();
+	CGMutablePathRef outside = CGPathCreateMutable();
+	[self collectMaskPaths:masks atFrame:frame inside:inside outside:outside counted:&counted];
+
+	if (counted && !CGPathIsEmpty(inside)){
+		CGContextAddPath(ctx, inside);
+		CGContextClip(ctx);
+	}
+	CGPathRelease(inside);
+	CGPathRelease(outside);
+}
+
+/// The subtractive half, after the layer painted: the region erased back to
+/// transparent, which is what a subtracted mask means against the canvas.
+- (void)eraseByMasks:(NSArray *)masks atFrame:(double)frame inContext:(CGContextRef)ctx {
+	if (![masks isKindOfClass:NSArray.class] || !masks.count)
+		return;
+
+	NSUInteger counted = 0;
+	CGMutablePathRef inside  = CGPathCreateMutable();
+	CGMutablePathRef outside = CGPathCreateMutable();
+	[self collectMaskPaths:masks atFrame:frame inside:inside outside:outside counted:&counted];
+	[self erasePath:outside inContext:ctx];
+
+	CGPathRelease(inside);
+	CGPathRelease(outside);
+}
+
+/// Erase the path's region back to transparent: the blend mode that clears
+/// what it paints. Fill, not stroke, and winding, so overlapping subtractive
+/// shapes still read as the region they cover together.
+- (void)erasePath:(CGMutablePathRef)path inContext:(CGContextRef)ctx {
+	if (CGPathIsEmpty(path))
+		return;
+	CGContextSetBlendMode(ctx, kCGBlendModeClear);
+	CGContextSetRGBFillColor(ctx, 0, 0, 0, TGAlphaOpaque);
+	CGContextAddPath(ctx, path);
+	CGContextFillPath(ctx);
+	CGContextSetBlendMode(ctx, kCGBlendModeNormal);
+}
+
+// MARK: gradients
+
+/// A gradient fill as Lottie writes it: stops as [offset, r, g, b] laid end
+/// to end, a start and an end point, and "t" deciding linear or radial.
+/// The whole shape is used as the clip, and the gradient paints across it -
+/// which is what a fill is, told in gradient terms.
+- (void)gradientFillPath:(CGPathRef)path withShape:(NSDictionary *)shape
+			   atFrame:(double)frame inContext:(CGContextRef)ctx {
+	if (CGPathIsEmpty(path))
+		return;
+	NSDictionary *g = shape[@"g"];
+	NSArray *k = TGNumbers(g[@"k"]);
+	NSInteger stops = [g[@"p"] integerValue];
+	if (stops < 2 || !k.count)
+		return;
+
+	NSUInteger perStop = k.count / (NSUInteger)stops;
+	if ((perStop != 4 && perStop != 5) ||
+			k.count < perStop * (NSUInteger)stops)
+		return;   // a header the stops do not fill is a broken file
+
+	CGGradientRef gradient = [self gradientFromStops:k
+											 perStop:perStop
+											 atFrame:frame
+										  withAlpha:TGScalarAt(shape[@"o"], frame, 100) / 100.0];
+	if (!gradient)
+		return;
+
+	NSArray *from = TGValueAt(shape[@"s"], frame);
+	NSArray *to   = TGValueAt(shape[@"e"], frame);
+	if (from.count < 2 || to.count < 2){
+		CGGradientRelease(gradient);
+		return;
+	}
+	CGPoint start  = CGPointMake([from[0] doubleValue], [from[1] doubleValue]);
+	CGPoint finish = CGPointMake([to[0] doubleValue],   [to[1] doubleValue]);
+
+	CGContextSaveGState(ctx);
+	CGContextAddPath(ctx, path);
+	CGContextClip(ctx);
+	if ([shape[@"t"] integerValue] == 2){
+		double radius = sqrt(pow(finish.x - start.x, 2) +
+							 pow(finish.y - start.y, 2));
+		// Radial runs from the middle out to the end point; the stops clamp
+		// to the line, so the endpoints alone decide the circle.
+		CGContextDrawRadialGradient(ctx, gradient, start, 0,
+				finish, MAX(radius, 0.01), kCGGradientDrawsBeforeStartLocation |
+										   kCGGradientDrawsAfterEndLocation);
+	} else {
+		CGContextDrawLinearGradient(ctx, gradient, start, finish,
+				kCGGradientDrawsBeforeStartLocation |
+				kCGGradientDrawsAfterEndLocation);
+	}
+	CGContextRestoreGState(ctx);
+	CGGradientRelease(gradient);
+}
+
+/// One gradient out of the flat stop list. Lottie lays each colour at its
+/// offset in canvas units, one stop after the next, in order already - which
+/// is also the shape CG builds a gradient from.
+- (CGGradientRef)gradientFromStops:(NSArray *)k
+						   perStop:(NSUInteger)perStop
+						   atFrame:(double)frame
+						 withAlpha:(double)alpha {
+	NSUInteger stops = k.count / perStop;
+	if (stops > 64)   // a stop for every point on the square is a broken file
+		return nil;
+
+	NSMutableArray *locations = [NSMutableArray arrayWithCapacity:stops];
+	NSMutableArray *components = [NSMutableArray arrayWithCapacity:stops * 4];
+	for (NSUInteger i = 0; i < stops; i++){
+		NSUInteger base = i * perStop;
+		double offset = [k[base] doubleValue];
+		// The colour rides next to the offset; a fifth number is an alpha
+		// the file carries per stop, otherwise the fill's own opacity does.
+		double colourAlpha = (perStop == 5) ? [k[base + 4] doubleValue] : 1.0;
+		[locations addObject:@(MAX(MIN(offset, 1.0), 0.0))];
+		[components addObjectsFromArray:@[
+			@([k[base + 1] doubleValue]),
+			@([k[base + 2] doubleValue]),
+			@([k[base + 3] doubleValue]),
+			@(colourAlpha * alpha)]];
+	}
+
+	// CG wants plain float arrays, not the boxed ones this file reads.
+	NSUInteger count = (NSUInteger)stops;
+	NSUInteger comps = count * 4;
+	CGFloat *cLocations = malloc(comps * sizeof(CGFloat));
+	CGFloat *cComponents = malloc(comps * sizeof(CGFloat));
+	if (!cLocations || !cComponents){
+		free(cLocations);
+		free(cComponents);
+		return nil;
+	}
+	for (NSUInteger i = 0; i < count; i++){
+		cLocations[i] = [locations[i] doubleValue];
+		for (NSUInteger j = 0; j < 4; j++)
+			cComponents[i * 4 + j] = [components[i * 4 + j] doubleValue];
+	}
+
+	static CGColorSpaceRef space = NULL;
+	if (!space)
+		space = CGColorSpaceCreateDeviceRGB();
+	CGGradientRef gradient = CGGradientCreateWithColorComponents(space, cComponents,
+			cLocations, (size_t)stops);
+	free(cLocations);
+	free(cComponents);
+	return gradient;
 }
 
 - (void)strokePath:(CGPathRef)path withShape:(NSDictionary *)shape

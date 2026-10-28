@@ -60,6 +60,23 @@ UIColor *TGColourCodeBlockBackground(void) {
 	return [UIColor colorWithWhite:0.5f alpha:0.25f];
 }
 
+// The icon tile hues, one function each. TGRGB is handy but carries no
+// meaning across the twenty-four places that called it; these do.
+#define TGTILE(r, g, b) [UIColor colorWithRed:(r) green:(g) blue:(b) alpha:1.0f]
+UIColor *TGIconTileViolet(void) { return TGTILE(0.35f, 0.34f, 0.84f); }
+UIColor *TGIconTilePurple(void) { return TGTILE(0.53f, 0.24f, 0.75f); }
+UIColor *TGIconTileOrchid(void) { return TGTILE(0.69f, 0.32f, 0.87f); }
+UIColor *TGIconTileSky(void)    { return TGTILE(0.20f, 0.60f, 0.86f); }
+UIColor *TGIconTileAzure(void)  { return TGTILE(0.00f, 0.48f, 1.00f); }
+UIColor *TGIconTileCyan(void)   { return TGTILE(0.20f, 0.75f, 0.86f); }
+UIColor *TGIconTileGreen(void)  { return TGTILE(0.29f, 0.85f, 0.39f); }
+UIColor *TGIconTileAmber(void)  { return TGTILE(1.00f, 0.58f, 0.00f); }
+UIColor *TGIconTileGold(void)   { return TGTILE(1.00f, 0.80f, 0.00f); }
+UIColor *TGIconTileCoral(void)  { return TGTILE(1.00f, 0.18f, 0.33f); }
+UIColor *TGIconTileRed(void)    { return TGTILE(1.00f, 0.23f, 0.18f); }
+UIColor *TGIconTileGrey(void)   { return TGTILE(0.56f, 0.56f, 0.58f); }
+UIColor *TGIconTileSlate(void)  { return TGTILE(0.45f, 0.45f, 0.50f); }
+
 UIFont *TGFontAtSize(CGFloat size)       { return [UIFont systemFontOfSize:size]; }
 UIFont *TGFontBoldAtSize(CGFloat size)   { return [UIFont boldSystemFontOfSize:size]; }
 UIFont *TGFontItalicAtSize(CGFloat size) { return [UIFont italicSystemFontOfSize:size]; }

@@ -168,15 +168,43 @@
 /// A notification that arrived while the app was running: TDLib decrypts it
 /// and turns it into the ordinary updates, so the chat list moves without
 /// waiting for the next poll.
+///
+/// APNs wraps Telegram's blob under "p", which is the one piece TDLib wants;
+/// the alert above it is display data Telegram's own clients ignore.
 - (void)processPushPayload:(NSDictionary *)payload {
 	if (!payload)
 		return;
-	NSData *json = [NSJSONSerialization dataWithJSONObject:payload options:0 error:nil];
+	NSString *blob = payload[@"p"];
+	NSDictionary *clean = [blob isKindOfClass:NSString.class] && blob.length
+			? @{@"p" : blob} : payload;
+	NSData *json = [NSJSONSerialization dataWithJSONObject:clean options:0 error:nil];
 	if (!json)
 		return;
 	[self send:@{@"@type" : @"processPushNotification",
 				 @"payload" : [[NSString alloc] initWithData:json
 												   encoding:NSUTF8StringEncoding]}];
+}
+
+/// What a push names, told by TDLib itself: works even while the certificate
+/// is still on its way, because the blob sent over the wire is all the
+/// answer needs. "ok" matched nothing - the payload TDLib could not read,
+/// rather than one it merely could not deliver.
+- (void)pushReceiverOfPayload:(NSDictionary *)payload
+				   completion:(void (^)(BOOL ok, int64_t chatId, int64_t messageId))completion {
+	NSString *blob = payload[@"p"];
+	if (![blob isKindOfClass:NSString.class] || !blob.length){
+		if (completion) completion(NO, 0, 0);
+		return;
+	}
+	[self request:@{@"@type" : @"getPushReceiverId", @"payload" : blob}
+		completion:^(NSDictionary *result){
+			if (!completion)
+				return;
+			BOOL ok = [result[@"@type"] isEqualToString:@"pushReceiverId"];
+			completion(ok,
+					   [result[@"chat_id"] longLongValue],
+					   [result[@"message_id"] longLongValue]);
+		}];
 }
 
 - (void)logOut {

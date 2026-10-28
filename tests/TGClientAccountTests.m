@@ -528,6 +528,36 @@ static void answerA(TGClient *c, NSDictionary *answer) {
 	XCTAssertEqualObjects(chats[0][@"title"], @"Pat");
 }
 
+- (void)testPushReceiver_TheBlobNamesItsChatAndMessage {
+	TGClient *c = A();
+	c.td_exec = NULL;
+	__block BOOL ok = NO;
+	__block int64_t chatId = 0, messageId = 0;
+	[c pushReceiverOfPayload:@{@"p" : @"AoP1c2k1"}
+				  completion:^(BOOL o, int64_t chat, int64_t msg){
+		ok = o; chatId = chat; messageId = msg;
+	}];
+	NSDictionary *sent = lastA(c, @"getPushReceiverId");
+	XCTAssertEqualObjects(sent[@"payload"], @"AoP1c2k1");
+	answerA(c, @{@"@type" : @"pushReceiverId",
+				 @"chat_id" : @(9009),
+				 @"message_id" : @(17)});
+	XCTAssertTrue(ok);
+	XCTAssertEqual(chatId, (int64_t)9009);
+	XCTAssertEqual(messageId, (int64_t)17);
+}
+
+- (void)testPushReceiver_NoBlobIsNoAnswerAtAll {
+	TGClient *c = A();
+	__block BOOL asked = NO;
+	[c pushReceiverOfPayload:@{@"aps" : @{@"alert" : @"x"}}
+				  completion:^(BOOL ok, int64_t chatId, int64_t messageId){
+		asked = YES;
+	}];
+	XCTAssertTrue(asked);
+	XCTAssertEqual(countA(c, @"getPushReceiverId"), (NSUInteger)0);
+}
+
 @end
 
 // vim:ft=objc

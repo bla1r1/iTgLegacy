@@ -127,6 +127,23 @@ UIColor *TGColourLink(void);
 UIColor *TGColourCodeBackground(void);
 UIColor *TGColourCodeBlockBackground(void);
 
+/// The decorative colours an icon tile is drawn in - decoration, not
+/// semantics, so they are named by the hue and not the row: rows are
+/// re-ordered by product, hues do not drift by a point again.
+UIColor *TGIconTileViolet(void);
+UIColor *TGIconTilePurple(void);
+UIColor *TGIconTileOrchid(void);
+UIColor *TGIconTileSky(void);
+UIColor *TGIconTileAzure(void);
+UIColor *TGIconTileCyan(void);
+UIColor *TGIconTileGreen(void);
+UIColor *TGIconTileAmber(void);
+UIColor *TGIconTileGold(void);
+UIColor *TGIconTileCoral(void);
+UIColor *TGIconTileRed(void);
+UIColor *TGIconTileGrey(void);
+UIColor *TGIconTileSlate(void);
+
 #pragma mark - the spacing scale
 
 // Six steps and no seventh. Before this the app spaced things at 2, 4, 5, 6,
@@ -590,6 +607,8 @@ static const CGFloat TGMetricChatBadgeTop       = 42.0f;
 static const CGFloat TGMetricFolderPillInset    = TGMetricPadSmall;
 /// How much history to fetch around a pinned message when going to it.
 static const CGFloat TGMetricHistoryPageAroundPinned = 40.0f;
+/// How close to the top a scroll must come before older history is asked for.
+static const CGFloat TGMetricHistoryTopGate          = 100.0f;
 static const CGFloat TGMetricFloatingDateHeight = 22.0f;
 // The map card's own height is TGMetricMapCardHeight, and the bubble shows it
 // at that height. They were two names, and two names for the height a drawn

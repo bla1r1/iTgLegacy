@@ -22,7 +22,7 @@ report() {
 # ── 1. a point size spelled out in a screen ──────────────────────────────────
 # Every role is a function in TGStyle.h. TGStyle.m is where the numbers live.
 hits=$(grep -rn 'UIFont [a-zA-Z]*[sS]ystemFontOfSize:[0-9]' src \
-        --include='*.m' --include='*.h' | grep -v '^src/Core/TGStyle')
+        --include='*.m' --include='*.mm' --include='*.h' | grep -v '^src/Core/TGStyle')
 if [ -n "$hits" ]; then
     report "A point size is written out instead of asking TGStyle for a role:" \
             "use TGFontBody(), TGFontRow(), TGFontCaption()... see src/Core/TGStyle.h"
@@ -34,7 +34,7 @@ fi
 # message text at the size the user chose. A literal there is rule 1 in
 # disguise.
 hits=$(grep -rnE 'TGFont(Bold|Italic|Medium)?AtSize\([0-9]' src \
-        --include='*.m' --include='*.h')
+        --include='*.m' --include='*.mm' --include='*.h')
 if [ -n "$hits" ]; then
     report "A literal passed to TGFont...AtSize, which is only for computed sizes:" \
             "pick the role from the scale in src/Core/TGStyle.h instead"
@@ -44,7 +44,7 @@ fi
 # ── 3. a colour mixed by hand outside the palette ────────────────────────────
 # All colours must originate from TGTheme+Palette.
 hits=$(grep -rnE '\[UIColor colorWith(Red|Hue|White):[0-9]' src \
-        --include='*.m' --include='*.h' | grep -v '^src/Core/')
+        --include='*.m' --include='*.mm' --include='*.h' | grep -v '^src/Core/')
 if [ -n "$hits" ]; then
     report "A colour is mixed in a screen instead of coming from the palette:" \
             "add a name to TGTheme+Palette.m and ask the theme for it"
@@ -55,7 +55,7 @@ fi
 # UIAlertView and UIActionSheet draw themselves in the system's colours, which
 # is a white box on a dark theme, and they answer through a tag-keyed delegate.
 # Everything went over to TGAlertSheet; nothing comes back.
-hits=$(grep -rn 'UIAlertView\|UIActionSheet' src --include='*.m' --include='*.h' \
+hits=$(grep -rn 'UIAlertView\|UIActionSheet' src --include='*.m' --include='*.mm' --include='*.h' \
         | grep -v 'TGAlertSheet' | grep -vE ':[[:space:]]*(//|\*|/\*)')
 if [ -n "$hits" ]; then
     report "A system alert or action sheet, which ignores the theme:" \
@@ -66,7 +66,7 @@ fi
 # ── 5. a list row that picked its own height ────────────────────────────────
 # The same row - somebody's picture, their name, a line under it - was 52, 56
 # and 60 across five screens. TGMetricPersonRow is what it is.
-hits=$(grep -rn 'tableView\.rowHeight = [0-9]' src --include='*.m')
+hits=$(grep -rn 'tableView\.rowHeight = [0-9]' src --include='*.m' --include='*.mm')
 if [ -n "$hits" ]; then
     report "A list row's height is written out instead of a metric:" \
             "TGMetricPersonRow for a row showing somebody, TGMetricRow for a settings row"
@@ -76,7 +76,7 @@ fi
 # ── 6. a section caption styled by hand ─────────────────────────────────────
 # Seven screens did this themselves and five left the system's, which over a
 # dark list is grey on grey.
-hits=$(grep -rn 'header\.textLabel\.textColor' src --include='*.m' | grep -v 'src/Core/TGTheme')
+hits=$(grep -rn 'header\.textLabel\.textColor' src --include='*.m' --include='*.mm' | grep -v 'src/Core/TGTheme')
 if [ -n "$hits" ]; then
     report "A section caption is styled in a screen:" \
             "[[TGTheme shared] styleSectionHeader:view] in willDisplayHeaderView:"
@@ -86,7 +86,7 @@ fi
 # ── 7. a character standing in for an icon ──────────────────────────────────
 # The dismiss cross was U+00D7 in two places and U+2715 in a third, at three
 # different weights, and the record lock's arrow was a bold "▲".
-hits=$(grep -rnE 'setTitle:@"(\\[uU]|[^"A-Za-z0-9 .,:%+?!-])' src --include='*.m')
+hits=$(grep -rnE 'setTitle:@"(\\[uU]|[^"A-Za-z0-9 .,:%+?!-])' src --include='*.m' --include='*.mm')
 if [ -n "$hits" ]; then
     report "A character is standing in for an icon:" \
             "draw it in TGIcons+Menu and ask for it with glyphNamed:colour:side:"
@@ -114,7 +114,7 @@ fi
 # side that already had a token, each free to drift from it in silence.
 #
 # A raw literal, or a hand-written "/ 2", is still neither.
-hits=$(grep -rnE '\.cornerRadius\s*=\s*([^;]+);' src --include='*.m' \
+hits=$(grep -rnE '\.cornerRadius\s*=\s*([^;]+);' src --include='*.m' --include='*.mm' \
         | grep -vE '\.cornerRadius\s*=\s*(0|0\.0f|TGMetricCornerNone);' \
         | grep -vE '\.cornerRadius\s*=\s*.*(\[|TGMetricCorner|TGHalf\(|kCorner|radius;)' \
         | grep -v '^src/Core/TGStyle')
@@ -126,7 +126,7 @@ fi
 
 # ── 10. a font name and size requested directly in a screen ─────────────────
 # All fonts come through TGStyle roles. A custom face belongs in TGStyle.m.
-hits=$(grep -rnE '\[UIFont fontWithName:.* size:[0-9]' src --include='*.m' \
+hits=$(grep -rnE '\[UIFont fontWithName:.* size:[0-9]' src --include='*.m' --include='*.mm' \
         | grep -v '^src/Core/TGStyle.m')
 if [ -n "$hits" ]; then
     report "A font is created with fontWithName: and a literal size:" \
@@ -136,7 +136,7 @@ fi
 
 # ── 11. an animation duration written out as a literal ──────────────────────
 # Transitions must use TGAnimationDuration* tokens (Fast/Normal/Medium/Slow).
-hits=$(grep -rnE 'animateWithDuration:\s*[0-9]' src --include='*.m')
+hits=$(grep -rnE 'animateWithDuration:\s*[0-9]' src --include='*.m' --include='*.mm')
 if [ -n "$hits" ]; then
     report "An animation duration is written out as a literal instead of a motion token:" \
             "use TGAnimationDurationFast, Normal, Medium, or Slow from src/Core/TGStyle.h"
@@ -147,7 +147,7 @@ fi
 # Manual `/ 2` or `/ 2.0f` introduces inconsistent rounding and magic calculations.
 # Use TGCenteredOrigin(container, item), TGHalf(dimension), or a semantic token.
 hits=$(grep -rnE '(\([a-zA-Z0-9_.]+\s*-\s*[a-zA-Z0-9_.]+\)\s*/\s*2(\.0f)?|\.width\s*/\s*2(\.0f)?|\.height\s*/\s*2(\.0f)?)\b' \
-        src/Controllers src/Views --include='*.m' \
+        src/Controllers src/Views --include='*.m' --include='*.mm' \
         | grep -v '^src/Core/' | grep -v '^src/Views/TGIcons' | grep -v '^src/Views/TGLottieView')
 if [ -n "$hits" ]; then
     report "A manual division by 2 is used for layout/centering:" \
@@ -157,7 +157,7 @@ fi
 
 # ── 13. a table row height returned as a literal number ──────────────────────
 # Row heights must use TGMetric* tokens (e.g. TGMetricRow, TGMetricPersonRow, TGMetricSettingsProfileRow).
-hits=$(grep -rnE 'heightForRowAtIndexPath' src/Controllers -A 20 --include='*.m' \
+hits=$(grep -rnE 'heightForRowAtIndexPath' src/Controllers -A 20 --include='*.m' --include='*.mm' \
         | grep -E 'return\s+[0-9]+(\.[0-9]+)?f?;')
 if [ -n "$hits" ]; then
     report "A table row height is returned as a literal number instead of a metric token:" \
@@ -167,7 +167,7 @@ fi
 
 # ── 14. a colour alpha mixed manually outside palette ────────────────────────
 # Ad-hoc transparency creates uncalibrated tints. Put semantic colors in TGTheme+Palette.
-hits=$(grep -rnE 'colorWithAlphaComponent:\s*[0-9]' src --include='*.m' --include='*.h' \
+hits=$(grep -rnE 'colorWithAlphaComponent:\s*[0-9]' src --include='*.m' --include='*.mm' --include='*.h' \
         | grep -v '^src/Core/')
 if [ -n "$hits" ]; then
     report "colorWithAlphaComponent: with literal alpha is used outside Core palette:" \

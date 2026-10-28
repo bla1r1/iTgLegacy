@@ -1551,9 +1551,66 @@ NSDictionary *TGFlattenMessage(NSDictionary *m) {
 			completion(@"inviteLink", result[@"invite_link"]);
 		else if ([type isEqualToString:@"internalLinkTypeUserPhoneNumber"])
 			completion(@"phoneNumber", result[@"phone_number"]);
-		else
-			completion(@"unknown", nil);
+		else {
+			// Telegram keeps a server-side table of links it has no schema
+			// for: what a private invite or a reserved page means, told in
+			// prose. That prose is the link's meaning - without it the tap
+			// fell through to a path-matcher that mostly guessed wrong.
+			[self request:@{@"@type" : @"getDeepLinkInfo", @"link" : link}
+			   completion:^(NSDictionary *info){
+				if (!completion)
+					return;
+				// A refusal answers as an error, whose "message" is a bare
+				// string - subscripting that is the crash a naive chain
+				// here would take.
+				NSDictionary *said = [info[@"message"] isKindOfClass:NSDictionary.class]
+						? info[@"message"] : nil;
+				NSString *note = said[@"text"] ?: @"";
+				// "update_app" means TDLib answered because its copy is
+				// stale, not because this is what the link means: the tap
+				// falls back rather than reciting a version check.
+				BOOL staleCopy = [info[@"update_app"] boolValue];
+				if ([info[@"@type"] isEqualToString:@"deepLinkInfo"] && note.length &&
+						!staleCopy)
+					completion(@"deepLink", note);
+				else
+					completion(@"unknown", nil);
+			}];
+		}
 	}];
+}
+
+/// What the sender typed, handed back as markdown: *bold*, `_italic_`,
+/// `code` come back out of the entities their client stored - so Edit edits
+/// the origin rather than the render. A message with no entities is not
+/// worth the round trip: the plain text goes back as it is.
+- (void)markdownOfMessage:(int64_t)messageId
+				   inChat:(int64_t)chatId
+				completion:(void (^)(NSString *markdown))completion {
+	[self request:@{@"@type" : @"getMessage",
+					@"chat_id"    : @(chatId),
+					@"message_id" : @(messageId)}
+		completion:^(NSDictionary *result){
+			if (!completion)
+				return;
+			NSString *plain = result[@"content"][@"text"][@"text"] ?: @"";
+			NSDictionary *formatted = result[@"content"][@"text"];
+			if (![formatted[@"@type"] isEqualToString:@"formattedText"] ||
+					![formatted[@"entities"] isKindOfClass:NSArray.class] ||
+					!((NSArray *)formatted[@"entities"]).count){
+				completion(plain);
+				return;
+			}
+			[self request:@{@"@type" : @"getMarkdownText", @"text" : formatted}
+				completion:^(NSDictionary *answer){
+				NSString *text = answer[@"text"];
+				if ([answer[@"@type"] isEqualToString:@"formattedText"] &&
+						text.length)
+					completion(text);
+				else
+					completion(plain);
+			}];
+		}];
 }
 
 - (void)markRead:(NSArray *)messageIds inChat:(int64_t)chatId {

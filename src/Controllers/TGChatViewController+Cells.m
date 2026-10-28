@@ -667,17 +667,21 @@ static void TGPlaceTitleDetail(TGBubbleCell *cell, CGFloat x, CGFloat top,
 										   stampW, TGHalf(TGMetricRow) - TGMetricPadSmall);
 		[cell.bubble bringSubviewToFront:cell.mediaStamp];
 
-		// Outside the circle, in the cell's own coordinates: the bubble clips
-		// to a circle, so anything parented to it that leaves the disc is cut.
-		// The clock and the ticks read as one line, the way they do in a
-		// bubble - stacking the ticks under the time put them adrift.
+		// Under the circle, centred on it. The bubble clips to a circle, so
+		// anything parented to it that leaves the disc is cut: the stamp line
+		// is re-parented to the cell instead. One line - clock then ticks,
+		// then the unheard dot for theirs - the way every other bubble reads,
+		// rather than hanging out to the side or stacking the ticks wherever
+		// the corner let them fit.
 		CGRect frame = layout.bubbleFrame;
+		CGFloat roundSide = CGRectGetWidth(frame);
+		BOOL unplayedDot = !mine && [m[@"unplayed"] boolValue];
 		CGFloat clockW = TGTextSize(stamp, TGFontMicro(), 0).width;
 		CGFloat groupW = clockW + (mine ? TGMetricPadSmall + TGMetricTicksWidth : 0);
-		CGFloat groupX = mine
-				? CGRectGetMinX(frame) - TGMetricPadMedium - groupW
-				: CGRectGetMaxX(frame) + TGMetricPadMedium;
-		CGFloat clockY = CGRectGetMaxY(frame) - TGMetricStampBottomInset;
+		if (unplayedDot)
+			groupW += TGMetricPadSmall + TGMetricUnreadDotSide;
+		CGFloat groupX = CGRectGetMinX(frame) + TGCenteredOrigin(roundSide, groupW);
+		CGFloat clockY = CGRectGetMaxY(frame) + TGMetricPadSmall;
 
 		[cell.contentView addSubview:cell.time];
 		cell.time.hidden = !stamp.length;
@@ -697,9 +701,8 @@ static void TGPlaceTitleDetail(TGBubbleCell *cell, CGFloat x, CGFloat top,
 		}
 
 		// A round note nobody has opened gets the same dot a voice note does.
-		BOOL unplayed = !mine && [m[@"unplayed"] boolValue];
-		cell.unreadDot.hidden = !unplayed;
-		if (unplayed){
+		cell.unreadDot.hidden = !unplayedDot;
+		if (unplayedDot){
 			cell.unreadDot.frame = CGRectMake(
 					groupX + groupW + TGMetricPadSmall,
 					clockY + TGCenteredOrigin(TGMetricStampHeight, TGMetricUnreadDotSide),
@@ -729,7 +732,8 @@ static void TGPlaceTitleDetail(TGBubbleCell *cell, CGFloat x, CGFloat top,
 		if (!hmt) { hmt = [[NSDateFormatter alloc] init]; [hmt setDateFormat:@"HH:mm"]; }
 		cell.time.text = [hmt stringFromDate:[NSDate dateWithTimeIntervalSince1970:[m[@"date"] doubleValue]]];
 		cell.time.textColor = [theme timeColour];
-		cell.time.frame = CGRectMake(side - kVoiceClockWidth, side, kVoiceClockWidth, TGMetricStampHeight);
+		TGPlaceStamp(cell, layout.bubbleFrame,
+				TGTextSize(cell.time.text, TGFontMicro(), 0).width, NO);
 		return [self finalizeCell:cell message:m layout:layout isMine:mine];
 	}
 
@@ -914,14 +918,18 @@ static void TGPlaceTitleDetail(TGBubbleCell *cell, CGFloat x, CGFloat top,
 		}
 
 		NSInteger seconds = [m[@"duration"] integerValue];
+		NSString *durText = [NSString stringWithFormat:@"%ld:%02ld",
+				(long)(seconds / 60), (long)(seconds % 60)];
 		cell.body.hidden = NO;
 		cell.body.numberOfLines = 1;
 		cell.body.font = TGFontMeta();
 		cell.body.textColor = [voiceTheme secondaryTextColour];
-		cell.body.text = [NSString stringWithFormat:@"%ld:%02ld",
-				(long)(seconds / 60), (long)(seconds % 60)];
+		cell.body.text = durText;
+		// The label is as long as what it says, like every other stamp in
+		// the app: a fixed 44pt wide one put "1:07" far right of its digits
+		// and left the dot placement doing arithmetic - to cover for it.
 		cell.body.frame = CGRectMake(left, layout.bubbleFrame.size.height - TGMetricLineRow,
-				kVoiceClockWidth, TGMetricLineMicro);
+				MAX(TGTextSize(durText, TGFontMeta(), 0).width, kVoiceClockMinimum), TGMetricLineMicro);
 
 		// The dot sits just after the length, where Telegram puts it.
 		cell.unreadDot.hidden = !unplayed;

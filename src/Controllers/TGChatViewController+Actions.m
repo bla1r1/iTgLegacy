@@ -533,9 +533,25 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 		// to know which request to send.
 		self.editingIsCaption = [m[@"photoId"] isKindOfClass:NSNumber.class] ||
 								[m[@"docId"] isKindOfClass:NSNumber.class];
-		self.input.text = m[@"text"];
+		NSString *fallback = m[@"text"];
+		self.input.text = fallback;
 		[self showComposeBanner:self.editingIsCaption ? @"Editing caption" : @"Editing"];
 		[self.input becomeFirstResponder];
+		// What Telegram puts back as markdown is what the sender typed, and
+		// it arrives late: the render is already in the composer, and whatever
+		// Telegram says the origin was replaces it - unless another tap has
+		// typed over the fallback already.
+		int64_t chatId = self.chatId;
+		__weak typeof(self) weakSelf = self;
+		[[TGClient shared] markdownOfMessage:messageId inChat:chatId
+								  completion:^(NSString *markdown){
+			TGChatViewController *me = weakSelf;
+			NSString *current = me.input.text;
+			if (!me || me.editingId != messageId)
+				return;
+			if ([current isEqualToString:fallback] && markdown.length)
+				me.input.text = markdown;
+		}];
 
 	} else if ([action isEqualToString:@"Add to Favourites"]){
 		[[TGClient shared] setSticker:TGStickerFileId(m) favourite:YES];
@@ -982,15 +998,20 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 			}
 			if ([kind isEqualToString:@"stickerSet"] && value.length){
 				// A sticker set is not a chat, and opening one as a chat is
-				// what this did before.
-				[TGSnackbar showInView:me.navigationController.view ?: me.view
-								  text:[NSString stringWithFormat:
-										@"Sticker set: %@", value]
-							   seconds:2 onCommit:nil];
+				// what this did before. The pack's record comes in with the
+				// id and the count the sheet needs, and Telegram's answer
+				// says whether this account already has it.
+				[me askForStickerSet:value];
 				return;
 			}
 			if ([kind isEqualToString:@"phoneNumber"] && value.length){
 				[me openChatWithPhoneNumber:value];
+				return;
+			}
+			if ([kind isEqualToString:@"deepLink"] && value.length){
+				[TGAlertSheet showMessage:value
+									title:@"LegacyTG"
+									inView:me.navigationController.view ?: me.view];
 				return;
 			}
 			// Anything Telegram has no kind for falls through to the paths
@@ -1023,6 +1044,44 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 			[TGSnackbar showInView:me.navigationController.view
 							  text:@"Could not join chat" seconds:2 onCommit:nil];
 		}
+	}];
+}
+
+/// A pack met through a link, offered the way their clients offer it: named,
+/// counted, and installed on one confirm.
+- (void)askForStickerSet:(NSString *)shortName {
+	__weak typeof(self) weakSelf = self;
+	[[TGClient shared] stickerSetByShortName:shortName completion:^(NSDictionary *set){
+		TGChatViewController *me = weakSelf;
+		if (!me)
+			return;
+		if (!set){
+			[TGSnackbar showInView:me.navigationController.view ?: me.view
+							  text:@"Telegram does not know that pack"
+						   seconds:2 onCommit:nil];
+			return;
+		}
+		NSString *title = [set[@"title"] length] ? set[@"title"] : shortName;
+		if ([set[@"installed"] boolValue]){
+			[TGSnackbar showInView:me.navigationController.view ?: me.view
+							  text:[NSString stringWithFormat:@"%@ is already installed", title]
+						   seconds:2 onCommit:nil];
+			return;
+		}
+		NSString *counted = [NSString stringWithFormat:@"%@ - %lu stickers",
+				title, (unsigned long)[set[@"count"] unsignedIntegerValue]];
+		__weak typeof(self) weakSelf = self;
+		[TGAlertSheet showChoices:@[@"Install"]
+							title:counted
+				  destructiveIndex:-1
+							inView:me.navigationController.view ?: me.view
+						  onChoice:^(NSInteger index){
+			TGChatViewController *me = weakSelf;
+			[[TGClient shared] setStickerSet:set[@"id"] installed:YES archived:NO];
+			[TGSnackbar showInView:me ? (me.navigationController.view ?: me.view) : nil
+							  text:[NSString stringWithFormat:@"%@ installed", title]
+						   seconds:2 onCommit:nil];
+		}];
 	}];
 }
 

@@ -56,7 +56,7 @@ this does not.
 | **done** | Documents with name and size | |
 | **done** | Send a photo from the library | untested — needs a real tap |
 | | `.webm` stickers | VP9; no decoder exists on this hardware |
-| | Lottie: masks, mattes, trim paths, gradients, repeaters | stickers using them draw approximately |
+| | Lottie: mattes, trim paths, repeaters | add/subtract masks and linear/radial gradients are done; mattes, trim paths and repeaters draw approximately |
 | **done** | Record and send a voice note | libopusenc; hold the microphone. Verified on a 4S: 4 seconds encodes to 22KB and arrives |
 | **done** | Send video, location, contacts | documents still missing - no file browser on iOS 7 |
 | **done** | Albums (grouped media) | one block, one timestamp |
@@ -64,7 +64,7 @@ this does not.
 | **done** | Save to camera roll | hold the full-screen picture |
 | **done** | GIF autoplay | muted loop in the bubble on A5 and up (Power Saving switch); tap still opens the viewer |
 | **done** | Send stickers and GIFs | emoji / sticker / GIF panel; GIF search through @gif |
-| *in progress* | Sticker sets: install, browse, favourites | browse installed sets and favourites; installing new sets not yet |
+| *in progress* | Sticker sets: install, browse, favourites | browse installed sets and favourites; installing a pack by its `t.me/addstickers` link or from search is in |
 | *in progress* | Photo viewer | zooms; no swipe between photos |
 | **done** | Polls | question, options and shares; tap to vote |
 

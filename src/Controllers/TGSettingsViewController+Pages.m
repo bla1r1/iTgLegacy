@@ -38,7 +38,7 @@
 			TGActionRow(hasPhoto ? @"Change Profile Photo" : @"Set Profile Photo", ^{
 				[weakSelf pickProfilePhoto];
 			}),
-			TGIconRow(@"Edit Profile", @"chat", TGRGB(0.35, 0.34, 0.84), ^{
+			TGIconRow(@"Edit Profile", @"chat", TGIconTileViolet(), ^{
 				UIViewController *edit = [[TGEditProfileViewController alloc] init];
 				edit.hidesBottomBarWhenPushed = YES;
 				[weakSelf.navigationController pushViewController:edit animated:YES];
@@ -47,45 +47,45 @@
 		]),
 
 		TGSection(nil, nil, @[
-			TGIconRow(@"Saved Messages", @"folder", TGRGB(0.20, 0.60, 0.86), ^{
+			TGIconRow(@"Saved Messages", @"folder", TGIconTileSky(), ^{
 				[weakSelf openSavedMessages];
 			}),
-			TGIconRow(@"Recent Calls", @"call", TGRGB(0.29, 0.85, 0.39), ^{
+			TGIconRow(@"Recent Calls", @"call", TGIconTileGreen(), ^{
 				[weakSelf openPage:TGSettingsPageRecentCalls];
 			}),
-			TGIconRow(@"Devices", @"devices", TGRGB(1.00, 0.58, 0.00), ^{
+			TGIconRow(@"Devices", @"devices", TGIconTileAmber(), ^{
 				TGSessionsViewController *sessions = [[TGSessionsViewController alloc] init];
 				sessions.hidesBottomBarWhenPushed = YES;
 				[weakSelf.navigationController pushViewController:sessions animated:YES];
 			}),
-			TGIconRow(@"Chat Folders", @"folder", TGRGB(0.20, 0.75, 0.86), ^{
+			TGIconRow(@"Chat Folders", @"folder", TGIconTileCyan(), ^{
 				[weakSelf openPage:TGSettingsPageFolders];
 			}),
-			TGIconRow(@"Proxy", @"data", TGRGB(0.56, 0.56, 0.58), ^{
+			TGIconRow(@"Proxy", @"data", TGIconTileGrey(), ^{
 				[weakSelf openPage:TGSettingsPageProxy];
 			}),
 		]),
 
 		TGSection(nil, nil, @[
-			TGIconRow(@"Notifications and Sounds", @"notifications", TGRGB(1.00, 0.23, 0.18), ^{
+			TGIconRow(@"Notifications and Sounds", @"notifications", TGIconTileRed(), ^{
 				[weakSelf openPage:TGSettingsPageNotifications];
 			}),
-			TGIconRow(@"Privacy and Security", @"privacy", TGRGB(0.56, 0.56, 0.58), ^{
+			TGIconRow(@"Privacy and Security", @"privacy", TGIconTileGrey(), ^{
 				[weakSelf openPage:TGSettingsPagePrivacy];
 			}),
-			TGIconRow(@"Data and Storage", @"data", TGRGB(0.29, 0.85, 0.39), ^{
+			TGIconRow(@"Data and Storage", @"data", TGIconTileGreen(), ^{
 				[weakSelf openPage:TGSettingsPageData];
 			}),
-			TGIconRow(@"Appearance", @"chat", TGRGB(0.20, 0.60, 0.86), ^{
+			TGIconRow(@"Appearance", @"chat", TGIconTileSky(), ^{
 				[weakSelf openPage:TGSettingsPageAppearance];
 			}),
-			TGIconRow(@"Power Saving", @"battery", TGRGB(1.00, 0.58, 0.00), ^{
+			TGIconRow(@"Power Saving", @"battery", TGIconTileAmber(), ^{
 				[weakSelf openPage:TGSettingsPagePowerSaving];
 			}),
-			TGIconRow(@"Language", @"language", TGRGB(0.35, 0.34, 0.84), ^{
+			TGIconRow(@"Language", @"language", TGIconTileViolet(), ^{
 				[weakSelf openPage:TGSettingsPageLanguage];
 			}),
-			TGIconRow(@"Device", @"devices", TGRGB(0.45, 0.45, 0.50), ^{
+			TGIconRow(@"Device", @"devices", TGIconTileSlate(), ^{
 				TGDeviceViewController *device = [[TGDeviceViewController alloc] init];
 				device.hidesBottomBarWhenPushed = YES;
 				[weakSelf.navigationController pushViewController:device animated:YES];
@@ -93,25 +93,25 @@
 		]),
 
 		TGSection(nil, nil, @[
-			TGIconRow(@"Telegram Premium", @"star", TGRGB(0.53, 0.24, 0.75), ^{
+			TGIconRow(@"Telegram Premium", @"star", TGIconTilePurple(), ^{
 				[weakSelf showPremiumState];
 			}),
-			TGIconRow(@"Telegram Business", @"briefcase", TGRGB(0.00, 0.48, 1.00), ^{
+			TGIconRow(@"Telegram Business", @"briefcase", TGIconTileAzure(), ^{
 				[weakSelf pushPlaceholder:@"Telegram Business"];
 			}),
-			TGIconRow(@"Send a Gift", @"gift", TGRGB(1.00, 0.18, 0.33), ^{
+			TGIconRow(@"Send a Gift", @"gift", TGIconTileCoral(), ^{
 				[weakSelf pushPlaceholder:@"Send a Gift"];
 			}),
 		]),
 
 		TGSection(nil, nil, @[
-			TGIconRow(@"Ask a Question", @"chat", TGRGB(1.00, 0.58, 0.00), ^{
+			TGIconRow(@"Ask a Question", @"chat", TGIconTileAmber(), ^{
 				[weakSelf openSupport];
 			}),
-			TGIconRow(@"Telegram FAQ", @"faq", TGRGB(0.20, 0.75, 0.86), ^{
+			TGIconRow(@"Telegram FAQ", @"faq", TGIconTileCyan(), ^{
 				[weakSelf openURL:@"https://telegram.org/faq"];
 			}),
-			TGIconRow(@"Privacy Policy", @"policy", TGRGB(1.00, 0.80, 0.00), ^{
+			TGIconRow(@"Privacy Policy", @"policy", TGIconTileGold(), ^{
 				[weakSelf openURL:@"https://telegram.org/privacy"];
 			}),
 		]),
@@ -453,7 +453,7 @@
 			TGSwitchInfoRow(@"Sticker Animation",
 					@"Loop animated stickers in chats instead of showing the "
 					@"first frame.",
-					@"sticker", TGRGB(0.29, 0.85, 0.39),
+					@"sticker", TGIconTileGreen(),
 					[TGCapabilities animatedStickersWanted] && possible, ^(BOOL on){
 				[TGCapabilities setAnimatedStickersWanted:on];
 				[weakSelf rebuild];
@@ -461,7 +461,7 @@
 			TGSwitchInfoRow(@"Chat Wallpaper",
 					@"Draw the wallpaper behind messages. A plain background "
 					@"scrolls faster.",
-					@"chat", TGRGB(0.20, 0.60, 0.86),
+					@"chat", TGIconTileSky(),
 					[TGCapabilities wallpaperWanted] && possible, ^(BOOL on){
 				[TGCapabilities setWallpaperWanted:on];
 				[weakSelf rebuild];
@@ -469,7 +469,7 @@
 			TGSwitchInfoRow(@"Autoplay GIFs",
 					@"Loop GIFs silently in the chat. Off, a GIF plays when "
 					@"tapped.",
-					@"video", TGRGB(0.69, 0.32, 0.87),
+					@"video", TGIconTileOrchid(),
 					[TGCapabilities gifAutoplayWanted] && possible, ^(BOOL on){
 				[TGCapabilities setGifAutoplayWanted:on];
 				[weakSelf rebuild];
@@ -482,14 +482,14 @@
 			TGSwitchInfoRow(@"Over Mobile Data",
 					@"Start downloading photos and files before you open them, "
 					@"on the cellular radio.",
-					@"data", TGRGB(1.00, 0.58, 0.00),
+					@"data", TGIconTileAmber(),
 					[client autoDownloadOverMobile], ^(BOOL on){
 				[client setAutoDownloadOverMobile:on wifi:[client autoDownloadOverWifi]];
 				[weakSelf rebuild];
 			}),
 			TGSwitchInfoRow(@"Over Wi-Fi",
 					@"The same, on Wi-Fi.",
-					@"data", TGRGB(0.20, 0.75, 0.86),
+					@"data", TGIconTileCyan(),
 					[client autoDownloadOverWifi], ^(BOOL on){
 				[client setAutoDownloadOverMobile:[client autoDownloadOverMobile] wifi:on];
 				[weakSelf rebuild];

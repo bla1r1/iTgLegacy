@@ -1004,7 +1004,7 @@
         return;
     
     // Load more when scrolled near the top
-    if (scrollView.contentOffset.y < 100) {
+    if (scrollView.contentOffset.y < (CGFloat)TGMetricHistoryTopGate) {
         self.isLoadingMoreHistory = YES;
         // The raw list: the grouped one starts with a day plate, which has no id.
         NSArray *pool = self.rawMessages.count ? self.rawMessages : self.messages;
