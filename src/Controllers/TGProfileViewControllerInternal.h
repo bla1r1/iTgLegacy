@@ -51,6 +51,9 @@ static const NSInteger kSectionMembers = 3;
 static const NSInteger kSectionMedia   = 4;
 static const NSInteger kSectionLogout  = 5;
 
+static const NSInteger kStoryGridCols  = 3;
+static const CGFloat   kStoryGridGap   = TGMetricCollageGap;
+
 @interface TGProfileViewController ()
 
 @property (nonatomic, strong) NSMutableSet *thumbnailsRequested;
@@ -110,6 +113,7 @@ static const NSInteger kSectionLogout  = 5;
 
 @interface TGProfileViewController (Media)
 
++ (CGFloat)storySideForWidth:(CGFloat)width;
 - (void)loadMedia;
 - (void)mediaTabChanged:(UISegmentedControl *)sender;
 - (NSArray *)currentMediaTabs;
@@ -117,10 +121,12 @@ static const NSInteger kSectionLogout  = 5;
 - (BOOL)selectedTabIsGrid;
 - (CGFloat)storyGridHeight;
 - (UITableViewCell *)mediaGridCell:(UITableView *)tableView;
+- (UITableViewCell *)mediaGridCellForTableView:(UITableView *)tableView atRow:(NSInteger)row;
 - (NSArray *)selectedMediaRows;
 - (void)openStoryAtIndex:(NSInteger)index;
 - (void)closeStory:(UITapGestureRecognizer *)tap;
 - (void)storyTileTapped:(UIButton *)button;
+- (void)photoTileTapped:(UIButton *)button;
 - (void)stopStoryPlayback;
 - (void)loadMoreMediaForCurrentTab;
 

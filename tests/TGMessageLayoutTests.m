@@ -323,4 +323,38 @@ static NSString *kWord2 = @"antidisestablishmentarianism";
 	XCTAssertNil(str2);
 }
 
+- (void)testDescribeMessageContent_Types {
+	XCTAssertEqualObjects(TGDescribeMessageContent(@{@"kind" : @"messageVideoNote"}), @"Video message");
+	XCTAssertEqualObjects(TGDescribeMessageContent(@{@"kind" : @"messageVoiceNote"}), @"Voice message");
+	XCTAssertEqualObjects(TGDescribeMessageContent(@{@"kind" : @"messageSticker", @"emoji" : @"\U0001F600"}), @"Sticker \U0001F600");
+	XCTAssertEqualObjects(TGDescribeMessageContent(@{@"kind" : @"messageSticker"}), @"Sticker");
+	XCTAssertEqualObjects(TGDescribeMessageContent(@{@"kind" : @"messagePhoto"}), @"Photo");
+	XCTAssertEqualObjects(TGDescribeMessageContent(@{@"kind" : @"messageVideo"}), @"Video");
+	XCTAssertEqualObjects(TGDescribeMessageContent(@{@"kind" : @"messageAnimation"}), @"GIF");
+	XCTAssertEqualObjects(TGDescribeMessageContent(@{@"kind" : @"messageDocument", @"docName" : @"file.pdf"}), @"file.pdf");
+	XCTAssertEqualObjects(TGDescribeMessageContent(@{@"text" : @"Hello"}), @"Hello");
+}
+
+- (void)testVideoNoteLayout_SymmetricGeometry {
+	CGRect bubble = CGRectMake(100, 10, 200, 200);
+	CGRect durFrame = CGRectZero, timeFrame = CGRectZero, ticksFrame = CGRectZero, dotFrame = CGRectZero;
+	TGVideoNoteLayoutBottomBar(bubble, 30.0f, 40.0f, YES, NO, &durFrame, &timeFrame, &ticksFrame, &dotFrame);
+
+	// Both must be placed beneath the circle
+	XCTAssertTrue(fabs(durFrame.origin.y - (bubble.origin.y + bubble.size.height + TGMetricPadSmall)) < 0.01);
+	XCTAssertTrue(fabs(timeFrame.origin.y - (bubble.origin.y + bubble.size.height + TGMetricPadSmall)) < 0.01);
+
+	// Duration on the left side of the circle
+	XCTAssertTrue(fabs(durFrame.origin.x - (bubble.origin.x + TGMetricPadSmall)) < 0.01);
+
+	// Time group on the right side of the circle
+	CGFloat groupW = 40.0f + TGMetricPadSmall + TGMetricTicksWidth;
+	XCTAssertTrue(fabs(timeFrame.origin.x - (bubble.origin.x + bubble.size.width - groupW - TGMetricPadSmall)) < 0.01);
+
+	// Equal margin from the respective edges
+	CGFloat leftMargin = durFrame.origin.x - bubble.origin.x;
+	CGFloat rightMargin = (bubble.origin.x + bubble.size.width) - (timeFrame.origin.x + groupW);
+	XCTAssertTrue(fabs(leftMargin - rightMargin) < 0.01);
+}
+
 @end

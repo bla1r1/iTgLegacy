@@ -652,61 +652,43 @@ static void TGPlaceTitleDetail(TGBubbleCell *cell, CGFloat x, CGFloat top,
 		NSString *durStr = (dur > 0) ? [NSString stringWithFormat:@"%ld:%02ld", (long)(dur / 60), (long)(dur % 60)] : @"";
 		NSString *stamp = (layout.stamp.length && ![layout.stamp isEqualToString:@"(null)"]) ? layout.stamp : @"";
 
-		// How long it runs belongs to the picture, so it rides inside the
-		// circle; what time it was sent and whether it was read belong to the
-		// message, so they sit outside it. They used to share one pill in the
-		// middle of the circle, which read as the clock being part of the
-		// video, and the ticks were clipped away by the circle's own curve.
-		CGFloat stampW = TGTextSize(durStr, TGFontMicro(), 0).width + TGMetricPadLarge;
-		cell.mediaStamp.hidden = !durStr.length;
-		cell.mediaStamp.backgroundColor = [theme mediaStampColour];
-		cell.mediaStamp.text = durStr;
-		cell.mediaStamp.textAlignment = NSTextAlignmentCenter;
-		cell.mediaStamp.frame = CGRectMake(TGCenteredOrigin(side, stampW),
-										   side - TGMetricStampBottomInset - TGMetricPadSmall,
-										   stampW, TGHalf(TGMetricRow) - TGMetricPadSmall);
-		[cell.bubble bringSubviewToFront:cell.mediaStamp];
-
-		// Under the circle, centred on it. The bubble clips to a circle, so
-		// anything parented to it that leaves the disc is cut: the stamp line
-		// is re-parented to the cell instead. One line - clock then ticks,
-		// then the unheard dot for theirs - the way every other bubble reads,
-		// rather than hanging out to the side or stacking the ticks wherever
-		// the corner let them fit.
 		CGRect frame = layout.bubbleFrame;
-		CGFloat roundSide = CGRectGetWidth(frame);
 		BOOL unplayedDot = !mine && [m[@"unplayed"] boolValue];
-		CGFloat clockW = TGTextSize(stamp, TGFontMicro(), 0).width;
-		CGFloat groupW = clockW + (mine ? TGMetricPadSmall + TGMetricTicksWidth : 0);
-		if (unplayedDot)
-			groupW += TGMetricPadSmall + TGMetricUnreadDotSide;
-		CGFloat groupX = CGRectGetMinX(frame) + TGCenteredOrigin(roundSide, groupW);
-		CGFloat clockY = CGRectGetMaxY(frame) + TGMetricPadSmall;
+		CGFloat durW = durStr.length ? TGTextSize(durStr, TGFontMicro(), 0).width : 0.0f;
+		CGFloat clockW = stamp.length ? TGTextSize(stamp, TGFontMicro(), 0).width : 0.0f;
+
+		CGRect durFrame = CGRectZero, timeFrame = CGRectZero, ticksFrame = CGRectZero, dotFrame = CGRectZero;
+		TGVideoNoteLayoutBottomBar(frame, durW, clockW, mine, unplayedDot,
+								   &durFrame, &timeFrame, &ticksFrame, &dotFrame);
+
+		[cell.contentView addSubview:cell.mediaStamp];
+		cell.mediaStamp.hidden = !durStr.length;
+		cell.mediaStamp.backgroundColor = [UIColor clearColor];
+		cell.mediaStamp.textColor = [theme timeColour];
+		cell.mediaStamp.font = TGFontMicro();
+		cell.mediaStamp.text = durStr;
+		cell.mediaStamp.textAlignment = NSTextAlignmentLeft;
+		cell.mediaStamp.layer.cornerRadius = 0;
+		cell.mediaStamp.frame = durFrame;
 
 		[cell.contentView addSubview:cell.time];
 		cell.time.hidden = !stamp.length;
 		cell.time.text = stamp;
 		cell.time.textColor = [theme timeColour];
 		cell.time.textAlignment = NSTextAlignmentLeft;
-		cell.time.frame = CGRectMake(groupX, clockY, clockW, TGMetricStampHeight);
+		cell.time.frame = timeFrame;
 
 		cell.ticks.hidden = !mine;
 		if (mine) {
 			[cell.contentView addSubview:cell.ticks];
 			cell.ticks.image = [self ticksForMessage:m white:NO];
-			cell.ticks.frame = CGRectMake(
-					groupX + clockW + TGMetricPadSmall,
-					clockY + TGCenteredOrigin(TGMetricStampHeight, TGMetricTicksHeight),
-					TGMetricTicksWidth, TGMetricTicksHeight);
+			cell.ticks.frame = ticksFrame;
 		}
 
-		// A round note nobody has opened gets the same dot a voice note does.
 		cell.unreadDot.hidden = !unplayedDot;
 		if (unplayedDot){
-			cell.unreadDot.frame = CGRectMake(
-					groupX + groupW + TGMetricPadSmall,
-					clockY + TGCenteredOrigin(TGMetricStampHeight, TGMetricUnreadDotSide),
-					TGMetricUnreadDotSide, TGMetricUnreadDotSide);
+			[cell.contentView addSubview:cell.unreadDot];
+			cell.unreadDot.frame = dotFrame;
 			cell.unreadDot.layer.cornerRadius = TGHalf(TGMetricUnreadDotSide);
 			cell.unreadDot.backgroundColor = [theme accentColour];
 		}
@@ -811,16 +793,10 @@ static void TGPlaceTitleDetail(TGBubbleCell *cell, CGFloat x, CGFloat top,
 			TGChatViewController *strongSelf = weakSelf;
 			if (!strongSelf) return;
 			if (idx >= 0 && idx < (NSInteger)albumMsgs.count) {
-				NSDictionary *target = albumMsgs[idx];
-				NSArray *pool = strongSelf.rawMessages.count ? strongSelf.rawMessages : albumMsgs;
-				NSInteger targetIdx = [pool indexOfObject:target];
-				if (targetIdx == NSNotFound) {
-					pool = albumMsgs;
-					targetIdx = idx;
-				}
-				[TGMediaViewer presentItems:pool
-									startAt:targetIdx
-									 inChat:strongSelf.chatId];
+				[TGMediaViewer presentItems:albumMsgs
+									startAt:idx
+									 inChat:strongSelf.chatId
+									isAlbum:YES];
 			}
 		};
 

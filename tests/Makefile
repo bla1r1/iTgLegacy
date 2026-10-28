@@ -131,10 +131,40 @@ CLIENT_TEST_SRCS := \
 
 TEST_BINARY := $(BUILD)/TGCallTests
 CLIENT_BINARY := $(BUILD)/TGClientTests
+SIM_BINARY := $(BUILD)/call_sim
+OFFICIAL_SIM_BINARY := $(BUILD)/official_tgvoip_sim
+
+OPUS := $(shell pkg-config --variable=prefix opus 2>/dev/null || echo /opt/homebrew/opt/opus)
+
+LIBTGVOIP_SRCS := \
+    $(ROOT)/third_party/libtgvoip/BlockingQueue.cpp \
+    $(ROOT)/third_party/libtgvoip/Buffers.cpp \
+    $(ROOT)/third_party/libtgvoip/CongestionControl.cpp \
+    $(ROOT)/third_party/libtgvoip/EchoCanceller.cpp \
+    $(ROOT)/third_party/libtgvoip/JitterBuffer.cpp \
+    $(ROOT)/third_party/libtgvoip/MediaStreamItf.cpp \
+    $(ROOT)/third_party/libtgvoip/MessageThread.cpp \
+    $(ROOT)/third_party/libtgvoip/NetworkSocket.cpp \
+    $(ROOT)/third_party/libtgvoip/OpusDecoder.cpp \
+    $(ROOT)/third_party/libtgvoip/OpusEncoder.cpp \
+    $(ROOT)/third_party/libtgvoip/PacketReassembler.cpp \
+    $(ROOT)/third_party/libtgvoip/VoIPController.cpp \
+    $(ROOT)/third_party/libtgvoip/VoIPServerConfig.cpp \
+    $(ROOT)/third_party/libtgvoip/json11.cpp \
+    $(ROOT)/third_party/libtgvoip/logging.cpp \
+    $(ROOT)/third_party/libtgvoip/audio/AudioIO.cpp \
+    $(ROOT)/third_party/libtgvoip/audio/AudioInput.cpp \
+    $(ROOT)/third_party/libtgvoip/audio/AudioOutput.cpp \
+    $(ROOT)/third_party/libtgvoip/audio/AudioIOCallback.cpp \
+    $(ROOT)/third_party/libtgvoip/audio/Resampler.cpp \
+    $(ROOT)/third_party/libtgvoip/os/posix/NetworkSocketPosix.cpp \
+    $(ROOT)/third_party/libtgvoip/os/darwin/DarwinSpecific.mm \
+    $(ROOT)/third_party/libtgvoip/video/ScreamCongestionController.cpp \
+    $(ROOT)/third_party/libtgvoip/tests/MockReflector.cpp
 
 # ─── targets ──────────────────────────────────────────────────────────────────
 
-.PHONY: test build clean tokens
+.PHONY: test build clean tokens sim official_sim
 
 # The design-token lint. Cheap, so it runs first: a literal size or colour
 # fails the suite the same way a broken assertion does.
@@ -146,6 +176,9 @@ TEST_BINARY_DEPS := $(TESTS)/main.m $(C_SRCS) $(OBJC_SRCS) $(TEST_HELPER_SRCS) $
                 $(TESTS)/TGTestRunner.h $(TESTS)/TGCallTestHelpers.h
 CLIENT_BINARY_DEPS := $(TESTS)/main_client.m $(CLIENT_OBJC_SRCS) $(CLIENT_HELPER_SRCS) \
                 $(CLIENT_TEST_SRCS) $(TESTS)/TGTestRunner.h
+SIM_BINARY_DEPS := $(TESTS)/call_sim.mm $(C_SRCS) $(OBJC_SRCS) $(TEST_HELPER_SRCS) \
+                $(TESTS)/TGCallTestHelpers.h
+OFFICIAL_SIM_DEPS := $(TESTS)/official_tgvoip_sim.mm $(LIBTGVOIP_SRCS)
 
 test: tokens $(TEST_BINARY) $(CLIENT_BINARY)
 	@echo "\n════════ Running call stack tests ════════"
@@ -153,7 +186,15 @@ test: tokens $(TEST_BINARY) $(CLIENT_BINARY)
 	@echo "\n════════ Running TGClient regression tests ════════"
 	$(CLIENT_BINARY)
 
-build: $(TEST_BINARY) $(CLIENT_BINARY)
+sim: $(SIM_BINARY)
+	@echo "\n════════ Running VoIP call simulation (LegacyTG stack) ════════"
+	$(SIM_BINARY)
+
+official_sim: $(OFFICIAL_SIM_BINARY)
+	@echo "\n════════ Running VoIP call simulation (Official libtgvoip) ════════"
+	$(OFFICIAL_SIM_BINARY)
+
+build: $(TEST_BINARY) $(CLIENT_BINARY) $(SIM_BINARY) $(OFFICIAL_SIM_BINARY)
 
 $(TEST_BINARY): $(TEST_BINARY_DEPS)
 	@mkdir -p $(BUILD)
@@ -173,6 +214,42 @@ $(CLIENT_BINARY): $(CLIENT_BINARY_DEPS)
 	    $(CLIENT_HELPER_SRCS) \
 	    $(TESTS)/main_client.m \
 	    $(LDFLAGS) \
+	    -o $@
+	@echo "  Built $(notdir $@)"
+
+$(SIM_BINARY): $(SIM_BINARY_DEPS)
+	@mkdir -p $(BUILD)
+	$(CLANG) $(CFLAGS) \
+	    $(C_SRCS) \
+	    $(OBJC_SRCS) \
+	    $(TEST_HELPER_SRCS) \
+	    $(TESTS)/call_sim.mm \
+	    $(LDFLAGS) \
+	    -o $@
+	@echo "  Built $(notdir $@)"
+
+$(OFFICIAL_SIM_BINARY): $(OFFICIAL_SIM_DEPS)
+	@mkdir -p $(BUILD)
+	$(CLANG) -std=c++14 \
+	    -arch $(ARCH) \
+	    $(if $(SDK),-isysroot $(SDK),) \
+	    -DTGVOIP_USE_CALLBACK_AUDIO_IO \
+	    -DTGVOIP_NO_DSP \
+	    -DTGVOIP_NO_AEC \
+	    -DWEBRTC_POSIX \
+	    -I$(ROOT)/third_party/libtgvoip \
+	    -I$(OPENSSL)/include \
+	    -I$(OPUS)/include \
+	    -I$(OPUS)/include/opus \
+	    -L$(OPENSSL)/lib \
+	    -L$(OPUS)/lib \
+	    -lcrypto -lssl -lopus \
+	    -lc++ \
+	    -framework Foundation \
+	    -framework CoreAudio \
+	    -framework AudioToolbox \
+	    $(LIBTGVOIP_SRCS) \
+	    $(TESTS)/official_tgvoip_sim.mm \
 	    -o $@
 	@echo "  Built $(notdir $@)"
 

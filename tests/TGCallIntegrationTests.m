@@ -50,6 +50,7 @@
 @property (nonatomic, assign) uint32_t verifiedMediaTag;
 - (void)teardown;
 - (void)inspectReflectorPacket:(NSData *)packet;
+- (void)sendOutgoingAudioFrame:(NSData *)opusFrame;
 @end
 
 @interface TGCall (TestSupport)
@@ -859,7 +860,7 @@
     XCTAssertEqual([TGCall shared].reflector.remoteTag, (uint32_t)88888);
 }
 
-- (void)testVerifiedMediaTagLocksSenderTagAgainstSubsequentUseCandidate {
+- (void)testVerifiedMediaTagPreservedAgainstRoutineStunChecks {
     NSData *key = TGTestCallKey();
     XCTAssertTrue([self startEstablishedCallWithKey:key callId:46]);
 
@@ -870,12 +871,12 @@
     [TGCall shared].nominatedSenderTag = mediaTag;
     [TGCall shared].currentSenderTag = mediaTag;
 
-    // Build a fake reflector packet carrying a STUN binding request with USE-CANDIDATE
+    // Build a fake reflector packet carrying a routine STUN binding request (no USE-CANDIDATE)
     // coming from secondaryTag.
     NSData *stunReq = [TGCallStun bindingRequestWithUsername:@"qdWU:ErLR"
                                                     password:@"secret"
                                                   tieBreaker:0x12345678ULL
-                                                useCandidate:YES];
+                                                useCandidate:NO];
     NSMutableData *packet = [NSMutableData dataWithCapacity:24 + stunReq.length];
     uint8_t header[24] = {0};
     // Reflector header: bytes 16..19 are senderTag (little endian)
@@ -891,6 +892,41 @@
     XCTAssertEqual([TGCall shared].verifiedMediaTag, mediaTag);
     XCTAssertEqual([TGCall shared].nominatedSenderTag, mediaTag);
     XCTAssertEqual([TGCall shared].currentSenderTag, mediaTag);
+}
+
+- (void)testBidirectionalContinuousAudioExchange {
+    NSData *key = TGTestCallKey();
+    XCTAssertTrue([self startEstablishedCallWithKey:key callId:45],
+                  @"ICE must connect before audio can flow");
+
+    __block uint32_t peerFrames = 0;
+    self.peer.onAudioFrame = ^(NSData *frame) {
+        peerFrames++;
+    };
+
+    uint8_t opusBytes[] = { 0xF8, 0xFF, 0xFE, 0x11, 0x22, 0x33, 0x44 };
+    NSData *frameData = [NSData dataWithBytes:opusBytes length:sizeof(opusBytes)];
+
+    // Send 30 frames from Phone -> Peer and 30 frames from Peer -> Phone
+    for (uint32_t i = 1; i <= 30; i++) {
+        [[TGCall shared] sendOutgoingAudioFrame:frameData];
+
+        NSData *peerPacket = [self.peer encryptedAudioPacketWithOpusFrame:frameData
+                                                                      seq:i
+                                                               requiresAck:NO];
+        XCTAssertNotNil(peerPacket);
+        [self.peer sendReflectorPayload:peerPacket];
+
+        [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.01]];
+    }
+
+    // Wait for in-flight packets to arrive
+    BOOL done = TGWaitForCondition(^{
+        return (BOOL)(peerFrames >= 25 && [TGCallAudioEngine receivedFrames].count >= 25);
+    }, 2.0);
+
+    XCTAssertTrue(done, @"At least 25 frames each way must arrive and decode");
+    XCTAssertEqual(self.peer.decryptFailures, 0u, @"Zero decrypt failures expected");
 }
 
 // ──────────────────────────────────────────────────────────────────────────────

@@ -8,6 +8,18 @@
 #import <QuartzCore/QuartzCore.h>
 #import "TGStyle.h"
 #import "TGAlertSheet.h"
+#import "TGLottieView.h"
+#import <objc/runtime.h>
+
+static const char kTGItemDataKey = 0;
+
+static inline void TGSetButtonItemData(UIButton *button, id item) {
+	objc_setAssociatedObject(button, &kTGItemDataKey, item, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
+static inline id TGGetButtonItemData(UIButton *button) {
+	return objc_getAssociatedObject(button, &kTGItemDataKey);
+}
 
 static const CGFloat kStripHeight = TGMetricEmojiStripHeight;   // categories / sets along the top
 static const CGFloat kTabsHeight  = TGMetricEmojiTabsHeight;   // Emoji | Stickers | GIFs
@@ -20,6 +32,9 @@ static const CGFloat kBackspaceGlyphH = TGMetricStampTicksRoom;
 static const NSInteger kItemTagBase = 1000;  // grid buttons carry their index
 static const NSInteger kHeaderTag   = 900;   // a section title in the feed
 static const CGFloat   kHeaderHeight = TGMetricEmojiHeader;
+static const CGFloat   kPreviewHeaderWidth = 240.0f;
+static const CGFloat   kPreviewHeaderHeight = 130.0f;
+static const CGFloat   kPreviewSide = 110.0f;
 
 /// Pictures decoded for the grid and the strip, by file id; shared by every
 /// panel so reopening one draws at once.
@@ -225,6 +240,9 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 	self.gifQuery = nil;
 	self.stickerQuery = nil;
 	self.backspace.hidden = tab != TGEmojiPanelTabEmoji;
+	self.items = @[];
+	self.sections = nil;
+	[self reloadGrid];
 	TGTheme *theme = [TGTheme shared];
 	for (UIButton *button in self.tabButtons){
 		BOOL on = button.tag == tab;
@@ -246,9 +264,10 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 			[me reloadStrip];
 			[me loadStickerFeed];
 		}];
+	} else {
+		[self reloadStrip];
+		[self loadItemsForStripIndex:0];
 	}
-	[self reloadStrip];
-	[self loadItemsForStripIndex:0];
 }
 
 #pragma mark - strip
@@ -848,27 +867,30 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 	}
 	button.frame = frame;
 	button.tag = kItemTagBase + (NSInteger)index;
+	id item = (index < self.items.count) ? self.items[index] : nil;
+	TGSetButtonItemData(button, item);
 	[button setTitle:nil forState:UIControlStateNormal];
 	[button setImage:nil forState:UIControlStateNormal];
 	UIImageView *tile = (UIImageView *)[button viewWithTag:1];
 	tile.hidden = YES;
 	tile.image = nil;
 
-	id item = self.items[index];
 	if (self.tab == TGEmojiPanelTabEmoji){
 		button.titleLabel.font = TGFontEmoji();
-		[button setTitle:item forState:UIControlStateNormal];
+		NSString *str = [item isKindOfClass:NSString.class] ? (NSString *)item : @"";
+		[button setTitle:str forState:UIControlStateNormal];
 	} else if (self.tab == TGEmojiPanelTabStickers){
 		button.imageEdgeInsets = UIEdgeInsetsMake(TGMetricAlertTextGap, TGMetricAlertTextGap, TGMetricAlertTextGap, TGMetricAlertTextGap);
 		button.imageView.contentMode = UIViewContentModeScaleAspectFit;
-		UIImage *cached = [TGPanelImageCache() objectForKey:item[@"thumbId"]];
+		NSDictionary *dict = [item isKindOfClass:NSDictionary.class] ? (NSDictionary *)item : nil;
+		UIImage *cached = dict[@"thumbId"] ? [TGPanelImageCache() objectForKey:dict[@"thumbId"]] : nil;
 		if (cached)
 			[button setImage:cached forState:UIControlStateNormal];
 		else {
 			// The emoji stands in until the picture arrives - and for good,
 			// for a sticker with no still thumbnail.
 			button.titleLabel.font = TGFontEmojiLarge();
-			[button setTitle:item[@"emoji"] forState:UIControlStateNormal];
+			[button setTitle:dict[@"emoji"] ?: @"" forState:UIControlStateNormal];
 		}
 	} else {
 		if (!tile){
@@ -882,9 +904,10 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 		tile.frame = CGRectInset(button.bounds, 1, 1);
 		tile.backgroundColor = [theme fileTileColour];
 		tile.hidden = NO;
-		UIImage *cached = item[@"thumbId"] ? [TGPanelImageCache() objectForKey:item[@"thumbId"]] : nil;
-		if (!cached && item[@"minithumbnail"])
-			cached = [UIImage imageWithData:item[@"minithumbnail"]];
+		NSDictionary *dict = [item isKindOfClass:NSDictionary.class] ? (NSDictionary *)item : nil;
+		UIImage *cached = dict[@"thumbId"] ? [TGPanelImageCache() objectForKey:dict[@"thumbId"]] : nil;
+		if (!cached && dict[@"minithumbnail"])
+			cached = [UIImage imageWithData:dict[@"minithumbnail"]];
 		tile.image = cached;
 	}
 	self.cells[@(index)] = button;
@@ -942,7 +965,10 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 		if (index >= self.items.count || [self.requested containsObject:key])
 			continue;
 		[self.requested addObject:key];
-		NSNumber *thumbId = self.items[index][@"thumbId"];
+		id rawItem = self.items[index];
+		if (![rawItem isKindOfClass:NSDictionary.class])
+			continue;
+		NSNumber *thumbId = rawItem[@"thumbId"];
 		if ([thumbId integerValue] <= 0 || [TGPanelImageCache() objectForKey:thumbId])
 			continue;
 		[self loadImageForFile:thumbId.integerValue into:self.cells[key] generation:self.generation];
@@ -1005,15 +1031,15 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 	if (hold.state != UIGestureRecognizerStateBegan || (!isSticker && !isGif))
 		return;
 	UIButton *button = (UIButton *)hold.view;
+	id item = TGGetButtonItemData(button);
 	NSInteger index = button.tag - kItemTagBase;
-	if (index < 0 || index >= (NSInteger)self.items.count){
-		NSLog(@"TGEmojiPanel: hold on item %ld, out of %lu",
-				(long)index, (unsigned long)self.items.count);
-		return;
-	}
-	NSInteger fileId = [self.items[index][@"fileId"] integerValue];
+	if (!item && index >= 0 && index < (NSInteger)self.items.count)
+		item = self.items[index];
+	if (!item) return;
+
+	NSInteger fileId = [item[@"fileId"] integerValue];
 	if (fileId <= 0){
-		NSLog(@"TGEmojiPanel: hold on item %ld with no fileId", (long)index);
+		NSLog(@"TGEmojiPanel: hold on item with no fileId");
 		return;
 	}
 
@@ -1057,13 +1083,61 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 	UIView *host = self.window ?: (self.superview ?: self);
 	CGPoint where = [self.grid convertPoint:button.center toView:host];
 	self.menuOpenUntil = [NSDate timeIntervalSinceReferenceDate] + 1.0;
-	NSLog(@"TGEmojiPanel: hold on %ld (file %ld, strip %ld), menu in %@",
-			(long)index, (long)fileId, (long)strip, [host class]);
+
+	// Floating preview card header inside TGPopupMenu
+	UIView *header = [[UIView alloc] initWithFrame:CGRectMake(TGMetricZero, TGMetricZero, kPreviewHeaderWidth, kPreviewHeaderHeight)];
+	header.backgroundColor = [UIColor clearColor];
+
+	CGFloat pSide = kPreviewSide;
+	CGRect pFrame = CGRectMake(TGCenteredOrigin(kPreviewHeaderWidth, pSide),
+							   TGCenteredOrigin(kPreviewHeaderHeight, pSide),
+							   pSide, pSide);
+
+	BOOL isAnimated = [item[@"isAnimated"] boolValue] || [item[@"docName"] isEqualToString:@"tgs"];
+	if (isAnimated) {
+		TGLottieView *lottie = [[TGLottieView alloc] initWithFrame:pFrame];
+		UIImageView *thumb = [[UIImageView alloc] initWithFrame:pFrame];
+		thumb.contentMode = UIViewContentModeScaleAspectFit;
+		UIImage *cached = item[@"thumbId"] ? [TGPanelImageCache() objectForKey:item[@"thumbId"]] : nil;
+		if (cached) thumb.image = cached;
+		[header addSubview:thumb];
+		[header addSubview:lottie];
+
+		[[TGClient shared] downloadFile:fileId priority:TGDownloadPriorityOnScreen completion:^(NSString *path){
+			if (!path) return;
+			dispatch_async(dispatch_get_main_queue(), ^{
+				if ([lottie loadTGSFile:path]) {
+					thumb.hidden = YES;
+					[lottie play];
+				}
+			});
+		}];
+	} else {
+		UIImageView *preview = [[UIImageView alloc] initWithFrame:pFrame];
+		preview.contentMode = UIViewContentModeScaleAspectFit;
+		UIImage *cached = item[@"thumbId"] ? [TGPanelImageCache() objectForKey:item[@"thumbId"]] : nil;
+		if (!cached && item[@"minithumbnail"])
+			cached = [UIImage imageWithData:item[@"minithumbnail"]];
+		if (cached) preview.image = cached;
+		[header addSubview:preview];
+
+		[[TGClient shared] downloadFile:fileId priority:TGDownloadPriorityOnScreen completion:^(NSString *path){
+			if (!path) return;
+			dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+				UIImage *img = TGPanelDecode(path);
+				if (img) {
+					dispatch_async(dispatch_get_main_queue(), ^{
+						preview.image = img;
+					});
+				}
+			});
+		}];
+	}
 
 	id setId = (isSticker && strip >= 2 && (NSUInteger)(strip - 2) < self.stickerSets.count)
 			? self.stickerSets[strip - 2][@"id"] : nil;
 	__weak typeof(self) weakSelf = self;
-	[TGPopupMenu showItems:items atPoint:where inView:host
+	[TGPopupMenu showItems:items atPoint:where inView:host headerView:header
 				  onChoice:^(NSInteger choice, NSString *title){
 		NSLog(@"TGEmojiPanel: menu chose %ld (%@)", (long)choice, title);
 		if (choice < 0 || choice >= (NSInteger)actions.count)
@@ -1090,7 +1164,7 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 			TGEmojiPanel *panel = weakSelf;
 			if (panel && (panel.tab == TGEmojiPanelTabStickers ||
 						  panel.tab == TGEmojiPanelTabGIFs))
-			[panel selectTab:panel.tab];
+				[panel selectTab:panel.tab];
 		});
 	}];
 }
@@ -1153,9 +1227,11 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 	if ([NSDate timeIntervalSinceReferenceDate] < self.menuOpenUntil)
 		return;
 	NSInteger index = button.tag - kItemTagBase;
-	if (index < 0 || index >= (NSInteger)self.items.count)
+	id item = TGGetButtonItemData(button);
+	if (!item && index >= 0 && index < (NSInteger)self.items.count)
+		item = self.items[index];
+	if (!item)
 		return;
-	id item = self.items[index];
 	switch (self.tab){
 		case TGEmojiPanelTabEmoji:
 			TGNoteEmojiUsed(item);

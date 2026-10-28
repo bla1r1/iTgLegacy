@@ -162,6 +162,7 @@ static inline float TGScalarAtFast(NSDictionary *prop, double frame, float fallb
 @interface TGLottieModel : NSObject
 @property (nonatomic, strong) NSDictionary *anim;
 @property (nonatomic, strong) NSArray *layers;
+@property (nonatomic, strong) NSDictionary *layersByInd;
 @property (nonatomic, assign) double inPoint;
 @property (nonatomic, assign) double outPoint;
 @property (nonatomic, assign) double frameRate;
@@ -177,6 +178,7 @@ static inline float TGScalarAtFast(NSDictionary *prop, double frame, float fallb
 @property (nonatomic, copy) NSString *loadedPath;
 @property (nonatomic, strong) NSDictionary *animation;
 @property (nonatomic, strong) NSArray *layers;
+@property (nonatomic, strong) NSDictionary *layersByInd;
 @property (nonatomic, assign) double inPoint;
 @property (nonatomic, assign) double outPoint;
 @property (nonatomic, assign) double frameRate;
@@ -184,6 +186,7 @@ static inline float TGScalarAtFast(NSDictionary *prop, double frame, float fallb
 @property (nonatomic, assign) double currentFrame;
 @property (nonatomic, strong) NSTimer *timer;
 @property (nonatomic, assign) BOOL loaded;
+@property (nonatomic, assign) BOOL isPlaying;
 @end
 
 @implementation TGLottieView
@@ -201,16 +204,32 @@ static inline float TGScalarAtFast(NSDictionary *prop, double frame, float fallb
 	[_timer invalidate];
 }
 
+- (void)startTimer {
+	if (self.timer || !self.loaded) return;
+	double fps = ([NSProcessInfo processInfo].processorCount < 2) ? 12.0 : 18.0;
+	self.timer = [NSTimer timerWithTimeInterval:1.0 / fps
+										 target:self
+									   selector:@selector(tick)
+									   userInfo:nil
+										repeats:YES];
+	[[NSRunLoop mainRunLoop] addTimer:self.timer forMode:NSRunLoopCommonModes];
+}
+
 - (void)didMoveToWindow {
 	[super didMoveToWindow];
-	if (!self.window) {
-		[self stop];
+	if (self.window) {
+		if (self.isPlaying && self.loaded && !self.timer) {
+			[self startTimer];
+		}
 	}
 }
 
 - (BOOL)loadTGSFile:(NSString *)path {
 	if (!path.length) return NO;
 	if ([self.loadedPath isEqualToString:path] && self.loaded) {
+		if (self.isPlaying && !self.timer) {
+			[self startTimer];
+		}
 		return YES;
 	}
 
@@ -241,6 +260,12 @@ static inline float TGScalarAtFast(NSDictionary *prop, double frame, float fallb
 		model = [[TGLottieModel alloc] init];
 		model.anim = anim;
 		model.layers = anim[@"layers"];
+		NSMutableDictionary *byInd = [NSMutableDictionary dictionary];
+		for (NSDictionary *l in anim[@"layers"]) {
+			id ind = l[@"ind"];
+			if (ind) byInd[ind] = l;
+		}
+		model.layersByInd = byInd;
 		model.inPoint = [anim[@"ip"] doubleValue];
 		model.outPoint = [anim[@"op"] doubleValue];
 		model.frameRate = [anim[@"fr"] doubleValue] ?: 60.0;
@@ -253,6 +278,7 @@ static inline float TGScalarAtFast(NSDictionary *prop, double frame, float fallb
 	self.loadedPath = path;
 	self.animation = model.anim;
 	self.layers    = model.layers;
+	self.layersByInd = model.layersByInd;
 	self.inPoint   = model.inPoint;
 	self.outPoint  = model.outPoint;
 	self.frameRate = model.frameRate;
@@ -260,32 +286,30 @@ static inline float TGScalarAtFast(NSDictionary *prop, double frame, float fallb
 	self.currentFrame = self.inPoint;
 	self.loaded = (self.layers.count > 0 && self.canvas.width > 0);
 
+	if (self.isPlaying && !self.timer) {
+		[self startTimer];
+	}
+
 	[self setNeedsDisplay];
 	return self.loaded;
 }
 
 - (void)play {
-	if (!self.loaded || self.timer)
-		return;
-	double fps = ([NSProcessInfo processInfo].processorCount < 2) ? 12.0 : 18.0;
-	self.timer = [NSTimer timerWithTimeInterval:1.0 / fps
-										 target:self
-									   selector:@selector(tick)
-									   userInfo:nil
-										repeats:YES];
-	[[NSRunLoop mainRunLoop] addTimer:self.timer forMode:NSRunLoopCommonModes];
+	self.isPlaying = YES;
+	if (self.loaded && !self.timer) {
+		[self startTimer];
+	}
 }
 
 - (void)stop {
+	self.isPlaying = NO;
 	[self.timer invalidate];
 	self.timer = nil;
 }
 
 - (void)tick {
-	if (!self.window || self.hidden || self.alpha < 0.01) {
-		[self stop];
+	if (!self.window || self.hidden)
 		return;
-	}
 	double fps = ([NSProcessInfo processInfo].processorCount < 2) ? 12.0 : 18.0;
 	double step = self.frameRate / fps;
 	self.currentFrame += step;
@@ -330,7 +354,20 @@ static inline float TGScalarAtFast(NSDictionary *prop, double frame, float fallb
 		return;
 
 	CGContextSaveGState(ctx);
-	[self applyTransform:layer[@"ks"] atFrame:frame inContext:ctx];
+
+	// Walk parent hierarchy from root down to this layer
+	NSMutableArray *hierarchy = [NSMutableArray array];
+	NSDictionary *curr = layer;
+	while (curr) {
+		[hierarchy insertObject:curr atIndex:0];
+		id parentInd = curr[@"parent"];
+		curr = parentInd ? self.layersByInd[parentInd] : nil;
+	}
+
+	for (NSDictionary *l in hierarchy) {
+		[self applyTransform:l[@"ks"] atFrame:frame inContext:ctx];
+	}
+
 	[self clipByMasks:layer[@"masksProperties"] atFrame:frame inContext:ctx];
 	[self drawShapes:layer[@"shapes"] atFrame:frame inContext:ctx];
 	[self eraseByMasks:layer[@"masksProperties"] atFrame:frame inContext:ctx];
@@ -345,7 +382,14 @@ static inline float TGScalarAtFast(NSDictionary *prop, double frame, float fallb
 	float anchor[2] = {0};
 	float scale[2]  = {100.0f, 100.0f};
 
-	int posCount    = TGValueAtFast(ks[@"p"], frame, pos, 2);
+	int posCount = 0;
+	if (ks[@"p"][@"x"] && ks[@"p"][@"y"]) {
+		pos[0] = TGScalarAtFast(ks[@"p"][@"x"], frame, 0.0f);
+		pos[1] = TGScalarAtFast(ks[@"p"][@"y"], frame, 0.0f);
+		posCount = 2;
+	} else {
+		posCount = TGValueAtFast(ks[@"p"], frame, pos, 2);
+	}
 	int anchorCount = TGValueAtFast(ks[@"a"], frame, anchor, 2);
 	int scaleCount  = TGValueAtFast(ks[@"s"], frame, scale, 2);
 	float rotation  = TGScalarAtFast(ks[@"r"], frame, 0.0f);
@@ -360,7 +404,8 @@ static inline float TGScalarAtFast(NSDictionary *prop, double frame, float fallb
 	if (anchorCount >= 2)
 		CGContextTranslateCTM(ctx, -anchor[0], -anchor[1]);
 
-	CGContextSetAlpha(ctx, opacity / 100.0f);
+	if (opacity < 100.0f)
+		CGContextSetAlpha(ctx, opacity / 100.0f);
 }
 
 /// A shape group is a list where paths accumulate and a fill/stroke paints

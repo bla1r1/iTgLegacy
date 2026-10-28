@@ -1,4 +1,5 @@
 #import "TGProfileViewControllerInternal.h"
+#import "TGMediaViewer.h"
 #import "TGGiftViewer.h"
 #import <AVFoundation/AVFoundation.h>
 #import "TGStyle.h"
@@ -55,7 +56,7 @@ static AVPlayerLayer *sStoryLayer = nil;
 	// Voice and Links were tabs that always came back empty because nothing
 	// ever asked for them.
 	[[TGClient shared] mediaInChat:self.chatId
-							filter:@"searchMessagesFilterVoiceNote"
+							filter:@"searchMessagesFilterVoiceAndVideoNote"
 						completion:^(NSArray *messages){
 		weakSelf.voice = messages;
 		[weakSelf reloadTableDebounced];
@@ -104,13 +105,11 @@ static AVPlayerLayer *sStoryLayer = nil;
 		   [kind isEqualToString:@"gifts"];
 }
 
-static const CGFloat kStoryGridGap     = TGMetricCollageGap;
 /// The poster's face in the corner of a story tile, and the mark that says a
 /// tile is a video rather than a picture.
 static const CGFloat kStoryFace      = 26.0f;
 static const CGFloat kVideoMark      = 16.0f;
 static const CGFloat kVideoMarkInset = TGMetricPadWide;
-static const NSInteger kStoryGridCols  = 3;
 
 /// Edge to edge, like the media strip: the tile is whatever is left after the
 /// gaps, not a fixed 76 with the remainder thrown away as margin.
@@ -166,6 +165,118 @@ static const NSInteger kStoryGridCols  = 3;
 /// Cached like the media strip: rebuilding it on every pass through
 /// cellForRow handed back a grid whose pictures had already been asked for
 /// and so never arrived again - scrolling away and back emptied it.
+- (void)photoTileTapped:(UIButton *)button {
+	NSInteger index = button.tag - 600;
+	if (index >= 0 && index < (NSInteger)self.photos.count) {
+		[TGMediaViewer presentItems:self.photos startAt:index inChat:self.chatId];
+	}
+}
+
+- (UITableViewCell *)mediaGridCellForTableView:(UITableView *)tableView atRow:(NSInteger)row {
+	static NSString *const kGridReuseId = @"TGMediaGridRowCell";
+	UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:kGridReuseId];
+	if (!cell) {
+		cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault
+									  reuseIdentifier:kGridReuseId];
+		cell.selectionStyle = UITableViewCellSelectionStyleNone;
+		cell.backgroundColor = [UIColor clearColor];
+	}
+
+	for (UIView *v in [cell.contentView.subviews copy]) {
+		[v removeFromSuperview];
+	}
+
+	NSString *kind = [self selectedMediaKind];
+	BOOL storyKind = [kind isEqualToString:@"stories"];
+	BOOL giftKind  = [kind isEqualToString:@"gifts"];
+
+	NSArray *rows = [self selectedMediaRows];
+	CGFloat width = tableView.bounds.size.width;
+	CGFloat side  = [[self class] storySideForWidth:width];
+
+	for (NSInteger c = 0; c < kStoryGridCols; c++) {
+		NSInteger i = row * kStoryGridCols + c;
+		if (i >= (NSInteger)rows.count)
+			break;
+
+		NSDictionary *tile = rows[i];
+		CGRect frame = CGRectMake(c * (side + kStoryGridGap), 0, side, side);
+
+		if (giftKind) {
+			NSString *emoji = tile[@"emoji"];
+			UIImageView *glyph = [[UIImageView alloc] initWithFrame:frame];
+			glyph.image = [[self class] giftTileGlyph:emoji side:side];
+			glyph.contentMode = UIViewContentModeScaleAspectFit;
+			glyph.backgroundColor = [[TGTheme shared] fileTileColour];
+			glyph.clipsToBounds = YES;
+			[cell.contentView addSubview:glyph];
+
+			NSInteger userId = [tile[@"senderUserId"] longLongValue];
+			NSString *name = [[TGClient shared] nameForUserId:userId];
+			NSString *first = name.length ? [name substringToIndex:1].uppercaseString : @"?";
+			UIButton *face = [UIButton buttonWithType:UIButtonTypeCustom];
+			face.frame = CGRectMake(frame.origin.x + TGMetricPadSmall, TGMetricPadSmall, kStoryFace, kStoryFace);
+			face.layer.cornerRadius = TGMetricCornerCard;
+			face.layer.masksToBounds = YES;
+			face.enabled = NO;
+			[face setImage:[TGIcons avatarWithInitials:first size:kStoryFace colourId:userId]
+				  forState:UIControlStateNormal];
+			[cell.contentView addSubview:face];
+
+			UIButton *tap = [UIButton buttonWithType:UIButtonTypeCustom];
+			tap.frame = frame;
+			tap.tag = 700 + i;
+			[tap addTarget:self action:@selector(giftTileTapped:)
+				  forControlEvents:UIControlEventTouchUpInside];
+			[cell.contentView addSubview:tap];
+			continue;
+		}
+
+		NSNumber *fileId = storyKind
+				? (tile[@"thumbPhotoId"] ?: tile[@"photoId"])
+				: (tile[@"photoId"] ?: tile[@"thumbPhotoId"]);
+
+		UIImageView *thumb = [[UIImageView alloc] initWithFrame:frame];
+		thumb.backgroundColor = [[TGTheme shared] fileTileColour];
+		thumb.contentMode = UIViewContentModeScaleAspectFill;
+		thumb.clipsToBounds = YES;
+		[cell.contentView addSubview:thumb];
+
+		if (storyKind || [tile[@"kind"] isEqualToString:@"messageVideo"] || [tile[@"isVideo"] boolValue]) {
+			if ([tile[@"isVideo"] boolValue] || [tile[@"kind"] isEqualToString:@"messageVideo"]) {
+				UIImageView *mark = [[UIImageView alloc] initWithFrame:
+						CGRectMake(side - kVideoMarkInset, side - kVideoMarkInset, kVideoMark, kVideoMark)];
+				mark.image = [TGIcons glyphNamed:@"video" colour:[UIColor whiteColor] side:kVideoMark];
+				[thumb addSubview:mark];
+			}
+		}
+
+		UIButton *tap = [UIButton buttonWithType:UIButtonTypeCustom];
+		tap.frame = frame;
+		if (storyKind) {
+			tap.tag = 500 + i;
+			[tap addTarget:self action:@selector(storyTileTapped:) forControlEvents:UIControlEventTouchUpInside];
+		} else {
+			tap.tag = 600 + i;
+			[tap addTarget:self action:@selector(photoTileTapped:) forControlEvents:UIControlEventTouchUpInside];
+		}
+		[cell.contentView addSubview:tap];
+
+		if ([fileId integerValue] > 0) {
+			__weak typeof(thumb) weakThumb = thumb;
+			[[TGClient shared] downloadFile:fileId.integerValue
+								   priority:TGDownloadPriorityOnScreen
+								 completion:^(NSString *path){
+				dispatch_async(dispatch_get_main_queue(), ^{
+					[TGIcons loadImageAtPath:path into:weakThumb];
+				});
+			}];
+		}
+	}
+
+	return cell;
+}
+
 /// One grid renderer serves every tile-shaped category: photos for "media"
 /// and story tiles for "stories". A grid means no collection view - iOS 6
 /// has one, but this screen stretches a grouped table instead, and one row
@@ -496,7 +607,7 @@ static const NSInteger kStoryGridCols  = 3;
 		filter = @"searchMessagesFilterDocument";
 		currentList = self.files;
 	} else if ([kind isEqualToString:@"voice"]) {
-		filter = @"searchMessagesFilterVoiceNote";
+		filter = @"searchMessagesFilterVoiceAndVideoNote";
 		currentList = self.voice;
 	} else if ([kind isEqualToString:@"links"]) {
 		filter = @"searchMessagesFilterUrl";

@@ -1007,17 +1007,20 @@
 		[kind isEqualToString:@"messagePhoto"] ||
 		[m[@"isAlbum"] boolValue]){
 		NSArray *albumMsgs = [m[@"isAlbum"] boolValue] ? m[@"albumMessages"] : nil;
-		NSDictionary *target = albumMsgs.count ? albumMsgs.firstObject : m;
-		NSArray *pool = self.rawMessages.count ? self.rawMessages : self.messages;
-		NSInteger targetIdx = [pool indexOfObject:target];
-		if (targetIdx == NSNotFound) {
-			pool = albumMsgs ?: self.messages;
-			targetIdx = [pool indexOfObject:target];
-			if (targetIdx == NSNotFound) targetIdx = 0;
+		if (albumMsgs.count) {
+			[TGMediaViewer presentItems:albumMsgs
+								startAt:0
+								 inChat:self.chatId
+								isAlbum:YES];
+			return;
 		}
+		NSArray *pool = self.rawMessages.count ? self.rawMessages : self.messages;
+		NSInteger targetIdx = [pool indexOfObject:m];
+		if (targetIdx == NSNotFound) targetIdx = 0;
 		[TGMediaViewer presentItems:pool
 							startAt:targetIdx
-							 inChat:self.chatId];
+							 inChat:self.chatId
+							isAlbum:NO];
 		return;
 	}
 

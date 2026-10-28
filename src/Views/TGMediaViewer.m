@@ -32,6 +32,9 @@ static const CGFloat kStripHeight   = 22.0f;
 static const CGFloat kPlayWidth     = 30.0f;
 static const CGFloat kScrubberLeft  = 42.0f;
 static const CGFloat kClockWidth    = 52.0f;
+static const CGFloat kThumbSide     = 42.0f;
+static const CGFloat kThumbGap      = 6.0f;
+static const CGFloat kThumbStripH   = 54.0f;
 
 /// A view whose whole job is to keep the player layer filling it. A CALayer
 /// does not autoresize, and this app rotates - the old movie view had its
@@ -59,6 +62,7 @@ static const CGFloat kClockWidth    = 52.0f;
 @property (nonatomic, strong) NSArray *items;
 @property (nonatomic, assign) NSInteger index;
 @property (nonatomic, assign) int64_t chatId;
+@property (nonatomic, assign) BOOL isAlbum;
 
 @property (nonatomic, strong) TGMediaViewer *self_;   // held up while on screen
 @property (nonatomic, strong) UIWindow *window;
@@ -69,6 +73,8 @@ static const CGFloat kClockWidth    = 52.0f;
 @property (nonatomic, strong) UILabel *counterLabel;
 @property (nonatomic, strong) UILabel *dateLabel;
 @property (nonatomic, strong) UILabel *captionLabel;
+@property (nonatomic, strong) UIScrollView *thumbStrip;
+@property (nonatomic, strong) NSMutableArray *thumbButtons;
 @property (nonatomic, assign) BOOL chromeHidden;
 /// Where the drag that may dismiss the viewer started, and the page it is
 /// carrying. Zero width means no drag is in progress.
@@ -98,7 +104,7 @@ static const CGFloat kClockWidth    = 52.0f;
 
 @implementation TGMediaViewer
 
-+ (void)presentItems:(NSArray *)items startAt:(NSInteger)index inChat:(int64_t)chatId {
++ (void)presentItems:(NSArray *)items startAt:(NSInteger)index inChat:(int64_t)chatId isAlbum:(BOOL)isAlbum {
 	NSMutableArray *media = [NSMutableArray array];
 	NSInteger adjusted = 0;
 	for (NSUInteger i = 0; i < items.count; i++){
@@ -119,7 +125,12 @@ static const CGFloat kClockWidth    = 52.0f;
 	viewer.items = media;
 	viewer.index = MIN(MAX(adjusted, 0), (NSInteger)media.count - 1);
 	viewer.chatId = chatId;
+	viewer.isAlbum = isAlbum;
 	[viewer present];
+}
+
++ (void)presentItems:(NSArray *)items startAt:(NSInteger)index inChat:(int64_t)chatId {
+	[self presentItems:items startAt:index inChat:chatId isAlbum:NO];
 }
 
 - (id)init {
@@ -155,6 +166,9 @@ static const CGFloat kClockWidth    = 52.0f;
 	[self.backdrop addSubview:self.pager];
 
 	[self buildChrome];
+	if (self.isAlbum) {
+		[self buildThumbStrip];
+	}
 
 	UITapGestureRecognizer *single = [[UITapGestureRecognizer alloc]
 			initWithTarget:self action:@selector(toggleChrome)];
@@ -284,11 +298,115 @@ static const CGFloat kClockWidth    = 52.0f;
 	[self.bottomBar addSubview:self.timeLabel];
 }
 
+- (void)buildThumbStrip {
+	if (!self.isAlbum || self.items.count <= 1)
+		return;
+
+	CGRect bounds = self.backdrop.bounds;
+	CGFloat y = bounds.size.height - kBottomBar - kThumbStripH;
+	self.thumbStrip = [[UIScrollView alloc] initWithFrame:
+			CGRectMake(0, y, bounds.size.width, kThumbStripH)];
+	self.thumbStrip.showsHorizontalScrollIndicator = NO;
+	self.thumbStrip.showsVerticalScrollIndicator = NO;
+	self.thumbStrip.backgroundColor = [UIColor clearColor];
+	self.thumbStrip.clipsToBounds = NO;
+	self.thumbButtons = [NSMutableArray arrayWithCapacity:self.items.count];
+
+	CGFloat itemTotal = self.items.count * kThumbSide + (self.items.count - 1) * kThumbGap;
+	CGFloat startX = (itemTotal < bounds.size.width) ? TGCenteredOrigin(bounds.size.width, itemTotal) : kThumbGap;
+
+	for (NSUInteger i = 0; i < self.items.count; i++) {
+		CGFloat x = startX + i * (kThumbSide + kThumbGap);
+		UIButton *btn = [UIButton buttonWithType:UIButtonTypeCustom];
+		btn.frame = CGRectMake(x, TGCenteredOrigin(kThumbStripH, kThumbSide), kThumbSide, kThumbSide);
+		btn.tag = (NSInteger)i;
+		btn.layer.cornerRadius = TGMetricCornerSmall;
+		btn.layer.masksToBounds = YES;
+		btn.imageView.contentMode = UIViewContentModeScaleAspectFill;
+		btn.adjustsImageWhenHighlighted = NO;
+		[btn addTarget:self action:@selector(thumbTapped:) forControlEvents:UIControlEventTouchUpInside];
+		[self.thumbStrip addSubview:btn];
+		[self.thumbButtons addObject:btn];
+		[self fetchThumbnailForIndex:i into:btn];
+	}
+
+	CGFloat contentW = MAX(bounds.size.width, startX + self.items.count * (kThumbSide + kThumbGap) - kThumbGap + startX);
+	self.thumbStrip.contentSize = CGSizeMake(contentW, kThumbStripH);
+	[self.backdrop addSubview:self.thumbStrip];
+	[self updateThumbStripSelection:NO];
+}
+
+- (void)fetchThumbnailForIndex:(NSUInteger)idx into:(UIButton *)btn {
+	NSDictionary *item = self.items[idx];
+	NSNumber *fileId = item[@"photoId"] ?: (item[@"thumbId"] ?: item[@"docId"]);
+	if (![fileId isKindOfClass:NSNumber.class])
+		return;
+
+	__weak typeof(self) weakSelf = self;
+	__weak UIButton *weakBtn = btn;
+	[[TGClient shared] downloadFile:fileId.integerValue priority:TGDownloadPriorityOnScreen completion:^(NSString *path){
+		if (!path.length) return;
+		dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_LOW, 0), ^{
+			UIImage *img = [UIImage imageWithContentsOfFile:path];
+			if (!img && [path.pathExtension.lowercaseString isEqualToString:@"webp"])
+				img = [UIImage convertFromWebP:path compressedData:nil error:nil];
+			if (!img) return;
+			dispatch_async(dispatch_get_main_queue(), ^{
+				if (weakBtn.tag == (NSInteger)idx) {
+					[weakBtn setImage:img forState:UIControlStateNormal];
+				}
+			});
+		});
+	}];
+}
+
+- (void)updateThumbStripSelection:(BOOL)animated {
+	if (!self.thumbButtons.count)
+		return;
+
+	for (UIButton *btn in self.thumbButtons) {
+		BOOL selected = (btn.tag == self.index);
+		if (selected) {
+			btn.layer.borderWidth = 2.0f;
+			btn.layer.borderColor = [UIColor whiteColor].CGColor;
+			btn.alpha = 1.0f;
+		} else {
+			btn.layer.borderWidth = 0.0f;
+			btn.layer.borderColor = [UIColor clearColor].CGColor;
+			btn.alpha = 0.5f;
+		}
+	}
+
+	if (self.index >= 0 && self.index < (NSInteger)self.thumbButtons.count) {
+		UIButton *curr = self.thumbButtons[self.index];
+		CGFloat targetX = curr.center.x - TGHalf(self.thumbStrip.bounds.size.width);
+		CGFloat maxX = MAX(0.0f, self.thumbStrip.contentSize.width - self.thumbStrip.bounds.size.width);
+		targetX = MAX(0.0f, MIN(targetX, maxX));
+		[self.thumbStrip setContentOffset:CGPointMake(targetX, 0) animated:animated];
+	}
+}
+
+- (void)thumbTapped:(UIButton *)btn {
+	NSInteger idx = btn.tag;
+	if (idx == self.index || idx < 0 || idx >= (NSInteger)self.items.count)
+		return;
+
+	if (self.moviePage != NSNotFound && idx != self.moviePage)
+		[self stopMovie];
+
+	self.index = idx;
+	[self.pager setContentOffset:CGPointMake(self.pager.bounds.size.width * idx, 0) animated:YES];
+	[self loadPagesAround:idx];
+	[self refreshChrome];
+	[self updateThumbStripSelection:YES];
+}
+
 - (void)toggleChrome {
 	self.chromeHidden = !self.chromeHidden;
 	[UIView animateWithDuration:TGAnimationDurationNormal animations:^{
 		self.topBar.alpha = self.chromeHidden ? 0 : 1;
 		self.bottomBar.alpha = self.chromeHidden ? 0 : 1;
+		self.thumbStrip.alpha = self.chromeHidden ? 0 : 1;
 	}];
 }
 
@@ -513,6 +631,7 @@ static const CGFloat kClockWidth    = 52.0f;
 		[UIView animateWithDuration:TGAnimationDurationFast animations:^{
 			self.topBar.alpha = TGAlphaTransparent;
 			self.bottomBar.alpha = TGAlphaTransparent;
+			self.thumbStrip.alpha = TGAlphaTransparent;
 		}];
 		return;
 	}
@@ -553,6 +672,7 @@ static const CGFloat kClockWidth    = 52.0f;
 		self.backdrop.backgroundColor = [[TGTheme shared] mediaViewerBackdropColour];
 		self.topBar.alpha = self.chromeHidden ? 0 : 1;
 		self.bottomBar.alpha = self.chromeHidden ? 0 : 1;
+		self.thumbStrip.alpha = self.chromeHidden ? 0 : 1;
 	}];
 }
 
@@ -573,6 +693,7 @@ static const CGFloat kClockWidth    = 52.0f;
 	self.index = page;
 	[self loadPagesAround:page];
 	[self refreshChrome];
+	[self updateThumbStripSelection:YES];
 }
 
 #pragma mark - video

@@ -34,12 +34,21 @@ static TGPopupMenu *sOpenMenu = nil;
            inView:(UIView *)host
          onChoice:(void (^)(NSInteger, NSString *))choice
 {
-	if (!items.count || !host)
+	[self showItems:items atPoint:point inView:host headerView:nil onChoice:choice];
+}
+
++ (void)showItems:(NSArray *)items
+          atPoint:(CGPoint)point
+           inView:(UIView *)host
+       headerView:(UIView *)headerView
+         onChoice:(void (^)(NSInteger, NSString *))choice
+{
+	if ((!items.count && !headerView) || !host)
 		return;
 	[self dismiss];
 
 	TGPopupMenu *menu = [[TGPopupMenu alloc] initWithFrame:host.bounds];
-	[menu buildWithItems:items atPoint:point];
+	[menu buildWithItems:items atPoint:point headerView:headerView];
 	menu->_choice = [choice copy];
 	menu->_shownAt = [NSDate timeIntervalSinceReferenceDate];
 	[host addSubview:menu];
@@ -55,7 +64,7 @@ static TGPopupMenu *sOpenMenu = nil;
 	}];
 }
 
-- (void)buildWithItems:(NSArray *)items atPoint:(CGPoint)point {
+- (void)buildWithItems:(NSArray *)items atPoint:(CGPoint)point headerView:(UIView *)headerView {
 	_items = items;
 	TGTheme *theme = [TGTheme shared];
 
@@ -63,7 +72,8 @@ static TGPopupMenu *sOpenMenu = nil;
 	// so you can still see the message you are acting on.
 	self.backgroundColor = [theme menuWashColour];
 
-	CGFloat height = kMenuRow * items.count;
+	CGFloat headerH = headerView ? headerView.bounds.size.height : 0.0f;
+	CGFloat height = headerH + kMenuRow * items.count;
 	CGFloat x = MIN(MAX(TGMetricPad, point.x - TGHalf(kMenuWidth)), self.bounds.size.width - kMenuWidth - TGMetricPad);
 	// Above the point when there is no room below it.
 	CGFloat y = point.y + TGMetricPad;
@@ -91,10 +101,21 @@ static TGPopupMenu *sOpenMenu = nil;
 	body.layer.borderWidth = TGMetricHairline;
 	[_card addSubview:body];
 
+	if (headerView) {
+		headerView.frame = CGRectMake(0, 0, kMenuWidth, headerH);
+		[body addSubview:headerView];
+		if (items.count > 0) {
+			UIView *hair = [[UIView alloc] initWithFrame:CGRectMake(
+					0, headerH - TGMetricHairline, kMenuWidth, TGMetricHairline)];
+			hair.backgroundColor = [theme separatorColour];
+			[body addSubview:hair];
+		}
+	}
+
 	for (NSUInteger i = 0; i < items.count; i++){
 		NSDictionary *item = items[i];
 		BOOL destructive = [item[@"destructive"] boolValue];
-		CGRect frame = CGRectMake(0, kMenuRow * i, kMenuWidth, kMenuRow);
+		CGRect frame = CGRectMake(0, headerH + kMenuRow * i, kMenuWidth, kMenuRow);
 
 		UIButton *row = [UIButton buttonWithType:UIButtonTypeCustom];
 		row.frame = frame;

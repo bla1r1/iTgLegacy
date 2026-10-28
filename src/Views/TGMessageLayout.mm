@@ -368,5 +368,107 @@ CGSize TGTextSize(NSString *text, UIFont *font, CGFloat width) {
 	return TGTextSizeWithEntities(text, nil, font, width);
 }
 
+NSString *TGDescribeMessageContent(NSDictionary *m) {
+	if (!m || ![m isKindOfClass:NSDictionary.class]) return @"...";
+	NSString *text = m[@"text"];
+	if (text.length) return text;
+
+	NSString *kind = m[@"kind"] ?: @"";
+	if ([kind isEqualToString:@"messageVideoNote"])
+		return @"Video message";
+	if ([kind isEqualToString:@"messageVoiceNote"])
+		return @"Voice message";
+	if ([kind isEqualToString:@"messageSticker"] || [kind isEqualToString:@"messageAnimatedEmoji"]) {
+		NSString *emoji = m[@"extra"] ?: m[@"emoji"];
+		return emoji.length ? [NSString stringWithFormat:@"Sticker %@", emoji] : @"Sticker";
+	}
+	if ([kind isEqualToString:@"messagePhoto"])
+		return @"Photo";
+	if ([kind isEqualToString:@"messageVideo"])
+		return @"Video";
+	if ([kind isEqualToString:@"messageAnimation"])
+		return @"GIF";
+	if ([kind isEqualToString:@"messageDocument"]) {
+		NSString *docName = m[@"docName"];
+		return docName.length ? docName : @"Document";
+	}
+	if ([kind isEqualToString:@"messageAudio"]) {
+		NSString *title = m[@"audioTitle"];
+		return title.length ? title : @"Audio";
+	}
+	if ([kind isEqualToString:@"messageLocation"] || [kind isEqualToString:@"messageLiveLocation"])
+		return @"Location";
+	if ([kind isEqualToString:@"messageContact"])
+		return @"Contact";
+	if ([kind isEqualToString:@"messagePoll"])
+		return @"Poll";
+	if ([kind isEqualToString:@"messageCall"])
+		return @"Call";
+	if ([kind isEqualToString:@"messageDice"])
+		return @"Dice";
+	if ([kind isEqualToString:@"messageGame"])
+		return @"Game";
+	if ([kind isEqualToString:@"messageStory"])
+		return @"Story";
+
+	if ([kind hasPrefix:@"message"]) {
+		NSString *shortKind = [kind substringFromIndex:7];
+		if (shortKind.length) {
+			NSMutableString *spaced = [NSMutableString stringWithString:[shortKind substringToIndex:1]];
+			for (NSUInteger i = 1; i < shortKind.length; i++) {
+				unichar c = [shortKind characterAtIndex:i];
+				if (c >= 'A' && c <= 'Z')
+					[spaced appendFormat:@" %c", (char)(c - 'A' + 'a')];
+				else
+					[spaced appendFormat:@"%C", c];
+			}
+			return spaced;
+		}
+	}
+	return @"...";
+}
+
+void TGVideoNoteLayoutBottomBar(CGRect bubbleFrame,
+								CGFloat durWidth,
+								CGFloat clockWidth,
+								bool mine,
+								bool unplayed,
+								CGRect *outDurFrame,
+								CGRect *outTimeFrame,
+								CGRect *outTicksFrame,
+								CGRect *outDotFrame) {
+	CGFloat clockY = CGRectGetMaxY(bubbleFrame) + TGMetricPadSmall;
+
+	// Duration on the left side under the circle
+	if (outDurFrame) {
+		*outDurFrame = CGRectMake(CGRectGetMinX(bubbleFrame) + TGMetricPadSmall,
+								  clockY,
+								  durWidth,
+								  TGMetricStampHeight);
+	}
+
+	// Time group on the right side under the circle: clock + ticks + unplayed dot
+	CGFloat ticksW = mine ? (TGMetricPadSmall + TGMetricTicksWidth) : 0.0f;
+	CGFloat dotW = unplayed ? (TGMetricPadSmall + TGMetricUnreadDotSide) : 0.0f;
+	CGFloat groupW = clockWidth + ticksW + dotW;
+	CGFloat groupX = CGRectGetMaxX(bubbleFrame) - groupW - TGMetricPadSmall;
+
+	if (outTimeFrame) {
+		*outTimeFrame = CGRectMake(groupX, clockY, clockWidth, TGMetricStampHeight);
+	}
+	if (outTicksFrame) {
+		*outTicksFrame = CGRectMake(groupX + clockWidth + TGMetricPadSmall,
+									clockY + TGCenteredOrigin(TGMetricStampHeight, TGMetricTicksHeight),
+									TGMetricTicksWidth,
+									TGMetricTicksHeight);
+	}
+	if (outDotFrame) {
+		*outDotFrame = CGRectMake(groupX + clockWidth + ticksW + TGMetricPadSmall,
+								  clockY + TGCenteredOrigin(TGMetricStampHeight, TGMetricUnreadDotSide),
+								  TGMetricUnreadDotSide,
+								  TGMetricUnreadDotSide);
+	}
+}
+
 @implementation TGMessageLayout
 @end

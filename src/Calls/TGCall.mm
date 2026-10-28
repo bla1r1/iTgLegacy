@@ -172,7 +172,7 @@ static void TGInstallCrypto(void) {
 @end
 
 
-static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V6";
+static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V8";
 
 
 
@@ -423,13 +423,14 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V6";
 									@"a=ice-ufrag:%@\r\n"
 									@"a=ice-pwd:%@\r\n"
 									@"%@"
+									@"a=setup:active\r\n"
 									@"a=sendrecv\r\n"
 									@"a=rtcp-mux\r\n"
 									@"a=rtpmap:111 opus/48000/2\r\n"
 									@"a=mid:0\r\n",
 									(unsigned long long)([[NSDate date] timeIntervalSince1970] * 1000),
 									self.localUfrag ?: @"", self.localPwd ?: @"",
-									fingerprint];
+									fingerprint.length ? fingerprint : @"a=fingerprint:sha-256 00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF\r\n"];
 
 								NSDictionary *answerDict = @{
 									@"@type": @"answer",
@@ -951,14 +952,22 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V6";
 			if (stunType == 0x0001) {
 				_stunRequestsIn++;
 				if (senderTag && senderTag != self.reflector.localTag && [TGCallStun hasUseCandidate:payload]) {
-					if (self.verifiedMediaTag != 0 && senderTag != self.verifiedMediaTag) {
-						NSLog(@"TGCall: ignoring USE-CANDIDATE from tag %u because verifiedMediaTag is locked to %u",
-								senderTag, self.verifiedMediaTag);
-					} else if (self.nominatedSenderTag != senderTag) {
-						self.nominatedSenderTag = senderTag;
-						self.currentSenderTag = senderTag;
-						NSLog(@"TGCall: peer nominated tag %u via USE-CANDIDATE", senderTag);
+					self.nominatedSenderTag = senderTag;
+					self.currentSenderTag = senderTag;
+					self.verifiedMediaTag = senderTag;
+					self.verifiedReflector = self.currentReflector ?: self.reflector;
+					NSLog(@"TGCall: peer nominated tag %u via USE-CANDIDATE on reflector %u",
+							senderTag, self.verifiedReflector.serverId);
+					if (self.mediaStateTimer) {
+						[self sendMediaStateMessage];
 					}
+				}
+				// Every STUN check MUST receive a direct STUN response back to the requesting tag!
+				NSData *response = [TGCallStun bindingResponseTo:payload
+														password:self.localPwd
+													 fromAddress:self.ice.peerAddress];
+				if (response && senderTag && senderTag != self.reflector.localTag) {
+					[(self.currentReflector ?: self.reflector) sendPayload:response toTag:senderTag];
 				}
 			} else {
 				_stunResponsesIn++;

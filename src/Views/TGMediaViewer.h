@@ -13,6 +13,11 @@
 /// on screen and lets go when it is dismissed.
 + (void)presentItems:(NSArray *)items
 			 startAt:(NSInteger)index
-			 inChat:(int64_t)chatId;
+			  inChat:(int64_t)chatId
+			 isAlbum:(BOOL)isAlbum;
+
++ (void)presentItems:(NSArray *)items
+			 startAt:(NSInteger)index
+			  inChat:(int64_t)chatId;
 
 @end

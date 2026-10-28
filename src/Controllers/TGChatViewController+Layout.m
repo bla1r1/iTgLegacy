@@ -21,7 +21,9 @@ UIColor *TGSenderColour(int64_t userId) {
 	if (inline_.length)
 		return inline_;
 	NSDictionary *fetched = self.quotes[replyId];
-	return fetched[@"text"] ?: @"...";
+	if (!fetched)
+		return @"...";
+	return TGDescribeMessageContent(fetched);
 }
 
 /// Who wrote the message being answered. Only known once the original has been
@@ -338,7 +340,7 @@ UIColor *TGSenderColour(int64_t userId) {
 		return layout;
 	}
 
-	if ([TGCapabilities canPlayAnimatedStickers] && [m[@"docName"] isEqualToString:@"tgs"] && self.lottiePaths[m[@"docId"]]) {
+	if ([TGCapabilities canPlayAnimatedStickers] && [m[@"docName"] isEqualToString:@"tgs"]) {
 		CGFloat side = kLottieSide;
 		layout.bubbleFrame = CGRectMake(mine ? (tableW - side - TGMetricPad) : TGMetricPad,
 				TGMetricBubbleRowInset, side, side + TGMetricLineMicro);

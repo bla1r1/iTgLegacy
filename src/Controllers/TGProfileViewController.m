@@ -316,9 +316,11 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 	if (section == kSectionMembers) return self.members.count;
 
 	if (section == kSectionMedia) {
-		// Media and Stories each draw into one grid row; the rest are lists.
-		if ([self selectedTabIsGrid])
-			return [self selectedMediaRows].count ? 1 : 0;
+		// Media and Stories each draw into grid rows; the rest are lists.
+		if ([self selectedTabIsGrid]) {
+			NSArray *rows = [self selectedMediaRows];
+			return (rows.count + kStoryGridCols - 1) / kStoryGridCols;
+		}
 		return [self selectedMediaRows].count;
 	}
 
@@ -398,15 +400,17 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 }
 
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
-	if (indexPath.section == kSectionMedia && [self selectedTabIsGrid])
-		return [self storyGridHeight];
+	if (indexPath.section == kSectionMedia && [self selectedTabIsGrid]) {
+		CGFloat side = [[self class] storySideForWidth:tableView.bounds.size.width];
+		return side + kStoryGridGap;
+	}
 	if (indexPath.section == kSectionStories) return TGMetricPersonRow;
 	return indexPath.section == kSectionDetails ? TGMetricPersonRow : TGMetricRow;
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
 	if (indexPath.section == kSectionMedia && [self selectedTabIsGrid])
-		return [self mediaGridCell:tableView];
+		return [self mediaGridCellForTableView:tableView atRow:indexPath.row];
 
 	UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"row"];
 	if (!cell)

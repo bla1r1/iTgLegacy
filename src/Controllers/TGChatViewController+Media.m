@@ -161,6 +161,12 @@
 			if (!me || !m)
 				return;
 			me.quotes[replyId] = m;
+			for (NSDictionary *msg in me.messages) {
+				if ([msg[@"replyId"] isEqual:replyId]) {
+					NSNumber *msgId = msg[@"id"];
+					if (msgId) [me.layoutCache removeObjectForKey:msgId];
+				}
+			}
 			[me reloadTableDebounced];
 		}];
 	}
@@ -191,7 +197,7 @@
 				continue;
 			[self.imagesRequested addObject:docId];
 
-			[[TGClient shared] downloadFile:[docId integerValue] priority:16 completion:^(NSString *path){
+			[[TGClient shared] downloadFile:[docId integerValue] priority:TGDownloadPriorityOnScreen completion:^(NSString *path){
 				TGChatViewController *me = weakSelf;
 				if (!me)
 					return;
@@ -229,7 +235,7 @@
 			dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_BACKGROUND, 0), ^{
 				// Stickers arrive as WebP, which UIImage does not know on iOS 7.
 				UIImage *img = [UIImage imageWithContentsOfFile:path];
-				if (!img && [path.pathExtension.lowercaseString isEqualToString:@"webp"])
+				if (!img)
 					img = [UIImage convertFromWebP:path compressedData:nil error:nil];
 
 				if (!img) {

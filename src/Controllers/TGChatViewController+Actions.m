@@ -8,24 +8,7 @@
 /// flattened, so TGMessagePreview - which reads a raw TDLib content - cannot
 /// be used; a media row carries no text and is named by its kind instead.
 static NSString *TGComposePreview(NSDictionary *m) {
-	NSString *text = m[@"text"];
-	if (text.length)
-		return text;
-	NSString *kind = m[@"kind"] ?: @"";
-	if ([kind hasPrefix:@"message"])
-		kind = [kind substringFromIndex:7];
-	if (!kind.length)
-		return @"";
-	// "VoiceNote" reads as "Voice note" on the strip.
-	NSMutableString *spaced = [NSMutableString stringWithString:[kind substringToIndex:1]];
-	for (NSUInteger i = 1; i < kind.length; i++){
-		unichar c = [kind characterAtIndex:i];
-		if (c >= 'A' && c <= 'Z')
-			[spaced appendFormat:@" %c", (char)(c - 'A' + 'a')];
-		else
-			[spaced appendFormat:@"%C", c];
-	}
-	return spaced;
+	return TGDescribeMessageContent(m);
 }
 
 /// The poll's vote graph as lines this OS can draw in a sheet. TDLib hands

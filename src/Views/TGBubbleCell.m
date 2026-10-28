@@ -378,6 +378,11 @@
 		[self.bubble addSubview:self.time];
 	if (self.ticks.superview != self.bubble)
 		[self.bubble addSubview:self.ticks];
+	if (self.mediaStamp.superview != self.bubble) {
+		[self.bubble addSubview:self.mediaStamp];
+		self.mediaStamp.layer.cornerRadius = TGMetricCornerControl;
+		self.mediaStamp.textColor = [UIColor whiteColor];
+	}
 	self.quoteBar.hidden = YES;
 	self.quote.hidden = YES;
 	self.quoteAuthor.hidden = YES;

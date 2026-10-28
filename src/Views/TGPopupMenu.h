@@ -17,6 +17,12 @@
            inView:(UIView *)host
          onChoice:(void (^)(NSInteger index, NSString *title))choice;
 
++ (void)showItems:(NSArray *)items
+          atPoint:(CGPoint)point
+           inView:(UIView *)host
+       headerView:(UIView *)headerView
+         onChoice:(void (^)(NSInteger index, NSString *title))choice;
+
 /// Close whatever menu is open, if any. Called when a screen goes away.
 + (void)dismiss;
 

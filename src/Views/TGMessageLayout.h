@@ -79,3 +79,23 @@ CGSize TGTextSizeWithEntities(NSString *text, NSArray *entities, UIFont *font, C
 @property (nonatomic, strong) NSArray *entities;
 @property (nonatomic, strong) NSAttributedString *attributedBody;
 @end
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+NSString *TGDescribeMessageContent(NSDictionary *m);
+
+void TGVideoNoteLayoutBottomBar(CGRect bubbleFrame,
+								CGFloat durWidth,
+								CGFloat clockWidth,
+								bool mine,
+								bool unplayed,
+								CGRect *outDurFrame,
+								CGRect *outTimeFrame,
+								CGRect *outTicksFrame,
+								CGRect *outDotFrame);
+
+#ifdef __cplusplus
+}
+#endif
