@@ -514,5 +514,91 @@ static int64_t orderOf(NSArray *chats, int64_t id_) {
 			@"cancel clears it");
 }
 
+// ──────────────────────────────────────────────────────────────────────────────
+#pragma mark - batching and instant profile cache
+
+- (void)testHandleUpdateBatch_CoalescesRebuildChats {
+	TGClient *c = T();
+	__block int chatsChangedCount = 0;
+	c.onChatsChanged = ^{
+		chatsChangedCount++;
+	};
+
+	NSMutableArray *batch = [NSMutableArray array];
+	for (int i = 1; i <= 20; i++){
+		[batch addObject:@{
+			@"@type" : @"updateNewChat",
+			@"chat"  : chatDict(1000 + i, [NSString stringWithFormat:@"Chat %d", i], 10000 + i),
+		}];
+	}
+
+	[c handleUpdateBatch:batch];
+
+	XCTAssertEqual((NSInteger)c.chats.count, 20);
+	XCTAssertEqual(chatsChangedCount, 1, @"a batch of 20 updates must rebuild chats exactly once");
+}
+
+- (void)testUserInfo_CachedFromUpdateUserSynchronously {
+	TGClient *c = T();
+	[c.outbox removeAllObjects];
+
+	NSDictionary *userUpdate = @{
+		@"@type" : @"updateUser",
+		@"user"  : @{
+			@"@type"        : @"user",
+			@"id"           : @(777),
+			@"first_name"   : @"Alice",
+			@"last_name"    : @"Wonder",
+			@"phone_number" : @"123456789",
+			@"status"       : @{@"@type" : @"userStatusOnline"},
+		}
+	};
+	[c handleUpdate:userUpdate];
+
+	__block BOOL called = NO;
+	__block NSDictionary *retrieved = nil;
+	[c userInfo:777 completion:^(NSDictionary *user){
+		called = YES;
+		retrieved = user;
+	}];
+
+	XCTAssertTrue(called, @"userInfo must return synchronously from cache without roundtrip");
+	XCTAssertEqualObjects(retrieved[@"first_name"], @"Alice");
+	XCTAssertEqual((NSInteger)c.outbox.count, 0, @"no TDLib request must be queued in outbox");
+}
+
+- (void)testStatusForUser_CachedFromUpdateUserStatusSynchronously {
+	TGClient *c = T();
+	[c.outbox removeAllObjects];
+
+	[c handleUpdate:@{
+		@"@type" : @"updateUser",
+		@"user"  : @{
+			@"@type"        : @"user",
+			@"id"           : @(888),
+			@"first_name"   : @"Bob",
+			@"status"       : @{@"@type" : @"userStatusOffline", @"was_online" : @(100)},
+		}
+	}];
+
+	// Simulate status change
+	[c handleUpdate:@{
+		@"@type"   : @"updateUserStatus",
+		@"user_id" : @(888),
+		@"status"  : @{@"@type" : @"userStatusOnline"},
+	}];
+
+	__block BOOL called = NO;
+	__block NSString *statusText = nil;
+	[c statusForUser:888 completion:^(NSString *status){
+		called = YES;
+		statusText = status;
+	}];
+
+	XCTAssertTrue(called, @"statusForUser must return synchronously from cache");
+	XCTAssertEqualObjects(statusText, @"online");
+	XCTAssertEqual((NSInteger)c.outbox.count, 0, @"no TDLib request must be queued in outbox");
+}
+
 @end
 

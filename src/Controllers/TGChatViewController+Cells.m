@@ -760,6 +760,17 @@ static void TGPlaceTitleDetail(TGBubbleCell *cell, CGFloat x, CGFloat top,
 		cell.quote.textColor = [theme primaryTextColour];
 		cell.quote.text = layout.quoteText;
 		cell.quote.frame = layout.quoteFrame;
+
+		// The quote header is a button: tapping it goes to what the message
+		// answers. The replyId is read fresh out of the dictionary, the way
+		// the whole-bubble tap does - the flattened message stores absent
+		// values as NSNull, which answers no number selector.
+		NSNumber *replyId = [m[@"replyId"] isKindOfClass:NSNumber.class]
+				? m[@"replyId"] : nil;
+		__weak typeof(self) weakCells = self;
+		cell.onQuoteTapped = replyId ? ^{
+			[weakCells jumpToReplyById:replyId.longLongValue];
+		} : nil;
 	}
 
 	cell.mediaStamp.hidden = YES;

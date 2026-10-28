@@ -179,7 +179,6 @@ APP_SRC_M := \
 	src/Core/TGClient.m \
 	src/Core/TGClient+Auth.m \
 	src/Core/TGClient+Messages.m \
-	src/Core/TGClient+Chats.m \
 	src/Core/TGClient+Files.m \
 	src/Core/TGStatusText.m \
 	src/Controllers/TGNavController.m \
@@ -229,6 +228,7 @@ APP_SRC_M := \
 	src/Controllers/TGChatViewController+Media.m \
 	src/Controllers/TGChatViewController+Chrome.m \
 	src/Controllers/TGContactsViewController.m \
+	src/Controllers/TGNewContactViewController.m \
 	src/Controllers/TGTopicsViewController.m \
 	src/Controllers/TGScheduledViewController.m \
 	src/Controllers/TGForwardPicker.m \
@@ -258,6 +258,9 @@ APP_SRC_M := \
 	src/Calls/TGCallAudioEngine.m
 
 
+APP_SRC_MM := \
+	src/Core/TGClient+Chats.mm
+
 APP_SRC_C := \
 	compat/tlv_polyfill.c \
 	src/Calls/TGCallCrypto.c \
@@ -278,6 +281,7 @@ ARMV7_LIBTG_OBJS := $(patsubst %.c,$(ARMV7_OBJ_DIR)/%.o,$(LIBTG_SRC_C)) \
 ARMV7_VOIP_OBJS  := $(patsubst %.cpp,$(ARMV7_OBJ_DIR)/%.o,$(VOIP_SRC_CXX)) \
                     $(patsubst %.mm,$(ARMV7_OBJ_DIR)/%.o,$(VOIP_SRC_MM))
 ARMV7_APP_OBJS   := $(patsubst %.m,$(ARMV7_OBJ_DIR)/%.o,$(APP_SRC_M)) \
+                    $(patsubst %.mm,$(ARMV7_OBJ_DIR)/%.o,$(APP_SRC_MM)) \
                     $(patsubst %.c,$(ARMV7_OBJ_DIR)/%.o,$(APP_SRC_C)) \
                     $(ARMV7_VOIP_OBJS)
 ARMV7_ALL_OBJS   := $(ARMV7_LIBTG_OBJS) $(ARMV7_APP_OBJS)
@@ -289,6 +293,7 @@ ARM64_LIBTG_OBJS := $(patsubst %.c,$(ARM64_OBJ_DIR)/%.o,$(LIBTG_SRC_C)) \
 ARM64_VOIP_OBJS  := $(patsubst %.cpp,$(ARM64_OBJ_DIR)/%.o,$(VOIP_SRC_CXX)) \
                     $(patsubst %.mm,$(ARM64_OBJ_DIR)/%.o,$(VOIP_SRC_MM))
 ARM64_APP_OBJS   := $(patsubst %.m,$(ARM64_OBJ_DIR)/%.o,$(APP_SRC_M)) \
+                    $(patsubst %.mm,$(ARM64_OBJ_DIR)/%.o,$(APP_SRC_MM)) \
                     $(patsubst %.c,$(ARM64_OBJ_DIR)/%.o,$(APP_SRC_C)) \
                     $(ARM64_VOIP_OBJS)
 ARM64_ALL_OBJS   := $(ARM64_LIBTG_OBJS) $(ARM64_APP_OBJS)

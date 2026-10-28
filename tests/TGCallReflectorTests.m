@@ -270,4 +270,34 @@ static uint64_t TGReflectorRead64BE(const uint8_t *bytes) {
     close(server);
 }
 
+- (void)testFallbackTagUsedWhenRemoteTagNotSet {
+    uint16_t serverPort = 0;
+    int server = TGTestUDPSocket(&serverPort);
+    XCTAssertGreaterThanOrEqual(server, 0);
+
+    NSData *peerTag = TGTestPeerTag();
+    TGCallReflector *reflector = [self reflectorAgainstServer:server
+                                                         port:serverPort
+                                                      peerTag:peerTag];
+
+    uint8_t payloadBytes[] = { 0x11, 0x22 };
+    NSData *payload = [NSData dataWithBytes:payloadBytes length:sizeof(payloadBytes)];
+
+    // When remoteTag is 0 and observedTag is 0, fallbackTag (peerTag suffix) is used
+    [reflector sendPayload:payload];
+
+    NSData *packet = TGTestRecvNonPing(server, NULL, 2.0);
+    XCTAssertNotNil(packet);
+
+    uint32_t expectedFallback = 0;
+    memcpy(&expectedFallback, (const uint8_t *)peerTag.bytes + 12, 4);
+
+    uint32_t destination = 0;
+    memcpy(&destination, (const uint8_t *)packet.bytes + 12, 4);
+    XCTAssertEqual(destination, expectedFallback, @"fallback tag matches peerTag suffix");
+
+    [reflector stop];
+    close(server);
+}
+
 @end

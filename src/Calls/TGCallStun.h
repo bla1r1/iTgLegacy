@@ -23,6 +23,9 @@
 /// 0x0001 request, 0x0101 success, 0x0111 error, or -1 when not STUN.
 + (int)messageTypeOf:(NSData *)packet;
 
+/// Checks if a STUN binding request contains the USE-CANDIDATE attribute (0x0025).
++ (BOOL)hasUseCandidate:(NSData *)packet;
+
 /// For holding two packets side by side in the log.
 + (NSString *)hexOf:(NSData *)data;
 

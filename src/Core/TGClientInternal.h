@@ -6,8 +6,16 @@ typedef void  (*td_send_fn)(void *client, const char *request);
 typedef const char *(*td_recv_fn)(void *client, double timeout);
 typedef const char *(*td_exec_fn)(void *client, const char *request);
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /// A TDLib sticker in the shape the panel uses; nil without a file.
 NSDictionary *TGStickerInfo(NSDictionary *sticker);
+
+#ifdef __cplusplus
+}
+#endif
 
 @interface TGClient ()
 @property (nonatomic, assign) void *handle;
@@ -27,12 +35,15 @@ NSDictionary *TGStickerInfo(NSDictionary *sticker);
 @property (nonatomic, copy)   NSString *pendingPhoneNumber;
 @property (nonatomic, strong) NSMutableDictionary *chatsById;   // id -> mutable info
 @property (nonatomic, strong) NSMutableDictionary *usersById;   // id -> display name
+@property (nonatomic, strong) NSMutableDictionary *rawUsersById; // id -> raw user dict
 @property (nonatomic, strong) NSMutableDictionary *userPhotosById; // id -> photo file id
 @property (nonatomic, strong) NSMutableDictionary *forumSupergroups;
 @property (nonatomic, strong) NSArray *archivedChats;
 @property (nonatomic, strong) NSArray *folders;
 @property (nonatomic, strong) NSDictionary *archiveSettings;
 @property (nonatomic, strong) NSArray *chats;
+@property (nonatomic, assign) BOOL batchingUpdates;
+@property (nonatomic, assign) BOOL chatsNeedRebuild;
 @property (nonatomic, strong) NSMutableArray *outbox;   // JSON strings awaiting send
 @property (nonatomic, strong) NSLock *outboxLock;
 @property (nonatomic, assign) NSUInteger chatsAtLastLoad;
@@ -51,6 +62,7 @@ NSDictionary *TGStickerInfo(NSDictionary *sticker);
 - (void)request:(NSDictionary *)request completion:(void (^)(NSDictionary *))completion;
 - (void)drainOutbox;
 - (void)handleUpdate:(NSDictionary *)obj;
+- (void)handleUpdateBatch:(NSArray *)batch;
 - (void)handleAuthState:(NSDictionary *)state;
 - (void)sendTdlibParameters;
 - (void)flushPendingPhoneNumber;
@@ -68,6 +80,10 @@ extern double TGFileWaiterTimeoutSeconds;
 - (NSString *)previewForLastMessage:(NSDictionary *)last inChat:(NSMutableDictionary *)info;
 
 @end
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 // Common helpers shared between TGClient and categories
 NSDictionary *TGFlattenMessage(NSDictionary *m);
@@ -95,3 +111,7 @@ int64_t TGOrderInList(NSArray *positions, NSString *listType);
 BOOL TGPinnedInMain(NSArray *positions);
 int64_t TGMainListOrder(NSArray *positions);
 int64_t TGArchiveOrder(NSArray *positions);
+
+#ifdef __cplusplus
+}
+#endif

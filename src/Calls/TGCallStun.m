@@ -78,6 +78,32 @@ static void TGAppendIntegrityAndFingerprint(NSMutableData *message, NSString *pa
 	return (bytes[0] << 8) | bytes[1];
 }
 
++ (BOOL)hasUseCandidate:(NSData *)packet {
+	if (packet.length < 20)
+		return NO;
+	const uint8_t *bytes = (const uint8_t *)packet.bytes;
+	if ((bytes[0] & 0xC0) != 0)
+		return NO;
+	uint32_t cookie = ((uint32_t)bytes[4] << 24) | ((uint32_t)bytes[5] << 16) |
+					  ((uint32_t)bytes[6] << 8) | bytes[7];
+	if (cookie != kMagicCookie)
+		return NO;
+	uint16_t msgLen = ((uint16_t)bytes[2] << 8) | bytes[3];
+	size_t offset = 20;
+	size_t total = 20 + msgLen;
+	if (total > packet.length)
+		total = packet.length;
+	while (offset + 4 <= total) {
+		uint16_t attrType = ((uint16_t)bytes[offset] << 8) | bytes[offset + 1];
+		uint16_t attrLen = ((uint16_t)bytes[offset + 2] << 8) | bytes[offset + 3];
+		if (attrType == kAttrUseCandidate) {
+			return YES;
+		}
+		offset += 4 + ((attrLen + 3) & ~3);
+	}
+	return NO;
+}
+
 + (NSData *)bindingRequestWithUsername:(NSString *)username
                               password:(NSString *)password
                              tieBreaker:(uint64_t)tieBreaker

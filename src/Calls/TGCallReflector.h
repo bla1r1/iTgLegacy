@@ -18,6 +18,7 @@
 @property (nonatomic, assign) uint32_t remoteTag;
 @property (nonatomic, readonly) NSString *host;
 @property (nonatomic, readonly) uint16_t port;
+@property (nonatomic, assign) uint32_t serverId;
 
 /// Main queue, for every datagram that arrives.
 @property (nonatomic, copy) void (^onPacket)(NSData *payload);

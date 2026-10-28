@@ -5,6 +5,7 @@
 #import "TGIcons.h"
 #import <QuartzCore/QuartzCore.h>
 #import "TGStyle.h"
+#import "TGAlertSheet.h"
 
 
 @interface TGSearchViewController () <UISearchBarDelegate>
@@ -61,6 +62,13 @@ static const CGFloat kSearchBarWidth = 240.0f;
 		[weakSelf applyTheme];
 		[weakSelf.tableView reloadData];
 	}];
+
+	// A row's fate is not a control: the hold reaches what a tap cannot, and
+	// the same pattern as the topics list carries it.
+	UILongPressGestureRecognizer *hold = [[UILongPressGestureRecognizer alloc]
+			initWithTarget:self action:@selector(rowHeld:)];
+	hold.minimumPressDuration = 0.55;
+	[self.tableView addGestureRecognizer:hold];
 
 	[self loadFrequentChats];
 	[self.bar becomeFirstResponder];
@@ -138,6 +146,39 @@ static const CGFloat kSearchBarWidth = 240.0f;
 - (NSDictionary *)emptyStateRowAt:(NSIndexPath *)indexPath {
 	NSArray *list = indexPath.section == 0 ? self.frequent : self.recent;
 	return indexPath.row < (NSInteger)list.count ? list[indexPath.row] : nil;
+}
+
+/// The hold lands wherever the finger is, so the row is found from the point;
+/// a miss does nothing rather than guessing the last row. Only the people row
+/// answers it: Telegram ranks that list by numbers, and the only say anyone
+/// has over it is to take someone out of it. The places row is a log, not a
+/// ranking, and a chat falls out of it by itself the next day.
+- (void)rowHeld:(UILongPressGestureRecognizer *)hold {
+	if (hold.state != UIGestureRecognizerStateBegan || !self.showsFrequent)
+		return;
+	CGPoint where = [hold locationInView:self.tableView];
+	NSIndexPath *path = [self.tableView indexPathForRowAtPoint:where];
+	if (!path || path.section != 0 || path.row >= (NSInteger)self.frequent.count)
+		return;
+
+	NSDictionary *chat = self.frequent[path.row];
+	NSString *name = chat[@"title"] ?: @"That chat";
+	__weak typeof(self) weakSelf = self;
+	[TGAlertSheet showConfirm:[NSString stringWithFormat:@"%@ goes out of this list.", name]
+						title:name
+					   action:@"Remove"
+				  destructive:NO
+					   inView:self.view
+					onConfirm:^{
+		[[TGClient shared] forgetTopChat:[chat[@"id"] longLongValue]];
+		TGSearchViewController *me = weakSelf;
+		if (!me)
+			return;
+		NSMutableArray *rest = [me.frequent mutableCopy];
+		[rest removeObject:chat];
+		me.frequent = rest;
+		[me.tableView reloadData];
+	}];
 }
 
 #pragma mark - searching

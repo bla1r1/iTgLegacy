@@ -584,6 +584,150 @@ static void answerTyped(TGClient *c, NSString *type, NSDictionary *answer) {
 	XCTAssertEqual(countC(c, @"processPushNotification"), (NSUInteger)1);
 }
 
+#pragma mark - contacts
+
+- (void)testImportContact_SendsImportContactsWithFormattedFields {
+	TGClient *c = C();
+	c.td_exec = NULL;
+	__block int64_t gotUserId = 0;
+	[c importContactNamed:@"Alice" lastName:@"Smith" phone:@"+1 234 567" completion:^(int64_t uid){
+		gotUserId = uid;
+	}];
+	NSDictionary *sent = lastC(c, @"importContacts");
+	XCTAssertNotNil(sent);
+	NSArray *contacts = sent[@"contacts"];
+	XCTAssertEqual(contacts.count, (NSUInteger)1);
+	XCTAssertEqualObjects(contacts[0][@"first_name"], @"Alice");
+	XCTAssertEqualObjects(contacts[0][@"last_name"], @"Smith");
+	XCTAssertEqualObjects(contacts[0][@"phone_number"], @"+1234567");
+	answerTyped(c, @"importContacts", @{@"@type" : @"importedContacts", @"user_ids" : @[@(4242)]});
+	XCTAssertEqual(gotUserId, (int64_t)4242);
+}
+
+- (void)testAddContact_SendsAddContactWithUserIdAndContact {
+	TGClient *c = C();
+	c.td_exec = NULL;
+	__block BOOL finished = NO;
+	[c addContactWithUserId:4242 firstName:@"Alice" lastName:@"Smith" phone:@"+1234567" completion:^(BOOL ok){
+		finished = ok;
+	}];
+	NSDictionary *sent = lastC(c, @"addContact");
+	XCTAssertNotNil(sent);
+	XCTAssertEqualObjects(sent[@"user_id"], @(4242));
+	XCTAssertEqualObjects(sent[@"contact"][@"first_name"], @"Alice");
+	XCTAssertEqualObjects(sent[@"contact"][@"last_name"], @"Smith");
+	XCTAssertEqualObjects(sent[@"contact"][@"phone_number"], @"+1234567");
+	answerTyped(c, @"addContact", @{@"@type" : @"ok"});
+	XCTAssertTrue(finished);
+}
+
+- (void)testBlockUser_SendsSetMessageSenderBlockList {
+	TGClient *c = C();
+	[c blockUserWithUserId:777];
+	NSDictionary *sent = lastC(c, @"setMessageSenderBlockList");
+	XCTAssertNotNil(sent);
+	XCTAssertEqualObjects(sent[@"sender_id"][@"user_id"], @(777));
+	XCTAssertEqualObjects(sent[@"block_list"][@"@type"], @"blockListMain");
+}
+
+- (void)testSharePhoneNumber_SendsSharePhoneNumber {
+	TGClient *c = C();
+	[c sharePhoneNumberWithUser:888];
+	NSDictionary *sent = lastC(c, @"sharePhoneNumber");
+	XCTAssertNotNil(sent);
+	XCTAssertEqualObjects(sent[@"user_id"], @(888));
+}
+
+- (void)testChatActionBar_MergesKindAndAccount {
+	TGClient *c = C();
+	NSMutableDictionary *row = [@{@"id" : @(123)} mutableCopy];
+	[c mergeActionBar:@{
+		@"@type" : @"chatActionBarReportAddBlock",
+		@"account_info" : @{
+			@"first_name" : @"Jane",
+			@"last_name" : @"Doe",
+			@"phone_number" : @"+999",
+		},
+	} intoChatRow:row];
+	XCTAssertEqualObjects(row[@"actionBarKind"], @"chatActionBarReportAddBlock");
+	XCTAssertEqualObjects(row[@"actionBarAccount"][@"name"], @"Jane Doe");
+	XCTAssertEqualObjects(row[@"actionBarAccount"][@"phone"], @"+999");
+}
+
+#pragma mark - replies and messages
+
+- (void)testRepliedMessage_FetchesAndIncludesChatId {
+	TGClient *c = C();
+	c.td_exec = NULL;
+	__block NSDictionary *gotMsg = nil;
+	[c repliedMessageTo:100 inChat:200 completion:^(NSDictionary *m){
+		gotMsg = m;
+	}];
+	NSDictionary *sent = lastC(c, @"getRepliedMessage");
+	XCTAssertNotNil(sent);
+	XCTAssertEqualObjects(sent[@"chat_id"], @(200));
+	XCTAssertEqualObjects(sent[@"message_id"], @(100));
+	answerTyped(c, @"getRepliedMessage", @{
+		@"@type" : @"message",
+		@"id" : @(99),
+		@"chat_id" : @(200),
+		@"content" : @{
+			@"@type" : @"messageText",
+			@"text" : @{@"text" : @"quoted text"},
+		},
+	});
+	XCTAssertNotNil(gotMsg);
+	XCTAssertEqual([gotMsg[@"id"] longLongValue], 99LL);
+	XCTAssertEqualObjects(gotMsg[@"chatId"], @(200));
+	XCTAssertEqualObjects(gotMsg[@"text"], @"quoted text");
+}
+
+- (void)testGetMessages_FetchesMultipleAndFlattens {
+	TGClient *c = C();
+	c.td_exec = NULL;
+	__block NSArray *got = nil;
+	[c messagesInChat:50 messageIds:@[@(1), @(2)] completion:^(NSArray *msgs){
+		got = msgs;
+	}];
+	NSDictionary *sent = lastC(c, @"getMessages");
+	XCTAssertNotNil(sent);
+	XCTAssertEqualObjects(sent[@"chat_id"], @(50));
+	XCTAssertEqualObjects(sent[@"message_ids"], (@[@(1), @(2)]));
+	answerTyped(c, @"getMessages", @{
+		@"@type" : @"messages",
+		@"messages" : @[
+			@{
+				@"@type" : @"message",
+				@"id" : @(1),
+				@"content" : @{@"@type" : @"messageText", @"text" : @{@"text" : @"one"}},
+			},
+			[NSNull null],
+		],
+	});
+	XCTAssertEqual(got.count, (NSUInteger)2);
+	XCTAssertEqualObjects(got[0][@"text"], @"one");
+	XCTAssertTrue([got[1] isEqual:[NSNull null]]);
+}
+
+- (void)testGetMessageProperties_PassesThroughResponse {
+	TGClient *c = C();
+	c.td_exec = NULL;
+	__block NSDictionary *props = nil;
+	[c messagePropertiesForChat:50 messageId:1 completion:^(NSDictionary *p){
+		props = p;
+	}];
+	NSDictionary *sent = lastC(c, @"getMessageProperties");
+	XCTAssertNotNil(sent);
+	XCTAssertEqualObjects(sent[@"chat_id"], @(50));
+	XCTAssertEqualObjects(sent[@"message_id"], @(1));
+	answerTyped(c, @"getMessageProperties", @{
+		@"@type" : @"messageProperties",
+		@"can_be_replied" : @YES,
+	});
+	XCTAssertNotNil(props);
+	XCTAssertTrue([props[@"can_be_replied"] boolValue]);
+}
+
 @end
 
 // vim:ft=objc

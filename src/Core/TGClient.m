@@ -24,6 +24,7 @@ static NSString *TGFolderTitle(NSDictionary *f){
 NSString *const TGChatReadOutboxChangedNotification = @"TGChatReadOutboxChangedNotification";
 NSString *const TGConnectionStateChangedNotification = @"TGConnectionStateChangedNotification";
 NSString *const TGUserStatusChangedNotification = @"TGUserStatusChangedNotification";
+NSString *const TGChatActionBarChangedNotification = @"TGChatActionBarChangedNotification";
 
 @implementation TGClient
 
@@ -38,6 +39,7 @@ NSString *const TGUserStatusChangedNotification = @"TGUserStatusChangedNotificat
 		s = [[TGClient alloc] init];
 		s.chatsById = [NSMutableDictionary dictionary];
 		s.usersById = [NSMutableDictionary dictionary];
+		s.rawUsersById = [NSMutableDictionary dictionary];
 		s.userPhotosById = [NSMutableDictionary dictionary];
 		s.forumSupergroups = [NSMutableDictionary dictionary];
 		s.archivedChats = @[];
@@ -117,20 +119,56 @@ NSString *const TGUserStatusChangedNotification = @"TGUserStatusChangedNotificat
 			if (!res)
 				continue;
 
+			NSMutableArray *batch = [NSMutableArray arrayWithCapacity:32];
+
 			NSData *data = [NSData dataWithBytes:res length:strlen(res)];
 			NSError *err = nil;
 			NSDictionary *obj = [NSJSONSerialization JSONObjectWithData:data
 															   options:0
 																 error:&err];
-			if (![obj isKindOfClass:NSDictionary.class]){
+			if ([obj isKindOfClass:NSDictionary.class]){
+				[batch addObject:obj];
+			} else {
 				NSLog(@"TGClient: bad JSON: %@", err);
-				continue;
 			}
 
-			dispatch_async(dispatch_get_main_queue(), ^{
-				[self handleUpdate:obj];
-			});
+			// Drain further available updates immediately without waiting
+			while (batch.count < 48 && self.running){
+				const char *next = self.td_recv(self.client, 0.0);
+				if (!next)
+					break;
+				NSData *nextData = [NSData dataWithBytes:next length:strlen(next)];
+				NSDictionary *nextObj = [NSJSONSerialization JSONObjectWithData:nextData
+																	   options:0
+																		 error:nil];
+				if ([nextObj isKindOfClass:NSDictionary.class]){
+					[batch addObject:nextObj];
+				}
+			}
+
+			if (batch.count > 0){
+				dispatch_async(dispatch_get_main_queue(), ^{
+					[self handleUpdateBatch:batch];
+				});
+			}
 		}
+	}
+}
+
+- (void)handleUpdateBatch:(NSArray *)batch {
+	if (batch.count == 1){
+		[self handleUpdate:batch[0]];
+		return;
+	}
+
+	self.batchingUpdates = YES;
+	for (NSDictionary *obj in batch){
+		[self handleUpdate:obj];
+	}
+	self.batchingUpdates = NO;
+
+	if (self.chatsNeedRebuild){
+		[self rebuildChats];
 	}
 }
 
@@ -281,6 +319,11 @@ NSDictionary *TGFormattedText(NSString *text) {
 	}
 	if ([type isEqualToString:@"updateUser"]){
 		NSDictionary *u = obj[@"user"];
+		if (u[@"id"]){
+			if (!self.rawUsersById)
+				self.rawUsersById = [NSMutableDictionary dictionary];
+			self.rawUsersById[u[@"id"]] = u;
+		}
 		NSString *name = [[NSString stringWithFormat:@"%@ %@",
 				u[@"first_name"] ?: @"", u[@"last_name"] ?: @""]
 				stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
@@ -460,6 +503,11 @@ NSDictionary *TGFormattedText(NSString *text) {
 	// chat the list is drawing.
 	if ([type isEqualToString:@"updateUserStatus"]){
 		int64_t userId = [obj[@"user_id"] longLongValue];
+		if (self.rawUsersById[@(userId)] && [obj[@"status"] isKindOfClass:NSDictionary.class]){
+			NSMutableDictionary *cachedUser = [self.rawUsersById[@(userId)] mutableCopy];
+			cachedUser[@"status"] = obj[@"status"];
+			self.rawUsersById[@(userId)] = cachedUser;
+		}
 		NSMutableDictionary *chat = self.chatsById[obj[@"user_id"]];
 		// Presence screens (chat header, profile status) hear this even when
 		// the user sits in no loaded chat.
@@ -474,6 +522,21 @@ NSDictionary *TGFormattedText(NSString *text) {
 			return;
 		chat[@"isOnline"] = @(online);
 		[self rebuildChats];
+		return;
+	}
+
+	if ([type isEqualToString:@"updateChatActionBar"]){
+		// The bar over a chat nobody knows follows the update, not only the
+		// fetch; whichever chat is open hears the notification and redraws.
+		int64_t chatId = [obj[@"chat_id"] longLongValue];
+		NSMutableDictionary *row = self.chatsById[@(chatId)];
+		if (row){
+			[self mergeActionBar:obj[@"action_bar"] intoChatRow:row];
+			[self rebuildChats];
+		}
+		[[NSNotificationCenter defaultCenter]
+				postNotificationName:TGChatActionBarChangedNotification
+							  object:@(chatId)];
 		return;
 	}
 

@@ -72,7 +72,7 @@ OBJC_SRCS := \
 # binary links a test stub of TGClient instead, which the call tests need.
 CLIENT_OBJC_SRCS := \
     $(SRC)/Core/TGClient.m \
-    $(SRC)/Core/TGClient+Chats.m \
+    $(SRC)/Core/TGClient+Chats.mm \
     $(SRC)/Core/TGClient+Messages.m \
     $(SRC)/Core/TGClient+Stickers.m \
     $(SRC)/Core/TGClient+Files.m \

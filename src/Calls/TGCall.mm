@@ -155,6 +155,7 @@ static void TGInstallCrypto(void) {
 @property (nonatomic, assign) uint32_t audioProbeSeq;
 @property (nonatomic, assign) BOOL audioFramingProven;
 @property (nonatomic, assign) uint32_t currentSenderTag;
+@property (nonatomic, assign) uint32_t nominatedSenderTag;
 @property (nonatomic, strong) TGCallReflector *currentReflector;
 @property (nonatomic, strong) NSString *peerUfrag;
 @property (nonatomic, strong) NSString *peerPwd;
@@ -264,9 +265,10 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V5";
 		TGCall *me = weakSelf;
 		// An answer goes to the port that asked; anything else - our own
 		// checks - goes to every tag the peer has shown us.
-		if (me.currentSenderTag){
+		uint32_t targetTag = me.nominatedSenderTag ?: me.currentSenderTag;
+		if (targetTag){
 			[me.currentReflector ?: me.reflector sendPayload:packet
-													   toTag:me.currentSenderTag];
+													   toTag:targetTag];
 			return;
 		}
 		for (TGCallReflector *reflector in me.reflectors)
@@ -286,8 +288,9 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V5";
 	NSInteger index = 0;
 	for (TGCallReflector *reflector in self.reflectors){
 		index++;
-		NSString *hostname = [NSString stringWithFormat:@"reflector-%ld-%u.reflector",
-				(long)index, reflector.localTag];
+		uint32_t serverId = reflector.serverId ?: (uint32_t)index;
+		NSString *hostname = [NSString stringWithFormat:@"reflector-%u-%u.reflector",
+				serverId, reflector.localTag];
 		// Written exactly the way the peer writes its own: component 0, no
 		// raddr or rport. A line their parser rejects takes the whole message
 		// with it, and then they never learn our credentials at all.
@@ -397,6 +400,13 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V5";
 							NSLog(@"TGCall: extracted from SDP ufrag=%@ pwd=%@", self.peerUfrag, self.peerPwd);
 
 							if ([jtype isEqualToString:@"offer"]) {
+								NSString *fingerprint = @"";
+								for (NSString *line in [sdp componentsSeparatedByCharactersInSet:[NSCharacterSet newlineCharacterSet]]) {
+									if ([line hasPrefix:@"a=fingerprint:"]) {
+										fingerprint = [NSString stringWithFormat:@"%@\r\n", line];
+										break;
+									}
+								}
 								// Send SDP answer back so the peer's WebRTC state moves to stable
 								NSString *answerSdp = [NSString stringWithFormat:
 									@"v=0\r\n"
@@ -410,12 +420,14 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V5";
 									@"a=rtcp:9 IN IP4 0.0.0.0\r\n"
 									@"a=ice-ufrag:%@\r\n"
 									@"a=ice-pwd:%@\r\n"
+									@"%@"
 									@"a=sendrecv\r\n"
 									@"a=rtcp-mux\r\n"
 									@"a=rtpmap:111 opus/48000/2\r\n"
 									@"a=mid:0\r\n",
 									(unsigned long long)([[NSDate date] timeIntervalSince1970] * 1000),
-									self.localUfrag ?: @"", self.localPwd ?: @""];
+									self.localUfrag ?: @"", self.localPwd ?: @"",
+									fingerprint];
 
 								NSDictionary *answerDict = @{
 									@"@type": @"answer",
@@ -465,7 +477,7 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V5";
 // Extract remote reflector tag from candidate
 - (void)readPeerTagFromCandidate:(NSString *)candidate {
 	NSRange marker = [candidate rangeOfString:@"reflector-"];
-	if (marker.location == NSNotFound || self.reflector.remoteTag)
+	if (marker.location == NSNotFound)
 		return;
 
 	NSString *tail = [candidate substringFromIndex:marker.location + marker.length];
@@ -474,10 +486,21 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V5";
 	if (parts.count < 2)
 		return;
 
+	NSInteger reflectorIndex = [parts[0] integerValue] - 1;
 	uint32_t tag = (uint32_t)[parts[1] longLongValue];
-	for (TGCallReflector *reflector in self.reflectors)
+	if (!tag)
+		return;
+
+	if (reflectorIndex >= 0 && reflectorIndex < (NSInteger)self.reflectors.count){
+		TGCallReflector *reflector = self.reflectors[reflectorIndex];
 		reflector.remoteTag = tag;
-	NSLog(@"TGCall: peer reflector tag %u", tag);
+	} else {
+		for (TGCallReflector *reflector in self.reflectors)
+			reflector.remoteTag = tag;
+	}
+	if (!self.currentSenderTag)
+		self.currentSenderTag = tag;
+	NSLog(@"TGCall: peer reflector tag %u (reflector %ld)", tag, (long)(reflectorIndex + 1));
 }
 
 - (void)sendSignalling:(NSData *)plaintext seq:(uint32_t)seq {
@@ -535,6 +558,18 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V5";
 		}];
 	[self teardown];
 	self.state = TGCallStateEnded;
+}
+
+- (void)sendRating:(int)rating comment:(NSString *)comment problems:(NSArray *)problems {
+	if (!self.callId)
+		return;
+	[[TGClient shared] send:@{
+		@"@type"    : @"sendCallRating",
+		@"call_id"  : @(self.callId),
+		@"rating"   : @(rating),
+		@"comment"  : comment ?: @"",
+		@"problems" : problems ?: @[],
+	}];
 }
 
 // Supported call protocol versions
@@ -664,6 +699,7 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V5";
 				initWithHost:server[@"ip_address"]
 						port:(uint16_t)[server[@"port"] intValue]
 					 peerTag:peerTag];
+		reflector.serverId = (uint32_t)(index + 1);
 		__weak TGCallReflector *weakReflector = reflector;
 		reflector.onPacket = ^(NSData *packet){
 			weakSelf.currentReflector = weakReflector;
@@ -765,12 +801,15 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V5";
 
 
 	// Send encrypted packet over reflector transport
-	if (self.currentSenderTag) {
-		[(self.currentReflector ?: self.reflector) sendPayload:encrypted toTag:self.currentSenderTag];
+	uint32_t targetTag = self.nominatedSenderTag ?: self.currentSenderTag;
+	if (targetTag) {
+		[(self.currentReflector ?: self.reflector) sendPayload:encrypted toTag:targetTag];
 	}
-	for (TGCallReflector *reflector in self.reflectors) {
-		if (reflector.remoteTag && reflector.remoteTag != self.currentSenderTag) {
-			[reflector sendPayload:encrypted toTag:reflector.remoteTag];
+	if (!self.nominatedSenderTag) {
+		for (TGCallReflector *reflector in self.reflectors) {
+			if (reflector.remoteTag && reflector.remoteTag != targetTag) {
+				[reflector sendPayload:encrypted toTag:reflector.remoteTag];
+			}
 		}
 	}
 }
@@ -863,11 +902,13 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V5";
 	// Update sender tag from reflector header (ignoring 0xFFFFFFFF service tags)
 	uint32_t senderTag = 0;
 	memcpy(&senderTag, bytes + 16, 4);
-	if (senderTag && senderTag != 0xFFFFFFFF && senderTag != self.reflector.localTag)
-		self.currentSenderTag = senderTag;
-
 	if (senderTag == 0xFFFFFFFF)
 		return;
+
+	if (senderTag && senderTag != self.reflector.localTag) {
+		if (!self.currentSenderTag)
+			self.currentSenderTag = senderTag;
+	}
 
 	// The media state is what tells the peer our microphone is live, and it
 	// cannot go anywhere until a tag to address it to has shown up. Whichever
@@ -903,7 +944,23 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V5";
 			// 0001 is a check from them, 0101 their answer to ours. Seeing only
 			// one of the two is the difference between a path that works and a
 			// path that looks like it does.
-			if (stunType == 0x0001) _stunRequestsIn++; else _stunResponsesIn++;
+			if (stunType == 0x0001) {
+				_stunRequestsIn++;
+				if (senderTag && senderTag != self.reflector.localTag && [TGCallStun hasUseCandidate:payload]) {
+					if (self.nominatedSenderTag != senderTag) {
+						self.nominatedSenderTag = senderTag;
+						self.currentSenderTag = senderTag;
+						NSLog(@"TGCall: peer nominated tag %u via USE-CANDIDATE", senderTag);
+					}
+				}
+			} else {
+				_stunResponsesIn++;
+				if (senderTag && senderTag != self.reflector.localTag && !self.nominatedSenderTag) {
+					self.nominatedSenderTag = senderTag;
+					self.currentSenderTag = senderTag;
+					NSLog(@"TGCall: peer answered our check from tag %u (nominated)", senderTag);
+				}
+			}
 			// Their answer to our check, once: a known-good response from a
 			// real WebRTC agent to compare ours against.
 			if (stunType == 0x0101 && !_loggedTheirResponse){
@@ -931,6 +988,9 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V5";
 							_mediaPacketsIn, decSize, mediaSeq, offset);
 				if ([TGCallMessages seqRequiresAck:mediaSeq]) {
 					[self sendAckForSeq:mediaSeq signaling:NO];
+				}
+				if (!self.audioEngine) {
+					[self startAudioEngine];
 				}
 				[self handleIncomingMediaPacket:decrypted seq:mediaSeq];
 				return;
@@ -1146,6 +1206,7 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V5";
 	self.reflector = nil;
 	self.currentReflector = nil;
 	self.currentSenderTag = 0;
+	self.nominatedSenderTag = 0;
 	self.callKey = nil;
 	[self.pendingSignalingData removeAllObjects];
 	self.sentCandidates = NO;

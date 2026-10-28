@@ -29,6 +29,22 @@ static NSMutableArray<NSDictionary *> *TGSentRequests(void) {
 		[TGSentRequests() addObject:request];
 }
 
+- (NSString *)nameForUserId:(int64_t)userId {
+	return @"Test User";
+}
+
+- (void)statusForUser:(int64_t)userId completion:(void (^)(NSString *status))completion {
+	if (completion) completion(@"online");
+}
+
+- (int64_t)savedMessagesChatId {
+	return 0;
+}
+
+- (NSString *)titleForChat:(int64_t)chatId {
+	return @"Test Chat";
+}
+
 @end
 
 @implementation TGClient (Testing)

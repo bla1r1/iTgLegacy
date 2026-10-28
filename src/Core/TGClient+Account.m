@@ -317,8 +317,17 @@ static NSArray *TGPacksFrom(NSDictionary *target) {
 }
 
 - (void)statusForUser:(int64_t)userId completion:(void (^)(NSString *))completion {
+	if (self.rawUsersById[@(userId)][@"status"]){
+		NSString *text = TGStatusTextFromTDStatus(self.rawUsersById[@(userId)][@"status"]);
+		if (completion) completion(text);
+		return;
+	}
 	[self request:@{@"@type" : @"getUser", @"user_id" : @(userId)}
 	   completion:^(NSDictionary *user){
+		if ([user[@"@type"] isEqualToString:@"user"]){
+			if (!self.rawUsersById) self.rawUsersById = [NSMutableDictionary dictionary];
+			self.rawUsersById[@(userId)] = user;
+		}
 		// The phrase table now lives in TGStatusText alongside the network
 		// names, so a host test can pin every line it can say (B4).
 		NSString *text = TGStatusTextFromTDStatus(user[@"status"]);
@@ -870,8 +879,16 @@ static NSArray *TGPacksFrom(NSDictionary *target) {
 }
 
 - (void)userInfo:(int64_t)userId completion:(void (^)(NSDictionary *))completion {
+	if (self.rawUsersById[@(userId)]){
+		if (completion) completion(self.rawUsersById[@(userId)]);
+		return;
+	}
 	[self request:@{@"@type" : @"getUser", @"user_id" : @(userId)}
 	   completion:^(NSDictionary *u){
+		if ([u[@"@type"] isEqualToString:@"user"]){
+			if (!self.rawUsersById) self.rawUsersById = [NSMutableDictionary dictionary];
+			self.rawUsersById[@(userId)] = u;
+		}
 		if (completion) completion([u[@"@type"] isEqualToString:@"user"] ? u : nil);
 	}];
 }

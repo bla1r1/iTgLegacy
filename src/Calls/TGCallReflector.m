@@ -31,11 +31,17 @@
 		// Four random bytes name this side of the call. The reflector uses
 		// them to decide which way a packet goes.
 		arc4random_buf(&_localTag, sizeof(_localTag));
-		if (peerTag.length >= 16) {
-			memcpy(&_remoteTag, (const uint8_t *)peerTag.bytes + 12, 4);
-		}
 	}
 	return self;
+}
+
+- (uint32_t)fallbackTag {
+	if (self.peerTag.length >= 16) {
+		uint32_t tag = 0;
+		memcpy(&tag, (const uint8_t *)self.peerTag.bytes + 12, 4);
+		return tag;
+	}
+	return 0;
 }
 
 // Tag for addressing peer on reflector
@@ -130,7 +136,7 @@
 	// Answer whoever actually wrote to us: the tag in the header of the last
 	// packet is the truth, and a tag read out of a candidate can be stale or
 	// belong to a different reflector.
-	uint32_t destination = self.observedTag ?: self.remoteTag;
+	uint32_t destination = self.observedTag ?: (self.remoteTag ?: [self fallbackTag]);
 	if (!destination){
 		NSLog(@"TGCallReflector: nothing has come from the peer yet");
 		return;
@@ -179,7 +185,7 @@
 		if (got > 20){
 			uint32_t sender = 0;
 			memcpy(&sender, buffer + 16, 4);
-			if (sender && sender != 0xFFFFFFFF && sender != self.localTag)
+			if (sender && sender != 0xFFFFFFFF && sender != self.localTag && !self.observedTag)
 				self.observedTag = sender;
 		}
 

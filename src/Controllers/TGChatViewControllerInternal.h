@@ -208,6 +208,12 @@ static const CGFloat kBannerCloseGlyph = 16.0f;
 @property (nonatomic, assign) int64_t editingId;             // editing instead
 @property (nonatomic, strong) UIView *composeBanner;         // "Reply to ..."
 @property (nonatomic, strong) UIButton *micButton;
+// The bar over a chat nobody has spoken to: report spam, add to contacts.
+@property (nonatomic, strong) UIView *actionBarView;
+@property (nonatomic, strong) UILabel *actionBarLabel;
+/// Following a reply: the quote header is the button; this is where it lands.
+- (void)jumpToReplyById:(int64_t)replyId;
+- (void)refreshActionBar;
 @property (nonatomic, strong) UISearchBar *chatSearchBar;
 @property (nonatomic, strong) NSArray *messagesBeforeSearch;
 @property (nonatomic, strong) NSTimer *recordTimer;

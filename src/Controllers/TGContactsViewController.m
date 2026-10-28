@@ -1,4 +1,5 @@
 #import "TGContactsViewController.h"
+#import "TGNewContactViewController.h"
 #import "TGChatViewController.h"
 #import "TGClient.h"
 #import "TGIcons.h"
@@ -34,6 +35,11 @@
 						style:UIBarButtonItemStyleDone
 					   target:self action:@selector(commitPicking)];
 		self.navigationItem.rightBarButtonItem.enabled = NO;
+	} else {
+		self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc]
+				initWithBarButtonSystemItem:UIBarButtonSystemItemAdd
+									 target:self
+									 action:@selector(addContactTapped)];
 	}
 	[[TGTheme shared] styleNavigationBar:self.navigationController.navigationBar];
 	self.users = @[];
@@ -55,6 +61,16 @@
 		[me.tableView reloadData];
 	}];
 
+	[self loadContacts];
+}
+
+- (void)addContactTapped {
+	TGNewContactViewController *vc = [[TGNewContactViewController alloc] init];
+	vc.hidesBottomBarWhenPushed = YES;
+	[self.navigationController pushViewController:vc animated:YES];
+}
+
+- (void)loadContacts {
 	__weak typeof(self) weakSelf = self;
 	[[TGClient shared] contactsWithCompletion:^(NSArray *users){
 		TGContactsViewController *me = weakSelf;
@@ -71,6 +87,7 @@
 - (void)viewWillAppear:(BOOL)animated {
 	[super viewWillAppear:animated];
 	[[TGTheme shared] styleNavigationBar:self.navigationController.navigationBar];
+	[self loadContacts];
 }
 
 - (void)reloadTableDebounced {

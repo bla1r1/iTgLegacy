@@ -1,4 +1,10 @@
 #import "TGClientInternal.h"
+#include <vector>
+#include <algorithm>
+
+#ifndef typeof
+#define typeof __typeof__
+#endif
 
 /// Preview text for a chat's last message, for the types it knows by name.
 /// Returns nil for everything else, so callers can tell "known, said this"
@@ -551,6 +557,60 @@ int64_t TGArchiveOrder(NSArray *positions) {
 	[self send:@{@"@type" : @"readAllChatReactions", @"chat_id" : @(chatId)}];
 }
 
+#pragma mark - contacts
+
+/// A contact Telegram has never met. addContact matches on the phone number,
+/// and a number nobody here has met yet has no user id to hand it - so the
+/// import is what makes the user, and the id it hands back is what the
+/// contact is finished with.
+- (void)importContactNamed:(NSString *)firstName
+				  lastName:(NSString *)lastName
+					 phone:(NSString *)phone
+				completion:(void (^)(int64_t userId))completion {
+	NSString *who = [firstName ?: @"" stringByTrimmingCharactersInSet:
+			[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+	NSString *number = [phone ?: @"" stringByReplacingOccurrencesOfString:@" "
+															   withString:@""];
+	if (!who.length || !number.length){
+		if (completion) completion(0);
+		return;
+	}
+	[self request:@{
+		@"@type"    : @"importContacts",
+		@"contacts" : @[@{
+			@"@type"        : @"importedContact",
+			@"phone_number" : number,
+			@"first_name"   : who,
+			@"last_name"    : [lastName ?: @"" stringByTrimmingCharactersInSet:
+							 [NSCharacterSet whitespaceAndNewlineCharacterSet]],
+			@"note"         : @{@"@type" : @"formattedText", @"text" : @""},
+		}],
+	} completion:^(NSDictionary *result){
+		if (completion)
+			completion([result[@"user_ids"] count]
+					? [result[@"user_ids"][0] longLongValue] : 0);
+	}];
+}
+
+/// A number back in the block list. The sender is spelled as a user rather
+/// than as a chat id, which is what the report path has to do for a group.
+- (void)blockUserWithUserId:(int64_t)userId {
+	if (!userId)
+		return;
+	[self send:@{
+		@"@type"     : @"setMessageSenderBlockList",
+		@"sender_id" : @{@"@type" : @"messageSenderUser", @"user_id" : @(userId)},
+		@"block_list": @{@"@type" : @"blockListMain"},
+	}];
+}
+
+/// Your phone number to a mutual contact, on their offer to share it.
+- (void)sharePhoneNumberWithUser:(int64_t)userId {
+	if (!userId)
+		return;
+	[self send:@{@"@type" : @"sharePhoneNumber", @"user_id" : @(userId)}];
+}
+
 /// Adds someone to your Telegram contacts. The phone number is what the
 /// server matches on; without one it only renames an existing contact.
 - (void)addContactWithUserId:(int64_t)userId
@@ -560,13 +620,13 @@ int64_t TGArchiveOrder(NSArray *positions) {
 				  completion:(void (^)(BOOL ok))completion {
 	[self request:@{
 		@"@type"   : @"addContact",
+		@"user_id" : @(userId),
 		@"contact" : @{
-			@"@type"           : @"contact",
+			@"@type"           : @"importedContact",
 			@"phone_number"    : phone ?: @"",
 			@"first_name"      : firstName ?: @"",
 			@"last_name"       : lastName ?: @"",
-			@"vcard"           : @"",
-			@"user_id"         : @(userId),
+			@"note"            : @{@"@type" : @"formattedText", @"text" : @""},
 		},
 		@"share_phone_number" : @NO,
 	} completion:^(NSDictionary *result){
@@ -1070,6 +1130,37 @@ static NSDictionary *TGFolderObject(NSString *name, NSString *icon,
 	}];
 }
 
+/// The chat's action bar: its kind, the words a join request says, and the
+/// account details a report-and-block dialog carries for the contacts form.
+- (void)mergeActionBar:(NSDictionary *)bar intoChatRow:(NSMutableDictionary *)row {
+	NSString *kind = [bar isKindOfClass:NSDictionary.class] ? bar[@"@type"] : @"";
+	if (!kind.length){
+		[row removeObjectForKey:@"actionBarKind"];
+		[row removeObjectForKey:@"actionBarText"];
+		[row removeObjectForKey:@"actionBarAccount"];
+		return;
+	}
+	row[@"actionBarKind"] = kind;
+	if ([kind isEqualToString:@"chatActionBarReportAddBlock"]){
+		NSString *first = bar[@"account_info"][@"first_name"] ?: @"";
+		NSString *last  = bar[@"account_info"][@"last_name"] ?: @"";
+		NSString *name  = [[NSString stringWithFormat:@"%@ %@", first, last]
+				stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+		row[@"actionBarAccount"] = @{
+			@"name"  : name.length ? name : @"",
+			@"first" : first,
+			@"last"  : last,
+			@"phone" : bar[@"account_info"][@"phone_number"] ?: @"",
+		};
+	} else {
+		[row removeObjectForKey:@"actionBarAccount"];
+	}
+	if ([kind isEqualToString:@"chatActionBarJoinRequest"])
+		row[@"actionBarText"] = bar[@"title"] ?: @"";
+	else
+		[row removeObjectForKey:@"actionBarText"];
+}
+
 - (void)mergeChat:(NSDictionary *)chat {
 	if (![chat isKindOfClass:NSDictionary.class])
 		return;
@@ -1085,6 +1176,13 @@ static NSDictionary *TGFolderObject(NSString *name, NSString *icon,
 	}
 
 	info[@"id"] = chatId;
+	if (chat[@"title"])
+		info[@"title"] = chat[@"title"];
+
+	// The bar over a chat nobody knows: report spam, add to contacts, share
+	// a phone number. Telegram hands the kind over with the chat and again
+	// in an update, so both write through the same helper.
+	[self mergeActionBar:chat[@"action_bar"] intoChatRow:info];
 	if (chat[@"title"])
 		info[@"title"] = chat[@"title"];
 
@@ -1285,21 +1383,37 @@ static NSDictionary *TGFolderObject(NSString *name, NSString *icon,
 }
 
 - (void)rebuildChats {
-	NSArray *all = self.chatsById.allValues;
+	if (self.batchingUpdates){
+		self.chatsNeedRebuild = YES;
+		return;
+	}
+	self.chatsNeedRebuild = NO;
 
-	NSComparator byOrder = ^NSComparisonResult(id a, id b){
-		int64_t oa = [a[@"order"] longLongValue];
-		int64_t ob = [b[@"order"] longLongValue];
-		if (oa == ob) return NSOrderedSame;
-		return oa > ob ? NSOrderedAscending : NSOrderedDescending;   // newest first
+	NSArray *all = self.chatsById.allValues;
+	NSUInteger count = all.count;
+	if (count == 0){
+		self.chats = @[];
+		self.archivedChats = @[];
+		if (self.onChatsChanged) self.onChatsChanged();
+		if (self.onArchiveChanged) self.onArchiveChanged();
+		return;
+	}
+
+	struct ChatOrderEntry {
+		int64_t order;
+		int64_t id_;
+		__unsafe_unretained NSDictionary *chat;
 	};
 
-	// A chat sits in exactly one of the two lists, told apart by which
-	// position carries a non-zero order.
-	NSMutableArray *main = [NSMutableArray array], *archived = [NSMutableArray array];
+	std::vector<ChatOrderEntry> mainVec;
+	std::vector<ChatOrderEntry> archiveVec;
+	mainVec.reserve(count);
+	archiveVec.reserve(count / 4);
+
 	int64_t savedId = [self savedMessagesChatId];
 	for (NSDictionary *c in all){
-		BOOL isSaved = [c[@"isSaved"] boolValue] || ([c[@"id"] longLongValue] == savedId && savedId != 0);
+		int64_t cid = [c[@"id"] longLongValue];
+		BOOL isSaved = [c[@"isSaved"] boolValue] || (cid == savedId && savedId != 0);
 		BOOL isPinned = [c[@"isPinned"] boolValue];
 		BOOL hasDraft = [c[@"draft"] length] > 0;
 		BOOL hasMessage = [c[@"text"] length] > 0 || [c[@"date"] longLongValue] > 0;
@@ -1307,20 +1421,37 @@ static NSDictionary *TGFolderObject(NSString *name, NSString *icon,
 		if (!isSaved && !isPinned && !hasDraft && !hasMessage)
 			continue;
 
-		if ([c[@"archiveOrder"] longLongValue] > 0)
-			[archived addObject:c];
-		else if ([c[@"order"] longLongValue] > 0)
-			[main addObject:c];
+		int64_t archiveOrder = [c[@"archiveOrder"] longLongValue];
+		if (archiveOrder > 0){
+			archiveVec.push_back({archiveOrder, cid, c});
+		} else {
+			int64_t mainOrder = [c[@"order"] longLongValue];
+			if (mainOrder > 0){
+				mainVec.push_back({mainOrder, cid, c});
+			}
+		}
 	}
 
-	self.chats = [main sortedArrayUsingComparator:byOrder];
-	self.archivedChats = [archived sortedArrayUsingComparator:
-			^NSComparisonResult(id a, id b){
-		int64_t oa = [a[@"archiveOrder"] longLongValue];
-		int64_t ob = [b[@"archiveOrder"] longLongValue];
-		if (oa == ob) return NSOrderedSame;
-		return oa > ob ? NSOrderedAscending : NSOrderedDescending;
-	}];
+	auto byOrderDesc = [](const ChatOrderEntry &a, const ChatOrderEntry &b){
+		if (a.order != b.order) return a.order > b.order;   // newest first
+		return a.id_ > b.id_;
+	};
+
+	std::sort(mainVec.begin(), mainVec.end(), byOrderDesc);
+	std::sort(archiveVec.begin(), archiveVec.end(), byOrderDesc);
+
+	NSMutableArray *main = [NSMutableArray arrayWithCapacity:mainVec.size()];
+	for (const auto &e : mainVec){
+		[main addObject:e.chat];
+	}
+
+	NSMutableArray *archived = [NSMutableArray arrayWithCapacity:archiveVec.size()];
+	for (const auto &e : archiveVec){
+		[archived addObject:e.chat];
+	}
+
+	self.chats = main;
+	self.archivedChats = archived;
 
 	if (self.onChatsChanged)
 		self.onChatsChanged();

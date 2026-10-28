@@ -8,6 +8,8 @@
 #import "TGAlertSheet.h"
 #import "TGStatusText.h"
 #import "TGStyle.h"
+#import "TGContactsViewController.h"
+#import "TGNewContactViewController.h"
 
 static const CGFloat kJumpSide = TGMetricJumpSide;
 /// The ticks are drawn a point shorter than the box they sit in, so the two
@@ -104,6 +106,287 @@ static NSInteger TGDayNumber(NSTimeInterval stamp) {
 	return NSNotFound;
 }
 
+#pragma mark - the bar over a chat nobody has spoken to
+
+static const CGFloat kActionBarCloseSide = 44.0f;
+
+/// The chat dict row of the open chat, read fresh: the bar follows the chat,
+/// so its kind and words are re-derived on every pass rather than stored.
+- (NSDictionary *)actionBarRow {
+	for (NSDictionary *chat in [TGClient shared].chats)
+		if ([chat[@"id"] longLongValue] == self.chatId)
+			return chat;
+	return nil;
+}
+
+/// The bar Telegram puts over a chat the account has never spoken to: report
+/// spam over a stranger, add to contacts, share a phone number. It rides the
+/// composer the way the reply banner does, and the X is not a hiding - it is
+/// the removeChatActionBar request.
+- (void)refreshActionBar {
+	NSString *kind = [self actionBarRow][@"actionBarKind"] ?: @"";
+	if (!kind.length){
+		if (self.actionBarView && !self.actionBarView.hidden){
+			self.actionBarView.hidden = YES;
+			[self layoutChrome];
+		}
+		return;
+	}
+
+	if (!self.actionBarView){
+		UIView *bar = [[UIView alloc] init];
+		bar.backgroundColor = [[TGTheme shared] inputBarColour];
+		bar.autoresizingMask = UIViewAutoresizingFlexibleWidth |
+							   UIViewAutoresizingFlexibleTopMargin;
+
+		UIView *hair = [[UIView alloc] initWithFrame:CGRectMake(0, 0,
+				self.view.bounds.size.width, TGMetricBorderWidth)];
+		hair.backgroundColor = [[TGTheme shared] separatorColour];
+		hair.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+		[bar addSubview:hair];
+
+		UILabel *say = [[UILabel alloc] init];
+		say.font = TGFontCaption();
+		say.textColor = [[TGTheme shared] secondaryTextColour];
+		say.backgroundColor = [UIColor clearColor];
+		self.actionBarLabel = say;
+		[bar addSubview:say];
+
+		TGTheme *theme = [TGTheme shared];
+
+		UIButton *primary = [UIButton buttonWithType:UIButtonTypeCustom];
+		primary.titleLabel.font = TGFontCaptionStrong();
+		primary.tag = 1;
+		[primary setTitleColor:[theme accentColour] forState:UIControlStateNormal];
+		[primary addTarget:self action:@selector(actionBarPrimaryTapped)
+			  forControlEvents:UIControlEventTouchUpInside];
+		[bar addSubview:primary];
+
+		UIButton *secondary = [UIButton buttonWithType:UIButtonTypeCustom];
+		secondary.titleLabel.font = TGFontCaptionStrong();
+		secondary.tag = 2;
+		secondary.hidden = YES;
+		[secondary setTitleColor:[theme accentColour] forState:UIControlStateNormal];
+		[secondary addTarget:self action:@selector(actionBarSecondaryTapped)
+			forControlEvents:UIControlEventTouchUpInside];
+		[bar addSubview:secondary];
+
+		UIButton *close = [UIButton buttonWithType:UIButtonTypeCustom];
+		close.tag = 9;
+		[close setImage:[TGIcons glyphNamed:@"close"
+									 colour:[theme secondaryTextColour]
+									   side:kBannerCloseGlyph]
+				forState:UIControlStateNormal];
+		[close addTarget:self action:@selector(actionBarClosed)
+			forControlEvents:UIControlEventTouchUpInside];
+		[bar addSubview:close];
+
+		self.actionBarView = bar;
+		[self.view addSubview:bar];
+	}
+
+	NSString *say = nil;
+	NSString *primary = nil;
+	NSString *secondary = nil;
+	NSString *who = self.chatTitle ?: @"";
+	if ([kind isEqualToString:@"chatActionBarReportAddBlock"]){
+		NSString *name = [self actionBarRow][@"actionBarAccount"][@"name"];
+		say = [name length] ? [NSString stringWithFormat:@"%@ is nobody you know.", name]
+							: @"Report spam and block?";
+		primary = @"Report";
+		secondary = @"Block";
+	}
+	else if ([kind isEqualToString:@"chatActionBarReportSpam"]){
+		say = [NSString stringWithFormat:@"Report spam from %@?", who ?: @"this chat"];
+		primary = @"Report";
+	}
+	else if ([kind isEqualToString:@"chatActionBarAddContact"]){
+		say = [NSString stringWithFormat:@"%@ is not in your contacts.", who ?: @"This account"];
+		primary = @"Add Contact";
+	}
+	else if ([kind isEqualToString:@"chatActionBarSharePhoneNumber"]){
+		say = @"Share your phone number with them?";
+		primary = @"Share";
+	}
+	else if ([kind isEqualToString:@"chatActionBarInviteMembers"]){
+		say = [NSString stringWithFormat:@"%@ takes people.", who ?: @"This chat"];
+		primary = @"Add";
+	}
+	else if ([kind isEqualToString:@"chatActionBarJoinRequest"]){
+		NSString *title = [self actionBarRow][@"actionBarText"];
+		say = [title length] ? title : @"They have asked to join.";
+	}
+	else {
+		// A kind this app has no action for still deserves the words it was
+		// handed: the bar lives so long as Telegram sends it.
+		say = kind;
+	}
+
+	self.actionBarLabel.text = say;
+	self.actionBarView.hidden = NO;
+	[self positionActionBarButtons:primary secondary:secondary];
+	[self layoutChrome];
+}
+
+/// The buttons hang from the right, the X outermost; the label keeps what is
+/// left of them. buttonTitle nil hides it.
+- (void)positionActionBarButtons:(NSString *)primaryTitle secondary:(NSString *)secondaryTitle {
+	CGFloat width = self.view.bounds.size.width;
+	CGFloat height = kComposeBannerHeight;
+
+	UIButton *close = nil;
+	UIButton *primary = nil;
+	UIButton *secondary = nil;
+	for (UIView *sub in self.actionBarView.subviews)
+		if ([sub isKindOfClass:[UIButton class]]){
+			UIButton *button = (UIButton *)sub;
+			if (button.tag == 9)      close = button;
+			else if (button.tag == 1) primary = button;
+			else if (button.tag == 2) secondary = button;
+		}
+
+	CGFloat x = width;
+	close.frame = CGRectMake(x - kActionBarCloseSide, 0,
+			kActionBarCloseSide, height);
+	x -= kActionBarCloseSide;
+	if (!x) return;
+
+	for (UIButton *button in (@[primary, secondary])){
+		NSString *title = (button == primary ? primaryTitle : secondaryTitle) ?: @"";
+		if (!title.length){
+			button.hidden = YES;
+			continue;
+		}
+		button.hidden = NO;
+		[button setTitle:title forState:UIControlStateNormal];
+		CGFloat textWidth = button.titleLabel.text.length
+			? [button.titleLabel.text sizeWithAttributes:
+				@{NSFontAttributeName: button.titleLabel.font ?: TGFontCaptionStrong()}].width
+			: TGMetricRow;
+		CGFloat side = MAX(TGMetricRow, textWidth) + TGMetricPadWide;   // TGMetricPad on either side
+		button.frame = CGRectMake(x - side, 0, side, height);
+		x -= side;
+	}
+
+	self.actionBarLabel.frame = CGRectMake(TGHalf(TGMetricGutter),
+			TGCenteredOrigin(height, TGMetricLineSubhead),
+			x - TGMetricGutter, TGMetricLineSubhead);
+}
+
+- (void)actionBarClosed {
+	// Not a hiding: Telegram keeps offering the bar until it is told no.
+	NSString *kind = [self actionBarRow][@"actionBarKind"] ?: @"";
+	if (kind.length)
+		[[TGClient shared] removeActionBarInChat:self.chatId];
+	[self refreshActionBar];
+	// The dictionary still holds the kind until the update lands; say so
+	// locally too, because the bar must not sit over an already-dismissed one.
+	for (NSDictionary *chat in [TGClient shared].chats)
+		if ([chat[@"id"] longLongValue] == self.chatId){
+			[self refreshActionBar];
+			break;
+		}
+}
+
+/// Straight answers only: the reasons reportChat hands back are looked at,
+/// and the spam one is what a bar is for - asked about first, sent after.
+- (void)actionBarPrimaryTapped {
+	NSString *kind = [self actionBarRow][@"actionBarKind"] ?: @"";
+	if ([kind isEqualToString:@"chatActionBarAddContact"]){
+		[self pushNewContactFromActionBar];
+		return;
+	}
+	if ([kind isEqualToString:@"chatActionBarInviteMembers"]){
+		TGContactsViewController *contacts = [[TGContactsViewController alloc] init];
+		contacts.addingToChatId = self.chatId;
+		self.hidesBottomBarWhenPushed = YES;
+		[self.navigationController pushViewController:contacts animated:YES];
+		return;
+	}
+	if ([kind isEqualToString:@"chatActionBarSharePhoneNumber"]){
+		NSString *who = self.chatTitle ?: @"them";
+		__weak typeof(self) weakSelf = self;
+		[TGAlertSheet showConfirm:[NSString stringWithFormat:@"%@ will see your phone number.", who]
+							title:@"Share" action:@"Share" destructive:NO
+						   inView:self.view
+						onConfirm:^{
+			int64_t userId = weakSelf.isGroup ? 0 : weakSelf.chatId;
+			[[TGClient shared] sharePhoneNumberWithUser:userId];
+		}];
+		return;
+	}
+	// A report of either kind. The reasons are one round trip; the bar's
+	// report is the spam reason, which Telegram names among the options.
+	NSString *who = self.chatTitle ?: @"this chat";
+	__weak typeof(self) weakSelf = self;
+	[TGAlertSheet showConfirm:[NSString stringWithFormat:@"Report spam from %@?", who]
+						title:@"Report" action:@"Report" destructive:NO
+					   inView:self.view
+					onConfirm:^{
+		[[TGClient shared] reportChat:weakSelf.chatId
+							   optionId:nil
+								  text:@""
+							completion:^(NSString *title, NSArray *options, BOOL done){
+			TGChatViewController *me = weakSelf;
+			if (!me)
+				return;
+			NSString *spamOption = nil;
+			for (NSDictionary *option in options)
+				if ([[option[@"text"] lowercaseString]
+						rangeOfString:@"spam"].location != NSNotFound){
+					spamOption = option[@"id"];
+					break;
+				}
+			if (!spamOption){
+				[TGAlertSheet showMessage:@"This report needs a reason this app "
+										  @"cannot ask for yet."
+									title:@"Report" inView:me.view];
+				return;
+			}
+			[[TGClient shared] reportChat:me.chatId optionId:spamOption text:@""
+							   completion:^(NSString *t, NSArray *o, BOOL d){
+				if (d && weakSelf)
+					[weakSelf actionBarClosed];
+			}];
+		}];
+	}];
+}
+
+- (void)actionBarSecondaryTapped {
+	int64_t userId = self.isGroup ? 0 : self.chatId;
+	if (!userId)
+		return;
+	NSString *who = self.chatTitle ?: @"this user";
+	__weak typeof(self) weakSelf = self;
+	[TGAlertSheet showConfirm:[NSString stringWithFormat:@"Block %@?", who]
+						title:@"Block" action:@"Block" destructive:YES
+					   inView:self.view
+					onConfirm:^{
+		[[TGClient shared] blockUserWithUserId:userId];
+		[weakSelf actionBarClosed];
+	}];
+}
+
+/// A new contact out of the bar: the name Telegram handed over as the account
+/// info is where the form starts, and the chat id is who it names.
+- (void)pushNewContactFromActionBar {
+	NSDictionary *account = [self actionBarRow][@"actionBarAccount"];
+	TGNewContactViewController *form = [[TGNewContactViewController alloc] init];
+	form.first = account[@"name"] ?: @"first";
+	if (!account)
+		form.first = self.chatTitle ?: @"";
+	else {
+		NSString *name = account[@"name"];
+		NSString *first = [name componentsSeparatedByString:@" "].firstObject;
+		NSString *last = name.length ? [name substringFromIndex:MIN((NSUInteger)first.length + 1, name.length)] : @"";
+		form.first = first ?: @"";
+		form.last  = last ?: @"";
+		form.phone = account[@"phone"];
+	}
+	form.hidesBottomBarWhenPushed = YES;
+	[self.navigationController pushViewController:form animated:YES];
+}
+
 #pragma mark - floating date and jump button
 
 - (void)buildChrome {
@@ -167,6 +450,22 @@ static UIImage *TGJumpChevron(UIColor *colour) {
 	self.jumpButton.backgroundColor = [theme inputBarColour];
 	[self.jumpButton setImage:TGJumpChevron([theme secondaryTextColour]) forState:UIControlStateNormal];
 	self.jumpBadge.backgroundColor = [theme badgeColour];
+
+	if (self.actionBarView){
+		self.actionBarView.backgroundColor = [theme inputBarColour];
+		self.actionBarLabel.textColor = [theme secondaryTextColour];
+		for (UIView *sub in self.actionBarView.subviews){
+			if ([sub isKindOfClass:[UIButton class]]){
+				UIButton *button = (UIButton *)sub;
+				[button setTitleColor:[theme accentColour] forState:UIControlStateNormal];
+				if (button.tag == 9)
+					[button setImage:[TGIcons glyphNamed:@"close"
+												  colour:[theme secondaryTextColour]
+													side:kBannerCloseGlyph]
+							forState:UIControlStateNormal];
+			}
+		}
+	}
 }
 
 /// Both hang off the table's frame, which moves with the keyboard and the

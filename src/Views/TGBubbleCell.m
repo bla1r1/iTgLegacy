@@ -101,12 +101,16 @@
 
 	self.quoteBar = [[UIView alloc] init];
 	self.quoteBar.hidden = YES;
+	self.quoteBar.userInteractionEnabled = YES;
 	[self.bubble addSubview:self.quoteBar];
 
 	self.quoteAuthor = [[UILabel alloc] init];
 	self.quoteAuthor.font = TGFontCaptionStrong();
 	self.quoteAuthor.backgroundColor = [UIColor clearColor];
 	self.quoteAuthor.hidden = YES;
+	// The label with interaction off swallows nothing, so both halves of the
+	// quote are a hit target: the head the same as the text under it.
+	self.quoteAuthor.userInteractionEnabled = YES;
 	[self.bubble addSubview:self.quoteAuthor];
 
 	self.quote = [[UILabel alloc] init];
@@ -114,7 +118,16 @@
 	self.quote.numberOfLines = 2;
 	self.quote.backgroundColor = [UIColor clearColor];
 	self.quote.hidden = YES;
+	self.quote.userInteractionEnabled = YES;
 	[self.bubble addSubview:self.quote];
+
+	// Following a reply: the quote header is the button, the way their client
+	// treats it. One recognizer per half, both aimed at the same callback.
+	for (UILabel *label in @[self.quoteAuthor, self.quote]){
+		UITapGestureRecognizer *quoteTap = [[UITapGestureRecognizer alloc]
+				initWithTarget:self action:@selector(quoteTapped:)];
+		[label addGestureRecognizer:quoteTap];
+	}
 
 	self.icon = [[UILabel alloc] init];
 	self.icon.textAlignment = NSTextAlignmentCenter;
@@ -272,6 +285,11 @@
 	if (self.onCollageItemTapped) {
 		self.onCollageItemTapped(idx);
 	}
+}
+
+- (void)quoteTapped:(UITapGestureRecognizer *)tap {
+	if (tap.state != UIGestureRecognizerStateEnded) return;
+	if (self.onQuoteTapped) self.onQuoteTapped();
 }
 
 #pragma mark - looping GIF

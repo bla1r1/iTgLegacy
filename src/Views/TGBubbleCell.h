@@ -50,6 +50,8 @@
 @property (nonatomic, strong) UILabel *collageMoreLabel;
 @property (nonatomic, copy) void (^onCollageItemTapped)(NSInteger index);
 @property (nonatomic, copy) void (^onLinkTapped)(NSString *url);
+/// Following a reply: the quote header is a button, and this is where it fires.
+@property (nonatomic, copy) void (^onQuoteTapped)(void);
 
 /// A GIF looping silently over the picture. Telegram's GIFs are short
 /// MP4s, so this is a muted video layer, not an image sequence.

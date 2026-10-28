@@ -1219,7 +1219,59 @@ NSDictionary *TGFlattenMessage(NSDictionary *m) {
 			return;
 		NSDictionary *parsed = [result[@"id"] longLongValue]
 				? TGFlattenMessage(result) : nil;
+		if (parsed){
+			// The chat the answer lives in, which a reply across chats is
+			// what reads it: the flattened message carries the id of a
+			// message only, and the chat view would ask itself for it.
+			NSMutableDictionary *withChat = [parsed mutableCopy];
+			withChat[@"chatId"] = result[@"chat_id"];
+			parsed = withChat;
+		}
 		completion(parsed);
+	}];
+}
+
+/// Returns messages by their ids in a chat. Missing messages are returned as NSNull.
+- (void)messagesInChat:(int64_t)chatId
+			messageIds:(NSArray *)messageIds
+			completion:(void (^)(NSArray *messages))completion {
+	if (!messageIds.count){
+		if (completion) completion(@[]);
+		return;
+	}
+	[self request:@{
+		@"@type"       : @"getMessages",
+		@"chat_id"     : @(chatId),
+		@"message_ids" : messageIds,
+	} completion:^(NSDictionary *result){
+		if (!completion) return;
+		NSArray *raw = result[@"messages"];
+		if (![raw isKindOfClass:NSArray.class]){
+			completion(@[]);
+			return;
+		}
+		NSMutableArray *out = [NSMutableArray arrayWithCapacity:raw.count];
+		for (id item in raw){
+			if ([item isKindOfClass:NSDictionary.class] && [item[@"id"] longLongValue] != 0)
+				[out addObject:TGFlattenMessage(item)];
+			else
+				[out addObject:[NSNull null]];
+		}
+		completion(out);
+	}];
+}
+
+/// Returns properties of a message (e.g. can_be_replied, can_get_message_thread).
+- (void)messagePropertiesForChat:(int64_t)chatId
+					   messageId:(int64_t)messageId
+					  completion:(void (^)(NSDictionary *properties))completion {
+	[self request:@{
+		@"@type"      : @"getMessageProperties",
+		@"chat_id"    : @(chatId),
+		@"message_id" : @(messageId),
+	} completion:^(NSDictionary *result){
+		if (completion)
+			completion([result isKindOfClass:NSDictionary.class] ? result : nil);
 	}];
 }
 

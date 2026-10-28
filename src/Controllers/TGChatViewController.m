@@ -646,6 +646,54 @@
 	return NO;
 }
 
+/// Following a reply. The loaded window first; then a fetched window around
+/// what it answers, replacing what was on screen the way the pinned banner
+/// does; then the chat that actually holds it, because a reply can point
+/// across chats - and that one opens rather than scrolls.
+- (void)jumpToReplyById:(int64_t)replyId {
+	if (!replyId)
+		return;
+	if ([self scrollToMessageId:replyId])
+		return;
+
+	__weak typeof(self) weakSelf = self;
+	[[TGClient shared] historyForChat:self.chatId
+						fromMessageId:replyId
+								limit:(NSInteger)TGMetricHistoryPageAroundPinned
+						   completion:^(NSArray *messages){
+		TGChatViewController *me = weakSelf;
+		if (!me)
+			return;
+		if (messages.count){
+			me.rawMessages = messages;
+			me.messages = [me groupedMessagesFromMessages:messages];
+			[me.table reloadData];
+			if ([me scrollToMessageId:replyId])
+				return;
+		}
+		// Not in this chat's history: ask TDLib what the reply names.
+		[[TGClient shared] repliedMessageTo:replyId inChat:me.chatId
+								 completion:^(NSDictionary *reply){
+			TGChatViewController *inner = weakSelf;
+			if (!inner)
+				return;
+			int64_t otherChat = reply ? [reply[@"chatId"] longLongValue] : 0;
+			if (otherChat && otherChat != inner.chatId){
+				NSString *title = [[TGClient shared] titleForChat:otherChat] ?: @"Chat";
+				TGChatViewController *other = [[TGChatViewController alloc] init];
+				other.chatId = otherChat;
+				other.chatTitle = title;
+				other.hidesBottomBarWhenPushed = YES;
+				[inner.navigationController pushViewController:other animated:YES];
+				return;
+			}
+			[TGSnackbar showInView:inner.view
+							  text:@"The replied message is gone"
+						   seconds:2 onCommit:nil];
+		}];
+	}];
+}
+
 /// The option that was tapped votes for itself. Which poll it belongs to comes
 /// from the cell it sits in, because a button knows nothing about messages.
 - (void)pollOptionTapped:(UIButton *)option {
@@ -900,8 +948,10 @@
 	// number selector - asking it for a long long is what brought the app
 	// down on the first tap on a voice note.
 	NSNumber *replyTo = [m[@"replyId"] isKindOfClass:NSNumber.class] ? m[@"replyId"] : nil;
-	if (replyTo && [self scrollToMessageId:replyTo.longLongValue])
+	if (replyTo){
+		[self jumpToReplyById:replyTo.longLongValue];
 		return;
+	}
 
 	// A theme file is the one document worth opening in place: tapping it
 	// applies the theme, the way the official clients do.

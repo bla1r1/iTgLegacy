@@ -40,6 +40,9 @@ typedef NS_ENUM(NSInteger, TGCallState) {
 - (void)hangUp;
 - (void)setMuted:(BOOL)muted;
 
+/// Sends a rating (1..5) with optional comment and problem list to TDLib for the call.
+- (void)sendRating:(int)rating comment:(NSString *)comment problems:(NSArray *)problems;
+
 /// Fed every updateNewCallSignalingData from TGClient. This is the channel
 /// tgcalls negotiates over - encrypted with the call key, JSON inside.
 - (void)handleSignalingData:(NSData *)data;

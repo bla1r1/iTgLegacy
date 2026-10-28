@@ -25,6 +25,9 @@ extern NSString *const TGConnectionStateChangedNotification;
 // Fired when updateUserStatus arrives: chat headers and profile status
 // labels re-render their line instead of freezing at the fetched one.
 extern NSString *const TGUserStatusChangedNotification;
+// Fired when updateChatActionBar arrives: the bar over a chat nobody knows
+// - report spam, add to contacts - follows the update, not only the fetch.
+extern NSString *const TGChatActionBarChangedNotification;
 
 @interface TGClient : NSObject
 
@@ -56,6 +59,9 @@ typedef NS_ENUM(NSInteger, TGConnectionState) {
 
 /// Display name for a user TDLib has told us about, or nil.
 - (NSString *)nameForUserId:(int64_t)userId;
+
+/// Title for a chat TDLib has told us about, or nil.
+- (NSString *)titleForChat:(int64_t)chatId;
 
 /// "online", "last seen recently", "last seen at 12:30" - what a private chat
 /// shows under the name. Nil for anything that is not a user.
@@ -140,6 +146,9 @@ typedef NS_ENUM(NSInteger, TGConnectionState) {
 
 /// Join or leave a channel or supergroup.
 - (void)setChat:(int64_t)chatId joined:(BOOL)joined;
+/// Writes the action bar over an unknown chat - its kind, a join request's
+/// words, the account details to add a contact by - into a chat dict.
+- (void)mergeActionBar:(NSDictionary *)bar intoChatRow:(NSMutableDictionary *)row;
 
 /// Members of a group or supergroup: "id" and "name". Empty for anything else.
 - (void)membersOfChat:(int64_t)chatId completion:(void (^)(NSArray *members))completion;
@@ -714,6 +723,16 @@ typedef NS_ENUM(NSInteger, TGDownloadPriority) {
 				  inChat:(int64_t)chatId
 			  completion:(void (^)(NSDictionary *message))completion;
 
+/// Returns messages by their ids in a chat. Missing messages are returned as NSNull.
+- (void)messagesInChat:(int64_t)chatId
+			messageIds:(NSArray *)messageIds
+			completion:(void (^)(NSArray *messages))completion;
+
+/// Returns properties of a message (e.g. can_be_replied, can_get_message_thread).
+- (void)messagePropertiesForChat:(int64_t)chatId
+					   messageId:(int64_t)messageId
+					  completion:(void (^)(NSDictionary *properties))completion;
+
 /// A t.me link to one message, or nil for a chat that has no public link.
 - (void)linkToMessage:(int64_t)messageId
 			   inChat:(int64_t)chatId
@@ -744,6 +763,19 @@ typedef NS_ENUM(NSInteger, TGDownloadPriority) {
 /// Resolve an address-book phone number to a Telegram user, or nil.
 /// Same dictionary shape as -contactsWithCompletion:.
 - (void)userForPhone:(NSString *)phone completion:(void (^)(NSDictionary *user))completion;
+
+/// A contact nobody here has met: the import makes the user, and the id it
+/// hands back is what `addContactWithUserId:` is finished with.
+- (void)importContactNamed:(NSString *)firstName
+				  lastName:(NSString *)lastName
+					 phone:(NSString *)phone
+				completion:(void (^)(int64_t userId))completion;
+
+/// A number back in the block list, spelled as a message sender.
+- (void)blockUserWithUserId:(int64_t)userId;
+
+/// Your phone number to a mutual contact, on their offer to share it.
+- (void)sharePhoneNumberWithUser:(int64_t)userId;
 
 /// Adds someone to your Telegram contacts. The phone number is what the
 /// server matches on.

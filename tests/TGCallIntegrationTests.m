@@ -53,7 +53,9 @@
 @property (nonatomic, readonly) NSString *localUfrag;
 @property (nonatomic, readonly) NSString *localPwd;
 @property (nonatomic, assign) BOOL audioFramingProven;
+@property (nonatomic, readonly) TGCallReflector *reflector;
 - (void)probeAudioFramingWith:(NSData *)audioMessage;
+- (void)readPeerTagFromCandidate:(NSString *)candidate;
 @end
 
 @interface TGCall (TestSupportState)
@@ -421,6 +423,44 @@
     XCTAssertTrue([request[@"@type"] isEqualToString:@"acceptCall"]);
     XCTAssertEqual([request[@"call_id"] intValue], 7);
     XCTAssertNotNil(request[@"protocol"]);
+}
+
+- (void)testHangUpSendsDiscardCall {
+    [[TGCall shared] handleUpdate:@{
+        @"@type"      : @"call",
+        @"id"         : @(12),
+        @"user_id"    : @(42LL),
+        @"is_outgoing": @YES,
+        @"state"      : @{ @"@type": @"callStatePending" },
+    }];
+    [TGClient resetSentRequests];
+
+    [[TGCall shared] hangUp];
+
+    NSDictionary *request = [TGClient sentRequests].firstObject;
+    XCTAssertNotNil(request);
+    XCTAssertTrue([request[@"@type"] isEqualToString:@"discardCall"]);
+    XCTAssertEqual([request[@"call_id"] intValue], 12);
+}
+
+- (void)testSendRatingSendsSendCallRating {
+    [[TGCall shared] handleUpdate:@{
+        @"@type"      : @"call",
+        @"id"         : @(15),
+        @"user_id"    : @(42LL),
+        @"is_outgoing": @YES,
+        @"state"      : @{ @"@type": @"callStatePending" },
+    }];
+    [TGClient resetSentRequests];
+
+    [[TGCall shared] sendRating:5 comment:@"Great audio" problems:@[]];
+
+    NSDictionary *request = [TGClient sentRequests].firstObject;
+    XCTAssertNotNil(request);
+    XCTAssertTrue([request[@"@type"] isEqualToString:@"sendCallRating"]);
+    XCTAssertEqual([request[@"call_id"] intValue], 15);
+    XCTAssertEqual([request[@"rating"] intValue], 5);
+    XCTAssertTrue([request[@"comment"] isEqualToString:@"Great audio"]);
 }
 
 - (void)testSetSpeakerDoesNotCrash {
@@ -802,6 +842,18 @@
     // A second probe is a no-op once the path is proven.
     [[TGCall shared] probeAudioFramingWith:audio];
     XCTAssertTrue([TGCall shared].audioFramingProven);
+}
+
+- (void)testReadPeerTagFromCandidateSetsTagAndRemoteTag {
+    NSData *key = TGTestCallKey();
+    XCTAssertTrue([self startEstablishedCallWithKey:key callId:45]);
+
+    [TGCall shared].currentSenderTag = 0;
+    NSString *candidate = @"candidate:1 1 udp 2130706431 reflector-1-88888.reflector 54321 typ relay";
+    [[TGCall shared] readPeerTagFromCandidate:candidate];
+
+    XCTAssertEqual([TGCall shared].currentSenderTag, (uint32_t)88888);
+    XCTAssertEqual([TGCall shared].reflector.remoteTag, (uint32_t)88888);
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
