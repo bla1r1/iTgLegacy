@@ -93,7 +93,8 @@ INCLUDES  := -I$(ROOT_DIR)/include \
 DEFINES   :=
 
 WEBP_ARMV7 := -F$(ROOT_DIR)/libs -framework WebP
-WEBP_ARM64 := -F$(ROOT_DIR)/libs -framework WebP
+WEBP_ARM64 := -L$(BUILD_DIR)/arm64/libs -lwebp
+#        ^^ backed by the repacked archive from scripts/repack_arm64_libs.sh
 
 FRAMEWORKS := -framework UIKit -framework Foundation -framework QuickLook \
               -framework SystemConfiguration -framework CoreGraphics \
@@ -380,7 +381,7 @@ ipa-arm64: $(ARM64_ALL_OBJS)
 	@echo "[+] Building 64-bit arm64 app bundle..."
 	@mkdir -p "$(IPA_DIR)" "$(BUILD_DIR)/arm64/app/$(APP_NAME).app"
 	$(CC) -arch arm64 -isysroot $(SDK_PATH) $(MIN_IOS) -Wl,-dead_strip \
-		-L$(BUILD_DIR)/arm64/libs -L$(BUILD_DIR)/arm64/tdlib/lib -L$(ROOT_DIR)/third_party/opus/lib \
+		-L$(BUILD_DIR)/arm64/libs -L$(BUILD_DIR)/arm64/tdlib64 -L$(ROOT_DIR)/third_party/opus/lib \
 		$(ARM64_ALL_OBJS) $(FRAMEWORKS) $(WEBP_ARM64) $(TDLIB_LIBS_ARM64) $(DEPS_LIBS) -o "$(BUILD_DIR)/arm64/app/$(APP_NAME).app/$(APP_NAME)"
 	@cp -f "$(ROOT_DIR)/resources/Info.plist" "$(BUILD_DIR)/arm64/app/$(APP_NAME).app/Info.plist" 2>/dev/null || true
 	@cp -f "$(ROOT_DIR)/resources/fonts/"*.ttf "$(BUILD_DIR)/arm64/app/$(APP_NAME).app/" 2>/dev/null || true

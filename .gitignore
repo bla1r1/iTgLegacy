@@ -46,3 +46,14 @@ libs/libtgvoip
 *.ips
 *.log
 /Baseband
+
+# Device diagnostics that get dumped into the repo root
+/JetsamEvent-*
+/LowBatteryLog-*
+/backupd-*
+/aggregated.cpu_resource-*
+/periodic-io-*
+/com.apple.*
+/WiFi
+/Retired
+/home
