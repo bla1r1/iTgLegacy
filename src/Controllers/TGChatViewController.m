@@ -28,6 +28,7 @@
 #import "TGBubbleCell.h"
 
 #import "TGChatViewControllerInternal.h"
+#import "TGMessageStreamStore.h"
 #import "TGStyle.h"
 #import "TGAlertSheet.h"
 
@@ -48,6 +49,7 @@
 
 	[[TGTheme shared] styleNavigationBar:self.navigationController.navigationBar];
 	[self buildTitleView];
+	self.streamStore = [[TGMessageStreamStore alloc] init];
 	self.messages = @[];
 	self.layoutCache = [NSMutableDictionary dictionary];
 	self.gifPaths = [NSMutableDictionary dictionary];
@@ -114,20 +116,27 @@
 			// Reading further up: leave the place alone and count it on the
 			// jump button instead. Your own message always brings you down.
 			BOOL follow = [me isNearBottom] || [message[@"outgoing"] boolValue];
-			NSMutableArray *nextRaw = [(me.rawMessages ?: me.messages) mutableCopy];
-			[nextRaw addObject:message];
-			me.rawMessages = nextRaw;
-			me.messages = [me groupedMessagesFromMessages:nextRaw];
+			[me.streamStore appendNewerMessages:@[message]];
+			me.rawMessages = [me.streamStore messages];
+			me.messages = [me groupedMessagesFromMessages:me.rawMessages];
 			[me.table reloadData];
-			if (follow)
+			if (follow) {
+				me.atChatEnd = YES;
 				[me scrollToBottomAnimated:YES];
-			else
+			} else {
 				[me noteArrivedWhileAway];
+			}
 			[me fetchMissingImages];
 			[[TGClient shared] markRead:@[message[@"id"]] inChat:chatId];
 			return;
 		}
-		// deleted or edited - cheapest correct answer is to re-read
+		if (deletedId > 0 && [me.streamStore removeMessageId:deletedId]){
+			me.rawMessages = [me.streamStore messages];
+			me.messages = [me groupedMessagesFromMessages:me.rawMessages];
+			[me.table reloadData];
+			return;
+		}
+		// edited or unknown deletion - re-read
 		[me reload];
 	};
 
@@ -446,8 +455,10 @@
 			return;
 		BOOL firstLoad = !me.unreadChecked;
 		[me noteFirstUnreadIn:messages];
-		me.rawMessages = messages;
-		me.messages = [me groupedMessagesFromMessages:messages];
+		[me.streamStore resetWithMessages:messages];
+		me.rawMessages = [me.streamStore messages];
+		me.messages = [me groupedMessagesFromMessages:me.rawMessages];
+		me.atChatEnd = YES;
 		NSInteger unreadRow = firstLoad ? [me unreadSeparatorRow] : NSNotFound;
 		// hold the bottom until the media has settled - unless the chat opens
 		// at what you have not read yet
@@ -618,8 +629,10 @@
 			return;
 		// The fetched window replaces what was on screen, the way following a
 		// reply upwards does.
-		me.rawMessages = messages;
-		me.messages = [me groupedMessagesFromMessages:messages];
+		[me.streamStore resetWithMessages:messages];
+		me.rawMessages = [me.streamStore messages];
+		me.messages = [me groupedMessagesFromMessages:me.rawMessages];
+		me.atChatEnd = NO;
 		[me.table reloadData];
 		if (![me scrollToMessageId:pinned])
 			[TGSnackbar showInView:me.view text:@"The pinned message is gone"
@@ -665,8 +678,10 @@
 		if (!me)
 			return;
 		if (messages.count){
-			me.rawMessages = messages;
-			me.messages = [me groupedMessagesFromMessages:messages];
+			[me.streamStore resetWithMessages:messages];
+			me.rawMessages = [me.streamStore messages];
+			me.messages = [me groupedMessagesFromMessages:me.rawMessages];
+			me.atChatEnd = NO;
 			[me.table reloadData];
 			if ([me scrollToMessageId:replyId])
 				return;
@@ -1050,41 +1065,82 @@
 - (void)scrollViewDidScroll:(UIScrollView *)scrollView {
     if (scrollView == self.table)
         [self chromeDidScroll];
-    if (scrollView != self.table || self.isLoadingMoreHistory || !self.messages.count)
+    if (scrollView != self.table || !self.messages.count)
         return;
     
-    // Load more when scrolled near the top
-    if (scrollView.contentOffset.y < (CGFloat)TGMetricHistoryTopGate) {
+    // 1. Load older messages when scrolled near the top
+    if (scrollView.contentOffset.y < (CGFloat)TGMetricHistoryTopGate && !self.isLoadingMoreHistory) {
         self.isLoadingMoreHistory = YES;
-        // The raw list: the grouped one starts with a day plate, which has no id.
-        NSArray *pool = self.rawMessages.count ? self.rawMessages : self.messages;
-        int64_t fromMessageId = [pool.firstObject[@"id"] longLongValue];
+        int64_t fromMessageId = self.streamStore.oldestMessageId;
+        if (!fromMessageId) {
+            NSArray *pool = self.rawMessages.count ? self.rawMessages : self.messages;
+            fromMessageId = [pool.firstObject[@"id"] longLongValue];
+        }
         
+        __weak typeof(self) weakScroll = self;
         [[TGClient shared] historyForChat:self.chatId fromMessageId:fromMessageId limit:60 completion:^(NSArray *older) {
             dispatch_async(dispatch_get_main_queue(), ^{
-                if (older.count == 0) {
-                    // No more history
-                    return;
-                }
+                TGChatViewController *me = weakScroll;
+                if (!me) return;
+                me.isLoadingMoreHistory = NO;
+                if (older.count == 0) return;
                 
-                NSMutableArray *indexPaths = [NSMutableArray array];
-                for (NSUInteger i = 0; i < older.count; i++) {
-                    [indexPaths addObject:[NSIndexPath indexPathForRow:i inSection:0]];
-                }
-                
-                CGFloat oldHeight = self.table.contentSize.height;
-                CGFloat oldOffset = self.table.contentOffset.y;
+                CGFloat oldHeight = me.table.contentSize.height;
+                CGFloat oldOffset = me.table.contentOffset.y;
 
-                self.rawMessages = [older arrayByAddingObjectsFromArray:self.rawMessages ?: self.messages];
-                self.messages = [self groupedMessagesFromMessages:self.rawMessages];
+                NSUInteger added = [me.streamStore prependOlderMessages:older];
+                if (!added) return;
+
+                me.rawMessages = [me.streamStore messages];
+                me.messages = [me groupedMessagesFromMessages:me.rawMessages];
 
                 [UIView setAnimationsEnabled:NO];
-                [self.table reloadData];
-                self.table.contentOffset = CGPointMake(0, oldOffset + (self.table.contentSize.height - oldHeight));
+                [me.table reloadData];
+                me.table.contentOffset = CGPointMake(0, oldOffset + (me.table.contentSize.height - oldHeight));
                 [UIView setAnimationsEnabled:YES];
-                [self fetchMissingImages];
+                [me fetchMissingImages];
+            });
+        }];
+    }
 
-                self.isLoadingMoreHistory = NO;
+    // 2. Load newer messages when scrolled near the bottom
+    CGFloat distanceFromBottom = scrollView.contentSize.height - (scrollView.contentOffset.y + scrollView.bounds.size.height);
+    if (distanceFromBottom < (CGFloat)TGMetricHistoryTopGate && !self.isLoadingNewerHistory && !self.atChatEnd) {
+        self.isLoadingNewerHistory = YES;
+        int64_t fromMessageId = self.streamStore.newestMessageId;
+        if (!fromMessageId) {
+            NSArray *pool = self.rawMessages.count ? self.rawMessages : self.messages;
+            fromMessageId = [pool.lastObject[@"id"] longLongValue];
+        }
+
+        __weak typeof(self) weakScroll = self;
+        [[TGClient shared] newerHistoryForChat:self.chatId fromMessageId:fromMessageId limit:60 completion:^(NSArray *newer) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                TGChatViewController *me = weakScroll;
+                if (!me) return;
+                me.isLoadingNewerHistory = NO;
+                if (newer.count == 0) {
+                    me.atChatEnd = YES;
+                    return;
+                }
+
+                NSUInteger added = [me.streamStore appendNewerMessages:newer];
+                if (!added) {
+                    me.atChatEnd = YES;
+                    return;
+                }
+
+                me.rawMessages = [me.streamStore messages];
+                me.messages = [me groupedMessagesFromMessages:me.rawMessages];
+
+                [UIView setAnimationsEnabled:NO];
+                [me.table reloadData];
+                [UIView setAnimationsEnabled:YES];
+                [me fetchMissingImages];
+
+                if (newer.count < 60) {
+                    me.atChatEnd = YES;
+                }
             });
         }];
     }

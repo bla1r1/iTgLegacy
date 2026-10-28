@@ -9,6 +9,7 @@
 #import <Foundation/Foundation.h>
 #import "TGTestRunner.h"
 
+#import "TGJsonTests.m"
 #import "TGClientChatsTests.m"
 #import "TGClientFilesTests.m"
 #import "TGStatusTextTests.m"
@@ -18,6 +19,7 @@
 #import "TGMessageParserTests.m"
 #import "TGClientAccountTests.m"
 #import "TGClientComposeTests.m"
+#import "TGMessageStreamStoreTests.m"
 
 int main(int argc, char *argv[]) {
 	@autoreleasepool {

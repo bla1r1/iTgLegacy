@@ -895,14 +895,21 @@ static NSArray *TGPacksFrom(NSDictionary *target) {
 
 - (void)mediaInChat:(int64_t)chatId filter:(NSString *)filter
          completion:(void (^)(NSArray *))completion {
+	[self mediaInChat:chatId filter:filter fromMessageId:0 limit:60 completion:completion];
+}
+
+- (void)mediaInChat:(int64_t)chatId filter:(NSString *)filter
+      fromMessageId:(int64_t)fromMessageId limit:(NSInteger)limit
+         completion:(void (^)(NSArray *))completion {
+	NSInteger batchLimit = limit > 0 ? MIN(limit, 100) : 60;
 	[self request:@{
 		@"@type"           : @"searchChatMessages",
 		@"chat_id"         : @(chatId),
 		@"query"           : @"",
-		@"from_message_id" : @(0),
+		@"from_message_id" : @(fromMessageId),
 		@"offset"          : @(0),
-		@"limit"           : @(60),
-		@"filter"          : @{@"@type" : filter},
+		@"limit"           : @(batchLimit),
+		@"filter"          : @{@"@type" : filter ?: @"searchMessagesFilterPhotoAndVideo"},
 	} completion:^(NSDictionary *result){
 		NSMutableArray *out = [NSMutableArray array];
 		for (NSDictionary *m in result[@"messages"]){

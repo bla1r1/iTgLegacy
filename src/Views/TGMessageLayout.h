@@ -22,6 +22,10 @@ static const CGFloat kPollRow         = TGMetricPollRow;
 static const CGFloat kTailWidth       = TGMetricBubbleTailWidth;    // the hook on the last bubble of a run
 static const CGFloat kTailHeight      = TGMetricBubbleTailHeight;
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 UIFont *TGEmojiFontOfSize(CGFloat size);
 BOOL TGIsEmojiScalar(UTF32Char c);
 NSAttributedString *TGEmojiAttributedText(NSString *text, UIFont *base);
@@ -29,6 +33,10 @@ NSAttributedString *TGAttributedMessageText(NSString *text, NSArray *entities, U
 void TGSetBodyText(UILabel *label, NSString *text, UIColor *colour);
 CGSize TGTextSize(NSString *text, UIFont *font, CGFloat width);
 CGSize TGTextSizeWithEntities(NSString *text, NSArray *entities, UIFont *font, CGFloat width);
+
+#ifdef __cplusplus
+}
+#endif
 
 @interface TGMessageLayout : NSObject
 @property (nonatomic, assign) CGFloat rowHeight;

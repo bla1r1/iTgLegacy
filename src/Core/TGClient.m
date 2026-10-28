@@ -1,5 +1,6 @@
 #import "TGClientInternal.h"
 #import "TGCall.h"
+#import "TGJson.h"
 #include <dlfcn.h>
 #include "api_id.h"
 
@@ -121,11 +122,9 @@ NSString *const TGChatActionBarChangedNotification = @"TGChatActionBarChangedNot
 
 			NSMutableArray *batch = [NSMutableArray arrayWithCapacity:32];
 
-			NSData *data = [NSData dataWithBytes:res length:strlen(res)];
 			NSError *err = nil;
-			NSDictionary *obj = [NSJSONSerialization JSONObjectWithData:data
-															   options:0
-																 error:&err];
+			size_t resLen = strlen(res);
+			NSDictionary *obj = TGJsonParse(res, resLen, &err);
 			if ([obj isKindOfClass:NSDictionary.class]){
 				[batch addObject:obj];
 			} else {
@@ -133,14 +132,12 @@ NSString *const TGChatActionBarChangedNotification = @"TGChatActionBarChangedNot
 			}
 
 			// Drain further available updates immediately without waiting
-			while (batch.count < 48 && self.running){
-				const char *next = self.td_recv(self.client, 0.0);
+			while (batch.count < 64 && self.running){
+				const char *next = self.td_recv(self.client, 0.002);
 				if (!next)
 					break;
-				NSData *nextData = [NSData dataWithBytes:next length:strlen(next)];
-				NSDictionary *nextObj = [NSJSONSerialization JSONObjectWithData:nextData
-																	   options:0
-																		 error:nil];
+				size_t nextLen = strlen(next);
+				NSDictionary *nextObj = TGJsonParse(next, nextLen, nil);
 				if ([nextObj isKindOfClass:NSDictionary.class]){
 					[batch addObject:nextObj];
 				}
@@ -156,11 +153,6 @@ NSString *const TGChatActionBarChangedNotification = @"TGChatActionBarChangedNot
 }
 
 - (void)handleUpdateBatch:(NSArray *)batch {
-	if (batch.count == 1){
-		[self handleUpdate:batch[0]];
-		return;
-	}
-
 	self.batchingUpdates = YES;
 	for (NSDictionary *obj in batch){
 		[self handleUpdate:obj];
@@ -179,15 +171,11 @@ NSString *const TGChatActionBarChangedNotification = @"TGChatActionBarChangedNot
 // guard aborts on `Scheduler.cpp:126 Check !scheduler_->has_guard_ failed`.
 // So callers only enqueue here, and the receive thread does the sending.
 - (void)send:(NSDictionary *)request {
-	NSError *err = nil;
-	NSData *data = [NSJSONSerialization dataWithJSONObject:request options:0 error:&err];
-	if (!data){
-		NSLog(@"TGClient: cannot encode %@: %@", request, err);
+	NSMutableData *z = TGJsonSerializeForSend(request);
+	if (!z){
+		NSLog(@"TGClient: cannot encode %@", request);
 		return;
 	}
-
-	NSMutableData *z = [data mutableCopy];   // td_json_client_send wants a C string
-	[z appendBytes:"\0" length:1];
 
 	[self.outboxLock lock];
 	[self.outbox addObject:z];

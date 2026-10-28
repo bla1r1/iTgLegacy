@@ -191,12 +191,21 @@
 				continue;
 			[self.imagesRequested addObject:docId];
 
-			[[TGClient shared] downloadFile:[docId integerValue] completion:^(NSString *path){
+			[[TGClient shared] downloadFile:[docId integerValue] priority:16 completion:^(NSString *path){
 				TGChatViewController *me = weakSelf;
-				if (!me || !path)
+				if (!me)
 					return;
+				if (!path) {
+					[me.imagesRequested removeObject:docId];
+					return;
+				}
 				me.lottiePaths[docId] = path;
-				[me.layoutCache removeAllObjects];
+				for (NSDictionary *msg in me.messages) {
+					if ([msg[@"docId"] isEqual:docId]) {
+						NSNumber *msgId = msg[@"id"];
+						if (msgId) [me.layoutCache removeObjectForKey:msgId];
+					}
+				}
 				[me reloadTableDebounced];
 				if (me.anchorToBottom)
 					[me scrollToBottomAnimated:NO];

@@ -54,14 +54,18 @@ UIColor *TGSenderColour(int64_t userId) {
 /// "12:29" for incoming, "12:29 ✓✓" for outgoing, "edited" in front when it
 /// applies - the same line Telegram tucks into the corner of the bubble.
 - (NSString *)stampFor:(NSDictionary *)m {
-	static NSDateFormatter *hm = nil;
-	if (!hm){ hm = [[NSDateFormatter alloc] init]; [hm setDateFormat:@"HH:mm"]; }
+	double ts = [m[@"date"] doubleValue];
+	time_t tSec = (time_t)ts;
+	struct tm tmVal;
+	localtime_r(&tSec, &tmVal);
 
-	NSString *stamp = [hm stringFromDate:
-			[NSDate dateWithTimeIntervalSince1970:[m[@"date"] doubleValue]]];
-	if ([m[@"edited"] boolValue])
-		stamp = [NSString stringWithFormat:@"edited %@", stamp];
-	return stamp;   // the ticks are drawn beside it, not spelled out
+	char buf[32];
+	if ([m[@"edited"] boolValue]) {
+		snprintf(buf, sizeof(buf), "edited %02d:%02d", tmVal.tm_hour, tmVal.tm_min);
+	} else {
+		snprintf(buf, sizeof(buf), "%02d:%02d", tmVal.tm_hour, tmVal.tm_min);
+	}
+	return [[NSString alloc] initWithBytes:buf length:strlen(buf) encoding:NSUTF8StringEncoding];
 }
 
 - (CGFloat)timeWidthFor:(NSDictionary *)m {

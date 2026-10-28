@@ -62,6 +62,7 @@ static const NSInteger kSectionLogout  = 5;
 @property (nonatomic, strong) NSArray *files;
 @property (nonatomic, strong) NSArray *voice;
 @property (nonatomic, strong) NSArray *links;
+@property (nonatomic, assign) BOOL isLoadingMoreMedia;
 /// The categories the bar is showing, in order: each is @{"title", "kind"}.
 /// Built fresh on every render by currentMediaTabs.
 @property (nonatomic, copy)   NSString *storedMediaKind;
@@ -121,6 +122,7 @@ static const NSInteger kSectionLogout  = 5;
 - (void)closeStory:(UITapGestureRecognizer *)tap;
 - (void)storyTileTapped:(UIButton *)button;
 - (void)stopStoryPlayback;
+- (void)loadMoreMediaForCurrentTab;
 
 @end
 

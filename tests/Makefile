@@ -65,14 +65,17 @@ OBJC_SRCS := \
     $(SRC)/Calls/TGCallIce.m \
     $(SRC)/Calls/TGCallReflector.m \
     $(SRC)/Calls/TGCall.mm \
-    $(SRC)/Views/TGMessageLayout.m \
+    $(SRC)/Views/TGMessageLayout.mm \
     $(SRC)/Core/TGStyle.m
 
 # Real TGClient sources, compiled only into the second binary: the main
 # binary links a test stub of TGClient instead, which the call tests need.
 CLIENT_OBJC_SRCS := \
+    $(ROOT)/third_party/yyjson/yyjson.c \
+    $(SRC)/Core/TGJson.m \
     $(SRC)/Core/TGClient.m \
     $(SRC)/Core/TGClient+Chats.mm \
+    $(SRC)/Core/TGMessageStreamStore.mm \
     $(SRC)/Core/TGClient+Messages.m \
     $(SRC)/Core/TGClient+Stickers.m \
     $(SRC)/Core/TGClient+Files.m \
@@ -115,6 +118,7 @@ TEST_SRCS := \
     $(TESTS)/TGMessageLayoutTests.m
 
 CLIENT_TEST_SRCS := \
+    $(TESTS)/TGJsonTests.m \
     $(TESTS)/TGClientChatsTests.m \
     $(TESTS)/TGClientFilesTests.m \
     $(TESTS)/TGStatusTextTests.m \

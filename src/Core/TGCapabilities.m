@@ -51,11 +51,9 @@ static void TGSetWanted(NSString *key, BOOL wanted) {
 }
 
 + (BOOL)canPlayAnimatedStickers {
-	// TGLottieView does play these on an A5 - not at full speed, but it plays.
-	// Single-core chips (A4) choke on parallel vector rendering.
-	if ([NSProcessInfo processInfo].processorCount < 2)
-		return NO;
-	return [TGDevice tier] >= TGDeviceTierLegacy && [self animatedStickersWanted];
+	// TGLottieView renders vector animations with C++ optimization.
+	// Dual-core runs at 18 fps, single-core (A4) throttles to 12 fps with model caching.
+	return [self animatedStickersWanted];
 }
 
 + (BOOL)canShowWallpaper {

@@ -1,8 +1,129 @@
 //
-// TGMessageLayout.m - Geometry, sizing and layout cache for chat bubbles.
+// TGMessageLayout.mm - Geometry, sizing and C++ LRU layout cache for chat bubbles.
 //
 #import "TGMessageLayout.h"
 #import "TGStyle.h"
+#include <unordered_map>
+#include <list>
+
+#ifndef typeof
+#define typeof __typeof__
+#endif
+
+// ─── C++ LRU Cache ───────────────────────────────────────────────────────────
+
+template <typename Key, typename Value>
+class TGLruCache {
+private:
+	size_t _capacity;
+	std::list<std::pair<Key, Value>> _items;
+	std::unordered_map<Key, typename std::list<std::pair<Key, Value>>::iterator> _index;
+
+public:
+	explicit TGLruCache(size_t capacity) : _capacity(capacity) {}
+
+	bool get(const Key &key, Value &outValue) {
+		auto it = _index.find(key);
+		if (it == _index.end()) return false;
+		_items.splice(_items.begin(), _items, it->second);
+		outValue = it->second->second;
+		return true;
+	}
+
+	void put(const Key &key, const Value &value) {
+		auto it = _index.find(key);
+		if (it != _index.end()) {
+			_items.splice(_items.begin(), _items, it->second);
+			it->second->second = value;
+			return;
+		}
+
+		if (_items.size() >= _capacity) {
+			auto last = _items.end();
+			--last;
+			_index.erase(last->first);
+			_items.pop_back();
+		}
+
+		_items.emplace_front(key, value);
+		_index[key] = _items.begin();
+	}
+};
+
+// ─── Key hashing ──────────────────────────────────────────────────────────────
+
+static inline uint64_t TGFNV1a64(NSString *str) {
+	if (!str.length) return 0;
+	uint64_t hash = 14695981039346656037ULL;
+	NSUInteger len = str.length;
+	const UniChar *direct = CFStringGetCharactersPtr((__bridge CFStringRef)str);
+	UniChar buf[128];
+	NSUInteger offset = 0;
+	while (offset < len) {
+		const UniChar *p;
+		NSUInteger count;
+		if (direct) {
+			p = direct + offset;
+			count = len - offset;
+		} else {
+			count = MIN((NSUInteger)128, len - offset);
+			[str getCharacters:buf range:NSMakeRange(offset, count)];
+			p = buf;
+		}
+		for (NSUInteger i = 0; i < count; i++) {
+			hash ^= (uint64_t)(p[i]);
+			hash *= 1099511628211ULL;
+		}
+		offset += count;
+	}
+	return hash;
+}
+
+struct EmojiKey {
+	uint64_t textHash;
+	uint32_t fontSizeInt;
+
+	bool operator==(const EmojiKey &o) const {
+		return textHash == o.textHash && fontSizeInt == o.fontSizeInt;
+	}
+};
+
+namespace std {
+	template <>
+	struct hash<EmojiKey> {
+		size_t operator()(const EmojiKey &k) const {
+			return (size_t)(k.textHash ^ ((uint64_t)k.fontSizeInt << 32));
+		}
+	};
+}
+
+struct TextSizeKey {
+	uint64_t textHash;
+	uint16_t widthInt;
+	uint16_t fontSizeInt;
+	uint16_t entitiesCount;
+
+	bool operator==(const TextSizeKey &o) const {
+		return textHash == o.textHash &&
+			   widthInt == o.widthInt &&
+			   fontSizeInt == o.fontSizeInt &&
+			   entitiesCount == o.entitiesCount;
+	}
+};
+
+namespace std {
+	template <>
+	struct hash<TextSizeKey> {
+		size_t operator()(const TextSizeKey &k) const {
+			return (size_t)(k.textHash ^ ((uint64_t)k.widthInt << 48) ^ ((uint64_t)k.fontSizeInt << 32) ^ k.entitiesCount);
+		}
+	};
+}
+
+static TGLruCache<EmojiKey, id> sEmojiCache(500);
+static TGLruCache<TextSizeKey, CGSize> sTextSizeCache(1000);
+
+// ─── Font & Emoji helpers ─────────────────────────────────────────────────────
 
 UIFont *TGEmojiFontOfSize(CGFloat size) {
 	static BOOL logged = NO;
@@ -23,17 +144,63 @@ BOOL TGIsEmojiScalar(UTF32Char c) {
 		   (c >= 0x2B00  && c <= 0x2BFF);      // arrows and stars
 }
 
+static inline BOOL TGTextContainsEmoji(NSString *text) {
+	NSUInteger len = text.length;
+	if (len == 0) return NO;
+
+	const UniChar *direct = CFStringGetCharactersPtr((__bridge CFStringRef)text);
+	UniChar stackBuf[256];
+	if (!direct) {
+		for (NSUInteger offset = 0; offset < len; offset += 256) {
+			NSUInteger chunk = MIN((NSUInteger)256, len - offset);
+			[text getCharacters:stackBuf range:NSMakeRange(offset, chunk)];
+			for (NSUInteger i = 0; i < chunk; i++) {
+				UniChar c = stackBuf[i];
+				if (c >= 0xD800 && c <= 0xDBFF && (i + 1 < chunk)) {
+					UniChar low = stackBuf[i + 1];
+					if (low >= 0xDC00 && low <= 0xDFFF) {
+						UTF32Char cp = (((c - 0xD800) << 10) | (low - 0xDC00)) + 0x10000;
+						if (TGIsEmojiScalar(cp)) return YES;
+						i++;
+						continue;
+					}
+				}
+				if (TGIsEmojiScalar(c)) return YES;
+			}
+		}
+		return NO;
+	}
+
+	for (NSUInteger i = 0; i < len; i++) {
+		UniChar c = direct[i];
+		if (c >= 0xD800 && c <= 0xDBFF && (i + 1 < len)) {
+			UniChar low = direct[i + 1];
+			if (low >= 0xDC00 && low <= 0xDFFF) {
+				UTF32Char cp = (((c - 0xD800) << 10) | (low - 0xDC00)) + 0x10000;
+				if (TGIsEmojiScalar(cp)) return YES;
+				i++;
+				continue;
+			}
+		}
+		if (TGIsEmojiScalar(c)) return YES;
+	}
+	return NO;
+}
+
 NSAttributedString *TGEmojiAttributedText(NSString *text, UIFont *base) {
 	if (!text.length)
 		return nil;
 
-	static NSMutableDictionary *cache = nil;
-	if (!cache)
-		cache = [NSMutableDictionary dictionary];
-	NSString *key = [NSString stringWithFormat:@"%.0f|%@", base.pointSize, text];
-	id hit = cache[key];
-	if (hit)
-		return (hit == [NSNull null]) ? nil : hit;
+	EmojiKey key = { TGFNV1a64(text), (uint32_t)(base.pointSize * 10.0f) };
+	id hit = nil;
+	if (sEmojiCache.get(key, hit)) {
+		return (hit == [NSNull null]) ? nil : (NSAttributedString *)hit;
+	}
+
+	if (!TGTextContainsEmoji(text)) {
+		sEmojiCache.put(key, [NSNull null]);
+		return nil;
+	}
 
 	UIFont *emojiFont = TGEmojiFontOfSize(base.pointSize);
 	__block NSMutableAttributedString *styled = nil;
@@ -55,9 +222,7 @@ NSAttributedString *TGEmojiAttributedText(NSString *text, UIFont *base) {
 		}];
 	}
 
-	if (cache.count > 300)
-		[cache removeAllObjects];
-	cache[key] = styled ?: (id)[NSNull null];
+	sEmojiCache.put(key, styled ?: (id)[NSNull null]);
 	return styled;
 }
 
@@ -158,14 +323,17 @@ CGSize TGTextSizeWithEntities(NSString *text, NSArray *entities, UIFont *font, C
 	if (!text.length)
 		return CGSizeZero;
 
-	static NSMutableDictionary *cache = nil;
-	if (!cache)
-		cache = [NSMutableDictionary dictionary];
+	TextSizeKey key = {
+		TGFNV1a64(text),
+		(uint16_t)(width > 0 ? (uint16_t)width : 0),
+		(uint16_t)(font ? (uint16_t)(font.pointSize * 10.0f) : 0),
+		(uint16_t)entities.count
+	};
 
-	NSString *key = [NSString stringWithFormat:@"%.0f|%.0f|%lu|%@", width, font.pointSize, (unsigned long)entities.count, text];
-	NSValue *hit = cache[key];
-	if (hit)
-		return [hit CGSizeValue];
+	CGSize cachedSize;
+	if (sTextSizeCache.get(key, cachedSize)) {
+		return cachedSize;
+	}
 
 	CGSize size = CGSizeZero;
 	NSAttributedString *rich = TGAttributedMessageText(text, entities, font, [UIColor blackColor]);
@@ -192,9 +360,7 @@ CGSize TGTextSizeWithEntities(NSString *text, NSArray *entities, UIFont *font, C
 		}
 	}
 
-	if (cache.count > 1000)
-		[cache removeAllObjects];
-	cache[key] = [NSValue valueWithCGSize:size];
+	sTextSizeCache.put(key, size);
 	return size;
 }
 

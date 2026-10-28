@@ -627,13 +627,28 @@ NSDictionary *TGFlattenMessage(NSDictionary *m) {
          fromMessageId:(int64_t)fromMessageId
                  limit:(NSInteger)limit
             completion:(void (^)(NSArray *))completion {
+	[self historyForChat:chatId fromMessageId:fromMessageId offset:0 limit:limit completion:completion];
+}
+
+- (void)newerHistoryForChat:(int64_t)chatId
+              fromMessageId:(int64_t)fromMessageId
+                      limit:(NSInteger)limit
+                 completion:(void (^)(NSArray *))completion {
+	[self historyForChat:chatId fromMessageId:fromMessageId offset:-limit limit:limit completion:completion];
+}
+
+- (void)historyForChat:(int64_t)chatId
+         fromMessageId:(int64_t)fromMessageId
+                offset:(NSInteger)offset
+                 limit:(NSInteger)limit
+            completion:(void (^)(NSArray *))completion {
 	// getChatHistory returns only what TDLib already holds, and picks the
 	// batch size itself - a first call on a cold chat often answers with one
-	// message. Walk backwards from the newest until we have enough or the
-	// chat runs out.
+	// message. Walk backwards (or forwards if offset < 0) until we have enough.
 	NSMutableArray *collected = [NSMutableArray array];
 	[self fetchHistoryChunkForChat:chatId
 					 fromMessageId:fromMessageId
+							offset:offset
 							 limit:limit
 						 collected:collected
 						completion:completion];
@@ -641,6 +656,7 @@ NSDictionary *TGFlattenMessage(NSDictionary *m) {
 
 - (void)fetchHistoryChunkForChat:(int64_t)chatId
                    fromMessageId:(int64_t)fromMessageId
+                          offset:(NSInteger)offset
                            limit:(NSInteger)limit
                        collected:(NSMutableArray *)collected
                       completion:(void (^)(NSArray *))completion {
@@ -649,7 +665,7 @@ NSDictionary *TGFlattenMessage(NSDictionary *m) {
 		@"@type"           : @"getChatHistory",
 		@"chat_id"         : @(chatId),
 		@"from_message_id" : @(fromMessageId),
-		@"offset"          : @(0),
+		@"offset"          : @(offset),
 		@"limit"           : @(limit),
 		@"only_local"      : @NO,
 	} completion:^(NSDictionary *result){
@@ -667,6 +683,14 @@ NSDictionary *TGFlattenMessage(NSDictionary *m) {
 		for (NSDictionary *m in msgs)
 			[collected addObject:TGFlattenMessage(m)];
 
+		if (offset < 0){
+			// Fetching newer messages: TDLib returns messages newest first.
+			// Reverse them so they are in chronological order (oldest first).
+			if (completion)
+				completion([[collected reverseObjectEnumerator] allObjects]);
+			return;
+		}
+
 		int64_t oldest = [[msgs lastObject][@"id"] longLongValue];
 		if ((NSInteger)collected.count >= limit || oldest == 0){
 			if (completion)
@@ -676,6 +700,7 @@ NSDictionary *TGFlattenMessage(NSDictionary *m) {
 
 		[me fetchHistoryChunkForChat:chatId
 					   fromMessageId:oldest
+							  offset:0
 							   limit:limit - collected.count
 						   collected:collected
 						  completion:completion];

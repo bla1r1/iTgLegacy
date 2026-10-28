@@ -154,7 +154,7 @@ static const NSInteger kStoryGridCols  = 3;
 	NSInteger dataCount = storyKind ? (NSInteger)self.stories.count
 						: giftKind ? (NSInteger)self.gifts.count
 						: (NSInteger)self.photos.count;
-	NSInteger count = MIN(dataCount, 20);
+	NSInteger count = MIN(dataCount, 120);
 	if (!count)
 		return 0;
 	NSInteger rows = (count + kStoryGridCols - 1) / kStoryGridCols;
@@ -189,7 +189,7 @@ static const NSInteger kStoryGridCols  = 3;
 	NSArray *rows = [self selectedMediaRows];
 	CGFloat width = tableView.bounds.size.width;
 	CGFloat side = [[self class] storySideForWidth:width];
-	NSInteger count = MIN((NSInteger)rows.count, 20);
+	NSInteger count = MIN((NSInteger)rows.count, 120);
 
 	for (NSInteger i = 0; i < count; i++){
 		NSDictionary *tile = rows[i];
@@ -480,6 +480,57 @@ static const NSInteger kStoryGridCols  = 3;
 	UIView *backdrop = tap.view;
 	[UIView animateWithDuration:TGAnimationDurationNormal animations:^{ backdrop.alpha = 0; }
 					 completion:^(BOOL done){ [backdrop removeFromSuperview]; }];
+}
+
+- (void)loadMoreMediaForCurrentTab {
+	if (self.isLoadingMoreMedia) return;
+
+	NSString *kind = [self selectedMediaKind];
+	NSString *filter = nil;
+	NSArray *currentList = nil;
+
+	if ([kind isEqualToString:@"media"]) {
+		filter = @"searchMessagesFilterPhotoAndVideo";
+		currentList = self.photos;
+	} else if ([kind isEqualToString:@"files"]) {
+		filter = @"searchMessagesFilterDocument";
+		currentList = self.files;
+	} else if ([kind isEqualToString:@"voice"]) {
+		filter = @"searchMessagesFilterVoiceNote";
+		currentList = self.voice;
+	} else if ([kind isEqualToString:@"links"]) {
+		filter = @"searchMessagesFilterUrl";
+		currentList = self.links;
+	}
+
+	if (!filter || !currentList.count) return;
+
+	int64_t lastId = [currentList.lastObject[@"id"] longLongValue];
+	if (!lastId) return;
+
+	self.isLoadingMoreMedia = YES;
+	__weak typeof(self) weakProfile = self;
+	[[TGClient shared] mediaInChat:self.chatId filter:filter fromMessageId:lastId limit:60 completion:^(NSArray *more){
+		dispatch_async(dispatch_get_main_queue(), ^{
+			TGProfileViewController *me = weakProfile;
+			if (!me) return;
+			me.isLoadingMoreMedia = NO;
+			if (!more.count) return;
+
+			if ([kind isEqualToString:@"media"]) {
+				me.photos = [me.photos arrayByAddingObjectsFromArray:more];
+				me.storyGridCellCache = nil;
+				me.mediaGridCacheContent = nil;
+			} else if ([kind isEqualToString:@"files"]) {
+				me.files = [me.files arrayByAddingObjectsFromArray:more];
+			} else if ([kind isEqualToString:@"voice"]) {
+				me.voice = [me.voice arrayByAddingObjectsFromArray:more];
+			} else if ([kind isEqualToString:@"links"]) {
+				me.links = [me.links arrayByAddingObjectsFromArray:more];
+			}
+			[me reloadTableDebounced];
+		});
+	}];
 }
 
 @end

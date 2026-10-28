@@ -156,7 +156,9 @@ static void TGInstallCrypto(void) {
 @property (nonatomic, assign) BOOL audioFramingProven;
 @property (nonatomic, assign) uint32_t currentSenderTag;
 @property (nonatomic, assign) uint32_t nominatedSenderTag;
+@property (nonatomic, assign) uint32_t verifiedMediaTag;
 @property (nonatomic, strong) TGCallReflector *currentReflector;
+@property (nonatomic, strong) TGCallReflector *verifiedReflector;
 @property (nonatomic, strong) NSString *peerUfrag;
 @property (nonatomic, strong) NSString *peerPwd;
 @property (nonatomic, strong) TGCallIce *ice;
@@ -170,7 +172,7 @@ static void TGInstallCrypto(void) {
 @end
 
 
-static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V5";
+static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V6";
 
 
 
@@ -801,11 +803,12 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V5";
 
 
 	// Send encrypted packet over reflector transport
-	uint32_t targetTag = self.nominatedSenderTag ?: self.currentSenderTag;
+	uint32_t targetTag = self.verifiedMediaTag ?: (self.nominatedSenderTag ?: self.currentSenderTag);
+	TGCallReflector *targetReflector = self.verifiedReflector ?: (self.currentReflector ?: self.reflector);
 	if (targetTag) {
-		[(self.currentReflector ?: self.reflector) sendPayload:encrypted toTag:targetTag];
+		[targetReflector sendPayload:encrypted toTag:targetTag];
 	}
-	if (!self.nominatedSenderTag) {
+	if (!self.nominatedSenderTag && !self.verifiedMediaTag) {
 		for (TGCallReflector *reflector in self.reflectors) {
 			if (reflector.remoteTag && reflector.remoteTag != targetTag) {
 				[reflector sendPayload:encrypted toTag:reflector.remoteTag];
@@ -832,6 +835,7 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V5";
 			// The sequence number in front of an acknowledgement is the one it
 			// confirms; the bits it was sent with are not part of the counter.
 			uint32_t counter = messageSeq & ~((uint32_t)3 << 30);
+			NSLog(@"TGCall: peer ACK for seq %08x (counter %u)", messageSeq, counter);
 			if (counter == self.mediaStateSeq)
 				[self mediaStateAcknowledged];
 			if (counter == self.audioProbeSeq && !self.audioFramingProven){
@@ -947,7 +951,10 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V5";
 			if (stunType == 0x0001) {
 				_stunRequestsIn++;
 				if (senderTag && senderTag != self.reflector.localTag && [TGCallStun hasUseCandidate:payload]) {
-					if (self.nominatedSenderTag != senderTag) {
+					if (self.verifiedMediaTag != 0 && senderTag != self.verifiedMediaTag) {
+						NSLog(@"TGCall: ignoring USE-CANDIDATE from tag %u because verifiedMediaTag is locked to %u",
+								senderTag, self.verifiedMediaTag);
+					} else if (self.nominatedSenderTag != senderTag) {
 						self.nominatedSenderTag = senderTag;
 						self.currentSenderTag = senderTag;
 						NSLog(@"TGCall: peer nominated tag %u via USE-CANDIDATE", senderTag);
@@ -955,7 +962,7 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V5";
 				}
 			} else {
 				_stunResponsesIn++;
-				if (senderTag && senderTag != self.reflector.localTag && !self.nominatedSenderTag) {
+				if (senderTag && senderTag != self.reflector.localTag && !self.nominatedSenderTag && !self.verifiedMediaTag) {
 					self.nominatedSenderTag = senderTag;
 					self.currentSenderTag = senderTag;
 					NSLog(@"TGCall: peer answered our check from tag %u (nominated)", senderTag);
@@ -983,6 +990,19 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V5";
 											  (uint8_t *)decrypted.mutableBytes, &mediaSeq);
 			if (decSize > 0) {
 				decrypted.length = decSize;
+				if (senderTag && senderTag != self.reflector.localTag) {
+					if (self.verifiedMediaTag != senderTag) {
+						NSLog(@"TGCall: verified media arriving on tag %u (reflector %u), locking verifiedMediaTag",
+								senderTag, (self.currentReflector ?: self.reflector).serverId);
+						self.verifiedMediaTag = senderTag;
+					}
+					self.nominatedSenderTag = senderTag;
+					self.currentSenderTag = senderTag;
+					self.verifiedReflector = self.currentReflector ?: self.reflector;
+					if (self.mediaStateTimer) {
+						[self sendMediaStateMessage];
+					}
+				}
 				if (++_mediaPacketsIn == 1 || _mediaPacketsIn % 50 == 0)
 					NSLog(@"TGCall: %u incoming media packets, last %d bytes (seq %08x, offset %zu)",
 							_mediaPacketsIn, decSize, mediaSeq, offset);
@@ -1018,7 +1038,9 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V5";
 }
 
 - (void)sendAckForSeq:(uint32_t)seq signaling:(BOOL)signaling {
-	if (!self.callKey.length || !self.currentSenderTag)
+	uint32_t targetTag = self.verifiedMediaTag ?: (self.nominatedSenderTag ?: self.currentSenderTag);
+	TGCallReflector *targetReflector = self.verifiedReflector ?: (self.currentReflector ?: self.reflector);
+	if (!self.callKey.length || !targetTag)
 		return;
 
 	NSData *ack = [TGCallMessages ackForSeq:seq];
@@ -1034,7 +1056,9 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V5";
 									  (uint8_t *)encrypted.mutableBytes);
 	if (encSize > 0) {
 		encrypted.length = encSize;
-		[(self.currentReflector ?: self.reflector) sendPayload:encrypted toTag:self.currentSenderTag];
+		[targetReflector sendPayload:encrypted toTag:targetTag];
+		NSLog(@"TGCall: sent ACK for seq %08x to tag %u on reflector %u (pkt seq %u)",
+				seq, targetTag, targetReflector.serverId, outSeq);
 	}
 }
 
@@ -1043,7 +1067,9 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V5";
 /// sequence numbers are allocated once and the same packet goes out until an
 /// acknowledgement for the media state comes back.
 - (void)sendMediaStateMessage {
-	if (!self.callKey.length || !self.currentSenderTag){
+	uint32_t targetTag = self.verifiedMediaTag ?: (self.nominatedSenderTag ?: self.currentSenderTag);
+	TGCallReflector *targetReflector = self.verifiedReflector ?: (self.currentReflector ?: self.reflector);
+	if (!self.callKey.length || !targetTag){
 		NSLog(@"TGCall: media state not sent, no sender tag yet");
 		return;
 	}
@@ -1071,10 +1097,9 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V5";
 	if (encSize <= 0)
 		return;
 	encrypted.length = encSize;
-	[(self.currentReflector ?: self.reflector) sendPayload:encrypted
-													 toTag:self.currentSenderTag];
-	NSLog(@"TGCall: media state sent to tag %u (video seq %u, state seq %u)",
-			self.currentSenderTag, self.videoParametersSeq, self.mediaStateSeq);
+	[targetReflector sendPayload:encrypted toTag:targetTag];
+	NSLog(@"TGCall: media state sent to tag %u on reflector %u (video seq %u, state seq %u)",
+			targetTag, targetReflector.serverId, self.videoParametersSeq, self.mediaStateSeq);
 
 	if (!self.mediaStateTimer)
 		self.mediaStateTimer = [NSTimer scheduledTimerWithTimeInterval:1.0
@@ -1086,7 +1111,9 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V5";
 
 // Probe audio packet framing with required ACK
 - (void)probeAudioFramingWith:(NSData *)audioMessage {
-	if (self.audioFramingProven || !self.currentSenderTag)
+	uint32_t targetTag = self.verifiedMediaTag ?: (self.nominatedSenderTag ?: self.currentSenderTag);
+	TGCallReflector *targetReflector = self.verifiedReflector ?: (self.currentReflector ?: self.reflector);
+	if (self.audioFramingProven || !targetTag)
 		return;
 
 	self.audioProbeSeq = ++self.mediaSeqOut;
@@ -1110,8 +1137,7 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V5";
 	if (encSize <= 0)
 		return;
 	encrypted.length = encSize;
-	[(self.currentReflector ?: self.reflector) sendPayload:encrypted
-													 toTag:self.currentSenderTag];
+	[targetReflector sendPayload:encrypted toTag:targetTag];
 	NSLog(@"TGCall: audio framing probe sent, waiting on seq %u", self.audioProbeSeq);
 }
 
@@ -1125,7 +1151,9 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V5";
 }
 
 - (void)sendRtcpReceiverReport {
-	if (!self.callKey.length || !self.currentSenderTag)
+	uint32_t targetTag = self.verifiedMediaTag ?: (self.nominatedSenderTag ?: self.currentSenderTag);
+	TGCallReflector *targetReflector = self.verifiedReflector ?: (self.currentReflector ?: self.reflector);
+	if (!self.callKey.length || !targetTag)
 		return;
 
 	uint32_t ourSSRC = self.outgoing ? 2 : 1;
@@ -1156,10 +1184,12 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V5";
 		return;
 	encrypted.length = encSize;
 
-	[(self.currentReflector ?: self.reflector) sendPayload:encrypted toTag:self.currentSenderTag];
-	for (TGCallReflector *reflector in self.reflectors) {
-		if (reflector.remoteTag && reflector.remoteTag != self.currentSenderTag) {
-			[reflector sendPayload:encrypted toTag:reflector.remoteTag];
+	[targetReflector sendPayload:encrypted toTag:targetTag];
+	if (!self.nominatedSenderTag && !self.verifiedMediaTag) {
+		for (TGCallReflector *reflector in self.reflectors) {
+			if (reflector.remoteTag && reflector.remoteTag != targetTag) {
+				[reflector sendPayload:encrypted toTag:reflector.remoteTag];
+			}
 		}
 	}
 	NSLog(@"TGCall: sent RTCP Receiver Report (our SSRC %u, peer SSRC %u, highest rtp seq %u)",
@@ -1167,7 +1197,9 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V5";
 }
 
 - (void)sendRemoteNetworkStatusMessage {
-	if (!self.callKey.length || !self.currentSenderTag)
+	uint32_t targetTag = self.verifiedMediaTag ?: (self.nominatedSenderTag ?: self.currentSenderTag);
+	TGCallReflector *targetReflector = self.verifiedReflector ?: (self.currentReflector ?: self.reflector);
+	if (!self.callKey.length || !targetTag)
 		return;
 
 	NSData *body = [TGCallMessages messageWithType:TGCallMessageRemoteNetworkStatus
@@ -1182,7 +1214,7 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V5";
 	if (encSize <= 0)
 		return;
 	encrypted.length = encSize;
-	[(self.currentReflector ?: self.reflector) sendPayload:encrypted toTag:self.currentSenderTag];
+	[targetReflector sendPayload:encrypted toTag:targetTag];
 	NSLog(@"TGCall: sent RemoteNetworkStatusMessage (type 10)");
 }
 
@@ -1205,6 +1237,8 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V5";
 	self.reflectors = nil;
 	self.reflector = nil;
 	self.currentReflector = nil;
+	self.verifiedReflector = nil;
+	self.verifiedMediaTag = 0;
 	self.currentSenderTag = 0;
 	self.nominatedSenderTag = 0;
 	self.callKey = nil;

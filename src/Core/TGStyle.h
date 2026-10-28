@@ -43,6 +43,10 @@
 //
 #import <UIKit/UIKit.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #pragma mark - type scale
 
 /// 11, point size for micro captions / minimum monospace code.
@@ -779,3 +783,7 @@ static const CGFloat TGMetricTrackRow           = 60.0f;
 /// A track's bubble is as fixed in width as a voice note's: the cover, the
 /// gap, and room for a title that gets truncated rather than growing it.
 static const CGFloat TGMetricTrackContent       = 200.0f;
+
+#ifdef __cplusplus
+}
+#endif

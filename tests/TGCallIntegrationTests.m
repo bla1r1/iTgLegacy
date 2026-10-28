@@ -46,7 +46,10 @@
 @property (nonatomic, assign) TGCallState state;
 @property (nonatomic, strong) TGCallAudioEngine *audioEngine;
 @property (nonatomic, assign) uint32_t currentSenderTag;
+@property (nonatomic, assign) uint32_t nominatedSenderTag;
+@property (nonatomic, assign) uint32_t verifiedMediaTag;
 - (void)teardown;
+- (void)inspectReflectorPacket:(NSData *)packet;
 @end
 
 @interface TGCall (TestSupport)
@@ -854,6 +857,40 @@
 
     XCTAssertEqual([TGCall shared].currentSenderTag, (uint32_t)88888);
     XCTAssertEqual([TGCall shared].reflector.remoteTag, (uint32_t)88888);
+}
+
+- (void)testVerifiedMediaTagLocksSenderTagAgainstSubsequentUseCandidate {
+    NSData *key = TGTestCallKey();
+    XCTAssertTrue([self startEstablishedCallWithKey:key callId:46]);
+
+    uint32_t mediaTag = 3267239008U;
+    uint32_t secondaryTag = 827660216U;
+
+    [TGCall shared].verifiedMediaTag = mediaTag;
+    [TGCall shared].nominatedSenderTag = mediaTag;
+    [TGCall shared].currentSenderTag = mediaTag;
+
+    // Build a fake reflector packet carrying a STUN binding request with USE-CANDIDATE
+    // coming from secondaryTag.
+    NSData *stunReq = [TGCallStun bindingRequestWithUsername:@"qdWU:ErLR"
+                                                    password:@"secret"
+                                                  tieBreaker:0x12345678ULL
+                                                useCandidate:YES];
+    NSMutableData *packet = [NSMutableData dataWithCapacity:24 + stunReq.length];
+    uint8_t header[24] = {0};
+    // Reflector header: bytes 16..19 are senderTag (little endian)
+    memcpy(header + 16, &secondaryTag, 4);
+    uint32_t decl = (uint32_t)stunReq.length;
+    memcpy(header + 20, &decl, 4);
+    [packet appendBytes:header length:24];
+    [packet appendData:stunReq];
+
+    [[TGCall shared] inspectReflectorPacket:packet];
+
+    // nominatedSenderTag and currentSenderTag MUST remain mediaTag, not secondaryTag!
+    XCTAssertEqual([TGCall shared].verifiedMediaTag, mediaTag);
+    XCTAssertEqual([TGCall shared].nominatedSenderTag, mediaTag);
+    XCTAssertEqual([TGCall shared].currentSenderTag, mediaTag);
 }
 
 // ──────────────────────────────────────────────────────────────────────────────

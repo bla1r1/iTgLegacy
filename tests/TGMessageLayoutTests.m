@@ -300,4 +300,27 @@ static NSString *kWord2 = @"antidisestablishmentarianism";
 	XCTAssertEqual(layout.bubbleFrame.size.width, kBubbleMaxW);
 }
 
+- (void)testLruLayoutCache_HitsConsistently {
+	UIFont *font15 = [UIFont systemFontOfSize:15];
+	UIFont *font17 = [UIFont systemFontOfSize:17];
+	NSString *text = @"Caching test message for C++ LRU layout cache";
+
+	CGSize size1 = TGTextSize(text, font15, 200);
+	CGSize size2 = TGTextSize(text, font15, 200);
+	XCTAssertEqual(size1.width, size2.width);
+	XCTAssertEqual(size1.height, size2.height);
+
+	CGSize sizeDiffFont = TGTextSize(text, font17, 200);
+	XCTAssertGreaterThanOrEqual(sizeDiffFont.height, size1.height);
+}
+
+- (void)testEmojiScanning_FastBypassForPlainLetters {
+	NSString *plain = @"Hello, this is pure ASCII without any emoji.";
+	UIFont *font = [UIFont systemFontOfSize:15];
+	NSAttributedString *str1 = TGEmojiAttributedText(plain, font);
+	NSAttributedString *str2 = TGEmojiAttributedText(plain, font);
+	XCTAssertNil(str1);
+	XCTAssertNil(str2);
+}
+
 @end

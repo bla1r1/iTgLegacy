@@ -113,12 +113,12 @@ int64_t TGArchiveOrder(NSArray *positions) {
 	[self send:@{
 		@"@type"     : @"loadChats",
 		@"chat_list" : @{@"@type" : @"chatListMain"},
-		@"limit"     : @(50),
+		@"limit"     : @(100),
 	}];
 	[self send:@{
 		@"@type"     : @"loadChats",
 		@"chat_list" : @{@"@type" : @"chatListArchive"},
-		@"limit"     : @(50),
+		@"limit"     : @(100),
 	}];
 
 	// The Archive screen's three settings are preferences, not per-chat
@@ -135,7 +135,7 @@ int64_t TGArchiveOrder(NSArray *positions) {
 		return;
 
 	__weak typeof(self) weakSelf = self;
-	dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3.0 * NSEC_PER_SEC)),
+	dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.4 * NSEC_PER_SEC)),
 			dispatch_get_main_queue(), ^{
 		TGClient *me = weakSelf;
 		if (me && !me.chatListComplete)

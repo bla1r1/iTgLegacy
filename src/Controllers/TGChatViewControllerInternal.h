@@ -14,6 +14,7 @@
 #import "TGBubbleCell.h"
 #import "TGMediaViewer.h"
 #import "TGEmojiPanel.h"
+#import "TGStreamingVoicePlayer.h"
 #import <MediaPlayer/MediaPlayer.h>
 #import <AVFoundation/AVFoundation.h>
 #import <CoreLocation/CoreLocation.h>
@@ -184,8 +185,10 @@ static const CGFloat kPinnedBanner    = 34.0f;
 /// The cross that dismisses the banner.
 static const CGFloat kBannerCloseGlyph = 16.0f;
 
+@class TGMessageStreamStore;
+
 @interface TGChatViewController () <UISearchBarDelegate, CLLocationManagerDelegate, TGEmojiPanelDelegate,
-		UIScrollViewDelegate, AVAudioPlayerDelegate,
+		UIScrollViewDelegate, AVAudioPlayerDelegate, TGStreamingVoicePlayerDelegate,
 		ABPeoplePickerNavigationControllerDelegate>
 
 @property (nonatomic, strong) UITableView *table;
@@ -196,7 +199,7 @@ static const CGFloat kBannerCloseGlyph = 16.0f;
 @property (nonatomic, strong) NSArray *rawMessages;       // raw flattened messages before grouping
 @property (nonatomic, strong) NSMutableDictionary *images; // fileId -> UIImage
 @property (nonatomic, strong) NSMutableSet *imagesRequested;
-@property (nonatomic, strong) AVAudioPlayer *voicePlayer;
+@property (nonatomic, strong) TGStreamingVoicePlayer *voicePlayer;
 @property (nonatomic, assign) BOOL anchorToBottom;
 @property (nonatomic, strong) NSMutableDictionary *lottiePaths;   // fileId -> path
 @property (nonatomic, strong) NSMutableDictionary *maps;          // messageId -> UIImage
@@ -226,6 +229,9 @@ static const CGFloat kBannerCloseGlyph = 16.0f;
 @property (nonatomic, strong) UILabel *recordCancelSlideLabel;
 @property (nonatomic, assign) int64_t playingMessageId;
 @property (nonatomic, assign) BOOL isLoadingMoreHistory;
+@property (nonatomic, assign) BOOL isLoadingNewerHistory;
+@property (nonatomic, assign) BOOL atChatEnd;
+@property (nonatomic, strong) TGMessageStreamStore *streamStore;
 @property (nonatomic, strong) NSTimer *playbackTimer;
 @property (nonatomic, strong) MPMoviePlayerController *videoNotePlayer;
 @property (nonatomic, strong) CAShapeLayer *videoNoteProgressLayer;

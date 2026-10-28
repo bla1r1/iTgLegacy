@@ -176,6 +176,7 @@ APP_SRC_M := \
 	src/Core/AppDelegate+URL.m \
 	src/Controllers/RootViewController.m \
 	src/main.m \
+	src/Core/TGJson.m \
 	src/Core/TGClient.m \
 	src/Core/TGClient+Auth.m \
 	src/Core/TGClient+Messages.m \
@@ -215,7 +216,6 @@ APP_SRC_M := \
 	src/Views/TGEmojiData.m \
 	src/Views/TGEmojiPanel.m \
 	src/Views/TGAttachSheet.m \
-	src/Views/TGMessageLayout.m \
 	src/Views/TGBubbleCell.m \
 	src/Controllers/TGChatViewController.m \
 	src/Controllers/TGChatViewController+Selection.m \
@@ -245,6 +245,7 @@ APP_SRC_M := \
 	src/Controllers/TGSettingsViewController+Pages.m \
 	src/Controllers/TGSettingsViewController+Actions.m \
 	src/Audio/TGVoiceDecoder.m \
+	src/Audio/TGStreamingVoicePlayer.m \
 	src/Calls/TGCallIce.m \
 	src/Calls/TGCallStun.m \
 	src/Calls/TGCallMessages.m \
@@ -252,16 +253,19 @@ APP_SRC_M := \
 	src/Audio/TGVoiceRecorder.m \
 	third_party/opusenc/opusenc.m \
 	src/Views/UIImage+WebP.m \
-	src/Views/TGLottieView.m \
 	src/Views/TGMediaViewer.m \
 	src/Audio/TGMusicPlayer.m \
 	src/Calls/TGCallAudioEngine.m
 
 
 APP_SRC_MM := \
-	src/Core/TGClient+Chats.mm
+	src/Core/TGClient+Chats.mm \
+	src/Core/TGMessageStreamStore.mm \
+	src/Views/TGMessageLayout.mm \
+	src/Views/TGLottieView.mm
 
 APP_SRC_C := \
+	third_party/yyjson/yyjson.c \
 	compat/tlv_polyfill.c \
 	src/Calls/TGCallCrypto.c \
 	third_party/opusfile/internal.c \

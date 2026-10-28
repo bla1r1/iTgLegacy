@@ -91,6 +91,10 @@ typedef NS_ENUM(NSInteger, TGConnectionState) {
 - (void)mediaInChat:(int64_t)chatId filter:(NSString *)filter
          completion:(void (^)(NSArray *messages))completion;
 
+- (void)mediaInChat:(int64_t)chatId filter:(NSString *)filter
+      fromMessageId:(int64_t)fromMessageId limit:(NSInteger)limit
+         completion:(void (^)(NSArray *messages))completion;
+
 /// Fetch a user TDLib has not volunteered yet, so a group message can be
 /// attributed. `completion` runs once the name is cached.
 - (void)ensureUserName:(int64_t)userId completion:(void (^)(void))completion;
@@ -213,6 +217,17 @@ typedef NS_ENUM(NSInteger, TGDownloadPriority) {
          fromMessageId:(int64_t)fromMessageId
                  limit:(NSInteger)limit
             completion:(void (^)(NSArray *messages))completion;
+
+- (void)historyForChat:(int64_t)chatId
+         fromMessageId:(int64_t)fromMessageId
+                offset:(NSInteger)offset
+                 limit:(NSInteger)limit
+            completion:(void (^)(NSArray *messages))completion;
+
+- (void)newerHistoryForChat:(int64_t)chatId
+              fromMessageId:(int64_t)fromMessageId
+                      limit:(NSInteger)limit
+                 completion:(void (^)(NSArray *messages))completion;
 
 /// History of one forum topic. `threadId` is the topic's message_thread_id.
 - (void)historyForChat:(int64_t)chatId

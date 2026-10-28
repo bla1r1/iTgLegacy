@@ -928,8 +928,31 @@ static NSString *TGClockText(NSTimeInterval position, NSTimeInterval duration) {
 	[self.table reloadData];
 }
 
-- (void)audioPlayerDidFinishPlaying:(AVAudioPlayer *)player successfully:(BOOL)flag {
+- (void)audioPlayerDidFinishPlaying:(id)player successfully:(BOOL)flag {
+	int64_t currentId = self.playingMessageId;
 	[self stopPlayback];
+
+	if (!flag || currentId == 0)
+		return;
+
+	// Automatically play the next voice note in the chat (in chronological order: row + 1 ...)
+	NSInteger currentRow = NSNotFound;
+	for (NSInteger i = 0; i < (NSInteger)self.messages.count; i++) {
+		if ([self.messages[i][@"id"] longLongValue] == currentId) {
+			currentRow = i;
+			break;
+		}
+	}
+
+	if (currentRow != NSNotFound) {
+		for (NSInteger i = currentRow + 1; i < (NSInteger)self.messages.count; i++) {
+			NSDictionary *nextMsg = self.messages[i];
+			if ([nextMsg[@"type"] isEqualToString:@"voice"] && nextMsg[@"docId"]) {
+				[self playVoiceNoteForMessage:nextMsg atRow:i];
+				break;
+			}
+		}
+	}
 }
 
 - (void)playVoiceNoteForMessage:(NSDictionary *)m atRow:(NSInteger)row {
@@ -953,49 +976,34 @@ static NSString *TGClockText(NSTimeInterval position, NSTimeInterval duration) {
 		[self stopPlayback];
 	[self beginDownloadHUDForFile:[docId integerValue]];
 	__weak typeof(self) weakSelf = self;
-	[[TGClient shared] downloadFile:[docId integerValue] completion:^(NSString *path){
+	[[TGClient shared] downloadFile:[docId integerValue] priority:32 completion:^(NSString *path){
 		dispatch_async(dispatch_get_main_queue(), ^{
 			[weakSelf endDownloadHUD];
-		});
-		NSLog(@"voice: file %@", path.lastPathComponent ?: @"(not downloaded)");
-		if (!path){
-			dispatch_async(dispatch_get_main_queue(), ^{
-				[weakSelf showPlaybackFailure];
-			});
-			return;
-		}
-		dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-			NSString *wav = [TGVoiceDecoder wavFromOpusFile:path];
-			NSLog(@"voice: decoded to %@ (%llu bytes)", wav.lastPathComponent ?: @"nothing",
-					[[[NSFileManager defaultManager] attributesOfItemAtPath:wav ?: @""
-																	  error:nil] fileSize]);
-			dispatch_async(dispatch_get_main_queue(), ^{
-				TGChatViewController *me = weakSelf;
-				if (!me) return;
-				if (!wav){
-					[me showPlaybackFailure];
-					return;
-				}
-				NSError *err = nil;
-				[[AVAudioSession sharedInstance]
-						setCategory:AVAudioSessionCategoryPlayback error:nil];
-				[[AVAudioSession sharedInstance] setActive:YES error:nil];
-				me.voicePlayer = [[AVAudioPlayer alloc]
-						initWithContentsOfURL:[NSURL fileURLWithPath:wav] error:&err];
-				if (err){
-					NSLog(@"voice playback: %@", err);
-					[me showPlaybackFailure];
-					return;
-				}
-				NSLog(@"voice: playing %.1f s", me.voicePlayer.duration);
-				me.voicePlayer.delegate = me;
-				me.voicePlayer.enableRate = YES;   // for the speed button
-				me.playingMessageId = [m[@"id"] longLongValue];
-				[me.voicePlayer play];
-				[me showPlayerBar];
-				[me startPlaybackTimer];
-				[me.table reloadData];
-			});
+			TGChatViewController *me = weakSelf;
+			if (!me) return;
+			NSLog(@"voice: file %@", path.lastPathComponent ?: @"(not downloaded)");
+			if (!path){
+				[me showPlaybackFailure];
+				return;
+			}
+			NSError *err = nil;
+			[[AVAudioSession sharedInstance]
+					setCategory:AVAudioSessionCategoryPlayback error:nil];
+			[[AVAudioSession sharedInstance] setActive:YES error:nil];
+			me.voicePlayer = [[TGStreamingVoicePlayer alloc] initWithPath:path error:&err];
+			if (err || !me.voicePlayer){
+				NSLog(@"voice playback: %@", err);
+				[me showPlaybackFailure];
+				return;
+			}
+			NSLog(@"voice: playing %.1f s (streaming)", me.voicePlayer.duration);
+			me.voicePlayer.delegate = (id<TGStreamingVoicePlayerDelegate>)me;
+			me.voicePlayer.enableRate = YES;   // for the speed button
+			me.playingMessageId = [m[@"id"] longLongValue];
+			[me.voicePlayer play];
+			[me showPlayerBar];
+			[me startPlaybackTimer];
+			[me.table reloadData];
 		});
 	}];
 }

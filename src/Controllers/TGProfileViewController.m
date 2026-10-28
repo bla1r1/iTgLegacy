@@ -293,6 +293,14 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 	[self.tableView reloadData];
 }
 
+- (void)scrollViewDidScroll:(UIScrollView *)scrollView {
+	if (scrollView != self.tableView) return;
+	CGFloat distanceFromBottom = scrollView.contentSize.height - (scrollView.contentOffset.y + scrollView.bounds.size.height);
+	if (distanceFromBottom < 300.0f && !self.isLoadingMoreMedia) {
+		[self loadMoreMediaForCurrentTab];
+	}
+}
+
 #pragma mark - table
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
