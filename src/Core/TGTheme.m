@@ -15,6 +15,7 @@ static NSString *const kAutoNightKey     = @"themeAutoNight";
 static NSString *const kAutoNightFromKey = @"themeAutoNightFrom";
 static NSString *const kAutoNightToKey   = @"themeAutoNightTo";
 static NSString *const kBeforeNightKey   = @"themeStyleBeforeNight";
+static NSString *const kWallpaperTypeKey = @"themeWallpaperType";
 
 @implementation TGTheme {
 	NSDictionary *_imported;
@@ -355,13 +356,20 @@ static NSString *TGIdForStyle(TGThemeStyle style) {
 	}
 
 	if (!self.isFlat) {
-		UIImage *tabBg = [TGTheme skeuomorphicBarImageWithColor:TGThemeRGB(0x1C, 0x20, 0x26) height:49.0f];
+		UIColor *tabColor = self.isDarkStyle ? TGThemeRGB(0x22, 0x26, 0x2E) : TGThemeRGB(0x45, 0x56, 0x68);
+		UIImage *tabBg = [TGTheme skeuomorphicBarImageWithColor:tabColor height:TGMetricTabBarH];
 		if ([bar respondsToSelector:@selector(setBackgroundImage:)]) {
 			bar.backgroundImage = tabBg;
+		}
+		if ([bar respondsToSelector:@selector(setSelectionIndicatorImage:)]) {
+			bar.selectionIndicatorImage = [TGTheme skeuomorphicTabSelectionIndicator];
 		}
 	} else {
 		if ([bar respondsToSelector:@selector(setBackgroundImage:)]) {
 			bar.backgroundImage = nil;
+		}
+		if ([bar respondsToSelector:@selector(setSelectionIndicatorImage:)]) {
+			bar.selectionIndicatorImage = nil;
 		}
 	}
 }
@@ -374,9 +382,51 @@ static NSString *TGIdForStyle(TGThemeStyle style) {
 	return [documents stringByAppendingPathComponent:@"wallpaper.jpg"];
 }
 
+- (TGWallpaperType)wallpaperType {
+	NSNumber *stored = [NSUserDefaults.standardUserDefaults objectForKey:kWallpaperTypeKey];
+	if (stored) {
+		return (TGWallpaperType)stored.integerValue;
+	}
+	if ([[NSFileManager defaultManager] fileExistsAtPath:[self wallpaperPath]]) {
+		return TGWallpaperTypeCustom;
+	}
+	return TGWallpaperTypeNone;
+}
+
+- (void)setWallpaperType:(TGWallpaperType)type {
+	_wallpaper = nil;
+	[NSUserDefaults.standardUserDefaults setInteger:type forKey:kWallpaperTypeKey];
+	[NSUserDefaults.standardUserDefaults synchronize];
+	if (type != TGWallpaperTypeCustom) {
+		[[NSFileManager defaultManager] removeItemAtPath:[self wallpaperPath] error:nil];
+	}
+	[[NSNotificationCenter defaultCenter] postNotificationName:TGThemeChangedNotification object:nil];
+}
+
+- (NSString *)wallpaperTitleForType:(TGWallpaperType)type {
+	switch (type) {
+		case TGWallpaperTypeNone: return @"None (Solid)";
+		case TGWallpaperTypePaperGrain: return @"Paper Grain";
+		case TGWallpaperTypePinstripes: return @"Pinstripes";
+		case TGWallpaperTypeLinen: return @"Classic Linen";
+		case TGWallpaperTypeParchment: return @"Parchment";
+		case TGWallpaperTypeFelt: return @"Game Center Felt";
+		case TGWallpaperTypeCustom: return @"Photo Library";
+	}
+	return @"None";
+}
+
 - (UIImage *)wallpaper {
-	if (!_wallpaper)
+	if (_wallpaper)
+		return _wallpaper;
+	TGWallpaperType type = [self wallpaperType];
+	if (type == TGWallpaperTypeNone)
+		return nil;
+	if (type == TGWallpaperTypeCustom) {
 		_wallpaper = [UIImage imageWithContentsOfFile:[self wallpaperPath]];
+		return _wallpaper;
+	}
+	_wallpaper = [TGTheme textureImageForType:type];
 	return _wallpaper;
 }
 
@@ -395,10 +445,14 @@ static NSString *TGIdForStyle(TGThemeStyle style) {
 			UIGraphicsEndImageContext();
 		}
 		[UIImageJPEGRepresentation(image, 0.8f) writeToFile:path atomically:YES];
+		_wallpaper = image;
+		[NSUserDefaults.standardUserDefaults setInteger:TGWallpaperTypeCustom forKey:kWallpaperTypeKey];
 	} else {
 		[[NSFileManager defaultManager] removeItemAtPath:path error:nil];
+		_wallpaper = nil;
+		[NSUserDefaults.standardUserDefaults setInteger:TGWallpaperTypeNone forKey:kWallpaperTypeKey];
 	}
-	_wallpaper = image;
+	[NSUserDefaults.standardUserDefaults synchronize];
 	[[NSNotificationCenter defaultCenter] postNotificationName:TGThemeChangedNotification
 													   object:nil];
 }
@@ -414,10 +468,14 @@ static NSString *TGIdForStyle(TGThemeStyle style) {
 	bar.barStyle = self.isDark ? UIBarStyleBlack : UIBarStyleDefault;
 
 	if (!self.isFlat) {
-		CGFloat barHeight = bar.bounds.size.height > 0 ? bar.bounds.size.height : 44.0f;
-		UIImage *bgImage = [TGTheme skeuomorphicBarImageWithColor:[self barColour] height:barHeight];
-		if ([bar respondsToSelector:@selector(setBackgroundImage:forBarMetrics:)]) {
-			[bar setBackgroundImage:bgImage forBarMetrics:UIBarMetricsDefault];
+		CGFloat barHeight = bar.bounds.size.height > 0 ? bar.bounds.size.height : TGMetricRow;
+		UIImage *bgImageAttached = [TGTheme skeuomorphicBarImageWithColor:[self barColour] height:TGMetricPadWide + TGMetricRow];
+		UIImage *bgImageStandard = [TGTheme skeuomorphicBarImageWithColor:[self barColour] height:barHeight];
+		if ([bar respondsToSelector:@selector(setBackgroundImage:forBarPosition:barMetrics:)]) {
+			[bar setBackgroundImage:bgImageAttached forBarPosition:UIBarPositionTopAttached barMetrics:UIBarMetricsDefault];
+			[bar setBackgroundImage:bgImageStandard forBarPosition:UIBarPositionAny barMetrics:UIBarMetricsDefault];
+		} else if ([bar respondsToSelector:@selector(setBackgroundImage:forBarMetrics:)]) {
+			[bar setBackgroundImage:bgImageStandard forBarMetrics:UIBarMetricsDefault];
 		}
 		if ([bar respondsToSelector:@selector(setShadowImage:)]) {
 			[bar setShadowImage:[[UIImage alloc] init]];
@@ -426,9 +484,13 @@ static NSString *TGIdForStyle(TGThemeStyle style) {
 			bar.translucent = NO;
 			bar.barTintColor = [self barColour];
 			bar.tintColor = [self barButtonColour];
+			NSShadow *shadow = [[NSShadow alloc] init];
+			shadow.shadowColor = [self navBarTextShadowColour];
+			shadow.shadowOffset = CGSizeMake(0, -1.0f);
 			bar.titleTextAttributes = @{
 				NSForegroundColorAttributeName : [self barTitleColour],
 				NSFontAttributeName            : TGFontRowStrong(),
+				NSShadowAttributeName          : shadow,
 			};
 		} else {
 			bar.tintColor = [self barColour];

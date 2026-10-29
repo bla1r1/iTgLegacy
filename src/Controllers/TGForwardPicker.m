@@ -137,6 +137,8 @@
 	cell.imageView.clipsToBounds = YES;
 	cell.imageView.layer.shouldRasterize = YES;
 	cell.imageView.layer.rasterizationScale = [UIScreen mainScreen].scale;
+	cell.imageView.layer.borderColor = [[TGTheme shared] separatorColour].CGColor;
+	cell.imageView.layer.borderWidth = 1.0f;
 	cell.imageView.contentMode = UIViewContentModeScaleAspectFill;
 
 	return cell;

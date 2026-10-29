@@ -21,7 +21,7 @@
 	TGTheme *theme = [TGTheme shared];
 	if (!theme.isFlat) {
 		UIImageView *barBg = [[UIImageView alloc] initWithFrame:CGRectMake(0, 0, b.size.width, kInputHeight)];
-		barBg.image = [TGTheme skeuomorphicBarImageWithColor:[theme barColour] height:kInputHeight];
+		barBg.image = [TGTheme skeuomorphicInputBarImageWithHeight:kInputHeight];
 		barBg.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
 		[self.inputBar addSubview:barBg];
 	}

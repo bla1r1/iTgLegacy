@@ -464,7 +464,7 @@ static const CGFloat TGTransformScaleSmall        = 0.30f;
 /// Grouped table section header standard height.
 static const CGFloat TGMetricSectionHeaderHeight = 32.0f;
 /// Grouped table empty header separator gap.
-static const CGFloat TGMetricSectionHeaderEmpty  = 12.0f;
+static const CGFloat TGMetricSectionHeaderEmpty  = 20.0f;
 /// Grouped table footer text vertical padding.
 static const CGFloat TGMetricSectionFooterGap    = TGMetricPadLarge;
 /// Grouped table root page footer trailing height.
@@ -825,6 +825,8 @@ static const CGFloat TGMetricSliderTrackH          = 6.0f;
 static const CGFloat TGMetricTextFieldH            = 36.0f;
 /// Tactile pill badge height (18 pt).
 static const CGFloat TGMetricBadgeH                = 18.0f;
+/// iOS standard tab bar height (49 pt).
+static const CGFloat TGMetricTabBarH               = 49.0f;
 
 #ifdef __cplusplus
 }

@@ -29,6 +29,8 @@
 	// frames and expect the old behaviour.
 	if ([self respondsToSelector:@selector(setEdgesForExtendedLayout:)])
 		self.edgesForExtendedLayout = UIRectEdgeNone;
+	self.tableView.contentInset = UIEdgeInsetsMake(0, 0, TGMetricTabBarH, 0);
+	self.tableView.scrollIndicatorInsets = self.tableView.contentInset;
 	[self applyTheme];
 
 	self.privacy  = [NSMutableDictionary dictionary];
@@ -78,14 +80,21 @@
 		case TGSettingsPageBlocked:       return @"Blocked Users";
 		case TGSettingsPagePowerSaving:   return @"Power Saving";
 		case TGSettingsPageRecentCalls:   return @"Recent Calls";
+		case TGSettingsPageWallpaper:     return @"Chat Wallpaper";
 		case TGSettingsPageDebug:         return @"Debug Menu";
 		default:                          return @"Settings";
 	}
 }
 
 - (void)applyTheme {
-	self.tableView.backgroundColor = [[TGTheme shared] groupedBackgroundColour];
-	self.tableView.separatorColor = [[TGTheme shared] separatorColour];
+	TGTheme *theme = [TGTheme shared];
+	self.tableView.backgroundColor = [theme groupedBackgroundColour];
+	if (!theme.isFlat) {
+		self.tableView.separatorStyle = UITableViewCellSeparatorStyleNone;
+	} else {
+		self.tableView.separatorStyle = UITableViewCellSeparatorStyleSingleLine;
+		self.tableView.separatorColor = [theme separatorColour];
+	}
 }
 
 - (void)tableView:(UITableView *)tableView willDisplayHeaderView:(UIView *)view
@@ -544,7 +553,7 @@ static const CGFloat kMeTextInset  = TGMetricPadMedium;
 	cell.accessoryView = nil;
 	cell.imageView.image = nil;
 	cell.selectionStyle = UITableViewCellSelectionStyleDefault;
-	[theme styleCell:cell];
+	[theme styleGroupedCell:cell forRow:path.row totalRows:[self.sections[path.section][@"rows"] count]];
 
 	cell.textLabel.text = row[TGRowTitle];
 	cell.textLabel.font = TGFontRow();
@@ -572,7 +581,12 @@ static const CGFloat kMeTextInset  = TGMetricPadMedium;
 		cell.accessoryType = [row[TGRowChecked] boolValue]
 				? UITableViewCellAccessoryCheckmark : UITableViewCellAccessoryNone;
 	} else if ([kind isEqualToString:TGKindDisclosure]){
-		cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+		if (!theme.isFlat) {
+			cell.accessoryView = [[UIImageView alloc] initWithImage:[TGIcons skeuomorphicDisclosureChevron]];
+			cell.accessoryType = UITableViewCellAccessoryNone;
+		} else {
+			cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+		}
 	} else if ([kind isEqualToString:TGKindAction]){
 		cell.textLabel.textColor = [theme accentColour];
 		cell.textLabel.textAlignment = NSTextAlignmentCenter;
@@ -594,7 +608,7 @@ static const CGFloat kMeTextInset  = TGMetricPadMedium;
 	if (!cell)
 		cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle
 									  reuseIdentifier:reuse];
-	[theme styleCell:cell];
+	[theme styleGroupedCell:cell forRow:path.row totalRows:[self.sections[path.section][@"rows"] count]];
 	cell.selectionStyle = UITableViewCellSelectionStyleNone;
 	cell.accessoryType = UITableViewCellAccessoryNone;
 
@@ -673,7 +687,7 @@ static const CGFloat kMeTextInset  = TGMetricPadMedium;
 
 	UITableViewCell *profile = [[UITableViewCell alloc]
 			initWithStyle:UITableViewCellStyleDefault reuseIdentifier:nil];
-	[theme styleCell:profile];
+	[theme styleGroupedCell:profile forRow:0 totalRows:1];
 	profile.selectionStyle = UITableViewCellSelectionStyleNone;
 
 	NSDictionary *me = [TGClient shared].me;

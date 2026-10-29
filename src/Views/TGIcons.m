@@ -666,15 +666,37 @@ static void TGDrawTabPath(CGContextRef ctx, UIBezierPath *path, BOOL filled) {
 }
 
 + (UIImage *)mediaDiscOfSide:(CGFloat)side playing:(BOOL)playing {
-	NSString *key = [NSString stringWithFormat:@"mediaDisc_%.0f_%d", side, playing];
+	BOOL isFlat = [TGTheme shared].isFlat;
+	NSString *key = [NSString stringWithFormat:@"mediaDisc_%.0f_%d_%d", side, playing, isFlat];
 	UIImage *cached = TGIconsGetCached(key);
 	if (cached) return cached;
 
 	UIGraphicsBeginImageContextWithOptions(CGSizeMake(side, side), NO, 0);
 	CGContextRef ctx = UIGraphicsGetCurrentContext();
 
-	CGContextSetRGBFillColor(ctx, 0.447f, 0.710f, 0.914f, 1.0f);
-	CGContextFillEllipseInRect(ctx, CGRectMake(0, 0, side, side));
+	if (isFlat) {
+		CGContextSetRGBFillColor(ctx, 0.447f, 0.710f, 0.914f, 1.0f);
+		CGContextFillEllipseInRect(ctx, CGRectMake(0, 0, side, side));
+	} else {
+		CGFloat colors[8] = {
+			0.52f, 0.78f, 0.96f, 1.0f,
+			0.28f, 0.54f, 0.78f, 1.0f
+		};
+		CGFloat locs[2] = {0.0f, 1.0f};
+		CGColorSpaceRef cs = CGColorSpaceCreateDeviceRGB();
+		CGGradientRef grad = CGGradientCreateWithColorComponents(cs, colors, locs, 2);
+		CGContextSaveGState(ctx);
+		CGContextAddEllipseInRect(ctx, CGRectMake(0, 0, side, side));
+		CGContextClip(ctx);
+		CGContextDrawLinearGradient(ctx, grad, CGPointMake(0, 0), CGPointMake(0, side), 0);
+		CGContextRestoreGState(ctx);
+		CGGradientRelease(grad);
+		CGColorSpaceRelease(cs);
+
+		CGContextSetRGBStrokeColor(ctx, 1.0f, 1.0f, 1.0f, 0.45f);
+		CGContextSetLineWidth(ctx, TGIconStrokeFine);
+		CGContextStrokeEllipseInRect(ctx, CGRectInset(CGRectMake(0, 0, side, side), 0.5f, 0.5f));
+	}
 
 	CGContextSetRGBFillColor(ctx, 1, 1, 1, 1);
 	if (playing){
@@ -696,15 +718,37 @@ static void TGDrawTabPath(CGContextRef ctx, UIBezierPath *path, BOOL filled) {
 }
 
 + (UIImage *)fileDiscOfSide:(CGFloat)side {
-	NSString *key = [NSString stringWithFormat:@"fileDisc_%.0f", side];
+	BOOL isFlat = [TGTheme shared].isFlat;
+	NSString *key = [NSString stringWithFormat:@"fileDisc_%.0f_%d", side, isFlat];
 	UIImage *cached = TGIconsGetCached(key);
 	if (cached) return cached;
 
 	UIGraphicsBeginImageContextWithOptions(CGSizeMake(side, side), NO, 0);
 	CGContextRef ctx = UIGraphicsGetCurrentContext();
 
-	CGContextSetRGBFillColor(ctx, 0.447f, 0.710f, 0.914f, 1.0f);
-	CGContextFillEllipseInRect(ctx, CGRectMake(0, 0, side, side));
+	if (isFlat) {
+		CGContextSetRGBFillColor(ctx, 0.447f, 0.710f, 0.914f, 1.0f);
+		CGContextFillEllipseInRect(ctx, CGRectMake(0, 0, side, side));
+	} else {
+		CGFloat colors[8] = {
+			0.56f, 0.62f, 0.70f, 1.0f,
+			0.36f, 0.42f, 0.50f, 1.0f
+		};
+		CGFloat locs[2] = {0.0f, 1.0f};
+		CGColorSpaceRef cs = CGColorSpaceCreateDeviceRGB();
+		CGGradientRef grad = CGGradientCreateWithColorComponents(cs, colors, locs, 2);
+		CGContextSaveGState(ctx);
+		CGContextAddEllipseInRect(ctx, CGRectMake(0, 0, side, side));
+		CGContextClip(ctx);
+		CGContextDrawLinearGradient(ctx, grad, CGPointMake(0, 0), CGPointMake(0, side), 0);
+		CGContextRestoreGState(ctx);
+		CGGradientRelease(grad);
+		CGColorSpaceRelease(cs);
+
+		CGContextSetRGBStrokeColor(ctx, 1.0f, 1.0f, 1.0f, 0.40f);
+		CGContextSetLineWidth(ctx, TGIconStrokeFine);
+		CGContextStrokeEllipseInRect(ctx, CGRectInset(CGRectMake(0, 0, side, side), 0.5f, 0.5f));
+	}
 
 	CGContextSetRGBFillColor(ctx, 1, 1, 1, 1);
 	CGFloat l = side * 0.34f, r = side * 0.66f, t = side * 0.28f, b = side * 0.72f;
@@ -717,7 +761,11 @@ static void TGDrawTabPath(CGContextRef ctx, UIBezierPath *path, BOOL filled) {
 	CGContextClosePath(ctx);
 	CGContextFillPath(ctx);
 
-	CGContextSetRGBFillColor(ctx, 0.447f, 0.710f, 0.914f, 1.0f);
+	if (isFlat) {
+		CGContextSetRGBFillColor(ctx, 0.447f, 0.710f, 0.914f, 1.0f);
+	} else {
+		CGContextSetRGBFillColor(ctx, 0.36f, 0.42f, 0.50f, 1.0f);
+	}
 	CGContextMoveToPoint(ctx, r - fold, t);
 	CGContextAddLineToPoint(ctx, r, t + fold);
 	CGContextAddLineToPoint(ctx, r - fold, t + fold);
@@ -867,12 +915,15 @@ static void TGDrawTabPath(CGContextRef ctx, UIBezierPath *path, BOOL filled) {
 }
 
 + (UIImage *)bubbleTailForColour:(UIColor *)colour outgoing:(BOOL)outgoing {
-	NSString *key = [NSString stringWithFormat:@"tail_%d_%lu", outgoing, (unsigned long)[colour hash]];
+	return [self bubbleTailForColour:colour outgoing:outgoing borderColour:nil];
+}
+
++ (UIImage *)bubbleTailForColour:(UIColor *)colour outgoing:(BOOL)outgoing borderColour:(UIColor *)borderColour {
+	NSString *key = [NSString stringWithFormat:@"tail_%d_%lu_%lu", outgoing, (unsigned long)[colour hash], (unsigned long)[borderColour hash]];
 	UIImage *cached = TGIconsGetCached(key);
 	if (cached) return cached;
 
-	// The bubble's own edge runs down the inner side; the tail flares out
-	// from it along a concave curve and ends in a point at the bottom.
+	// Authentic iOS 6 smooth swooping cubic bezier speech tail
 	CGFloat w = kTailWidth, h = kTailHeight;
 	CGSize size = CGSizeMake(w, h);
 	UIGraphicsBeginImageContextWithOptions(size, NO, 0);
@@ -880,16 +931,95 @@ static void TGDrawTabPath(CGContextRef ctx, UIBezierPath *path, BOOL filled) {
 	[colour set];
 
 	if (outgoing){
+		// Outgoing tail: attaches to bottom-right of bubble at x = 0
 		CGContextMoveToPoint(ctx, 0, 0);
-		CGContextAddCurveToPoint(ctx, 0, h * 0.55f, w * 0.35f, h * 0.85f, w, h);
+		CGContextAddCurveToPoint(ctx, w * 0.30f, h * 0.40f, w * 0.75f, h * 0.75f, w, h);
 		CGContextAddLineToPoint(ctx, 0, h);
+		CGContextClosePath(ctx);
+		CGContextFillPath(ctx);
+
+		if (borderColour) {
+			[borderColour setStroke];
+			CGContextSetLineWidth(ctx, TGIconStrokeFine);
+			CGContextMoveToPoint(ctx, 0, 0.5f);
+			CGContextAddCurveToPoint(ctx, w * 0.30f, h * 0.40f, w * 0.75f, h * 0.75f, w - 0.5f, h - 0.5f);
+			CGContextAddLineToPoint(ctx, 0, h - 0.5f);
+			CGContextStrokePath(ctx);
+		}
 	} else {
+		// Incoming tail: attaches to bottom-left of bubble at x = w
 		CGContextMoveToPoint(ctx, w, 0);
-		CGContextAddCurveToPoint(ctx, w, h * 0.55f, w * 0.65f, h * 0.85f, 0, h);
+		CGContextAddCurveToPoint(ctx, w * 0.70f, h * 0.40f, w * 0.25f, h * 0.75f, 0, h);
 		CGContextAddLineToPoint(ctx, w, h);
+		CGContextClosePath(ctx);
+		CGContextFillPath(ctx);
+
+		if (borderColour) {
+			[borderColour setStroke];
+			CGContextSetLineWidth(ctx, TGIconStrokeFine);
+			CGContextMoveToPoint(ctx, w, 0.5f);
+			CGContextAddCurveToPoint(ctx, w * 0.70f, h * 0.40f, w * 0.25f, h * 0.75f, 0.5f, h - 0.5f);
+			CGContextAddLineToPoint(ctx, w, h - 0.5f);
+			CGContextStrokePath(ctx);
+		}
 	}
-	CGContextClosePath(ctx);
-	CGContextFillPath(ctx);
+
+	UIImage *image = UIGraphicsGetImageFromCurrentImageContext();
+	UIGraphicsEndImageContext();
+	TGIconsSetCached(key, image);
+	return image;
+}
+
++ (UIImage *)skeuomorphicDisclosureChevron {
+	NSString *key = @"skeuo_disclosure_chevron";
+	UIImage *cached = TGIconsGetCached(key);
+	if (cached) return cached;
+
+	CGSize size = CGSizeMake(9.0f, 14.0f);
+	UIGraphicsBeginImageContextWithOptions(size, NO, 0);
+	CGContextRef ctx = UIGraphicsGetCurrentContext();
+
+	// White etched drop shadow line below
+	CGContextSetRGBStrokeColor(ctx, 1.0f, 1.0f, 1.0f, 0.80f);
+	CGContextSetLineWidth(ctx, TGIconStroke);
+	CGContextSetLineCap(ctx, kCGLineCapRound);
+	CGContextSetLineJoin(ctx, kCGLineJoinRound);
+	CGContextMoveToPoint(ctx, 2.0f, 2.5f);
+	CGContextAddLineToPoint(ctx, 7.0f, 7.5f);
+	CGContextAddLineToPoint(ctx, 2.0f, 12.5f);
+	CGContextStrokePath(ctx);
+
+	// Metallic slate chevron stroke
+	CGContextSetRGBStrokeColor(ctx, 0.48f, 0.50f, 0.54f, 1.0f);
+	CGContextSetLineWidth(ctx, TGIconStroke);
+	CGContextMoveToPoint(ctx, 2.0f, 1.5f);
+	CGContextAddLineToPoint(ctx, 7.0f, 6.5f);
+	CGContextAddLineToPoint(ctx, 2.0f, 11.5f);
+	CGContextStrokePath(ctx);
+
+	UIImage *image = UIGraphicsGetImageFromCurrentImageContext();
+	UIGraphicsEndImageContext();
+	TGIconsSetCached(key, image);
+	return image;
+}
+
++ (UIImage *)skeuomorphicDisclosureChevronHighlighted {
+	NSString *key = @"skeuo_disclosure_chevron_high";
+	UIImage *cached = TGIconsGetCached(key);
+	if (cached) return cached;
+
+	CGSize size = CGSizeMake(9.0f, 14.0f);
+	UIGraphicsBeginImageContextWithOptions(size, NO, 0);
+	CGContextRef ctx = UIGraphicsGetCurrentContext();
+
+	CGContextSetRGBStrokeColor(ctx, 1.0f, 1.0f, 1.0f, 1.0f);
+	CGContextSetLineWidth(ctx, TGIconStroke);
+	CGContextSetLineCap(ctx, kCGLineCapRound);
+	CGContextSetLineJoin(ctx, kCGLineJoinRound);
+	CGContextMoveToPoint(ctx, 2.0f, 1.5f);
+	CGContextAddLineToPoint(ctx, 7.0f, 6.5f);
+	CGContextAddLineToPoint(ctx, 2.0f, 11.5f);
+	CGContextStrokePath(ctx);
 
 	UIImage *image = UIGraphicsGetImageFromCurrentImageContext();
 	UIGraphicsEndImageContext();

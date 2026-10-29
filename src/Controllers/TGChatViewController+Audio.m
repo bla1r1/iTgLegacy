@@ -175,7 +175,7 @@ static BOOL sIsCancelled;
 	// The "Rice Grain" lock capsule directly above mic button (Image 2)
 	if (!self.recordLockView) {
 		CGFloat pillW = TGMetricVoicePillWidth, pillH = TGMetricVoicePillHeight;
-		CGFloat pillX = bar.origin.x + bar.size.width - pillW - TGMetricSectionHeaderEmpty;
+		CGFloat pillX = bar.origin.x + bar.size.width - pillW - TGMetricVoiceLockMaxShift;
 		CGFloat pillY = bar.origin.y - pillH - TGMetricPadMedium;
 		UIView *pill = [[UIView alloc] initWithFrame:CGRectMake(pillX, pillY, pillW, pillH)];
 		pill.backgroundColor = [[TGTheme shared] recordLockColour];

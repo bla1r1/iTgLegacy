@@ -67,7 +67,7 @@ static const CGFloat kIconSide = 18.0f;
 - (void)setHasError:(BOOL)hasError {
 	_hasError = hasError;
 	if (hasError) {
-		self.layer.borderColor = [TGTheme shared].destructiveActionColour.CGColor;
+		self.layer.borderColor = [TGTheme shared].destructiveColour.CGColor;
 		self.layer.borderWidth = 1.0f;
 		self.layer.cornerRadius = TGMetricCornerControl;
 	} else {

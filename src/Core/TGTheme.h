@@ -80,9 +80,24 @@ extern NSString *const TGThemeChangedNotification;
 
 #pragma mark - wallpaper
 
+typedef NS_ENUM(NSInteger, TGWallpaperType) {
+	TGWallpaperTypeNone = 0,
+	TGWallpaperTypePaperGrain = 1,
+	TGWallpaperTypePinstripes = 2,
+	TGWallpaperTypeLinen = 3,
+	TGWallpaperTypeParchment = 4,
+	TGWallpaperTypeFelt = 5,
+	TGWallpaperTypeCustom = 6
+};
+
 /// The chat wallpaper, or nil for a plain background. Either a picture the
-/// user chose or one carried by an imported theme.
+/// user chose, a physical texture preset, or one carried by an imported theme.
 - (UIImage *)wallpaper;
+
+/// Current wallpaper type (preset physical texture, custom photo, or none). Persisted.
+- (TGWallpaperType)wallpaperType;
+- (void)setWallpaperType:(TGWallpaperType)type;
+- (NSString *)wallpaperTitleForType:(TGWallpaperType)type;
 
 /// Adopt a picture as the wallpaper; nil clears it. Persisted.
 - (void)setWallpaperImage:(UIImage *)image;
@@ -106,6 +121,7 @@ extern NSString *const TGThemeChangedNotification;
 typedef NS_ENUM(NSInteger, TGButtonStyle) {
     TGButtonStyleAction = 0,    ///< Glossy blue action button
     TGButtonStyleSilver,        ///< Classic metallic silver button
+    TGButtonStyleSecondary = TGButtonStyleSilver, ///< Alias for secondary button
     TGButtonStyleDestructive,   ///< Glossy crimson destructive button
     TGButtonStyleSuccess,       ///< Glossy green accept/call button
     TGButtonStyleGhost          ///< Subtle translucent / etched ghost button
@@ -130,6 +146,12 @@ typedef NS_ENUM(NSInteger, TGButtonStyle) {
 /// Subtle procedural vertical pinstripe / linen pattern for grouped backgrounds.
 + (UIImage *)skeuomorphicPinstripePattern;
 
+/// Tactile Apple physical canvas patterns.
++ (UIImage *)skeuomorphicLinenPattern;
++ (UIImage *)skeuomorphicParchmentPattern;
++ (UIImage *)skeuomorphicFeltPattern;
++ (UIImage *)skeuomorphicPaperGrainPattern;
+
 /// Recessed well image for search fields and input bars.
 + (UIImage *)skeuomorphicWellImageWithHeight:(CGFloat)height cornerRadius:(CGFloat)radius;
 
@@ -151,9 +173,30 @@ typedef NS_ENUM(NSInteger, TGButtonStyle) {
 /// Applies classic recessed well styling to a text field.
 + (void)applySkeuomorphicInputStyle:(UITextField *)field;
 
+/// Brushed aluminum satin metal image for chat composer bar.
++ (UIImage *)skeuomorphicInputBarImageWithHeight:(CGFloat)height;
+
+/// Glowing spotlight selection indicator image for iOS 6 tab bar.
++ (UIImage *)skeuomorphicTabSelectionIndicator;
+
+/// Inset rounded card background image for iOS 6 grouped table rows.
++ (UIImage *)skeuomorphicGroupedCellBackgroundForRow:(NSInteger)row
+                                           totalRows:(NSInteger)total
+                                         highlighted:(BOOL)highlighted
+                                               width:(CGFloat)width
+                                              height:(CGFloat)height;
+
+- (void)styleGroupedCell:(UITableViewCell *)cell forRow:(NSInteger)row totalRows:(NSInteger)total;
+
 @end
 
 @interface TGTheme (Palette)
+
+- (NSArray *)skeuoBubbleMineGradientColours;
+- (NSArray *)skeuoBubbleTheirsGradientColours;
+- (UIColor *)skeuoBubbleMineBorderColour;
+- (UIColor *)skeuoBubbleTheirsBorderColour;
++ (UIImage *)textureImageForType:(TGWallpaperType)type;
 
 #pragma mark - palette
 
@@ -202,6 +245,13 @@ typedef NS_ENUM(NSInteger, TGButtonStyle) {
 - (UIColor *)mediaViewerBackdropColour; ///< full-screen media viewer black background
 - (UIColor *)scrimColour;           ///< backdrop dimming behind modal sheets and alerts
 - (UIColor *)menuWashColour;        ///< subtle wash behind contextual popup menu
+- (UIColor *)calloutBackgroundColour; ///< dark satin glass for iOS 6 callout popup menu
+- (UIColor *)calloutTrayColour;       ///< recessed dark well for reactions
+- (UIColor *)calloutBorderColour;     ///< hairline border for callout
+- (UIColor *)calloutDividerDarkColour; ///< etched dark groove
+- (UIColor *)calloutDividerLightColour; ///< etched specular highlight
+- (UIColor *)calloutGlossTopColour;   ///< specular top reflection for callout popup menu
+- (UIColor *)calloutGlossBottomColour;///< specular fade reflection for callout popup menu
 
 #pragma mark - chat list
 
@@ -255,6 +305,7 @@ typedef NS_ENUM(NSInteger, TGButtonStyle) {
 
 /// Top glossy highlight shine on iOS 6 buttons.
 - (UIColor *)skeuoShineColour;
+- (NSArray *)skeuoShineGradientColours;
 /// Etched light drop shadow under text in iOS 6 style.
 - (UIColor *)etchedTextShadowColour;
 /// Dark text shadow under embossed navigation titles.

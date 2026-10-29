@@ -220,6 +220,7 @@ static inline NSString *TGBytes(long long bytes) {
 - (NSArray *)blockedSections;
 - (NSArray *)powerSavingSections;
 - (NSArray *)recentCallSections;
+- (NSArray *)wallpaperSections;
 - (NSArray *)debugSections;
 
 @end

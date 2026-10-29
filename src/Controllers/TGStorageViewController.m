@@ -151,6 +151,10 @@ static UIColor *TGSliceColour(NSUInteger index) {
 	totalLabel.textColor = [theme primaryTextColour];
 	totalLabel.backgroundColor = [UIColor clearColor];
 	totalLabel.adjustsFontSizeToFitWidth = YES;
+	if (!theme.isFlat) {
+		totalLabel.shadowColor = [theme etchedTextShadowColour];
+		totalLabel.shadowOffset = TGMetricShadowOffsetEtched;
+	}
 	[header addSubview:totalLabel];
 
 	UILabel *caption = [[UILabel alloc] initWithFrame:
@@ -163,6 +167,10 @@ static UIColor *TGSliceColour(NSUInteger index) {
 	caption.textAlignment = NSTextAlignmentCenter;
 	caption.textColor = [theme secondaryTextColour];
 	caption.backgroundColor = [UIColor clearColor];
+	if (!theme.isFlat) {
+		caption.shadowColor = [theme etchedTextShadowColour];
+		caption.shadowOffset = TGMetricShadowOffsetEtched;
+	}
 	[header addSubview:caption];
 
 	return header;

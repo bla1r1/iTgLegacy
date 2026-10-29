@@ -5,23 +5,27 @@
 #import "TGStyle.h"
 #import "TGReactionPicker.h"
 
-static const CGFloat kMenuWidth    = TGMetricMenuWidth;
-static const CGFloat kMenuRow      = TGMetricMenuRow;
-static const CGFloat kMenuGlyph    = TGMetricMenuGlyph;
-static const CGFloat kMenuInset    = TGMetricMenuInset;
-static const CGFloat kGlyphGap     = TGMetricPadLarge;
-static const CGFloat kLabelRoom    = 22.0f;
-static const CGFloat kArrowW       = 16.0f;
-static const CGFloat kArrowH       = 8.0f;
-static const CGFloat kArrowMargin  = 16.0f;
+static const CGFloat kMenuCardW        = 220.0f;
+static const CGFloat kMenuRowH         = 36.0f;
+static const CGFloat kMenuHeaderH      = 18.0f;
+static const CGFloat kMenuHandleW      = 36.0f;
+static const CGFloat kMenuHandleH      = 4.0f;
+static const CGFloat kMenuHandleY      = 7.0f;
+static const CGFloat kMenuHandleRadius = 2.0f;
+static const CGFloat kMenuDividerY     = 15.0f;
+static const CGFloat kMenuGlyphSide    = 18.0f;
+static const CGFloat kMenuGlyphX       = 16.0f;
+static const CGFloat kMenuLabelX       = 46.0f;
+static const CGFloat kReactionPadH     = 12.0f;
+static const CGFloat kReactionPadV     = 6.0f;
 
 static TGPopupMenu *sOpenMenu = nil;
 
 @interface TGPopupMenu () {
-	UIView *_card;
-	UIView *_body;
-	UIView *_shineView;
-	CAShapeLayer *_arrowLayer;
+	UIView *_reactionWrapper;
+	UIView *_reactionCard;
+	UIView *_actionWrapper;
+	UIView *_actionCard;
 	TGReactionPicker *_reactionPicker;
 	NSArray *_items;
 	void (^_choice)(NSInteger, NSString *);
@@ -62,11 +66,11 @@ static TGPopupMenu *sOpenMenu = nil;
 	[host addSubview:menu];
 	sOpenMenu = menu;
 
-	menu->_card.transform = CGAffineTransformMakeScale(TGTransformScaleMenuInitial, TGTransformScaleMenuInitial);
-	menu->_card.alpha = TGAlphaTransparent;
+	menu->_actionWrapper.transform = CGAffineTransformMakeScale(TGTransformScaleMenuInitial, TGTransformScaleMenuInitial);
+	menu->_actionWrapper.alpha = TGAlphaTransparent;
 	[UIView animateWithDuration:TGAnimationDurationFast animations:^{
-		menu->_card.transform = CGAffineTransformIdentity;
-		menu->_card.alpha = TGAlphaOpaque;
+		menu->_actionWrapper.transform = CGAffineTransformIdentity;
+		menu->_actionWrapper.alpha = TGAlphaOpaque;
 	}];
 }
 
@@ -90,11 +94,20 @@ static TGPopupMenu *sOpenMenu = nil;
 	[host addSubview:menu];
 	sOpenMenu = menu;
 
-	menu->_card.transform = CGAffineTransformMakeScale(TGTransformScaleMenuInitial, TGTransformScaleMenuInitial);
-	menu->_card.alpha = TGAlphaTransparent;
+	if (menu->_reactionWrapper) {
+		menu->_reactionWrapper.transform = CGAffineTransformMakeScale(TGTransformScaleMenuInitial, TGTransformScaleMenuInitial);
+		menu->_reactionWrapper.alpha = TGAlphaTransparent;
+	}
+	menu->_actionWrapper.transform = CGAffineTransformMakeScale(TGTransformScaleMenuInitial, TGTransformScaleMenuInitial);
+	menu->_actionWrapper.alpha = TGAlphaTransparent;
+
 	[UIView animateWithDuration:TGAnimationDurationFast animations:^{
-		menu->_card.transform = CGAffineTransformIdentity;
-		menu->_card.alpha = TGAlphaOpaque;
+		if (menu->_reactionWrapper) {
+			menu->_reactionWrapper.transform = CGAffineTransformIdentity;
+			menu->_reactionWrapper.alpha = TGAlphaOpaque;
+		}
+		menu->_actionWrapper.transform = CGAffineTransformIdentity;
+		menu->_actionWrapper.alpha = TGAlphaOpaque;
 	}];
 }
 
@@ -109,20 +122,34 @@ static TGPopupMenu *sOpenMenu = nil;
 
 	self.backgroundColor = [theme menuWashColour];
 
+	CGFloat hostW = self.bounds.size.width;
+	CGFloat hostH = self.bounds.size.height;
+
+	// Calculate Action Card Height
+	CGFloat headerH = headerView ? headerView.bounds.size.height : kMenuHeaderH;
+	CGFloat actionCardH = headerH + (CGFloat)items.count * kMenuRowH;
+	for (NSDictionary *it in items) {
+		if ([it[@"title"] isEqualToString:@"Select"]) {
+			actionCardH += TGMetricPadTiny;
+			break;
+		}
+	}
+
+	CGFloat reactionW = 0.0f;
 	CGFloat reactionH = 0.0f;
-	CGFloat cardW = kMenuWidth;
+	CGSize pSize = CGSizeZero;
 
 	if (reactions.count) {
 		_reactionPicker = [[TGReactionPicker alloc] initWithEmojis:reactions selectedEmoji:selectedReaction];
-		CGSize pSize = [_reactionPicker sizeThatFits:CGSizeZero];
-		if (pSize.width > cardW) {
-			cardW = pSize.width;
-		}
-		reactionH = pSize.height;
+		pSize = [_reactionPicker sizeThatFits:CGSizeZero];
+		reactionW = pSize.width + kReactionPadH;
+		reactionH = pSize.height + kReactionPadV;
 
 		__weak typeof(self) weakSelf = self;
 		_reactionPicker.onEmojiSelected = ^(NSString *emoji){
-			void (^rChoice)(NSString *) = weakSelf->_reactionChoice;
+			TGPopupMenu *strongSelf = weakSelf;
+			if (!strongSelf) return;
+			void (^rChoice)(NSString *) = strongSelf->_reactionChoice;
 			[TGPopupMenu dismiss];
 			if (rChoice) {
 				rChoice(emoji);
@@ -130,141 +157,177 @@ static TGPopupMenu *sOpenMenu = nil;
 		};
 	}
 
-	CGFloat headerH = headerView ? headerView.bounds.size.height : 0.0f;
-	CGFloat totalContentH = reactionH + headerH + kMenuRow * (CGFloat)items.count;
-	CGFloat totalHWithArrow = totalContentH + kArrowH;
+	// Layout positions
+	CGFloat cardX = MIN(MAX(TGMetricPad, point.x - TGHalf(kMenuCardW)), hostW - kMenuCardW - TGMetricPad);
+	CGFloat cardY = 0.0f;
+	CGFloat reactionX = 0.0f;
+	CGFloat reactionY = 0.0f;
 
-	CGFloat hostW = self.bounds.size.width;
-	CGFloat hostH = self.bounds.size.height;
-
-	CGFloat x = MIN(MAX(TGMetricPad, point.x - TGHalf(cardW)), hostW - cardW - TGMetricPad);
-
-	BOOL arrowPointsDown = NO;
-	CGFloat y = point.y + TGMetricPad;
-	if (y + totalHWithArrow > hostH - TGMetricPad) {
-		// Place card above the point
-		y = MAX(TGMetricPad, point.y - totalHWithArrow - TGMetricPad);
-		arrowPointsDown = YES;
-	}
-
-	_card = [[UIView alloc] initWithFrame:CGRectMake(x, y, cardW, totalHWithArrow)];
-	_card.backgroundColor = [UIColor clearColor];
-	_card.layer.shadowColor = [UIColor blackColor].CGColor;
-	_card.layer.shadowOpacity = TGMetricShadowMenuOpacity;
-	_card.layer.shadowRadius = TGMetricShadowMenuRadius;
-	_card.layer.shadowOffset = TGMetricShadowOffsetMenu;
-	[self addSubview:_card];
-
-	CGFloat bodyY = arrowPointsDown ? 0.0f : kArrowH;
-	_body = [[UIView alloc] initWithFrame:CGRectMake(0, bodyY, cardW, totalContentH)];
-	_body.backgroundColor = [theme cardBackgroundColour];
-	_body.layer.cornerRadius = TGMetricCornerCard;
-	_body.layer.masksToBounds = YES;
-	_body.layer.borderColor = [theme separatorColour].CGColor;
-	_body.layer.borderWidth = 1.0f;
-	[_card addSubview:_body];
-
-	_shineView = [[UIView alloc] initWithFrame:CGRectMake(TGMetricPadSmall, 0.5f, cardW - TGDoubled(TGMetricPadSmall), 1.0f)];
-	_shineView.backgroundColor = [theme skeuoShineColour];
-	_shineView.userInteractionEnabled = NO;
-	[_body addSubview:_shineView];
-
-	// Pointer arrow (Callout tail)
-	CGFloat arrowCenterX = MIN(MAX(kArrowMargin + TGHalf(kArrowW), point.x - x), cardW - kArrowMargin - TGHalf(kArrowW));
-	CGFloat arrowLeft = arrowCenterX - TGHalf(kArrowW);
-
-	UIBezierPath *arrowPath = [UIBezierPath bezierPath];
-	if (arrowPointsDown) {
-		CGFloat arrowTop = totalContentH;
-		[arrowPath moveToPoint:CGPointMake(arrowLeft, arrowTop)];
-		[arrowPath addLineToPoint:CGPointMake(arrowCenterX, arrowTop + kArrowH)];
-		[arrowPath addLineToPoint:CGPointMake(arrowLeft + kArrowW, arrowTop)];
-		[arrowPath closePath];
+	if (reactions.count) {
+		reactionX = MIN(MAX(TGMetricPad, point.x - TGHalf(reactionW)), hostW - reactionW - TGMetricPad);
+		if (point.y + actionCardH + TGMetricPad < hostH) {
+			// Message is high: Reactions capsule floating ABOVE message, Action card BELOW
+			reactionY = MAX(TGMetricPad, point.y - reactionH - TGMetricPadSmall);
+			cardY = point.y + TGMetricPadSmall;
+		} else {
+			// Message is low: Action card floats above message, Reaction capsule above action card
+			cardY = MAX(TGMetricPad + reactionH + TGMetricPadSmall, point.y - actionCardH - TGMetricPadSmall);
+			reactionY = cardY - reactionH - TGMetricPadSmall;
+		}
 	} else {
-		[arrowPath moveToPoint:CGPointMake(arrowLeft, kArrowH)];
-		[arrowPath addLineToPoint:CGPointMake(arrowCenterX, 0)];
-		[arrowPath addLineToPoint:CGPointMake(arrowLeft + kArrowW, kArrowH)];
-		[arrowPath closePath];
+		if (point.y + actionCardH + TGMetricPad < hostH) {
+			cardY = point.y + TGMetricPadSmall;
+		} else {
+			cardY = MAX(TGMetricPad, point.y - actionCardH - TGMetricPadSmall);
+		}
 	}
 
-	_arrowLayer = [CAShapeLayer layer];
-	_arrowLayer.path = arrowPath.CGPath;
-	_arrowLayer.fillColor = [theme cardBackgroundColour].CGColor;
-	_arrowLayer.strokeColor = [theme separatorColour].CGColor;
-	_arrowLayer.lineWidth = 1.0f;
-	[_card.layer addSublayer:_arrowLayer];
+	// 1. Build Floating Reaction Capsule
+	if (reactions.count) {
+		_reactionWrapper = [[UIView alloc] initWithFrame:CGRectMake(reactionX, reactionY, reactionW, reactionH)];
+		_reactionWrapper.backgroundColor = [UIColor clearColor];
+		_reactionWrapper.layer.shadowColor = [UIColor blackColor].CGColor;
+		_reactionWrapper.layer.shadowOpacity = TGMetricShadowMenuOpacity;
+		_reactionWrapper.layer.shadowRadius = TGMetricShadowMenuRadius;
+		_reactionWrapper.layer.shadowOffset = TGMetricShadowOffsetMenu;
+		[self addSubview:_reactionWrapper];
+
+		_reactionCard = [[UIView alloc] initWithFrame:_reactionWrapper.bounds];
+		_reactionCard.backgroundColor = [theme calloutBackgroundColour];
+		_reactionCard.layer.cornerRadius = TGHalf(reactionH);
+		_reactionCard.layer.masksToBounds = YES;
+		_reactionCard.layer.borderColor = [theme calloutBorderColour].CGColor;
+		_reactionCard.layer.borderWidth = 1.0f;
+		[_reactionWrapper addSubview:_reactionCard];
+
+		CAGradientLayer *rGloss = [CAGradientLayer layer];
+		rGloss.frame = CGRectMake(0, 0, reactionW, TGHalf(reactionH));
+		rGloss.colors = @[
+			(id)[theme calloutGlossTopColour].CGColor,
+			(id)[theme calloutGlossBottomColour].CGColor,
+			(id)[UIColor clearColor].CGColor
+		];
+		rGloss.locations = @[ @0.0f, @0.85f, @1.0f ];
+		[_reactionCard.layer addSublayer:rGloss];
+
+		_reactionPicker.frame = CGRectMake(TGHalf(kReactionPadH), TGHalf(kReactionPadV), pSize.width, pSize.height);
+		[_reactionCard addSubview:_reactionPicker];
+	}
+
+	// 2. Build Floating Action Menu Card
+	_actionWrapper = [[UIView alloc] initWithFrame:CGRectMake(cardX, cardY, kMenuCardW, actionCardH)];
+	_actionWrapper.backgroundColor = [UIColor clearColor];
+	_actionWrapper.layer.shadowColor = [UIColor blackColor].CGColor;
+	_actionWrapper.layer.shadowOpacity = TGMetricShadowMenuOpacity;
+	_actionWrapper.layer.shadowRadius = TGMetricShadowMenuRadius;
+	_actionWrapper.layer.shadowOffset = TGMetricShadowOffsetMenu;
+	[self addSubview:_actionWrapper];
+
+	_actionCard = [[UIView alloc] initWithFrame:_actionWrapper.bounds];
+	_actionCard.backgroundColor = [theme calloutBackgroundColour];
+	_actionCard.layer.cornerRadius = TGMetricCornerCard;
+	_actionCard.layer.masksToBounds = YES;
+	_actionCard.layer.borderColor = [theme calloutBorderColour].CGColor;
+	_actionCard.layer.borderWidth = 1.0f;
+	[_actionWrapper addSubview:_actionCard];
+
+	CAGradientLayer *gloss = [CAGradientLayer layer];
+	gloss.frame = CGRectMake(0, 0, kMenuCardW, TGHalf(actionCardH));
+	gloss.colors = @[
+		(id)[theme calloutGlossTopColour].CGColor,
+		(id)[theme calloutGlossBottomColour].CGColor,
+		(id)[UIColor clearColor].CGColor
+	];
+	gloss.locations = @[ @0.0f, @0.85f, @1.0f ];
+	[_actionCard.layer addSublayer:gloss];
 
 	CGFloat currentY = 0.0f;
 
-	// Reactions bar at top of card
-	if (_reactionPicker) {
-		_reactionPicker.frame = CGRectMake(0, 0, cardW, reactionH);
-		_reactionPicker.layer.cornerRadius = 0.0f;
-		_reactionPicker.layer.borderWidth = 0.0f;
-		[_body addSubview:_reactionPicker];
-		currentY += reactionH;
-
-		if (items.count > 0 || headerView) {
-			UIView *div = [[UIView alloc] initWithFrame:CGRectMake(0, currentY, cardW, 1.0f)];
-			div.backgroundColor = [theme separatorColour];
-			[_body addSubview:div];
-		}
-	}
-
 	if (headerView) {
-		headerView.frame = CGRectMake(0, currentY, cardW, headerH);
-		[_body addSubview:headerView];
+		headerView.frame = CGRectMake(0, 0, kMenuCardW, headerH);
+		[_actionCard addSubview:headerView];
 		currentY += headerH;
 
-		if (items.count > 0) {
-			UIView *div = [[UIView alloc] initWithFrame:CGRectMake(0, currentY, cardW, 1.0f)];
-			div.backgroundColor = [theme separatorColour];
-			[_body addSubview:div];
-		}
+		UIView *divDark = [[UIView alloc] initWithFrame:CGRectMake(TGMetricPadSmall, currentY - 0.5f, kMenuCardW - TGDoubled(TGMetricPadSmall), 0.5f)];
+		divDark.backgroundColor = [theme calloutDividerDarkColour];
+		[_actionCard addSubview:divDark];
+
+		UIView *divLight = [[UIView alloc] initWithFrame:CGRectMake(TGMetricPadSmall, currentY, kMenuCardW - TGDoubled(TGMetricPadSmall), 0.5f)];
+		divLight.backgroundColor = [theme calloutDividerLightColour];
+		[_actionCard addSubview:divLight];
+	} else {
+		// Top Pill Drag Handle (matching reference image)
+		UIView *handle = [[UIView alloc] initWithFrame:CGRectMake(TGCenteredOrigin(kMenuCardW, kMenuHandleW), kMenuHandleY, kMenuHandleW, kMenuHandleH)];
+		handle.backgroundColor = [theme calloutDividerDarkColour];
+		handle.layer.cornerRadius = TGHalf(kMenuHandleH);
+		[_actionCard addSubview:handle];
+
+		UIView *divDark = [[UIView alloc] initWithFrame:CGRectMake(TGMetricPadSmall, kMenuDividerY - 0.5f, kMenuCardW - TGDoubled(TGMetricPadSmall), 0.5f)];
+		divDark.backgroundColor = [theme calloutDividerDarkColour];
+		[_actionCard addSubview:divDark];
+
+		UIView *divLight = [[UIView alloc] initWithFrame:CGRectMake(TGMetricPadSmall, kMenuDividerY, kMenuCardW - TGDoubled(TGMetricPadSmall), 0.5f)];
+		divLight.backgroundColor = [theme calloutDividerLightColour];
+		[_actionCard addSubview:divLight];
+
+		currentY = kMenuHeaderH;
 	}
 
+	// Action Rows
 	for (NSUInteger i = 0; i < items.count; i++) {
 		NSDictionary *item = items[i];
 		BOOL destructive = [item[@"destructive"] boolValue];
-		CGRect frame = CGRectMake(0, currentY + kMenuRow * (CGFloat)i, cardW, kMenuRow);
+		NSString *title = item[@"title"];
+
+		// Section divider before "Select"
+		if ([title isEqualToString:@"Select"]) {
+			UIView *sDark = [[UIView alloc] initWithFrame:CGRectMake(TGMetricPadSmall, currentY - 0.5f, kMenuCardW - TGDoubled(TGMetricPadSmall), 0.5f)];
+			sDark.backgroundColor = [theme calloutDividerDarkColour];
+			[_actionCard addSubview:sDark];
+
+			UIView *sLight = [[UIView alloc] initWithFrame:CGRectMake(TGMetricPadSmall, currentY, kMenuCardW - TGDoubled(TGMetricPadSmall), 0.5f)];
+			sLight.backgroundColor = [theme calloutDividerLightColour];
+			[_actionCard addSubview:sLight];
+
+			currentY += TGMetricPadTiny;
+		}
 
 		UIButton *row = [UIButton buttonWithType:UIButtonTypeCustom];
-		row.frame = frame;
+		row.frame = CGRectMake(0, currentY, kMenuCardW, kMenuRowH);
 		row.tag = (NSInteger)i;
 		[row addTarget:self action:@selector(rowTapped:) forControlEvents:UIControlEventTouchUpInside];
-		[_body addSubview:row];
+		[row setBackgroundImage:[TGTheme skeuomorphicButtonImageWithColor:[theme accentColour] height:kMenuRowH highlighted:YES cornerRadius:0.0f] forState:UIControlStateHighlighted];
+		[_actionCard addSubview:row];
 
 		UIImage *glyph = [TGIcons menuGlyphNamed:item[@"icon"]];
 		if (glyph) {
 			UIImageView *icon = [[UIImageView alloc] initWithFrame:CGRectMake(
-					kMenuInset, TGCenteredOrigin(kMenuRow, kMenuGlyph), kMenuGlyph, kMenuGlyph)];
+					kMenuGlyphX, TGCenteredOrigin(kMenuRowH, kMenuGlyphSide), kMenuGlyphSide, kMenuGlyphSide)];
 			icon.image = glyph;
 			icon.contentMode = UIViewContentModeScaleAspectFit;
-			icon.tintColor = destructive ? [theme destructiveActionColour] : [theme secondaryTextColour];
+			BOOL dark = theme.isDarkStyle;
+			icon.tintColor = destructive ? [theme destructiveColour] : (dark ? [UIColor whiteColor] : [theme primaryTextColour]);
 			[row addSubview:icon];
 		}
 
-		CGFloat labelX = kMenuInset + kMenuGlyph + kGlyphGap;
+		BOOL dark = theme.isDarkStyle;
 		UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(
-				labelX, 0, cardW - labelX - kLabelRoom, kMenuRow)];
-		label.text = item[@"title"];
-		label.font = TGFontRow();
+				kMenuLabelX, 0, kMenuCardW - kMenuLabelX - TGMetricPad, kMenuRowH)];
+		label.text = title;
+		label.font = TGFontRowStrong();
 		label.backgroundColor = [UIColor clearColor];
 		if (destructive) {
-			label.textColor = [theme destructiveActionColour];
+			label.textColor = [theme destructiveColour];
+			label.shadowColor = dark ? nil : [theme etchedTextShadowColour];
+			label.shadowOffset = CGSizeMake(0, dark ? -1.0f : 1.0f);
 		} else {
-			label.textColor = [theme primaryTextColour];
-			label.shadowColor = [theme etchedTextShadowColour];
-			label.shadowOffset = CGSizeMake(0, 1.0f);
+			label.textColor = dark ? [UIColor whiteColor] : [theme primaryTextColour];
+			label.shadowColor = dark ? [theme navBarTextShadowColour] : [theme etchedTextShadowColour];
+			label.shadowOffset = CGSizeMake(0, dark ? -1.0f : 1.0f);
 		}
 		[row addSubview:label];
 
-		if (i + 1 < items.count) {
-			UIView *hair = [[UIView alloc] initWithFrame:CGRectMake(
-					kMenuInset, currentY + kMenuRow * (CGFloat)(i + 1) - 1.0f, cardW - kMenuInset, 1.0f)];
-			hair.backgroundColor = [theme separatorColour];
-			[_body addSubview:hair];
-		}
+		currentY += kMenuRowH;
 	}
 }
 
@@ -278,11 +341,13 @@ static TGPopupMenu *sOpenMenu = nil;
 }
 
 - (void)touchesEnded:(NSSet *)touches withEvent:(UIEvent *)event {
-	if ([NSDate timeIntervalSinceReferenceDate] - _shownAt < 0.4)
+	if ([NSDate timeIntervalSinceReferenceDate] - _shownAt < 0.3)
 		return;
 	CGPoint where = [[touches anyObject] locationInView:self];
-	if (!CGRectContainsPoint(_card.frame, where))
+	if (!CGRectContainsPoint(_actionWrapper.frame, where) &&
+		(!_reactionWrapper || !CGRectContainsPoint(_reactionWrapper.frame, where))) {
 		[TGPopupMenu dismiss];
+	}
 }
 
 @end

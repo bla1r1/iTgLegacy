@@ -58,6 +58,11 @@
 /// The tail Telegram hangs off the bottom corner of the last bubble in a run,
 /// kTailWidth x kTailHeight; it sits flush against the bubble's edge.
 + (UIImage *)bubbleTailForColour:(UIColor *)colour outgoing:(BOOL)outgoing;
++ (UIImage *)bubbleTailForColour:(UIColor *)colour outgoing:(BOOL)outgoing borderColour:(UIColor *)borderColour;
+
+/// Skeuomorphic metallic silver chevron accessory for grouped table cards.
++ (UIImage *)skeuomorphicDisclosureChevron;
++ (UIImage *)skeuomorphicDisclosureChevronHighlighted;
 
 /// Delivery ticks, drawn the way Telegram draws them: two checks overlapping
 /// into one mark, not two separate glyphs side by side.

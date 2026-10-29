@@ -14,6 +14,7 @@ static const CGFloat kIconDumpSide = 52.0f;
 #import "TGCallViewController.h"
 #import "TGChatViewController.h"
 #import "TGTopicsViewController.h"
+#import "TGGalleryViewController.h"
 #import "TGIcons.h"
 #import <QuartzCore/QuartzCore.h>
 
@@ -28,6 +29,14 @@ static NSString *TGBase64FromImage(UIImage *img) {
 }
 
 @implementation AppDelegate (URL)
+
+- (UITabBarController *)activeTabBarController {
+	UIViewController *root = self.rootViewController ?: self.window.rootViewController;
+	if ([root isKindOfClass:[UITabBarController class]]) {
+		return (UITabBarController *)root;
+	}
+	return nil;
+}
 
 #pragma mark - remote control by URL
 
@@ -81,10 +90,12 @@ static NSString *TGBase64FromImage(UIImage *img) {
 
 	if ([host isEqualToString:@"tab"]){
 		dispatch_async(dispatch_get_main_queue(), ^{
-			UITabBarController *tabs = (UITabBarController *)self.rootViewController;
+			UITabBarController *tabs = [self activeTabBarController];
 			NSInteger idx = [arg integerValue];
-			if ([self.rootViewController isKindOfClass:[RootViewController class]]) {
-				[(RootViewController *)self.rootViewController switchToTab:(NSUInteger)idx popToRoot:YES];
+			if ([tabs isKindOfClass:[RootViewController class]]) {
+				[(RootViewController *)tabs switchToTab:(NSUInteger)idx popToRoot:YES];
+			} else if (tabs) {
+				tabs.selectedIndex = idx;
 			}
 		});
 		return YES;
@@ -101,10 +112,14 @@ static NSString *TGBase64FromImage(UIImage *img) {
 			}
 			NSDictionary *c = chats[idx];
 
-			UITabBarController *tabs = (UITabBarController *)self.rootViewController;
+			UITabBarController *tabs = (UITabBarController *)(self.rootViewController ?: self.window.rootViewController);
 			if (![tabs isKindOfClass:UITabBarController.class])
 				return;
-			tabs.selectedIndex = 0;
+			if ([tabs isKindOfClass:[RootViewController class]]) {
+				[(RootViewController *)tabs switchToTab:0 popToRoot:YES];
+			} else {
+				tabs.selectedIndex = 0;
+			}
 			UINavigationController *nc = tabs.viewControllers[0];
 			[nc popToRootViewControllerAnimated:NO];
 
@@ -279,7 +294,7 @@ static NSString *TGBase64FromImage(UIImage *img) {
 	// first responders.
 	if ([host isEqualToString:@"search"]){
 		dispatch_async(dispatch_get_main_queue(), ^{
-			UITabBarController *tabs = (UITabBarController *)self.rootViewController;
+			UITabBarController *tabs = [self activeTabBarController];
 			if (![tabs isKindOfClass:UITabBarController.class])
 				return;
 			UINavigationController *nc = tabs.viewControllers[tabs.selectedIndex];
@@ -306,16 +321,17 @@ static NSString *TGBase64FromImage(UIImage *img) {
 	// the ones most worth looking at.
 	if ([host isEqualToString:@"holdrow"]){
 		dispatch_async(dispatch_get_main_queue(), ^{
-			UITabBarController *tabs = (UITabBarController *)self.rootViewController;
+			UITabBarController *tabs = [self activeTabBarController];
 			if (![tabs isKindOfClass:UITabBarController.class])
 				return;
-			UIViewController *top = [tabs.viewControllers[tabs.selectedIndex] topViewController];
+			UIViewController *selected = tabs.viewControllers[tabs.selectedIndex];
+			UIViewController *top = [selected isKindOfClass:[UINavigationController class]] ? [(UINavigationController *)selected topViewController] : selected;
 			if (![top respondsToSelector:@selector(showActionsForRow:)]){
 				NSLog(@"holdrow: %@ has no row menu", [top class]);
 				return;
 			}
-			NSLog(@"holdrow: %ld on %@", (long)[arg integerValue], [top class]);
-			NSInteger row = [arg integerValue];
+			NSInteger row = [arg isEqualToString:@"last"] ? -1 : [arg integerValue];
+			NSLog(@"holdrow: %ld on %@", (long)row, [top class]);
 			NSMethodSignature *sig = [top methodSignatureForSelector:
 					@selector(showActionsForRow:)];
 			NSInvocation *call = [NSInvocation invocationWithMethodSignature:sig];
@@ -330,7 +346,7 @@ static NSString *TGBase64FromImage(UIImage *img) {
 	// itglegacy://scroll/N - a screenshot only shows the top of a screen.
 	if ([host isEqualToString:@"scroll"]){
 		dispatch_async(dispatch_get_main_queue(), ^{
-			UITabBarController *tabs = (UITabBarController *)self.rootViewController;
+			UITabBarController *tabs = [self activeTabBarController];
 			if (![tabs isKindOfClass:UITabBarController.class])
 				return;
 			UIViewController *top = [tabs.viewControllers[tabs.selectedIndex] topViewController];
@@ -348,13 +364,33 @@ static NSString *TGBase64FromImage(UIImage *img) {
 	// itglegacy://device - the Device screen, which is three taps in otherwise.
 	if ([host isEqualToString:@"device"]){
 		dispatch_async(dispatch_get_main_queue(), ^{
-			UITabBarController *tabs = (UITabBarController *)self.rootViewController;
+			UITabBarController *tabs = [self activeTabBarController];
 			if (![tabs isKindOfClass:UITabBarController.class])
 				return;
 			tabs.selectedIndex = tabs.viewControllers.count - 1;
 			UINavigationController *nc = tabs.viewControllers[tabs.selectedIndex];
 			[nc popToRootViewControllerAnimated:NO];
 			[nc pushViewController:[[TGDeviceViewController alloc] init] animated:NO];
+		});
+		return YES;
+	}
+
+	// itglegacy://gallery - open the UI Component Gallery Design Lab
+	if ([host isEqualToString:@"gallery"]){
+		dispatch_async(dispatch_get_main_queue(), ^{
+			UITabBarController *tabs = [self activeTabBarController];
+			if (![tabs isKindOfClass:UITabBarController.class])
+				return;
+			if ([tabs isKindOfClass:[RootViewController class]]) {
+				[(RootViewController *)tabs switchToTab:tabs.viewControllers.count - 1 popToRoot:YES];
+			} else {
+				tabs.selectedIndex = tabs.viewControllers.count - 1;
+			}
+			UINavigationController *nc = tabs.viewControllers[tabs.selectedIndex];
+			[nc popToRootViewControllerAnimated:NO];
+			TGGalleryViewController *gallery = [[TGGalleryViewController alloc] init];
+			gallery.hidesBottomBarWhenPushed = YES;
+			[nc pushViewController:gallery animated:NO];
 		});
 		return YES;
 	}
@@ -366,16 +402,24 @@ static NSString *TGBase64FromImage(UIImage *img) {
 	// can do at all.
 	if ([host isEqualToString:@"settings"]){
 		dispatch_async(dispatch_get_main_queue(), ^{
-			UITabBarController *tabs = (UITabBarController *)self.rootViewController;
+			UITabBarController *tabs = [self activeTabBarController];
 			if (![tabs isKindOfClass:UITabBarController.class])
 				return;
-			tabs.selectedIndex = tabs.viewControllers.count - 1;
+			if ([tabs isKindOfClass:[RootViewController class]]) {
+				[(RootViewController *)tabs switchToTab:tabs.viewControllers.count - 1 popToRoot:YES];
+			} else {
+				tabs.selectedIndex = tabs.viewControllers.count - 1;
+			}
 			UINavigationController *nc = tabs.viewControllers[tabs.selectedIndex];
 			[nc popToRootViewControllerAnimated:NO];
 			if (!arg.length)
 				return;                     // the root is where we already are
 			TGSettingsViewController *page = [[TGSettingsViewController alloc] init];
-			page.page = (TGSettingsPage)[arg integerValue];
+			if ([arg isEqualToString:@"wallpaper"]) {
+				page.page = TGSettingsPageWallpaper;
+			} else {
+				page.page = (TGSettingsPage)[arg integerValue];
+			}
 			// As the rows push it, so a screenshot shows the page the way a
 			// finger would reach it rather than under the tab bar.
 			page.hidesBottomBarWhenPushed = YES;
@@ -384,10 +428,26 @@ static NSString *TGBase64FromImage(UIImage *img) {
 		return YES;
 	}
 
+	// itglegacy://wallpaper/<name or id> - switch chat canvas texture
+	if ([host isEqualToString:@"wallpaper"] && arg.length){
+		dispatch_async(dispatch_get_main_queue(), ^{
+			NSInteger type = [arg integerValue];
+			if ([arg isEqualToString:@"none"]) type = TGWallpaperTypeNone;
+			else if ([arg isEqualToString:@"grain"]) type = TGWallpaperTypePaperGrain;
+			else if ([arg isEqualToString:@"pinstripes"]) type = TGWallpaperTypePinstripes;
+			else if ([arg isEqualToString:@"linen"]) type = TGWallpaperTypeLinen;
+			else if ([arg isEqualToString:@"parchment"]) type = TGWallpaperTypeParchment;
+			else if ([arg isEqualToString:@"felt"]) type = TGWallpaperTypeFelt;
+			[[TGTheme shared] setWallpaperType:(TGWallpaperType)type];
+			NSLog(@"set wallpaper type: %ld (%@)", (long)type, arg);
+		});
+		return YES;
+	}
+
 	// itglegacy://tab/N - switch tabs, so screens behind them can be checked.
 	if ([host isEqualToString:@"tab"]){
 		dispatch_async(dispatch_get_main_queue(), ^{
-			UITabBarController *tabs = (UITabBarController *)self.rootViewController;
+			UITabBarController *tabs = [self activeTabBarController];
 			if ([tabs isKindOfClass:UITabBarController.class])
 				tabs.selectedIndex = MIN((NSUInteger)[arg integerValue],
 										 tabs.viewControllers.count - 1);
@@ -398,7 +458,7 @@ static NSString *TGBase64FromImage(UIImage *img) {
 	// itglegacy://dump - dump chat messages summary to /tmp/chat_messages.json.
 	if ([host isEqualToString:@"dump"]){
 		dispatch_async(dispatch_get_main_queue(), ^{
-			UITabBarController *tabs = (UITabBarController *)self.rootViewController;
+			UITabBarController *tabs = [self activeTabBarController];
 			if (![tabs isKindOfClass:UITabBarController.class]) return;
 			UINavigationController *nc = tabs.viewControllers[tabs.selectedIndex];
 			UIViewController *top = nc.topViewController;
@@ -522,7 +582,7 @@ static NSString *TGBase64FromImage(UIImage *img) {
 	// itglegacy://stickers - open the sticker strip, which needs a real tap.
 	if ([host isEqualToString:@"stickers"]){
 		dispatch_async(dispatch_get_main_queue(), ^{
-			UITabBarController *tabs = (UITabBarController *)self.rootViewController;
+			UITabBarController *tabs = [self activeTabBarController];
 			if (![tabs isKindOfClass:UITabBarController.class])
 				return;
 			UIViewController *top = [tabs.viewControllers[tabs.selectedIndex] topViewController];
@@ -539,7 +599,7 @@ static NSString *TGBase64FromImage(UIImage *img) {
 	// itglegacy://edit - enter message multi-select edit mode.
 	if ([host isEqualToString:@"edit"]){
 		dispatch_async(dispatch_get_main_queue(), ^{
-			UITabBarController *tabs = (UITabBarController *)self.rootViewController;
+			UITabBarController *tabs = [self activeTabBarController];
 			if (![tabs isKindOfClass:UITabBarController.class]) return;
 			UINavigationController *nc = tabs.viewControllers[tabs.selectedIndex];
 			UIViewController *top = nc.topViewController;
@@ -553,7 +613,7 @@ static NSString *TGBase64FromImage(UIImage *img) {
 	// itglegacy://select/N - toggle selection of Nth message.
 	if ([host isEqualToString:@"select"]){
 		dispatch_async(dispatch_get_main_queue(), ^{
-			UITabBarController *tabs = (UITabBarController *)self.rootViewController;
+			UITabBarController *tabs = [self activeTabBarController];
 			if (![tabs isKindOfClass:UITabBarController.class]) return;
 			UINavigationController *nc = tabs.viewControllers[tabs.selectedIndex];
 			UIViewController *top = nc.topViewController;
@@ -567,7 +627,7 @@ static NSString *TGBase64FromImage(UIImage *img) {
 	// itglegacy://cancel - exit message edit mode.
 	if ([host isEqualToString:@"cancel"]){
 		dispatch_async(dispatch_get_main_queue(), ^{
-			UITabBarController *tabs = (UITabBarController *)self.rootViewController;
+			UITabBarController *tabs = [self activeTabBarController];
 			if (![tabs isKindOfClass:UITabBarController.class]) return;
 			UINavigationController *nc = tabs.viewControllers[tabs.selectedIndex];
 			UIViewController *top = nc.topViewController;
@@ -581,7 +641,7 @@ static NSString *TGBase64FromImage(UIImage *img) {
 	// itglegacy://delete_selected - delete selected messages.
 	if ([host isEqualToString:@"delete_selected"]){
 		dispatch_async(dispatch_get_main_queue(), ^{
-			UITabBarController *tabs = (UITabBarController *)self.rootViewController;
+			UITabBarController *tabs = [self activeTabBarController];
 			if (![tabs isKindOfClass:UITabBarController.class]) return;
 			UINavigationController *nc = tabs.viewControllers[tabs.selectedIndex];
 			UIViewController *top = nc.topViewController;
@@ -602,7 +662,7 @@ static NSString *TGBase64FromImage(UIImage *img) {
 	// itglegacy://forward_selected - forward selected messages.
 	if ([host isEqualToString:@"forward_selected"]){
 		dispatch_async(dispatch_get_main_queue(), ^{
-			UITabBarController *tabs = (UITabBarController *)self.rootViewController;
+			UITabBarController *tabs = [self activeTabBarController];
 			if (![tabs isKindOfClass:UITabBarController.class]) return;
 			UINavigationController *nc = tabs.viewControllers[tabs.selectedIndex];
 			UIViewController *top = nc.topViewController;
@@ -636,7 +696,7 @@ static NSString *TGBase64FromImage(UIImage *img) {
 	// itglegacy://profile - open the profile of the chat already on screen.
 	if ([host isEqualToString:@"profile"]){
 		dispatch_async(dispatch_get_main_queue(), ^{
-			UITabBarController *tabs = (UITabBarController *)self.rootViewController;
+			UITabBarController *tabs = [self activeTabBarController];
 			if (![tabs isKindOfClass:UITabBarController.class])
 				return;
 			UINavigationController *nc = tabs.viewControllers[tabs.selectedIndex];
@@ -654,7 +714,7 @@ static NSString *TGBase64FromImage(UIImage *img) {
 	// end to end without a keyboard.
 	if ([host isEqualToString:@"send"] && arg.length){
 		dispatch_async(dispatch_get_main_queue(), ^{
-			UITabBarController *tabs = (UITabBarController *)self.rootViewController;
+			UITabBarController *tabs = [self activeTabBarController];
 			if (![tabs isKindOfClass:UITabBarController.class])
 				return;
 			UINavigationController *nc = tabs.viewControllers[tabs.selectedIndex];
@@ -674,7 +734,7 @@ static NSString *TGBase64FromImage(UIImage *img) {
 
 	if ([host isEqualToString:@"tap"]){
 		dispatch_async(dispatch_get_main_queue(), ^{
-			UITabBarController *tabs = (UITabBarController *)self.rootViewController;
+			UITabBarController *tabs = [self activeTabBarController];
 			if (![tabs isKindOfClass:UITabBarController.class])
 				return;
 			UINavigationController *nc = tabs.viewControllers[tabs.selectedIndex];

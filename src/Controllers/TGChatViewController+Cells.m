@@ -1018,13 +1018,17 @@ static void TGPlaceTitleDetail(TGBubbleCell *cell, CGFloat x, CGFloat top,
 		[cell.bubble bringSubviewToFront:cell.shineBar];
 
 		if (mine) {
+			cell.body.textColor = [UIColor whiteColor];
 			cell.body.shadowColor = [theme navBarTextShadowColour];
 			cell.body.shadowOffset = CGSizeMake(0, -1.0f);
+			cell.time.textColor = [theme timeMineColour];
 			cell.time.shadowColor = [theme navBarTextShadowColour];
 			cell.time.shadowOffset = CGSizeMake(0, -1.0f);
 		} else {
+			cell.body.textColor = [theme primaryTextColour];
 			cell.body.shadowColor = [theme etchedTextShadowColour];
 			cell.body.shadowOffset = CGSizeMake(0, 1.0f);
+			cell.time.textColor = [theme timeColour];
 			cell.time.shadowColor = [theme etchedTextShadowColour];
 			cell.time.shadowOffset = CGSizeMake(0, 1.0f);
 		}
@@ -1164,6 +1168,40 @@ static UIBezierPath *TGBubblePath(CGSize size, CGFloat tl, CGFloat tr, CGFloat b
 	return path;
 }
 
+/// A bubble border path that leaves the tail attachment junction open so no
+/// inner divider line is drawn between the bubble body and its speech tail.
+static UIBezierPath *TGBubbleBorderPath(CGSize size, CGFloat tl, CGFloat tr, CGFloat br, CGFloat bl, BOOL openLeft, BOOL openRight) {
+	CGFloat cap = TGHalf(MIN(size.width, size.height));
+	tl = MIN(tl, cap); tr = MIN(tr, cap); br = MIN(br, cap); bl = MIN(bl, cap);
+	CGFloat w = size.width, h = size.height;
+
+	UIBezierPath *path = [UIBezierPath bezierPath];
+	if (openLeft) {
+		// Incoming tail at bottom-left: start above tail and end at bottom corner without closing
+		[path moveToPoint:CGPointMake(0, h - kTailHeight)];
+		[path addLineToPoint:CGPointMake(0, tl)];
+		[path addArcWithCenter:CGPointMake(tl, tl) radius:tl startAngle:M_PI endAngle:M_PI * 1.5 clockwise:YES];
+		[path addLineToPoint:CGPointMake(w - tr, 0)];
+		[path addArcWithCenter:CGPointMake(w - tr, tr) radius:tr startAngle:-M_PI_2 endAngle:0 clockwise:YES];
+		[path addLineToPoint:CGPointMake(w, h - br)];
+		[path addArcWithCenter:CGPointMake(w - br, h - br) radius:br startAngle:0 endAngle:M_PI_2 clockwise:YES];
+		[path addLineToPoint:CGPointMake(0, h)];
+	} else if (openRight) {
+		// Outgoing tail at bottom-right: start at bottom corner and end above tail without closing
+		[path moveToPoint:CGPointMake(w, h)];
+		[path addLineToPoint:CGPointMake(bl, h)];
+		[path addArcWithCenter:CGPointMake(bl, h - bl) radius:bl startAngle:M_PI_2 endAngle:M_PI clockwise:YES];
+		[path addLineToPoint:CGPointMake(0, tl)];
+		[path addArcWithCenter:CGPointMake(tl, tl) radius:tl startAngle:M_PI endAngle:M_PI * 1.5 clockwise:YES];
+		[path addLineToPoint:CGPointMake(w - tr, 0)];
+		[path addArcWithCenter:CGPointMake(w - tr, tr) radius:tr startAngle:-M_PI_2 endAngle:0 clockwise:YES];
+		[path addLineToPoint:CGPointMake(w, h - kTailHeight)];
+	} else {
+		return TGBubblePath(size, tl, tr, br, bl);
+	}
+	return path;
+}
+
 /// Shapes the bubble by its place in the run: the outer corners stay round,
 /// the ones facing a neighbour of the same run nearly square off, and only
 /// the last bubble hangs a tail. Done here rather than in the layout because
@@ -1209,10 +1247,7 @@ static UIBezierPath *TGBubblePath(CGSize size, CGFloat tl, CGFloat tr, CGFloat b
 	TGTheme *theme = [TGTheme shared];
 	UIColor *fill = cell.bubble.backgroundColor;
 	BOOL plain = !fill || CGColorGetAlpha(fill.CGColor) < TGAlphaEpsilon;
-	// A drawn border would be clipped by the mask, so the skeuomorphic style
-	// keeps its plain rounded box; so do the things that are not bubbles.
-	if (!theme.isFlat || [theme bubbleBorderWidth] > 0 || plain ||
-		layout.isService || layout.isSticker || layout.isRound)
+	if (plain || layout.isService || layout.isSticker || layout.isRound)
 		return;
 
 	BOOL mine = [m[@"outgoing"] boolValue];
@@ -1230,12 +1265,51 @@ static UIBezierPath *TGBubblePath(CGSize size, CGFloat tl, CGFloat tr, CGFloat b
 	cell.bubble.layer.cornerRadius = 0;
 	cell.bubble.layer.mask = mask;
 
-	if (last) {
-		CGRect b = cell.bubble.frame;
-		cell.tail.image = [TGIcons bubbleTailForColour:fill outgoing:mine];
-		cell.tail.frame = CGRectMake(mine ? CGRectGetMaxX(b) : CGRectGetMinX(b) - kTailWidth,
-									 CGRectGetMaxY(b) - kTailHeight, kTailWidth, kTailHeight);
-		cell.tail.hidden = NO;
+	if (!theme.isFlat) {
+		cell.bubble.backgroundColor = [UIColor clearColor];
+		cell.gradientLayer.hidden = NO;
+		cell.gradientLayer.frame = cell.bubble.bounds;
+		cell.gradientLayer.colors = mine ? [theme skeuoBubbleMineGradientColours] : [theme skeuoBubbleTheirsGradientColours];
+
+		BOOL openLeft = last && !mine;
+		BOOL openRight = last && mine;
+		UIBezierPath *borderPath = TGBubbleBorderPath(size, (mine ? big : top), (mine ? top : big), (mine ? bottom : big), (mine ? big : bottom), openLeft, openRight);
+		cell.borderLayer.hidden = NO;
+		cell.borderLayer.frame = cell.bubble.bounds;
+		cell.borderLayer.path = borderPath.CGPath;
+		cell.borderLayer.strokeColor = (mine ? [theme skeuoBubbleMineBorderColour] : [theme skeuoBubbleTheirsBorderColour]).CGColor;
+		cell.borderLayer.lineWidth = 1.0f;
+		cell.borderLayer.fillColor = [UIColor clearColor].CGColor;
+
+		cell.shineBar.hidden = NO;
+		CGFloat bubbleW = cell.bubble.bounds.size.width;
+		CGFloat bubbleH = cell.bubble.bounds.size.height;
+		CGFloat glossH = MAX(TGMetricPadLarge, bubbleH * 0.45f);
+		cell.shineBar.frame = CGRectMake(0, 0, bubbleW, glossH);
+		cell.shineGradientLayer.frame = cell.shineBar.bounds;
+		[cell.bubble bringSubviewToFront:cell.shineBar];
+
+		if (last) {
+			CGRect b = cell.bubble.frame;
+			UIColor *tailFill = mine ? [theme bubbleMineColour] : [theme bubbleTheirsColour];
+			UIColor *tailBorder = mine ? [theme skeuoBubbleMineBorderColour] : [theme skeuoBubbleTheirsBorderColour];
+			cell.tail.image = [TGIcons bubbleTailForColour:tailFill outgoing:mine borderColour:tailBorder];
+			cell.tail.frame = CGRectMake(mine ? CGRectGetMaxX(b) : CGRectGetMinX(b) - kTailWidth,
+										 CGRectGetMaxY(b) - kTailHeight, kTailWidth, kTailHeight);
+			cell.tail.hidden = NO;
+			[cell.contentView bringSubviewToFront:cell.tail];
+		}
+	} else {
+		cell.gradientLayer.hidden = YES;
+		cell.borderLayer.hidden = YES;
+		cell.shineBar.hidden = YES;
+		if (last) {
+			CGRect b = cell.bubble.frame;
+			cell.tail.image = [TGIcons bubbleTailForColour:fill outgoing:mine];
+			cell.tail.frame = CGRectMake(mine ? CGRectGetMaxX(b) : CGRectGetMinX(b) - kTailWidth,
+										 CGRectGetMaxY(b) - kTailHeight, kTailWidth, kTailHeight);
+			cell.tail.hidden = NO;
+		}
 	}
 }
 

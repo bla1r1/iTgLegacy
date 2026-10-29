@@ -2,15 +2,17 @@
 #import "TGTheme.h"
 #import "TGStyle.h"
 
-static const CGFloat kReactionItemWidth  = 36.0f;
-static const CGFloat kReactionItemHeight = 36.0f;
-static const CGFloat kReactionGap        = 4.0f;
-static const CGFloat kReactionMargin     = 6.0f;
-static const CGFloat kReactionScale      = 1.35f;
-static const NSTimeInterval kReactionAnimDuration = 0.12;
+static const CGFloat kReactionItemWidth   = 26.0f;
+static const CGFloat kReactionItemHeight  = 26.0f;
+static const CGFloat kReactionGap         = TGMetricPadTiny;
+static const CGFloat kReactionMargin      = TGMetricPadTiny;
+static const CGFloat kReactionTrayInsetY  = 2.0f;
+static const CGFloat kReactionTrayDiffY   = 4.0f;
+static const CGFloat kReactionScale       = 1.35f;
+static const NSTimeInterval kReactionAnimDuration = TGAnimationDurationFast;
 
 @interface TGReactionPicker () {
-	UIView *_shineView;
+	UIView *_trayView;
 	NSMutableArray<UIButton *> *_buttons;
 	UIView *_selectionIndicator;
 }
@@ -20,14 +22,13 @@ static const NSTimeInterval kReactionAnimDuration = 0.12;
 
 + (NSArray<NSString *> *)defaultReactions {
 	return @[
-		@"\U0001F44D", // 👍
 		@"\U00002764", // ❤️
+		@"\U0001F44D", // 👍
+		@"\U0001F44E", // 👎
 		@"\U0001F525", // 🔥
-		@"\U0001F389", // 🎉
 		@"\U0001F602", // 😂
-		@"\U0001F62E", // 😮
-		@"\U0001F622", // 😢
-		@"\U0001F44F"  // 👏
+		@"\U0001F44F", // 👏
+		@"\U0001F62E"  // 😮
 	];
 }
 
@@ -58,20 +59,14 @@ static const NSTimeInterval kReactionAnimDuration = 0.12;
 
 - (void)commonInit {
 	TGTheme *theme = [TGTheme shared];
-	self.backgroundColor = [theme cardBackgroundColour];
-	self.layer.cornerRadius = TGHalf(TGMetricButtonLargeH);
-	self.layer.borderWidth = 1.0f;
-	self.layer.borderColor = [theme separatorColour].CGColor;
+	self.backgroundColor = [UIColor clearColor];
+	self.clipsToBounds = YES;
 
-	self.layer.shadowColor = [UIColor blackColor].CGColor;
-	self.layer.shadowOpacity = TGMetricShadowMenuOpacity;
-	self.layer.shadowRadius = TGMetricShadowMenuRadius;
-	self.layer.shadowOffset = TGMetricShadowOffsetMenu;
-
-	_shineView = [[UIView alloc] init];
-	_shineView.backgroundColor = [theme skeuoShineColour];
-	_shineView.userInteractionEnabled = NO;
-	[self addSubview:_shineView];
+	_trayView = [[UIView alloc] init];
+	_trayView.backgroundColor = [theme calloutTrayColour];
+	_trayView.layer.borderColor = [theme calloutBorderColour].CGColor;
+	_trayView.layer.borderWidth = 1.0f;
+	[self addSubview:_trayView];
 
 	_selectionIndicator = [[UIView alloc] init];
 	_selectionIndicator.backgroundColor = [theme skeuoShineColour];
@@ -143,7 +138,7 @@ static const NSTimeInterval kReactionAnimDuration = 0.12;
 	NSUInteger count = _emojis.count;
 	if (count == 0) return CGSizeZero;
 	CGFloat totalW = TGDoubled(kReactionMargin) + (CGFloat)count * kReactionItemWidth + (CGFloat)(count - 1) * kReactionGap;
-	return CGSizeMake(totalW, TGMetricButtonLargeH);
+	return CGSizeMake(totalW, kReactionItemHeight + kReactionTrayDiffY);
 }
 
 - (CGSize)intrinsicContentSize {
@@ -156,9 +151,11 @@ static const NSTimeInterval kReactionAnimDuration = 0.12;
 	CGFloat w = b.size.width;
 	CGFloat h = b.size.height;
 
-	_shineView.frame = CGRectMake(kReactionMargin, 0.5f, w - TGDoubled(kReactionMargin), 1.0f);
+	_trayView.frame = CGRectMake(kReactionMargin, kReactionTrayInsetY, w - TGDoubled(kReactionMargin), h - kReactionTrayDiffY);
+	_trayView.layer.cornerRadius = TGHalf(h - kReactionTrayDiffY);
 
-	CGFloat curX = kReactionMargin;
+	CGFloat totalButtonsW = (CGFloat)_buttons.count * kReactionItemWidth + (CGFloat)(_buttons.count > 0 ? (_buttons.count - 1) : 0) * kReactionGap;
+	CGFloat curX = TGHalf(w - totalButtonsW);
 	CGFloat btnY = TGCenteredOrigin(h, kReactionItemHeight);
 
 	_selectionIndicator.hidden = YES;

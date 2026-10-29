@@ -21,6 +21,7 @@
 		case TGSettingsPageFolders:       return [self folderSections];
 		case TGSettingsPageProxy:         return [self proxySections];
 		case TGSettingsPageDownloads:     return [self downloadSections];
+		case TGSettingsPageWallpaper:     return [self wallpaperSections];
 		case TGSettingsPageDebug:         return [self debugSections];
 		default:                          return [self rootSections];
 	}
@@ -33,9 +34,13 @@
 			[me[@"id"] longLongValue]] != nil;
 
 	return @[
-		// Profile & Account card
+		// Profile header card
 		TGSection(nil, nil, @[
 			TGRow(TGKindProfile, @""),
+		]),
+
+		// Account actions card
+		TGSection(nil, nil, @[
 			TGActionRow(hasPhoto ? @"Change Profile Photo" : @"Set Profile Photo", ^{
 				[weakSelf pickProfilePhoto];
 			}),
@@ -416,8 +421,10 @@
 			TGTapRow(@"Message Text Size",
 					[NSString stringWithFormat:@"%.0f pt", theme.messageFontSize],
 					^{ [weakSelf chooseTextSize]; }),
-			TGTapRow(@"Chat Wallpaper", theme.wallpaper ? @"Set" : @"None", ^{
-				[weakSelf chooseWallpaper];
+			TGTapRow(@"Chat Wallpaper", [theme wallpaperTitleForType:theme.wallpaperType], ^{
+				TGSettingsViewController *wp = [[TGSettingsViewController alloc] init];
+				wp.page = TGSettingsPageWallpaper;
+				[weakSelf.navigationController pushViewController:wp animated:YES];
 			}),
 		]),
 
@@ -1136,6 +1143,48 @@ static NSString *TGChatNameForId(NSNumber *chatId) {
 
 - (void)toast:(NSString *)text {
 	[TGAlertSheet showMessage:text title:nil inView:self.view];
+}
+
+- (NSArray *)wallpaperSections {
+	__weak typeof(self) weakSelf = self;
+	TGTheme *theme = [TGTheme shared];
+	TGWallpaperType current = [theme wallpaperType];
+
+	id (^textureRow)(NSString *, TGWallpaperType) = ^id(NSString *title, TGWallpaperType type) {
+		BOOL checked = (current == type);
+		return TGCheckRow(title, nil, checked, ^{
+			[[TGTheme shared] setWallpaperType:type];
+			[weakSelf rebuild];
+		});
+	};
+
+	NSArray *textures = @[
+		textureRow(@"None (Solid Colour)", TGWallpaperTypeNone),
+		textureRow(@"Paper Grain", TGWallpaperTypePaperGrain),
+		textureRow(@"Pinstripes", TGWallpaperTypePinstripes),
+		textureRow(@"Classic Linen", TGWallpaperTypeLinen),
+		textureRow(@"Parchment", TGWallpaperTypeParchment),
+		textureRow(@"Game Center Felt", TGWallpaperTypeFelt),
+	];
+
+	NSMutableArray *customRows = [NSMutableArray array];
+	[customRows addObject:TGTapRow(@"Choose from Photo Library", (current == TGWallpaperTypeCustom ? @"Active" : nil), ^{
+		[weakSelf presentWallpaperPicker];
+	})];
+	if (current != TGWallpaperTypeNone) {
+		[customRows addObject:TGActionRow(@"Remove Wallpaper", ^{
+			[[TGTheme shared] setWallpaperType:TGWallpaperTypeNone];
+			[weakSelf rebuild];
+		})];
+	}
+
+	return @[
+		TGSection(nil, nil, @[TGRow(TGKindPreview, @"")]),
+		TGSection(@"Physical Textures",
+				  @"Tactile Apple physical textures re-engineered for the chat canvas.",
+				  textures),
+		TGSection(@"Custom Photo", nil, customRows)
+	];
 }
 
 @end

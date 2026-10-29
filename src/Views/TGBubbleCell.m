@@ -36,6 +36,14 @@
 	self.bubble.layer.rasterizationScale = scale;
 	[self.contentView addSubview:self.bubble];
 
+	self.gradientLayer = [CAGradientLayer layer];
+	self.gradientLayer.hidden = YES;
+	[self.bubble.layer insertSublayer:self.gradientLayer atIndex:0];
+
+	self.borderLayer = [CAShapeLayer layer];
+	self.borderLayer.hidden = YES;
+	[self.bubble.layer addSublayer:self.borderLayer];
+
 	self.picture = [[UIImageView alloc] init];
 	self.picture.contentMode = UIViewContentModeScaleAspectFill;
 	self.picture.clipsToBounds = YES;
@@ -95,6 +103,9 @@
 	self.shineBar = [[UIView alloc] init];
 	self.shineBar.userInteractionEnabled = NO;
 	self.shineBar.hidden = YES;
+	self.shineGradientLayer = [CAGradientLayer layer];
+	self.shineGradientLayer.colors = [theme skeuoShineGradientColours];
+	[self.shineBar.layer addSublayer:self.shineGradientLayer];
 	[self.bubble addSubview:self.shineBar];
 
 	self.unreadDot = [[UIView alloc] init];
@@ -368,6 +379,10 @@
 	self.sender.hidden = YES;
 	self.senderAvatar.hidden = YES;
 	self.tail.hidden = YES;
+	self.gradientLayer.hidden = YES;
+	self.borderLayer.hidden = YES;
+	self.shineBar.hidden = YES;
+	self.bubble.layer.mask = nil;
 	self.checkbox.hidden = YES;
 	self.disc.hidden = YES;
 	self.artwork.hidden = YES;

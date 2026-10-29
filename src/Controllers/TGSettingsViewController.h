@@ -16,6 +16,7 @@ typedef NS_ENUM(NSInteger, TGSettingsPage) {
 	TGSettingsPageFolders,
 	TGSettingsPageProxy,
 	TGSettingsPageDownloads,
+	TGSettingsPageWallpaper,
 	/// Reached by tapping the version under the root list ten times, the way
 	/// their Debug Menu is. Not linked from anywhere.
 	TGSettingsPageDebug

@@ -119,7 +119,7 @@ static const CGFloat kAvatarLargeSide = 60.0f;
 
 - (UILabel *)createSectionHeaderWithTitle:(NSString *)title {
 	UILabel *label = [[UILabel alloc] init];
-	label.font = TGFontSection();
+	label.font = TGFontMicroStrong();
 	label.textColor = [TGTheme shared].secondaryTextColour;
 	label.shadowColor = [TGTheme shared].etchedTextShadowColour;
 	label.shadowOffset = CGSizeMake(0, 1.0f);
@@ -212,7 +212,7 @@ static const CGFloat kAvatarLargeSide = 60.0f;
 	// ── 5. Text Inputs ──────────────────────────────────────
 	_searchField = [[TGTextField alloc] initWithFrame:CGRectZero];
 	_searchField.placeholder = @"Tactile Search...";
-	_searchField.leadingIcon = [TGIcons glyphNamed:@"search" colour:theme.secondaryTextColour side:TGMetricIconSideSmall];
+	_searchField.leadingIcon = [TGIcons glyphNamed:@"search" colour:theme.secondaryTextColour side:TGMetricSearchIconSize];
 	[_contentView addSubview:_searchField];
 
 	_inputField = [[TGTextField alloc] initWithFrame:CGRectZero];
@@ -307,7 +307,6 @@ static const CGFloat kAvatarLargeSide = 60.0f;
 
 	// ── 8. Tactile Reaction Bar & Popup Menu ────────────────
 	_galleryReactionPicker = [[TGReactionPicker alloc] initWithEmojis:nil selectedEmoji:@"🔥"];
-	__weak typeof(self) weakSelf = self;
 	_galleryReactionPicker.onEmojiSelected = ^(NSString *emoji){
 		[TGSnackbar showInView:weakSelf.view text:[NSString stringWithFormat:@"Reacted: %@", emoji] seconds:2 onCommit:nil];
 	};
@@ -407,6 +406,7 @@ static const CGFloat kAvatarLargeSide = 60.0f;
 	_secondaryBtn.frame = CGRectMake(inset + btnW + kControlGap, y, btnW, TGMetricButtonMediumH);
 	y += TGMetricButtonMediumH + kControlGap;
 
+	CGFloat smallBtnW = (contentW - TGDoubled(kControlGap)) / 3.0f;
 	CGFloat smallBtnStep = smallBtnW + kControlGap;
 	_destructiveBtn.frame = CGRectMake(inset, y, smallBtnW, TGMetricButtonSmallH);
 	_successBtn.frame = CGRectMake(inset + smallBtnStep, y, smallBtnW, TGMetricButtonSmallH);

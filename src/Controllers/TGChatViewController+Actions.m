@@ -108,6 +108,9 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 /// opens there. CGPointZero means there was no finger - a URL asked for this
 /// - and the bubble's own corner stands in.
 - (void)showActionsForRow:(NSInteger)row atPoint:(CGPoint)point {
+	if (row < 0) {
+		row = (NSInteger)self.messages.count + row;
+	}
 	if (row < 0 || row >= (NSInteger)self.messages.count)
 		return;
 
@@ -124,25 +127,31 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 	// A message that failed has one thing worth doing to it, and it goes first.
 	if ([m[@"failed"] boolValue])
 		[items addObject:@{@"title" : @"Retry", @"icon" : @"reply"}];
-	[items addObjectsFromArray:@[
-			@{@"title" : @"Reply",   @"icon" : @"reply"},
-			@{@"title" : @"Forward", @"icon" : @"forward"},
-	]];
+
+	[items addObject:@{@"title" : @"Reply", @"icon" : @"reply"}];
+
+	if ([m[@"text"] length])
+		[items addObject:@{@"title" : @"Copy", @"icon" : @"copy"}];
+
+	// A caption is edited by its own request, which is why only text could be
+	// edited before: media with a caption got no Edit row at all.
+	if (mine && ([m[@"text"] length] || [m[@"photoId"] isKindOfClass:NSNumber.class]))
+		[items addObject:@{@"title" : @"Edit", @"icon" : @"edit"}];
+
+	if (![m[@"service"] boolValue])
+		[items addObject:@{@"title" : (heldId == self.pinnedMessageId ? @"Unpin" : @"Pin"),
+						   @"icon" : @"pin"}];
+
+	[items addObject:@{@"title" : @"Forward", @"icon" : @"forward"}];
+
 	// One reaction at a time is what TDLib allows here, so the menu either
 	// offers to remove yours or the reaction bar at top lets you pick one.
 	if (myReaction.length)
 		[items addObject:@{@"title" : [NSString stringWithFormat:
 				@"Remove %@", myReaction], @"icon" : @"react"}];
-	[items addObject:@{@"title" : @"Select", @"icon" : @"select"}];
-	if ([m[@"text"] length])
-		[items addObject:@{@"title" : @"Copy", @"icon" : @"copy"}];
-	// A caption is edited by its own request, which is why only text could be
-	// edited before: media with a caption got no Edit row at all.
-	if (mine && ([m[@"text"] length] || [m[@"photoId"] isKindOfClass:NSNumber.class]))
-		[items addObject:@{@"title" : @"Edit", @"icon" : @"edit"}];
-	if (![m[@"service"] boolValue])
-		[items addObject:@{@"title" : (heldId == self.pinnedMessageId ? @"Unpin" : @"Pin"),
-						   @"icon" : @"pin"}];
+
+	[items addObject:@{@"title" : @"Copy Link", @"icon" : @"copy"}];
+
 	// Closing a poll is the sender's to do, and only while it is still open.
 	if (mine && [m[@"pollOptions"] count] && ![m[@"pollClosed"] boolValue])
 		[items addObject:@{@"title" : @"Stop Poll", @"icon" : @"select"}];
@@ -164,7 +173,6 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 			[items addObject:@{@"title" : @"Delete Option", @"icon" : @"delete",
 							   @"destructive" : @YES}];
 	}
-	[items addObject:@{@"title" : @"Copy Link", @"icon" : @"copy"}];
 	// A sticker you are holding is a sticker you may want to keep.
 	if ([m[@"kind"] isEqualToString:@"messageSticker"] && TGStickerFileId(m) > 0)
 		[items addObject:@{@"title" : @"Add to Favourites", @"icon" : @"pin"}];
@@ -183,6 +191,8 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 		[items addObject:@{@"title" : @"Delete", @"icon" : @"delete",
 						   @"destructive" : @YES}];
 
+	[items addObject:@{@"title" : @"Select", @"icon" : @"select"}];
+
 	// Beside the message rather than over the whole screen, which is what
 	// makes it read as belonging to that bubble.
 	// Where the finger is. This used to anchor on the bottom edge of the row
@@ -190,12 +200,15 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 	// opened the menu somewhere else entirely.
 	CGPoint where = point;
 	if (CGPointEqualToPoint(point, CGPointZero)){
-		CGRect rect = [self.table rectForRowAtIndexPath:
-				[NSIndexPath indexPathForRow:row inSection:0]];
+		NSIndexPath *indexPath = [NSIndexPath indexPathForRow:row inSection:0];
+		[self.table scrollToRowAtIndexPath:indexPath
+						  atScrollPosition:UITableViewScrollPositionMiddle
+								  animated:NO];
+		CGRect rect = [self.table rectForRowAtIndexPath:indexPath];
 		where = [self.table convertPoint:CGPointMake(
 				mine ? CGRectGetMaxX(rect) - TGMetricMenuActionOffset
 					 : TGMetricMenuActionOffset,
-				CGRectGetMaxY(rect) - TGMetricCardMargin) toView:self.view];
+				CGRectGetMidY(rect)) toView:self.view];
 	}
 
 	NSArray *reactions = [TGReactionPicker defaultReactions];

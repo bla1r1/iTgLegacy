@@ -49,7 +49,7 @@ static const NSTimeInterval kCancelAnimDuration = 0.20;
 
 	_textField = [[TGTextField alloc] initWithFrame:CGRectZero];
 	_textField.placeholder = @"Search";
-	_textField.leadingIcon = [TGIcons glyphNamed:@"search" colour:[theme secondaryTextColour] side:TGMetricIconSideSmall];
+	_textField.leadingIcon = [TGIcons glyphNamed:@"search" colour:[theme secondaryTextColour] side:TGMetricSearchIconSize];
 	_textField.returnKeyType = UIReturnKeySearch;
 	_textField.delegate = self;
 	[_textField addTarget:self action:@selector(textChanged:) forControlEvents:UIControlEventEditingChanged];

@@ -30,6 +30,9 @@ typedef NS_ENUM(NSInteger, TGMusicRepeatMode) {
 - (void)cycleRepeatMode;
 - (void)toggleShuffle;
 
+- (NSString *)titleForTrack:(NSDictionary *)track;
+- (NSString *)performerForTrack:(NSDictionary *)track;
+
 /// Nil when nothing is playing. The flattened message of the current track.
 @property (nonatomic, readonly) NSDictionary *current;
 @property (nonatomic, readonly) BOOL playing;
