@@ -6,13 +6,10 @@ static const CGFloat kReactionItemWidth   = 26.0f;
 static const CGFloat kReactionItemHeight  = 26.0f;
 static const CGFloat kReactionGap         = TGMetricPadTiny;
 static const CGFloat kReactionMargin      = TGMetricPadTiny;
-static const CGFloat kReactionTrayInsetY  = 2.0f;
-static const CGFloat kReactionTrayDiffY   = 4.0f;
 static const CGFloat kReactionScale       = 1.35f;
 static const NSTimeInterval kReactionAnimDuration = TGAnimationDurationFast;
 
 @interface TGReactionPicker () {
-	UIView *_trayView;
 	NSMutableArray<UIButton *> *_buttons;
 	UIView *_selectionIndicator;
 }
@@ -61,12 +58,6 @@ static const NSTimeInterval kReactionAnimDuration = TGAnimationDurationFast;
 	TGTheme *theme = [TGTheme shared];
 	self.backgroundColor = [UIColor clearColor];
 	self.clipsToBounds = YES;
-
-	_trayView = [[UIView alloc] init];
-	_trayView.backgroundColor = [theme calloutTrayColour];
-	_trayView.layer.borderColor = [theme calloutBorderColour].CGColor;
-	_trayView.layer.borderWidth = 1.0f;
-	[self addSubview:_trayView];
 
 	_selectionIndicator = [[UIView alloc] init];
 	_selectionIndicator.backgroundColor = [theme skeuoShineColour];
@@ -138,7 +129,7 @@ static const NSTimeInterval kReactionAnimDuration = TGAnimationDurationFast;
 	NSUInteger count = _emojis.count;
 	if (count == 0) return CGSizeZero;
 	CGFloat totalW = TGDoubled(kReactionMargin) + (CGFloat)count * kReactionItemWidth + (CGFloat)(count - 1) * kReactionGap;
-	return CGSizeMake(totalW, kReactionItemHeight + kReactionTrayDiffY);
+	return CGSizeMake(totalW, kReactionItemHeight + TGMetricPadTiny);
 }
 
 - (CGSize)intrinsicContentSize {
@@ -150,9 +141,6 @@ static const NSTimeInterval kReactionAnimDuration = TGAnimationDurationFast;
 	CGRect b = self.bounds;
 	CGFloat w = b.size.width;
 	CGFloat h = b.size.height;
-
-	_trayView.frame = CGRectMake(kReactionMargin, kReactionTrayInsetY, w - TGDoubled(kReactionMargin), h - kReactionTrayDiffY);
-	_trayView.layer.cornerRadius = TGHalf(h - kReactionTrayDiffY);
 
 	CGFloat totalButtonsW = (CGFloat)_buttons.count * kReactionItemWidth + (CGFloat)(_buttons.count > 0 ? (_buttons.count - 1) : 0) * kReactionGap;
 	CGFloat curX = TGHalf(w - totalButtonsW);

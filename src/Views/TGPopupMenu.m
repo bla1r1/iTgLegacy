@@ -7,12 +7,7 @@
 
 static const CGFloat kMenuCardW        = 220.0f;
 static const CGFloat kMenuRowH         = 36.0f;
-static const CGFloat kMenuHeaderH      = 18.0f;
-static const CGFloat kMenuHandleW      = 36.0f;
-static const CGFloat kMenuHandleH      = 4.0f;
-static const CGFloat kMenuHandleY      = 7.0f;
-static const CGFloat kMenuHandleRadius = 2.0f;
-static const CGFloat kMenuDividerY     = 15.0f;
+static const CGFloat kMenuHeaderH      = TGMetricPadSmall;
 static const CGFloat kMenuGlyphSide    = 18.0f;
 static const CGFloat kMenuGlyphX       = 16.0f;
 static const CGFloat kMenuLabelX       = 46.0f;
@@ -127,7 +122,7 @@ static TGPopupMenu *sOpenMenu = nil;
 
 	// Calculate Action Card Height
 	CGFloat headerH = headerView ? headerView.bounds.size.height : kMenuHeaderH;
-	CGFloat actionCardH = headerH + (CGFloat)items.count * kMenuRowH;
+	CGFloat actionCardH = headerH + (CGFloat)items.count * kMenuRowH + TGMetricPadSmall;
 	for (NSDictionary *it in items) {
 		if ([it[@"title"] isEqualToString:@"Select"]) {
 			actionCardH += TGMetricPadTiny;
@@ -256,20 +251,6 @@ static TGPopupMenu *sOpenMenu = nil;
 		divLight.backgroundColor = [theme calloutDividerLightColour];
 		[_actionCard addSubview:divLight];
 	} else {
-		// Top Pill Drag Handle (matching reference image)
-		UIView *handle = [[UIView alloc] initWithFrame:CGRectMake(TGCenteredOrigin(kMenuCardW, kMenuHandleW), kMenuHandleY, kMenuHandleW, kMenuHandleH)];
-		handle.backgroundColor = [theme calloutDividerDarkColour];
-		handle.layer.cornerRadius = TGHalf(kMenuHandleH);
-		[_actionCard addSubview:handle];
-
-		UIView *divDark = [[UIView alloc] initWithFrame:CGRectMake(TGMetricPadSmall, kMenuDividerY - 0.5f, kMenuCardW - TGDoubled(TGMetricPadSmall), 0.5f)];
-		divDark.backgroundColor = [theme calloutDividerDarkColour];
-		[_actionCard addSubview:divDark];
-
-		UIView *divLight = [[UIView alloc] initWithFrame:CGRectMake(TGMetricPadSmall, kMenuDividerY, kMenuCardW - TGDoubled(TGMetricPadSmall), 0.5f)];
-		divLight.backgroundColor = [theme calloutDividerLightColour];
-		[_actionCard addSubview:divLight];
-
 		currentY = kMenuHeaderH;
 	}
 

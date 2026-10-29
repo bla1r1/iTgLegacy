@@ -29,8 +29,8 @@
 	TGTheme *theme = [TGTheme shared];
 	self.bubble = [[UIView alloc] init];
 	self.bubble.layer.cornerRadius = [theme bubbleCornerRadius];
-	self.bubble.layer.borderWidth = [theme bubbleBorderWidth];
-	self.bubble.layer.borderColor = [theme bubbleBorderColour].CGColor;
+	self.bubble.layer.borderWidth = 0;
+	self.bubble.layer.borderColor = [UIColor clearColor].CGColor;
 	self.bubble.clipsToBounds = YES;
 	self.bubble.layer.shouldRasterize = YES;
 	self.bubble.layer.rasterizationScale = scale;
@@ -376,9 +376,14 @@
 	[self stopLoopingVideo];
 	self.icon.hidden = YES;
 	self.subtitle.hidden = YES;
+	self.subtitle.text = nil;
 	self.sender.hidden = YES;
+	self.sender.text = nil;
 	self.senderAvatar.hidden = YES;
 	self.tail.hidden = YES;
+	self.bubble.layer.borderWidth = 0;
+	self.bubble.layer.borderColor = [UIColor clearColor].CGColor;
+	self.bubble.backgroundColor = [UIColor clearColor];
 	self.gradientLayer.hidden = YES;
 	self.borderLayer.hidden = YES;
 	self.shineBar.hidden = YES;
@@ -388,12 +393,30 @@
 	self.artwork.hidden = YES;
 	self.artwork.image = nil;
 	self.wave.hidden = YES;
+	self.picture.hidden = YES;
+	self.picture.image = nil;
+	self.body.hidden = YES;
+	self.body.text = nil;
+	self.body.attributedText = nil;
+	self.body.numberOfLines = 0;
+	self.body.textAlignment = NSTextAlignmentLeft;
+	self.time.text = nil;
+	self.ticks.hidden = YES;
+	self.ticks.image = nil;
 	self.contactCallButton.hidden = YES;
 	self.contactAddButton.hidden = YES;
 	self.contactSeparatorH.hidden = YES;
 	self.contactSeparatorV.hidden = YES;
 	self.mediaStamp.hidden = YES;
+	self.mediaStamp.text = nil;
 	self.unreadDot.hidden = YES;
+
+	// Dynamic poll options cleanup
+	for (UIView *old in [self.bubble.subviews copy]) {
+		if (old.tag >= 0x9100 && old.tag < 0x9200) [old removeFromSuperview];
+	}
+	self.pollMessageId = 0;
+
 	// A round note moves the clock and the ticks out of the bubble, because a
 	// circle clips them away. Every other kind places them in the bubble's
 	// own coordinates, so a reused cell has to get them back first.
@@ -408,8 +431,12 @@
 	}
 	self.quoteBar.hidden = YES;
 	self.quote.hidden = YES;
+	self.quote.text = nil;
 	self.quoteAuthor.hidden = YES;
+	self.quoteAuthor.text = nil;
 	self.forwardLabel.hidden = YES;
+	self.forwardLabel.text = nil;
+	self.forwardLabel.attributedText = nil;
 	self.lottie.hidden = YES;
 	[self.lottie stop];
 
@@ -426,8 +453,8 @@
 - (void)applyTheme {
 	TGTheme *theme = [TGTheme shared];
 	self.bubble.layer.cornerRadius = [theme bubbleCornerRadius];
-	self.bubble.layer.borderWidth = [theme bubbleBorderWidth];
-	self.bubble.layer.borderColor = [theme bubbleBorderColour].CGColor;
+	self.bubble.layer.borderWidth = 0;
+	self.bubble.layer.borderColor = [UIColor clearColor].CGColor;
 	self.body.font = TGFontAtSize(theme.messageFontSize);
 	self.body.textColor = [theme primaryTextColour];
 	[self.contactCallButton setTitleColor:[theme accentColour] forState:UIControlStateNormal];

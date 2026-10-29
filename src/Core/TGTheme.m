@@ -38,11 +38,10 @@ static NSString *const kWallpaperTypeKey = @"themeWallpaperType";
 
 	NSNumber *stored = [NSUserDefaults.standardUserDefaults objectForKey:kStyleKey];
 	if (stored){
-		_style = (TGThemeStyle)stored.integerValue;
+		NSInteger val = stored.integerValue;
+		_style = (val == TGThemeStyleDark || val == 2 || val == 3) ? TGThemeStyleDark : TGThemeStyleSkeuomorphic;
 	} else {
-		// NSFoundationVersionNumber_iOS_6_1 is 993.00; anything above is iOS 7+
-		_style = (NSFoundationVersionNumber > 993.00)
-			? TGThemeStyleFlat : TGThemeStyleSkeuomorphic;
+		_style = TGThemeStyleSkeuomorphic;
 	}
 	NSString *imported = [NSUserDefaults.standardUserDefaults stringForKey:kImportKey];
 	if (imported.length)
@@ -54,31 +53,8 @@ static NSString *const kWallpaperTypeKey = @"themeWallpaperType";
 
 #pragma mark - the theme list
 
-// Telegram's Night Blue presentation palette
-+ (NSDictionary *)nightBluePalette {
-	static NSDictionary *palette = nil;
-	if (!palette)
-		palette = @{
-			@"bar"            : rgb(0x21, 0x30, 0x40),
-			@"barTitle"       : [UIColor whiteColor],
-			@"barSubtitle"    : rgb(0x7B, 0x87, 0x90),
-			@"barButton"      : rgb(0x2E, 0xA6, 0xFF),
-			@"accent"         : rgb(0x2E, 0xA6, 0xFF),
-			@"chatBackground" : rgb(0x18, 0x22, 0x2D),
-			@"cardBackground" : rgb(0x24, 0x2F, 0x3D),
-			@"bubbleMine"     : rgb(0x2B, 0x52, 0x78),
-			@"bubbleTheirs"   : rgb(0x18, 0x25, 0x33),
-			@"listBackground" : rgb(0x17, 0x21, 0x2B),
-			@"primaryText"    : [UIColor whiteColor],
-			@"secondaryText"  : rgb(0x7B, 0x87, 0x90),
-			@"isDark"         : @YES,
-		};
-	return palette;
-}
-
 - (void)loadBuiltinPalette {
-	_builtinPalette = (_style == TGThemeStyleNightBlue)
-			? [TGTheme nightBluePalette] : nil;
+	_builtinPalette = nil;
 }
 
 // Whether custom palette or imported theme is active
@@ -88,10 +64,8 @@ static NSString *const kWallpaperTypeKey = @"themeWallpaperType";
 
 + (NSArray *)availableThemes {
 	NSMutableArray *themes = [@[
-		@{@"id" : @"classic",   @"name" : @"Classic",    @"dark" : @NO},
-		@{@"id" : @"day",       @"name" : @"Day",        @"dark" : @NO},
-		@{@"id" : @"night",     @"name" : @"Night",      @"dark" : @YES},
-		@{@"id" : @"nightblue", @"name" : @"Night Blue", @"dark" : @YES},
+		@{@"id" : @"classic", @"name" : @"Classic", @"dark" : @NO},
+		@{@"id" : @"night",   @"name" : @"Night",   @"dark" : @YES},
 	] mutableCopy];
 
 	for (NSString *path in [self availableThemeFiles]){
@@ -108,10 +82,8 @@ static NSString *const kWallpaperTypeKey = @"themeWallpaperType";
 
 static NSString *TGIdForStyle(TGThemeStyle style) {
 	switch (style){
-		case TGThemeStyleFlat:      return @"day";
-		case TGThemeStyleDark:      return @"night";
-		case TGThemeStyleNightBlue: return @"nightblue";
-		default:                    return @"classic";
+		case TGThemeStyleDark: return @"night";
+		default:               return @"classic";
 	}
 }
 
@@ -138,9 +110,8 @@ static NSString *TGIdForStyle(TGThemeStyle style) {
 	}
 
 	TGThemeStyle style = TGThemeStyleSkeuomorphic;
-	if ([themeId isEqualToString:@"day"])            style = TGThemeStyleFlat;
-	else if ([themeId isEqualToString:@"night"])     style = TGThemeStyleDark;
-	else if ([themeId isEqualToString:@"nightblue"]) style = TGThemeStyleNightBlue;
+	if ([themeId isEqualToString:@"night"] || [themeId isEqualToString:@"nightblue"])
+		style = TGThemeStyleDark;
 
 	// Switching style clears any active imported theme file.
 	_imported = nil;
@@ -269,7 +240,7 @@ static NSString *TGIdForStyle(TGThemeStyle style) {
 - (BOOL)isDark {
 	if (_imported)
 		return [_imported[@"isDark"] boolValue];
-	return _style == TGThemeStyleDark || _style == TGThemeStyleNightBlue;
+	return _style == TGThemeStyleDark;
 }
 
 + (NSArray *)availableThemeFiles {
@@ -300,17 +271,14 @@ static NSString *TGIdForStyle(TGThemeStyle style) {
 	[self themeChanged];
 }
 
-// Check if flat styling is active
+// Check if flat styling is active (flat style deleted, pure skeuomorphic)
 - (BOOL)isFlat {
-	if (_imported)
-		return YES;
-	return _style != TGThemeStyleSkeuomorphic;
+	return NO;
 }
 
 // Built-in dark style
 - (BOOL)isDarkStyle {
-	return (_style == TGThemeStyleDark || _style == TGThemeStyleNightBlue) &&
-		   _imported == nil;
+	return _style == TGThemeStyleDark && _imported == nil;
 }
 
 - (void)styleCell:(UITableViewCell *)cell {
@@ -355,22 +323,13 @@ static NSString *TGIdForStyle(TGThemeStyle style) {
 		bar.tintColor = [self barColour];
 	}
 
-	if (!self.isFlat) {
-		UIColor *tabColor = self.isDarkStyle ? TGThemeRGB(0x22, 0x26, 0x2E) : TGThemeRGB(0x45, 0x56, 0x68);
-		UIImage *tabBg = [TGTheme skeuomorphicBarImageWithColor:tabColor height:TGMetricTabBarH];
-		if ([bar respondsToSelector:@selector(setBackgroundImage:)]) {
-			bar.backgroundImage = tabBg;
-		}
-		if ([bar respondsToSelector:@selector(setSelectionIndicatorImage:)]) {
-			bar.selectionIndicatorImage = [TGTheme skeuomorphicTabSelectionIndicator];
-		}
-	} else {
-		if ([bar respondsToSelector:@selector(setBackgroundImage:)]) {
-			bar.backgroundImage = nil;
-		}
-		if ([bar respondsToSelector:@selector(setSelectionIndicatorImage:)]) {
-			bar.selectionIndicatorImage = nil;
-		}
+	UIColor *tabColor = self.isDarkStyle ? TGThemeRGB(0x22, 0x26, 0x2E) : TGThemeRGB(0x45, 0x56, 0x68);
+	UIImage *tabBg = [TGTheme skeuomorphicBarImageWithColor:tabColor height:TGMetricTabBarH];
+	if ([bar respondsToSelector:@selector(setBackgroundImage:)]) {
+		bar.backgroundImage = tabBg;
+	}
+	if ([bar respondsToSelector:@selector(setSelectionIndicatorImage:)]) {
+		bar.selectionIndicatorImage = [TGTheme skeuomorphicTabSelectionIndicator];
 	}
 }
 
@@ -467,54 +426,33 @@ static NSString *TGIdForStyle(TGThemeStyle style) {
 	// A dark bar needs light status-bar glyphs, which is what barStyle decides.
 	bar.barStyle = self.isDark ? UIBarStyleBlack : UIBarStyleDefault;
 
-	if (!self.isFlat) {
-		CGFloat barHeight = bar.bounds.size.height > 0 ? bar.bounds.size.height : TGMetricRow;
-		UIImage *bgImageAttached = [TGTheme skeuomorphicBarImageWithColor:[self barColour] height:TGMetricPadWide + TGMetricRow];
-		UIImage *bgImageStandard = [TGTheme skeuomorphicBarImageWithColor:[self barColour] height:barHeight];
-		if ([bar respondsToSelector:@selector(setBackgroundImage:forBarPosition:barMetrics:)]) {
-			[bar setBackgroundImage:bgImageAttached forBarPosition:UIBarPositionTopAttached barMetrics:UIBarMetricsDefault];
-			[bar setBackgroundImage:bgImageStandard forBarPosition:UIBarPositionAny barMetrics:UIBarMetricsDefault];
-		} else if ([bar respondsToSelector:@selector(setBackgroundImage:forBarMetrics:)]) {
-			[bar setBackgroundImage:bgImageStandard forBarMetrics:UIBarMetricsDefault];
-		}
-		if ([bar respondsToSelector:@selector(setShadowImage:)]) {
-			[bar setShadowImage:[[UIImage alloc] init]];
-		}
-		if ([bar respondsToSelector:@selector(setBarTintColor:)]) {
-			bar.translucent = NO;
-			bar.barTintColor = [self barColour];
-			bar.tintColor = [self barButtonColour];
-			NSShadow *shadow = [[NSShadow alloc] init];
-			shadow.shadowColor = [self navBarTextShadowColour];
-			shadow.shadowOffset = CGSizeMake(0, -1.0f);
-			bar.titleTextAttributes = @{
-				NSForegroundColorAttributeName : [self barTitleColour],
-				NSFontAttributeName            : TGFontRowStrong(),
-				NSShadowAttributeName          : shadow,
-			};
-		} else {
-			bar.tintColor = [self barColour];
-			bar.titleTextAttributes = @{ UITextAttributeTextColor : [self barTitleColour] };
-		}
+	CGFloat barHeight = bar.bounds.size.height > 0 ? bar.bounds.size.height : TGMetricRow;
+	UIImage *bgImageAttached = [TGTheme skeuomorphicBarImageWithColor:[self barColour] height:TGMetricPadWide + TGMetricRow];
+	UIImage *bgImageStandard = [TGTheme skeuomorphicBarImageWithColor:[self barColour] height:barHeight];
+	if ([bar respondsToSelector:@selector(setBackgroundImage:forBarPosition:barMetrics:)]) {
+		[bar setBackgroundImage:bgImageAttached forBarPosition:UIBarPositionTopAttached barMetrics:UIBarMetricsDefault];
+		[bar setBackgroundImage:bgImageStandard forBarPosition:UIBarPositionAny barMetrics:UIBarMetricsDefault];
+	} else if ([bar respondsToSelector:@selector(setBackgroundImage:forBarMetrics:)]) {
+		[bar setBackgroundImage:bgImageStandard forBarMetrics:UIBarMetricsDefault];
+	}
+	if ([bar respondsToSelector:@selector(setShadowImage:)]) {
+		[bar setShadowImage:[[UIImage alloc] init]];
+	}
+	if ([bar respondsToSelector:@selector(setBarTintColor:)]) {
+		bar.translucent = NO;
+		bar.barTintColor = [self barColour];
+		bar.tintColor = [self barButtonColour];
+		NSShadow *shadow = [[NSShadow alloc] init];
+		shadow.shadowColor = [self navBarTextShadowColour];
+		shadow.shadowOffset = CGSizeMake(0, -1.0f);
+		bar.titleTextAttributes = @{
+			NSForegroundColorAttributeName : [self barTitleColour],
+			NSFontAttributeName            : TGFontRowStrong(),
+			NSShadowAttributeName          : shadow,
+		};
 	} else {
-		if ([bar respondsToSelector:@selector(setBackgroundImage:forBarMetrics:)]) {
-			[bar setBackgroundImage:nil forBarMetrics:UIBarMetricsDefault];
-		}
-		if ([bar respondsToSelector:@selector(setShadowImage:)]) {
-			[bar setShadowImage:nil];
-		}
-		if ([bar respondsToSelector:@selector(setBarTintColor:)]){
-			bar.translucent = NO;
-			bar.barTintColor = [self barColour];
-			bar.tintColor = [self barButtonColour];
-			bar.titleTextAttributes = @{
-				NSForegroundColorAttributeName : [self barTitleColour],
-				NSFontAttributeName            : TGFontRowStrong(),
-			};
-		} else {
-			bar.tintColor = [self barColour];
-			bar.titleTextAttributes = @{ UITextAttributeTextColor : [self barTitleColour] };
-		}
+		bar.tintColor = [self barColour];
+		bar.titleTextAttributes = @{ UITextAttributeTextColor : [self barTitleColour] };
 	}
 }
 

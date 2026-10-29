@@ -18,11 +18,13 @@
 #import "TGVoiceDecoder.h"
 #import "UIImage+WebP.h"
 #import "TGLottieView.h"
+#import "TGDevShowcase.h"
 #import "TGCallViewController.h"
 #import "TGPopupMenu.h"
 #import "TGSnackbar.h"
 #import "TGMediaViewer.h"
 #import "TGMusicPlayer.h"
+#import "TGDevShowcase.h"
 
 #import "TGMessageLayout.h"
 #import "TGBubbleCell.h"
@@ -148,24 +150,29 @@
 			selector:@selector(readOutboxChanged:)
 				name:TGChatReadOutboxChangedNotification object:nil];
 
-	// Captured before opening marks everything read.
-	self.readInboxAtOpen = [[TGClient shared] lastReadInboxForChat:self.chatId];
-	[[TGClient shared] openChat:self.chatId];
-	// Opening clears unread; the @ and the reaction badges are counted apart
-	// from it and stay until they are read in their own right.
-	[[TGClient shared] readAllMentionsAndReactionsInChat:self.chatId];
-	// So are the votes: the badge on a fresh poll answer is the chat's to
-	// see, and the chat has now seen it.
-	[[TGClient shared] readAllChatPollVotes:self.chatId];
+	if (![TGDevShowcase isDevChatId:self.chatId]) {
+		// Captured before opening marks everything read.
+		self.readInboxAtOpen = [[TGClient shared] lastReadInboxForChat:self.chatId];
+		[[TGClient shared] openChat:self.chatId];
+		// Opening clears unread; the @ and the reaction badges are counted apart
+		// from it and stay until they are read in their own right.
+		[[TGClient shared] readAllMentionsAndReactionsInChat:self.chatId];
+		// So are the votes: the badge on a fresh poll answer is the chat's to
+		// see, and the chat has now seen it.
+		[[TGClient shared] readAllChatPollVotes:self.chatId];
 
-	// Whatever was typed here last and not sent - here or on another device.
-	NSString *draft = [[TGClient shared] draftForChat:self.chatId];
-	if (draft.length && !self.input.text.length){
-		self.input.text = draft;
-		[self inputChanged];
+		// Whatever was typed here last and not sent - here or on another device.
+		NSString *draft = [[TGClient shared] draftForChat:self.chatId];
+		if (draft.length && !self.input.text.length){
+			self.input.text = draft;
+			[self inputChanged];
+		}
 	}
 
 	[self reload];
+	if ([TGDevShowcase isDevChatId:self.chatId]) {
+		return;
+	}
 }
 
 /// A two-line header: the chat name with member count or status beneath it,
@@ -338,8 +345,10 @@
 								 inChat:self.chatId
 								 thread:self.threadId
 								replyTo:self.replyToId];
-		[[TGClient shared] cancelTypingInChat:self.chatId thread:self.threadId];
-		[[TGClient shared] closeChat:self.chatId];
+		if (![TGDevShowcase isDevChatId:self.chatId]) {
+			[[TGClient shared] cancelTypingInChat:self.chatId thread:self.threadId];
+			[[TGClient shared] closeChat:self.chatId];
+		}
 		[TGClient shared].onMessage = nil;
 		[TGClient shared].onChatAction = nil;
 		[TGClient shared].onSecretChat = nil;
@@ -448,6 +457,24 @@
 }
 
 - (void)reload {
+	if ([TGDevShowcase isDevChatId:self.chatId]) {
+		NSArray *messages = [TGDevShowcase messagesForChatId:self.chatId];
+		[self noteFirstUnreadIn:messages];
+		[self.streamStore resetWithMessages:messages];
+		self.rawMessages = [self.streamStore messages];
+		self.messages = [self groupedMessagesFromMessages:self.rawMessages];
+		self.atChatEnd = YES;
+		self.anchorToBottom = NO;
+
+		NSString *tgsPath = [TGDevShowcase devStickerPath];
+		NSString *webmPath = [TGDevShowcase devWebMPath];
+		if (tgsPath) self.lottiePaths[@(-101)] = tgsPath;
+		if (webmPath) self.lottiePaths[@(-102)] = webmPath;
+
+		[self.table reloadData];
+		return;
+	}
+
 	__weak typeof(self) weakSelf = self;
 	[[TGClient shared] historyForChat:self.chatId thread:self.threadId limit:60 completion:^(NSArray *messages){
 		TGChatViewController *me = weakSelf;
@@ -512,8 +539,7 @@
 	BOOL isSaved = (self.chatId == [[TGClient shared] savedMessagesChatId]);
 	[button setImage:(isSaved
 			? [TGIcons savedMessagesAvatarOfSide:side]
-			: [TGIcons avatarWithInitials:
-					(title.length ? [title substringToIndex:1].uppercaseString : @"?")
+			: [TGIcons avatarWithInitials:[TGIcons initialsForTitle:title]
 									 size:side colourId:self.chatId])
 			forState:UIControlStateNormal];
 

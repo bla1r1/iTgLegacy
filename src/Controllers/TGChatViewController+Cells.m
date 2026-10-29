@@ -20,12 +20,7 @@ static void TGPlaceStamp(TGBubbleCell *cell, CGRect bubbleFrame,
 /// the same two checkmarks sat at three heights depending on whether the
 /// bubble held text, a file or a quote.
 static void TGPlaceTicks(TGBubbleCell *cell, CGRect bubbleFrame) {
-	// Centred on the clock's own line rather than measured up from the bottom
-	// of the bubble on its own: the two insets were 17 and 18 against heights
-	// of 12 and 9, which left the ticks two and a half points above the time
-	// they belong to, and in a bubble whose height came out differently they
-	// drifted apart further.
-	CGFloat stampTop = bubbleFrame.size.height - TGMetricStampBottomInset;
+	CGFloat stampTop = cell.time.frame.origin.y > 0 ? cell.time.frame.origin.y : (bubbleFrame.size.height - TGMetricStampBottomInset);
 	cell.ticks.frame = CGRectMake(
 			bubbleFrame.size.width - kPadH - TGMetricTicksWidth,
 			stampTop + TGCenteredOrigin(TGMetricStampHeight, TGMetricTicksHeight),
@@ -69,7 +64,11 @@ static void TGPlaceTitleDetail(TGBubbleCell *cell, CGFloat x, CGFloat top,
 	if (layout.isService) {
 		TGTheme *serviceTheme = [TGTheme shared];
 		NSString *who = m[@"separator"] ? nil : [[TGClient shared] nameForUserId:[m[@"senderId"] longLongValue]];
-		NSString *line = who.length ? [NSString stringWithFormat:@"%@ %@", who, m[@"text"]] : (m[@"text"] ?: @"");
+		NSString *text = m[@"text"] ?: @"";
+		NSString *line = text;
+		if (who.length && ![text hasPrefix:@"Group "] && ![text hasPrefix:@"Chat "] && ![text hasPrefix:@"Screenshot "] && ![text hasPrefix:@"You "]) {
+			line = [NSString stringWithFormat:@"%@ %@", who, text];
+		}
 
 		cell.bubble.frame = layout.bubbleFrame;
 		cell.bubble.backgroundColor = [serviceTheme serviceBubbleColour];
@@ -107,8 +106,8 @@ static void TGPlaceTitleDetail(TGBubbleCell *cell, CGFloat x, CGFloat top,
 
 		cell.bubble.frame = layout.bubbleFrame;
 		cell.bubble.backgroundColor = mine ? [pollTheme bubbleMineColour] : [pollTheme bubbleTheirsColour];
-		cell.bubble.layer.borderWidth = [pollTheme bubbleBorderWidth];
-		cell.bubble.layer.borderColor = [pollTheme bubbleBorderColour].CGColor;
+		cell.bubble.layer.borderWidth = TGMetricBorderNone;
+		cell.bubble.layer.borderColor = [UIColor clearColor].CGColor;
 		cell.bubble.layer.cornerRadius = [pollTheme bubbleCornerRadius];
 
 		cell.body.hidden = NO;
@@ -159,7 +158,14 @@ static void TGPlaceTitleDetail(TGBubbleCell *cell, CGFloat x, CGFloat top,
 				UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(kPollTextColumn, TGMetricPadTiny,
 						row.bounds.size.width - kPollTextColumn - kPollShareWidth - TGMetricPadTiny,
 						TGMetricLineRow)];
-				label.text = option[@"text"][@"text"] ?: option[@"text"] ?: @"";
+				id optText = option[@"text"];
+				if ([optText isKindOfClass:NSDictionary.class]) {
+					label.text = optText[@"text"] ?: @"";
+				} else if ([optText isKindOfClass:NSString.class]) {
+					label.text = (NSString *)optText;
+				} else {
+					label.text = @"";
+				}
 				label.font = TGFontSubhead();
 				label.textColor = [pollTheme primaryTextColour];
 				label.backgroundColor = [UIColor clearColor];
@@ -211,8 +217,8 @@ static void TGPlaceTitleDetail(TGBubbleCell *cell, CGFloat x, CGFloat top,
 		CGFloat fwd = [self layoutForwardIn:cell message:m width:layout.bubbleFrame.size.width];
 		cell.bubble.frame = layout.bubbleFrame;
 		cell.bubble.backgroundColor = mine ? [callTheme bubbleMineColour] : [callTheme bubbleTheirsColour];
-		cell.bubble.layer.borderWidth = [callTheme bubbleBorderWidth];
-		cell.bubble.layer.borderColor = [callTheme bubbleBorderColour].CGColor;
+		cell.bubble.layer.borderWidth = TGMetricBorderNone;
+		cell.bubble.layer.borderColor = [UIColor clearColor].CGColor;
 		cell.bubble.layer.cornerRadius = [callTheme bubbleCornerRadius];
 
 		cell.disc.hidden = NO;
@@ -265,8 +271,8 @@ static void TGPlaceTitleDetail(TGBubbleCell *cell, CGFloat x, CGFloat top,
 		cell.bubble.frame = layout.bubbleFrame;
 		cell.bubble.backgroundColor = mine ? [cardTheme bubbleMineColour]
 										   : [cardTheme bubbleTheirsColour];
-		cell.bubble.layer.borderWidth = [cardTheme bubbleBorderWidth];
-		cell.bubble.layer.borderColor = [cardTheme bubbleBorderColour].CGColor;
+		cell.bubble.layer.borderWidth = TGMetricBorderNone;
+		cell.bubble.layer.borderColor = [UIColor clearColor].CGColor;
 		cell.bubble.layer.cornerRadius = [cardTheme bubbleCornerRadius];
 
 		CGFloat artY = fwd + TGCenteredOrigin(kTrackRow, kTrackArt) - TGMetricPadTiny;
@@ -335,8 +341,8 @@ static void TGPlaceTitleDetail(TGBubbleCell *cell, CGFloat x, CGFloat top,
 		CGFloat fwd = [self layoutForwardIn:cell message:m width:layout.bubbleFrame.size.width];
 		cell.bubble.frame = layout.bubbleFrame;
 		cell.bubble.backgroundColor = mine ? [cardTheme bubbleMineColour] : [cardTheme bubbleTheirsColour];
-		cell.bubble.layer.borderWidth = [cardTheme bubbleBorderWidth];
-		cell.bubble.layer.borderColor = [cardTheme bubbleBorderColour].CGColor;
+		cell.bubble.layer.borderWidth = TGMetricBorderNone;
+		cell.bubble.layer.borderColor = [UIColor clearColor].CGColor;
 		cell.bubble.layer.cornerRadius = [cardTheme bubbleCornerRadius];
 
 		cell.icon.hidden = NO;
@@ -398,8 +404,8 @@ static void TGPlaceTitleDetail(TGBubbleCell *cell, CGFloat x, CGFloat top,
 		CGFloat fwd = [self layoutForwardIn:cell message:m width:layout.bubbleFrame.size.width];
 		cell.bubble.frame = layout.bubbleFrame;
 		cell.bubble.backgroundColor = mine ? [cardTheme bubbleMineColour] : [cardTheme bubbleTheirsColour];
-		cell.bubble.layer.borderWidth = [cardTheme bubbleBorderWidth];
-		cell.bubble.layer.borderColor = [cardTheme bubbleBorderColour].CGColor;
+		cell.bubble.layer.borderWidth = TGMetricBorderNone;
+		cell.bubble.layer.borderColor = [UIColor clearColor].CGColor;
 		cell.bubble.layer.cornerRadius = [cardTheme bubbleCornerRadius];
 
 		cell.icon.hidden = NO;
@@ -474,8 +480,8 @@ static void TGPlaceTitleDetail(TGBubbleCell *cell, CGFloat x, CGFloat top,
 		CGFloat fwd = [self layoutForwardIn:cell message:m width:layout.bubbleFrame.size.width];
 		cell.bubble.frame = layout.bubbleFrame;
 		cell.bubble.backgroundColor = mine ? [locTheme bubbleMineColour] : [locTheme bubbleTheirsColour];
-		cell.bubble.layer.borderWidth = [locTheme bubbleBorderWidth];
-		cell.bubble.layer.borderColor = [locTheme bubbleBorderColour].CGColor;
+		cell.bubble.layer.borderWidth = TGMetricBorderNone;
+		cell.bubble.layer.borderColor = [UIColor clearColor].CGColor;
 		cell.bubble.layer.cornerRadius = [locTheme bubbleCornerRadius];
 
 		CGFloat mapW = layout.bubbleFrame.size.width;
@@ -614,8 +620,8 @@ static void TGPlaceTitleDetail(TGBubbleCell *cell, CGFloat x, CGFloat top,
 	cell.bubble.backgroundColor = layout.isSticker ? [UIColor clearColor] : fill;
 
 	cell.tail.hidden = YES;
-	cell.bubble.layer.borderWidth = (layout.isSticker || layout.isRound) ? TGMetricBorderNone : [theme bubbleBorderWidth];
-	cell.bubble.layer.borderColor = [theme bubbleBorderColour].CGColor;
+	cell.bubble.layer.borderWidth = TGMetricBorderNone;
+	cell.bubble.layer.borderColor = [UIColor clearColor].CGColor;
 	cell.bubble.layer.cornerRadius = [theme bubbleCornerRadius];
 	cell.body.textColor = [theme primaryTextColour];
 
@@ -696,9 +702,11 @@ static void TGPlaceTitleDetail(TGBubbleCell *cell, CGFloat x, CGFloat top,
 		return [self finalizeCell:cell message:m layout:layout isMine:mine];
 	}
 
-	// Animated sticker
-	NSString *tgsPath = ([TGCapabilities canPlayAnimatedStickers] && [m[@"docName"] isEqualToString:@"tgs"]) ? self.lottiePaths[m[@"docId"]] : nil;
-	if (tgsPath) {
+	// Animated sticker (.tgs or .webm)
+	BOOL isAnimSticker = [TGCapabilities canPlayAnimatedStickers] &&
+		([m[@"docName"] isEqualToString:@"tgs"] || [m[@"docName"] isEqualToString:@"webm"]);
+	NSString *animPath = isAnimSticker ? self.lottiePaths[m[@"docId"]] : nil;
+	if (animPath) {
 		CGFloat side = kLottieSide;
 		cell.bubble.backgroundColor = [UIColor clearColor];
 		cell.bubble.layer.borderWidth = TGMetricBorderNone;
@@ -707,7 +715,7 @@ static void TGPlaceTitleDetail(TGBubbleCell *cell, CGFloat x, CGFloat top,
 		cell.body.hidden = YES;
 		cell.lottie.hidden = NO;
 		cell.lottie.frame = CGRectMake(TGMetricZero, TGMetricZero, side, side);
-		[cell.lottie loadTGSFile:tgsPath];
+		[cell.lottie loadStickerFile:animPath];
 		[cell.lottie play];
 
 		static NSDateFormatter *hmt = nil;
@@ -816,6 +824,7 @@ static void TGPlaceTitleDetail(TGBubbleCell *cell, CGFloat x, CGFloat top,
 		cell.picture.backgroundColor = (img || layout.isSticker) ? [UIColor clearColor] : [theme fileTileColour];
 		cell.picture.frame = layout.pictureFrame;
 		cell.picture.layer.cornerRadius = layout.isSticker ? TGMetricCornerNone : TGMetricCornerMedium;
+		cell.picture.layer.borderWidth = (layout.isSticker || layout.isRound) ? 0.0f : (theme.isFlat ? 0.0f : 1.0f);
 		cell.picture.clipsToBounds = YES;
 
 		cell.disc.hidden = ![kind isEqualToString:@"messageVideo"] && ![kind isEqualToString:@"messageAnimation"];
@@ -1004,7 +1013,7 @@ static void TGPlaceTitleDetail(TGBubbleCell *cell, CGFloat x, CGFloat top,
 	} else if (mine) {
 		cell.ticks.image = [self ticksForMessage:m white:NO];
 		cell.ticks.frame = CGRectMake(layout.bubbleFrame.size.width - kPadH - TGMetricTicksWidth,
-				layout.timeFrame.origin.y + TGMetricPadTiny,
+				layout.timeFrame.origin.y + TGCenteredOrigin(TGMetricStampHeight, TGMetricTicksHeight),
 				TGMetricTicksWidth, TGMetricTicksHeight);
 		[cell.bubble bringSubviewToFront:cell.ticks];
 	}
@@ -1168,36 +1177,75 @@ static UIBezierPath *TGBubblePath(CGSize size, CGFloat tl, CGFloat tr, CGFloat b
 	return path;
 }
 
-/// A bubble border path that leaves the tail attachment junction open so no
-/// inner divider line is drawn between the bubble body and its speech tail.
-static UIBezierPath *TGBubbleBorderPath(CGSize size, CGFloat tl, CGFloat tr, CGFloat br, CGFloat bl, BOOL openLeft, BOOL openRight) {
+static const CGFloat kTailCurveSpan   = 12.0f;
+static const CGFloat kTailCurveAnchor = 5.0f;
+static const CGFloat kTailCurveLift   = 2.0f;
+static const CGFloat kTailCurveWaist  = 6.0f;
+static const CGFloat kTailCurveInBow  = 2.4f;
+static const CGFloat kTailCurveOutBow = 3.6f;
+
+/// A bubble bezier path that optionally extends to include an authentic iOS 6
+/// swooping speech tail as a single contiguous vector contour.
+static UIBezierPath *TGBubbleUnifiedPath(CGSize size, CGFloat tl, CGFloat tr, CGFloat br, CGFloat bl, BOOL hasTail, BOOL mine) {
 	CGFloat cap = TGHalf(MIN(size.width, size.height));
 	tl = MIN(tl, cap); tr = MIN(tr, cap); br = MIN(br, cap); bl = MIN(bl, cap);
 	CGFloat w = size.width, h = size.height;
+	CGFloat tw = kTailWidth;
 
 	UIBezierPath *path = [UIBezierPath bezierPath];
-	if (openLeft) {
-		// Incoming tail at bottom-left: start above tail and end at bottom corner without closing
-		[path moveToPoint:CGPointMake(0, h - kTailHeight)];
-		[path addLineToPoint:CGPointMake(0, tl)];
-		[path addArcWithCenter:CGPointMake(tl, tl) radius:tl startAngle:M_PI endAngle:M_PI * 1.5 clockwise:YES];
+	if (!hasTail) {
+		[path moveToPoint:CGPointMake(tl, 0)];
 		[path addLineToPoint:CGPointMake(w - tr, 0)];
 		[path addArcWithCenter:CGPointMake(w - tr, tr) radius:tr startAngle:-M_PI_2 endAngle:0 clockwise:YES];
 		[path addLineToPoint:CGPointMake(w, h - br)];
 		[path addArcWithCenter:CGPointMake(w - br, h - br) radius:br startAngle:0 endAngle:M_PI_2 clockwise:YES];
-		[path addLineToPoint:CGPointMake(0, h)];
-	} else if (openRight) {
-		// Outgoing tail at bottom-right: start at bottom corner and end above tail without closing
-		[path moveToPoint:CGPointMake(w, h)];
 		[path addLineToPoint:CGPointMake(bl, h)];
 		[path addArcWithCenter:CGPointMake(bl, h - bl) radius:bl startAngle:M_PI_2 endAngle:M_PI clockwise:YES];
 		[path addLineToPoint:CGPointMake(0, tl)];
 		[path addArcWithCenter:CGPointMake(tl, tl) radius:tl startAngle:M_PI endAngle:M_PI * 1.5 clockwise:YES];
+		[path closePath];
+		return path;
+	}
+
+	if (!mine) {
+		// Incoming: layer width is w + tw. Body spans x = tw to x = w + tw. Tail extends to x = 0.
+		CGFloat W = w + tw;
+		[path moveToPoint:CGPointMake(tw + tl, 0)];
+		[path addLineToPoint:CGPointMake(W - tr, 0)];
+		[path addArcWithCenter:CGPointMake(W - tr, tr) radius:tr startAngle:-M_PI_2 endAngle:0 clockwise:YES];
+		[path addLineToPoint:CGPointMake(W, h - br)];
+		[path addArcWithCenter:CGPointMake(W - br, h - br) radius:br startAngle:0 endAngle:M_PI_2 clockwise:YES];
+		[path addLineToPoint:CGPointMake(tw + kTailCurveSpan, h)];
+
+		[path addCurveToPoint:CGPointMake(0, h)
+				controlPoint1:CGPointMake(tw + kTailCurveAnchor, h)
+				controlPoint2:CGPointMake(tw, h)];
+		[path addCurveToPoint:CGPointMake(tw, h - kTailHeight)
+				controlPoint1:CGPointMake(kTailCurveInBow, h - kTailCurveLift)
+				controlPoint2:CGPointMake(tw, h - kTailCurveWaist)];
+
+		[path addLineToPoint:CGPointMake(tw, tl)];
+		[path addArcWithCenter:CGPointMake(tw + tl, tl) radius:tl startAngle:M_PI endAngle:M_PI * 1.5 clockwise:YES];
+		[path closePath];
+	} else {
+		// Outgoing: layer width is w + tw. Body spans x = 0 to x = w. Tail extends to x = w + tw.
+		[path moveToPoint:CGPointMake(tl, 0)];
 		[path addLineToPoint:CGPointMake(w - tr, 0)];
 		[path addArcWithCenter:CGPointMake(w - tr, tr) radius:tr startAngle:-M_PI_2 endAngle:0 clockwise:YES];
 		[path addLineToPoint:CGPointMake(w, h - kTailHeight)];
-	} else {
-		return TGBubblePath(size, tl, tr, br, bl);
+
+		[path addCurveToPoint:CGPointMake(w + tw, h)
+				controlPoint1:CGPointMake(w, h - kTailCurveWaist)
+				controlPoint2:CGPointMake(w + kTailCurveOutBow, h - kTailCurveLift)];
+		[path addCurveToPoint:CGPointMake(w - kTailCurveSpan, h)
+				controlPoint1:CGPointMake(w, h)
+				controlPoint2:CGPointMake(w - kTailCurveAnchor, h)];
+
+		[path addLineToPoint:CGPointMake(bl, h)];
+		[path addArcWithCenter:CGPointMake(bl, h - bl) radius:bl startAngle:M_PI_2 endAngle:M_PI clockwise:YES];
+		[path addLineToPoint:CGPointMake(0, tl)];
+		[path addArcWithCenter:CGPointMake(tl, tl) radius:tl startAngle:M_PI endAngle:M_PI * 1.5 clockwise:YES];
+		[path closePath];
 	}
 	return path;
 }
@@ -1254,63 +1302,54 @@ static UIBezierPath *TGBubbleBorderPath(CGSize size, CGFloat tl, CGFloat tr, CGF
 	CGFloat big = [theme bubbleCornerRadius];
 	CGFloat small = [theme bubbleJoinedCornerRadius];
 	CGFloat top = first ? big : small;
-	CGFloat bottom = last ? 0 : small;   // the tail takes the last one's corner
+	CGFloat bottom = small;
 	CGSize size = cell.bubble.bounds.size;
-	UIBezierPath *path = mine ? TGBubblePath(size, big, top, bottom, big)
-							  : TGBubblePath(size, top, big, big, bottom);
+
+	BOOL hasTail = last;
+	CGFloat tl = mine ? big : top;
+	CGFloat tr = mine ? top : big;
+	CGFloat br = mine ? (hasTail ? 0 : bottom) : big;
+	CGFloat bl = mine ? big : (hasTail ? 0 : bottom);
+
+	CGRect layerFrame = cell.bubble.bounds;
+	if (hasTail) {
+		layerFrame = mine ? CGRectMake(0, 0, size.width + kTailWidth, size.height)
+						  : CGRectMake(-kTailWidth, 0, size.width + kTailWidth, size.height);
+	}
+
+	UIBezierPath *path = TGBubbleUnifiedPath(size, tl, tr, br, bl, hasTail, mine);
+
+	cell.bubble.clipsToBounds = NO;
+	cell.bubble.layer.cornerRadius = 0;
+	cell.bubble.layer.borderWidth = 0;
+	cell.bubble.layer.borderColor = [UIColor clearColor].CGColor;
 
 	CAShapeLayer *mask = [CAShapeLayer layer];
-	mask.frame = cell.bubble.bounds;
+	mask.frame = layerFrame;
 	mask.path = path.CGPath;
-	cell.bubble.layer.cornerRadius = 0;
 	cell.bubble.layer.mask = mask;
 
-	if (!theme.isFlat) {
-		cell.bubble.backgroundColor = [UIColor clearColor];
-		cell.gradientLayer.hidden = NO;
-		cell.gradientLayer.frame = cell.bubble.bounds;
-		cell.gradientLayer.colors = mine ? [theme skeuoBubbleMineGradientColours] : [theme skeuoBubbleTheirsGradientColours];
+	cell.bubble.backgroundColor = [UIColor clearColor];
+	cell.gradientLayer.hidden = NO;
+	cell.gradientLayer.frame = layerFrame;
+	cell.gradientLayer.colors = mine ? [theme skeuoBubbleMineGradientColours] : [theme skeuoBubbleTheirsGradientColours];
 
-		BOOL openLeft = last && !mine;
-		BOOL openRight = last && mine;
-		UIBezierPath *borderPath = TGBubbleBorderPath(size, (mine ? big : top), (mine ? top : big), (mine ? bottom : big), (mine ? big : bottom), openLeft, openRight);
-		cell.borderLayer.hidden = NO;
-		cell.borderLayer.frame = cell.bubble.bounds;
-		cell.borderLayer.path = borderPath.CGPath;
-		cell.borderLayer.strokeColor = (mine ? [theme skeuoBubbleMineBorderColour] : [theme skeuoBubbleTheirsBorderColour]).CGColor;
-		cell.borderLayer.lineWidth = 1.0f;
-		cell.borderLayer.fillColor = [UIColor clearColor].CGColor;
+	cell.borderLayer.hidden = NO;
+	cell.borderLayer.frame = layerFrame;
+	cell.borderLayer.path = path.CGPath;
+	cell.borderLayer.strokeColor = (mine ? [theme skeuoBubbleMineBorderColour] : [theme skeuoBubbleTheirsBorderColour]).CGColor;
+	cell.borderLayer.lineWidth = 1.0f;
+	cell.borderLayer.fillColor = [UIColor clearColor].CGColor;
 
-		cell.shineBar.hidden = NO;
-		CGFloat bubbleW = cell.bubble.bounds.size.width;
-		CGFloat bubbleH = cell.bubble.bounds.size.height;
-		CGFloat glossH = MAX(TGMetricPadLarge, bubbleH * 0.45f);
-		cell.shineBar.frame = CGRectMake(0, 0, bubbleW, glossH);
-		cell.shineGradientLayer.frame = cell.shineBar.bounds;
-		[cell.bubble bringSubviewToFront:cell.shineBar];
+	cell.shineBar.hidden = NO;
+	CGFloat bubbleW = cell.bubble.bounds.size.width;
+	CGFloat bubbleH = cell.bubble.bounds.size.height;
+	CGFloat glossH = MAX(TGMetricPadLarge, bubbleH * 0.45f);
+	cell.shineBar.frame = CGRectMake(0, 0, bubbleW, glossH);
+	cell.shineGradientLayer.frame = cell.shineBar.bounds;
+	[cell.bubble bringSubviewToFront:cell.shineBar];
 
-		if (last) {
-			CGRect b = cell.bubble.frame;
-			UIColor *tailFill = mine ? [theme bubbleMineColour] : [theme bubbleTheirsColour];
-			UIColor *tailBorder = mine ? [theme skeuoBubbleMineBorderColour] : [theme skeuoBubbleTheirsBorderColour];
-			cell.tail.image = [TGIcons bubbleTailForColour:tailFill outgoing:mine borderColour:tailBorder];
-			cell.tail.frame = CGRectMake(mine ? CGRectGetMaxX(b) : CGRectGetMinX(b) - kTailWidth,
-										 CGRectGetMaxY(b) - kTailHeight, kTailWidth, kTailHeight);
-			cell.tail.hidden = NO;
-			[cell.contentView bringSubviewToFront:cell.tail];
-		}
-	} else {
-		cell.gradientLayer.hidden = YES;
-		cell.borderLayer.hidden = YES;
-		cell.shineBar.hidden = YES;
-		if (last) {
-			CGRect b = cell.bubble.frame;
-			cell.tail.image = [TGIcons bubbleTailForColour:fill outgoing:mine];
-			cell.tail.frame = CGRectMake(mine ? CGRectGetMaxX(b) : CGRectGetMinX(b) - kTailWidth,
-										 CGRectGetMaxY(b) - kTailHeight, kTailWidth, kTailHeight);
-			cell.tail.hidden = NO;
-		}
-	}
+	cell.tail.hidden = YES;
 }
 
 @end

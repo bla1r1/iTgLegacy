@@ -262,31 +262,46 @@ NSAttributedString *TGAttributedMessageText(NSString *text, NSArray *entities, U
 			continue;
 
 		NSRange range = NSMakeRange(offset, length);
-		NSString *type = ent[@"type"][@"@type"] ?: ent[@"@type"];
+		id typeObj = ent[@"type"];
+		NSString *type = nil;
+		if ([typeObj isKindOfClass:[NSDictionary class]]) {
+			type = typeObj[@"@type"];
+		} else if ([typeObj isKindOfClass:[NSString class]]) {
+			type = (NSString *)typeObj;
+		}
+		if (!type && [ent[@"@type"] isKindOfClass:[NSString class]]) {
+			type = ent[@"@type"];
+		}
 
-		if ([type isEqualToString:@"textEntityTypeBold"] || [type isEqualToString:@"messageEntityBold"]) {
+		if ([type isEqualToString:@"textEntityTypeBold"] || [type isEqualToString:@"messageEntityBold"] || [type isEqualToString:@"bold"]) {
 			[str addAttribute:NSFontAttributeName value:TGFontBoldAtSize(size) range:range];
-		} else if ([type isEqualToString:@"textEntityTypeItalic"] || [type isEqualToString:@"messageEntityItalic"]) {
+		} else if ([type isEqualToString:@"textEntityTypeItalic"] || [type isEqualToString:@"messageEntityItalic"] || [type isEqualToString:@"italic"]) {
 			[str addAttribute:NSFontAttributeName value:TGFontItalicAtSize(size) range:range];
-		} else if ([type isEqualToString:@"textEntityTypeUnderline"] || [type isEqualToString:@"messageEntityUnderline"]) {
+		} else if ([type isEqualToString:@"textEntityTypeUnderline"] || [type isEqualToString:@"messageEntityUnderline"] || [type isEqualToString:@"underline"]) {
 			[str addAttribute:NSUnderlineStyleAttributeName value:@(NSUnderlineStyleSingle) range:range];
-		} else if ([type isEqualToString:@"textEntityTypeStrikethrough"] || [type isEqualToString:@"messageEntityStrikethrough"]) {
+		} else if ([type isEqualToString:@"textEntityTypeStrikethrough"] || [type isEqualToString:@"messageEntityStrikethrough"] || [type isEqualToString:@"strikethrough"]) {
 			[str addAttribute:NSStrikethroughStyleAttributeName value:@(NSUnderlineStyleSingle) range:range];
 		} else if ([type isEqualToString:@"textEntityTypeCode"] || [type isEqualToString:@"messageEntityCode"] ||
 				   [type isEqualToString:@"textEntityTypePre"]  || [type isEqualToString:@"messageEntityPre"] ||
-				   [type isEqualToString:@"textEntityTypePreCode"]) {
+				   [type isEqualToString:@"textEntityTypePreCode"] || [type isEqualToString:@"code"]) {
 			UIFont *mono = TGFontCodeAtSize(MAX(TGFontSizeMicro, size - TGMetricTextPadV));
 			if (mono)
 				[str addAttribute:NSFontAttributeName value:mono range:range];
 			[str addAttribute:NSBackgroundColorAttributeName value:TGColourCodeBackground() range:range];
-		} else if ([type isEqualToString:@"textEntityTypeTextUrl"] || [type isEqualToString:@"messageEntityTextUrl"]) {
-			NSString *urlStr = ent[@"type"][@"url"] ?: ent[@"url"];
+		} else if ([type isEqualToString:@"textEntityTypeTextUrl"] || [type isEqualToString:@"messageEntityTextUrl"] || [type isEqualToString:@"url"] || [type isEqualToString:@"textEntityTypeUrl"]) {
+			NSString *urlStr = nil;
+			if ([typeObj isKindOfClass:[NSDictionary class]]) {
+				urlStr = typeObj[@"url"];
+			}
+			if (!urlStr.length) {
+				urlStr = ent[@"url"];
+			}
 			if (urlStr.length) {
 				[str addAttribute:NSForegroundColorAttributeName value:linkColour range:range];
 				[str addAttribute:NSUnderlineStyleAttributeName value:@(NSUnderlineStyleSingle) range:range];
 				[str addAttribute:@"TGLinkURL" value:urlStr range:range];
 			}
-		} else if ([type isEqualToString:@"textEntityTypeUrl"] || [type isEqualToString:@"messageEntityUrl"]) {
+		} else if ([type isEqualToString:@"textEntityTypeUrl"] || [type isEqualToString:@"messageEntityUrl"] || [type isEqualToString:@"url"]) {
 			NSString *urlStr = [text substringWithRange:range];
 			[str addAttribute:NSForegroundColorAttributeName value:linkColour range:range];
 			[str addAttribute:NSUnderlineStyleAttributeName value:@(NSUnderlineStyleSingle) range:range];

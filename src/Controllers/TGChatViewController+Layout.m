@@ -1,6 +1,7 @@
 #import "TGChatViewControllerInternal.h"
 #import "TGCapabilities.h"
 #import "TGStyle.h"
+#import "TGDevShowcase.h"
 
 UIColor *TGSenderColour(int64_t userId) {
 	// Same slot as the sender's placeholder avatar, so the two always match.
@@ -106,7 +107,11 @@ UIColor *TGSenderColour(int64_t userId) {
 
 	TGTheme *theme = [TGTheme shared];
 	cell.forwardLabel.hidden = NO;
-	cell.forwardLabel.frame = CGRectMake(kPadH, kPadV, width - TGDoubled(kPadH), TGMetricSenderLineHeight);
+	CGFloat topY = kPadV;
+	if (self.isGroup && ![m[@"outgoing"] boolValue]) {
+		topY += TGMetricSenderLineHeight;
+	}
+	cell.forwardLabel.frame = CGRectMake(kPadH, topY, width - TGDoubled(kPadH), TGMetricSenderLineHeight);
 
 	NSString *line = [NSString stringWithFormat:@"Forwarded from %@", from];
 	if ([cell.forwardLabel respondsToSelector:@selector(setAttributedText:)]){
@@ -163,7 +168,17 @@ UIColor *TGSenderColour(int64_t userId) {
 	if (map)
 		return map;
 	NSNumber *fileId = m[@"photoId"];
-	return [fileId isKindOfClass:NSNumber.class] ? self.images[fileId] : nil;
+	if ([fileId isKindOfClass:NSNumber.class]) {
+		UIImage *cached = self.images[fileId];
+		if (cached)
+			return cached;
+		if (fileId.longLongValue < 0 || [TGDevShowcase isDevChatId:self.chatId]) {
+			UIImage *fixture = [TGDevShowcase imageForPhotoId:fileId.longLongValue];
+			if (fixture)
+				return fixture;
+		}
+	}
+	return nil;
 }
 
 - (CGSize)imageSizeFor:(NSDictionary *)m {
@@ -232,7 +247,7 @@ UIColor *TGSenderColour(int64_t userId) {
 	CGFloat forwarded = [m[@"forward"] length] ? TGMetricQuoteForwardLine : TGMetricZero;
 	layout.fwdHeight = forwarded;
 	layout.stamp = [self stampFor:m];
-	layout.timeWidth = TGTextSize(layout.stamp, TGFontMicro(), 0).width;
+	layout.timeWidth = [self timeWidthFor:m];
 
 	NSString *separator = m[@"separator"];
 	if ([separator isEqualToString:@"unread"]) {
@@ -248,7 +263,11 @@ UIColor *TGSenderColour(int64_t userId) {
 
 	if (isService) {
 		NSString *who = separator ? nil : [[TGClient shared] nameForUserId:[m[@"senderId"] longLongValue]];
-		NSString *line = who.length ? [NSString stringWithFormat:@"%@ %@", who, m[@"text"]] : (m[@"text"] ?: @"");
+		NSString *text = m[@"text"] ?: @"";
+		NSString *line = text;
+		if (who.length && ![text hasPrefix:@"Group "] && ![text hasPrefix:@"Chat "] && ![text hasPrefix:@"Screenshot "] && ![text hasPrefix:@"You "]) {
+			line = [NSString stringWithFormat:@"%@ %@", who, text];
+		}
 		UIFont *font = TGFontMeta();
 		CGFloat textW = MIN(TGTextSize(line, font, 0).width,
 				tableW - TGDoubled(kServicePlateMargin));
@@ -340,7 +359,9 @@ UIColor *TGSenderColour(int64_t userId) {
 		return layout;
 	}
 
-	if ([TGCapabilities canPlayAnimatedStickers] && [m[@"docName"] isEqualToString:@"tgs"]) {
+	BOOL hasAnimatedStickerPath = self.lottiePaths[m[@"docId"]] != nil;
+	BOOL isAnimatedFormat = [m[@"docName"] isEqualToString:@"tgs"] || [m[@"docName"] isEqualToString:@"webm"];
+	if ([TGCapabilities canPlayAnimatedStickers] && isAnimatedFormat && hasAnimatedStickerPath) {
 		CGFloat side = kLottieSide;
 		layout.bubbleFrame = CGRectMake(mine ? (tableW - side - TGMetricPad) : TGMetricPad,
 				TGMetricBubbleRowInset, side, side + TGMetricLineMicro);

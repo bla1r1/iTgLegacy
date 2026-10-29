@@ -3,6 +3,9 @@
 #import "TGForwardPicker.h"
 #import "TGStyle.h"
 #import "TGGalleryViewController.h"
+#import "AppDelegate.h"
+#import "TGChatViewController.h"
+#import "TGDevShowcase.h"
 
 @implementation TGSettingsViewController (Pages)
 
@@ -41,6 +44,9 @@
 
 		// Account actions card
 		TGSection(nil, nil, @[
+			([TGClient shared].authState != TGAuthStateReady) ? TGActionRow(@"Log in to Telegram", ^{
+				[[AppDelegate sharedDelegate] showLoginUI];
+			}) : TGActionRow(@"Add Account", ^{ [weakSelf explainAddAccount]; }),
 			TGActionRow(hasPhoto ? @"Change Profile Photo" : @"Set Profile Photo", ^{
 				[weakSelf pickProfilePhoto];
 			}),
@@ -49,7 +55,6 @@
 				edit.hidesBottomBarWhenPushed = YES;
 				[weakSelf.navigationController pushViewController:edit animated:YES];
 			}),
-			TGActionRow(@"Add Account", ^{ [weakSelf explainAddAccount]; }),
 		]),
 
 		TGSection(nil, nil, @[
@@ -621,6 +626,18 @@
 	[facts addObject:TGTapRow(@"Theme", [[TGTheme shared] currentThemeId], nil)];
 
 	return @[
+		TGSection(@"Dev & Showcase",
+				  @"Interactive showcase for all 30 TDLib message types, vector Lottie (.tgs), and VP9 video (.webm) stickers.", @[
+			TGTapRow(@"Open Message Types Showcase Chat", nil, ^{
+				TGChatViewController *chat = [[TGChatViewController alloc] init];
+				chat.chatId = kDevChatId;
+				chat.chatTitle = @"Dev Showcase";
+				chat.isGroup = YES;
+				chat.hidesBottomBarWhenPushed = YES;
+				[weakSelf.navigationController pushViewController:chat animated:YES];
+			}),
+		]),
+
 		TGSection(@"Build", nil, facts),
 
 		TGSection(@"Capabilities",
@@ -630,6 +647,18 @@
 				TGDeviceViewController *device = [[TGDeviceViewController alloc] init];
 				device.hidesBottomBarWhenPushed = YES;
 				[weakSelf.navigationController pushViewController:device animated:YES];
+			}),
+		]),
+
+		TGSection(@"Dev Harness",
+				  @"Preview rich media, interactive polls, audio tracks, and custom stickers.", @[
+			TGTapRow(@"Open Dev Showcase Chat", @"30 message types", ^{
+				TGChatViewController *vc = [[TGChatViewController alloc] init];
+				vc.chatId = kDevChatId;
+				vc.chatTitle = @"Dev Showcase";
+				vc.isGroup = YES;
+				vc.hidesBottomBarWhenPushed = YES;
+				[weakSelf.navigationController pushViewController:vc animated:YES];
 			}),
 		]),
 

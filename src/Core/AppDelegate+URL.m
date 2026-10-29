@@ -13,6 +13,9 @@ static const CGFloat kIconDumpSide = 52.0f;
 #import "TGCall.h"
 #import "TGCallViewController.h"
 #import "TGChatViewController.h"
+#import "TGChatListViewController.h"
+#import "TGChatListViewControllerInternal.h"
+#import "TGDevShowcase.h"
 #import "TGTopicsViewController.h"
 #import "TGGalleryViewController.h"
 #import "TGIcons.h"
@@ -76,9 +79,45 @@ static NSString *TGBase64FromImage(UIImage *img) {
 		return YES;
 	}
 
+	if ([host isEqualToString:@"debug_auth"]){
+		NSString *info = [NSString stringWithFormat:@"authState=%ld, chats=%lu, loginVC=%@, rootVC=%@, winRoot=%@",
+			(long)[TGClient shared].authState,
+			(unsigned long)[TGClient shared].chats.count,
+			self.loginVC,
+			self.rootViewController,
+			self.window.rootViewController];
+		[info writeToFile:@"/tmp/auth_debug.txt" atomically:YES encoding:NSUTF8StringEncoding error:nil];
+		return YES;
+	}
+
 	if ([host isEqualToString:@"code"] && arg.length){
 		NSLog(@"code received (%lu chars)", (unsigned long)arg.length);
 		[[TGClient shared] sendCode:arg];
+		return YES;
+	}
+
+	if ([host isEqualToString:@"dev"] || [host isEqualToString:@"showcase"]){
+		dispatch_async(dispatch_get_main_queue(), ^{
+			[self showMainUI];
+			UITabBarController *tabs = [self activeTabBarController];
+			if (!tabs) {
+				[self showMainUI];
+				tabs = [self activeTabBarController];
+			}
+			if (![tabs isKindOfClass:UITabBarController.class])
+				return;
+			tabs.selectedIndex = 0;
+			UINavigationController *nc = tabs.viewControllers[0];
+			[nc popToRootViewControllerAnimated:NO];
+
+			TGChatViewController *vc = [[TGChatViewController alloc] init];
+			vc.chatId = -7777777LL;
+			vc.chatTitle = @"Dev Showcase";
+			vc.isGroup = YES;
+			vc.hidesBottomBarWhenPushed = YES;
+			[nc pushViewController:vc animated:NO];
+			NSLog(@"open dev showcase chat directly");
+		});
 		return YES;
 	}
 
@@ -88,9 +127,33 @@ static NSString *TGBase64FromImage(UIImage *img) {
 		return YES;
 	}
 
+	if ([host isEqualToString:@"dev"] || [host isEqualToString:@"showcase"]){
+		dispatch_async(dispatch_get_main_queue(), ^{
+			UITabBarController *tabs = (UITabBarController *)self.rootViewController;
+			if (![tabs isKindOfClass:UITabBarController.class])
+				return;
+			tabs.selectedIndex = 0;
+			UINavigationController *nc = tabs.viewControllers[0];
+			[nc popToRootViewControllerAnimated:NO];
+
+			TGChatViewController *vc = [[TGChatViewController alloc] init];
+			vc.chatId = -7777777LL;
+			vc.chatTitle = @"Dev Showcase";
+			vc.isGroup = YES;
+			vc.hidesBottomBarWhenPushed = YES;
+			[nc pushViewController:vc animated:NO];
+			NSLog(@"open dev showcase chat directly");
+		});
+		return YES;
+	}
+
 	if ([host isEqualToString:@"tab"]){
 		dispatch_async(dispatch_get_main_queue(), ^{
 			UITabBarController *tabs = [self activeTabBarController];
+			if (!tabs) {
+				[self showMainUI];
+				tabs = [self activeTabBarController];
+			}
 			NSInteger idx = [arg integerValue];
 			if ([tabs isKindOfClass:[RootViewController class]]) {
 				[(RootViewController *)tabs switchToTab:(NSUInteger)idx popToRoot:YES];
@@ -103,16 +166,11 @@ static NSString *TGBase64FromImage(UIImage *img) {
 
 	if ([host isEqualToString:@"chatindex"]){
 		dispatch_async(dispatch_get_main_queue(), ^{
-			NSArray *chats = [TGClient shared].chats;
-			NSInteger idx = [arg integerValue];
-			if (idx < 0 || idx >= (NSInteger)chats.count){
-				NSLog(@"chatindex %ld out of range (%lu)",
-						(long)idx, (unsigned long)chats.count);
-				return;
-			}
-			NSDictionary *c = chats[idx];
-
 			UITabBarController *tabs = (UITabBarController *)(self.rootViewController ?: self.window.rootViewController);
+			if (![tabs isKindOfClass:UITabBarController.class]) {
+				[self showMainUI];
+				tabs = (UITabBarController *)(self.rootViewController ?: self.window.rootViewController);
+			}
 			if (![tabs isKindOfClass:UITabBarController.class])
 				return;
 			if ([tabs isKindOfClass:[RootViewController class]]) {
@@ -122,6 +180,17 @@ static NSString *TGBase64FromImage(UIImage *img) {
 			}
 			UINavigationController *nc = tabs.viewControllers[0];
 			[nc popToRootViewControllerAnimated:NO];
+
+			TGChatListViewController *chatList = (TGChatListViewController *)[nc.viewControllers firstObject];
+			NSArray *chats = [chatList isKindOfClass:[TGChatListViewController class]] ? [chatList visibleChats] : [TGClient shared].chats;
+			if (!chats.count) chats = [TGDevShowcase allShowcaseChats];
+			NSInteger idx = [arg integerValue];
+			if (idx < 0 || idx >= (NSInteger)chats.count){
+				NSLog(@"chatindex %ld out of range (%lu)",
+						(long)idx, (unsigned long)chats.count);
+				return;
+			}
+			NSDictionary *c = chats[idx];
 
 			if ([c[@"isForum"] boolValue]){
 				TGTopicsViewController *topics = [[TGTopicsViewController alloc] init];
@@ -339,6 +408,37 @@ static NSString *TGBase64FromImage(UIImage *img) {
 			call.target = top;
 			[call setArgument:&row atIndex:2];
 			[call invoke];
+		});
+		return YES;
+	}
+
+	if ([host isEqualToString:@"row"]){
+		dispatch_async(dispatch_get_main_queue(), ^{
+			NSInteger row = [arg integerValue];
+			UITabBarController *tabs = (UITabBarController *)self.rootViewController;
+			if (![tabs isKindOfClass:UITabBarController.class])
+				return;
+			UINavigationController *nc = (UINavigationController *)tabs.selectedViewController;
+			UIViewController *top = [nc isKindOfClass:[UINavigationController class]] ? nc.topViewController : (UIViewController *)nc;
+			UITableView *table = nil;
+			if ([top respondsToSelector:@selector(table)])
+				table = [top performSelector:@selector(table)];
+			else if ([top respondsToSelector:@selector(tableView)])
+				table = [top performSelector:@selector(tableView)];
+			if (!table) {
+				for (UIView *v in top.view.subviews) {
+					if ([v isKindOfClass:[UITableView class]]) { table = (UITableView *)v; break; }
+				}
+			}
+			if (table) {
+				NSInteger total = [table numberOfRowsInSection:0];
+				if (row >= 0 && row < total) {
+					[table scrollToRowAtIndexPath:[NSIndexPath indexPathForRow:row inSection:0]
+								 atScrollPosition:UITableViewScrollPositionTop
+										 animated:NO];
+					NSLog(@"scrolled to row %ld / %ld", (long)row, (long)total);
+				}
+			}
 		});
 		return YES;
 	}

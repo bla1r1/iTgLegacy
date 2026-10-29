@@ -34,6 +34,19 @@ static void TGWatchForIncomingCalls(void) {
 	};
 }
 
+static void TGDevCommandNotifyCallback(CFNotificationCenterRef center, void *observer, CFStringRef name, const void *object, CFDictionaryRef userInfo) {
+	NSString *cmd = [NSString stringWithContentsOfFile:@"/tmp/itg_cmd.txt" encoding:NSUTF8StringEncoding error:nil];
+	if (!cmd.length) return;
+	cmd = [cmd stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+	NSURL *url = [NSURL URLWithString:([cmd hasPrefix:@"itglegacy://"] ? cmd : [NSString stringWithFormat:@"itglegacy://%@", cmd])];
+	if (url) {
+		dispatch_async(dispatch_get_main_queue(), ^{
+			AppDelegate *app = (AppDelegate *)[UIApplication sharedApplication].delegate;
+			[app application:[UIApplication sharedApplication] handleOpenURL:url];
+		});
+	}
+}
+
 - (BOOL)application:(UIApplication *)application
 		didFinishLaunchingWithOptions:(NSDictionary *)launchOptions
 {
@@ -52,17 +65,16 @@ static void TGWatchForIncomingCalls(void) {
 	NSLog(@"[LegacyTG] Starting application...");
 	TGWatchForIncomingCalls();
 
+	// Listen for developer automation commands via Darwin notification
+	CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, TGDevCommandNotifyCallback, CFSTR("org.legacy.itg.cmd"), NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
+
 	application.applicationIconBadgeNumber = 0;
 	self.showNotifications = [[NSUserDefaults standardUserDefaults] boolForKey:@"showNotifications"];
 
 	[fm changeCurrentDirectoryPath:[[NSBundle mainBundle] bundlePath]];
 
 	self.window = [[UIWindow alloc] initWithFrame:[[UIScreen mainScreen] bounds]];
-	if ([[NSUserDefaults standardUserDefaults] boolForKey:@"hasAuthorizedSession"]) {
-		[self showMainUI];
-	} else {
-		[self showLoadingUI];
-	}
+	[self showMainUI];
 	[self.window makeKeyAndVisible];
 
 	[self startTDLib];
@@ -95,13 +107,13 @@ static void TGWatchForIncomingCalls(void) {
 			switch (state){
 				case TGAuthStateWaitPhoneNumber:
 					[[NSUserDefaults standardUserDefaults] setBool:NO forKey:@"hasAuthorizedSession"];
-					[me showLoginUI];
 					[me.loginVC setBusy:NO];
 					[me.loginVC showPhoneStep];
+					// In dev builds, keep Main UI active so showcase chats are instantly accessible
+					[me showMainUI];
 					break;
 				case TGAuthStateWaitCode: {
 					[[NSUserDefaults standardUserDefaults] setBool:NO forKey:@"hasAuthorizedSession"];
-					[me showLoginUI];
 					NSString *phone = me.currentPhoneNumber;
 					if (!phone.length) {
 						phone = [[TGClient shared].codeInfo objectForKey:@"phone_number"];
@@ -112,25 +124,23 @@ static void TGWatchForIncomingCalls(void) {
 					} else {
 						[me.loginVC showCodeStepWithPhoneNumber:phone];
 					}
+					if (me.loginVC) [me showLoginUI]; else [me showMainUI];
 					break;
 				}
 				case TGAuthStateWaitPassword:
 					[[NSUserDefaults standardUserDefaults] setBool:NO forKey:@"hasAuthorizedSession"];
-					[me showLoginUI];
 					[me.loginVC showPasswordStep];
+					if (me.loginVC) [me showLoginUI]; else [me showMainUI];
 					break;
-				// A number Telegram has never seen waits here. There was no
-				// case for it, so entering a code on a new number left the
-				// code screen up with nothing happening.
 				case TGAuthStateWaitRegistration:
 					[[NSUserDefaults standardUserDefaults] setBool:NO forKey:@"hasAuthorizedSession"];
-					[me showLoginUI];
 					[me.loginVC showRegisterStep];
+					if (me.loginVC) [me showLoginUI]; else [me showMainUI];
 					break;
 				case TGAuthStateWaitOtherDeviceConfirmation:
 					[[NSUserDefaults standardUserDefaults] setBool:NO forKey:@"hasAuthorizedSession"];
-					[me showLoginUI];
 					[me.loginVC showQRCodeStepWithLink:[TGClient shared].qrCodeLink];
+					if (me.loginVC) [me showLoginUI]; else [me showMainUI];
 					break;
 				case TGAuthStateReady:
 					// Telegram only takes a token for a signed-in account, so
@@ -143,7 +153,7 @@ static void TGWatchForIncomingCalls(void) {
 				case TGAuthStateClosed:
 				case TGAuthStateLoggingOut:
 					[[NSUserDefaults standardUserDefaults] setBool:NO forKey:@"hasAuthorizedSession"];
-					[me showLoginUI];
+					[me showMainUI];
 					break;
 				default:
 					break;
@@ -155,6 +165,9 @@ static void TGWatchForIncomingCalls(void) {
 		dispatch_async(dispatch_get_main_queue(), ^{
 			AppDelegate *me = weakSelf;
 			[me.loginVC setBusy:NO];
+			if ([msg isEqualToString:@"Unauthorized"] || [msg hasPrefix:@"Unauthorized"]) {
+				return;
+			}
 			[me showMessage:msg];
 		});
 	};

@@ -4,6 +4,7 @@
 #import "TGCapabilities.h"
 #import "TGStyle.h"
 #import "TGAlertSheet.h"
+#import "TGDevShowcase.h"
 
 @implementation TGChatViewController (Media)
 
@@ -67,6 +68,9 @@
 /// until the track bubble existed.
 - (UIImage *)artworkForTrack:(NSDictionary *)m {
 	NSNumber *coverId = m[@"albumCoverId"];
+	if ([TGDevShowcase isDevChatId:self.chatId] || (coverId && coverId.longLongValue < 0)) {
+		return [TGDevShowcase trackArtwork];
+	}
 	if (![coverId isKindOfClass:NSNumber.class] || coverId.integerValue <= 0)
 		return nil;
 
@@ -184,14 +188,14 @@
 		}
 	}
 
-	// Animated stickers need the .tgs itself, not the still thumbnail.
+	// Animated stickers (.tgs or .webm) need the animation file, not just the still thumbnail.
 	// Only fetch when the device and user settings allow animated stickers.
 	if ([TGCapabilities canPlayAnimatedStickers]){
 		for (NSDictionary *m in allMsgs){
-			if (![m[@"docName"] isEqualToString:@"tgs"])
+			if (![m[@"docName"] isEqualToString:@"tgs"] && ![m[@"docName"] isEqualToString:@"webm"])
 				continue;
 			NSNumber *docId = m[@"docId"];
-			if (![docId isKindOfClass:NSNumber.class] || self.lottiePaths[docId])
+			if (![docId isKindOfClass:NSNumber.class] || docId.longLongValue < 0 || self.lottiePaths[docId])
 				continue;
 			if ([self.imagesRequested containsObject:docId])
 				continue;
@@ -221,7 +225,7 @@
 
 	for (NSDictionary *m in allMsgs){
 		NSNumber *fileId = m[@"photoId"];
-		if (![fileId isKindOfClass:NSNumber.class])
+		if (![fileId isKindOfClass:NSNumber.class] || fileId.longLongValue < 0)
 			continue;
 		if (self.images[fileId] || [self.imagesRequested containsObject:fileId])
 			continue;
@@ -277,6 +281,14 @@
 	UIImage *cached = self.senderAvatars[key];
 	if (cached)
 		return cached;
+
+	if ([TGDevShowcase isDevChatId:self.chatId] || userId == 20002 || userId == 10001) {
+		UIImage *devAvatar = [TGDevShowcase avatarForUserId:userId];
+		if (devAvatar) {
+			self.senderAvatars[key] = devAvatar;
+			return devAvatar;
+		}
+	}
 
 	NSString *initials = name.length ? [name substringToIndex:1] : @"?";
 	UIImage *placeholder = [TGIcons avatarWithInitials:initials.uppercaseString

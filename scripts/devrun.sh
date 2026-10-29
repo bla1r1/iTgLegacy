@@ -28,6 +28,7 @@ FILTER="LegacyTG"
 DO_BUILD=1
 CHECK_ONLY=0
 SHOT_ONLY=0
+VIDEO_DURATION=0
 # Several devices on one cable happens (an old test bench plus a donor);
 # --udid UDID pins every tool to the chosen one.
 DEV_UDID=""
@@ -47,6 +48,7 @@ while [ $# -gt 0 ]; do
 		--udid)     DEV_UDID="$2"; shift 2 ;;
 		--check)    CHECK_ONLY=1; shift ;;
 		--shot)     SHOT_ONLY=1; shift ;;
+		--video)    VIDEO_DURATION="${2:-5}"; shift 2 ;;
 		*) echo "unknown option: $1"; exit 2 ;;
 	esac
 done
@@ -206,27 +208,17 @@ collect() {
 	fi
 }
 
-# Ask the running app to photograph itself and pull the result.
+# Ask the running app / system to photograph itself and pull the result without gallery pollution.
 shot() {
 	ssh_ready || { echo "no ssh, cannot take a screenshot" >&2; return 1; }
-	ssh $SSH_OPTS "$SSH_HOST" "uiopen legacytg://screenshot 2>/dev/null || uiopen itglegacy://screenshot" || return 1
-	sleep 3
-	local remote
-	remote="$(ssh $SSH_OPTS "$SSH_HOST" \
-		'ls -t /var/mobile/Applications/*/Library/Caches/screen.png 2>/dev/null | head -1')"
-	[ -n "$remote" ] || { echo "app did not write a screenshot" >&2; return 1; }
-
-	# A screen.png left over from an earlier run is still a file, so without
-	# this the command happily returns a picture of yesterday whenever the app
-	# fails to launch - which is worse than returning nothing.
-	local age
-	age="$(ssh $SSH_OPTS "$SSH_HOST" \
-		"expr \$(date +%s) - \$(date -r '$remote' +%s 2>/dev/null || echo 0)")"
-	if [ -z "$age" ] || [ "$age" -gt 60 ]; then
-		echo "stale screenshot: ${age}s old, so the app did not answer." >&2
-		echo "It is probably not running - check the launch first." >&2
-		return 1
+	ssh $SSH_OPTS "$SSH_HOST" "sbunlock --screenshot 2>/dev/null || uiopen itglegacy://screenshot" || return 1
+	sleep 1
+	local remote="/var/mobile/screenshot.png"
+	if ! ssh $SSH_OPTS "$SSH_HOST" "[ -f '$remote' ]"; then
+		remote="$(ssh $SSH_OPTS "$SSH_HOST" \
+			'ls -t /var/mobile/Applications/*/Library/Caches/screen.png 2>/dev/null | head -1')"
 	fi
+	[ -n "$remote" ] || { echo "device did not write a screenshot" >&2; return 1; }
 
 	scp $SSH_OPTS "$SSH_HOST:$remote" "$LOGDIR/screen-$STAMP.png" >/dev/null 2>&1 \
 		&& echo "$LOGDIR/screen-$STAMP.png"
@@ -258,6 +250,11 @@ wait_for_device || exit 1
 
 if [ "$SHOT_ONLY" = 1 ]; then
 	shot
+	exit $?
+fi
+
+if [ "$VIDEO_DURATION" -gt 0 ]; then
+	"$ROOT/scripts/record_screen.sh" --duration "$VIDEO_DURATION" --gif
 	exit $?
 fi
 

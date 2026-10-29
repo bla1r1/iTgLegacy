@@ -34,7 +34,6 @@ static const CGFloat kFieldWidth = 290.0f;
 	self.title = @"New Contact";
 	if ([self respondsToSelector:@selector(setEdgesForExtendedLayout:)])
 		self.edgesForExtendedLayout = UIRectEdgeNone;
-	[self applyTheme];
 
 	self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc]
 			initWithTitle:@"Done" style:UIBarButtonItemStyleDone
@@ -48,6 +47,8 @@ static const CGFloat kFieldWidth = 290.0f;
 		[self.phoneField becomeFirstResponder];
 	else
 		[self.firstField becomeFirstResponder];
+
+	[self applyTheme];
 
 	__weak typeof(self) weakSelf = self;
 	[[NSNotificationCenter defaultCenter] addObserverForName:TGThemeChangedNotification
@@ -66,10 +67,19 @@ static const CGFloat kFieldWidth = 290.0f;
 	self.tableView.backgroundColor = [[TGTheme shared] groupedBackgroundColour];
 	self.tableView.separatorColor = [[TGTheme shared] separatorColour];
 	[[TGTheme shared] styleNavigationBar:self.navigationController.navigationBar];
-	for (UITextField *field in @[self.firstField, self.lastField, self.phoneField]){
-		if (!field) continue;
-		field.textColor = [[TGTheme shared] primaryTextColour];
-		field.keyboardAppearance = [TGTheme shared].isDark
+	if (self.firstField) {
+		self.firstField.textColor = [[TGTheme shared] primaryTextColour];
+		self.firstField.keyboardAppearance = [TGTheme shared].isDark
+				? UIKeyboardAppearanceDark : UIKeyboardAppearanceDefault;
+	}
+	if (self.lastField) {
+		self.lastField.textColor = [[TGTheme shared] primaryTextColour];
+		self.lastField.keyboardAppearance = [TGTheme shared].isDark
+				? UIKeyboardAppearanceDark : UIKeyboardAppearanceDefault;
+	}
+	if (self.phoneField) {
+		self.phoneField.textColor = [[TGTheme shared] primaryTextColour];
+		self.phoneField.keyboardAppearance = [TGTheme shared].isDark
 				? UIKeyboardAppearanceDark : UIKeyboardAppearanceDefault;
 	}
 }

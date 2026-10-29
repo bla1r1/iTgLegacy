@@ -46,7 +46,8 @@ static NSString *TGPollGraphLines(NSString *json, NSArray *options) {
 			NSInteger k = (NSInteger)i - 1;
 			if (k >= 0 && k < (NSInteger)options.count){
 				NSDictionary *option = options[k];
-				title = option[@"text"][@"text"] ?: option[@"text"];
+				id ot = option[@"text"];
+				title = [ot isKindOfClass:[NSDictionary class]] ? (ot[@"text"] ?: @"") : ([ot isKindOfClass:[NSString class]] ? (NSString *)ot : @"");
 			}
 			NSString *who = [title isKindOfClass:NSString.class] && title.length
 					? title : name;
@@ -60,7 +61,8 @@ static NSString *TGPollGraphLines(NSString *json, NSArray *options) {
 	// The chart said nothing this reader could hold: the options' own
 	// percentages from the bubble, which are the same story told plainer.
 	for (NSDictionary *option in options){
-		NSString *title = option[@"text"][@"text"] ?: option[@"text"] ?: @"?";
+		id ot = option[@"text"];
+		NSString *title = [ot isKindOfClass:[NSDictionary class]] ? (ot[@"text"] ?: @"") : ([ot isKindOfClass:[NSString class]] ? (NSString *)ot : @"?");
 		NSString *counts = option[@"voter_count"]
 				? [NSString stringWithFormat:@" · %ld votes",
 						(long)[option[@"voter_count"] integerValue]]
@@ -323,8 +325,11 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 		// them next. A poll without answers to look at says so.
 		NSArray *options = m[@"pollOptions"];
 		NSMutableArray *titles = [NSMutableArray array];
-		for (NSDictionary *option in options)
-			[titles addObject:option[@"text"][@"text"] ?: option[@"text"] ?: @"?"];
+		for (NSDictionary *option in options) {
+			id ot = option[@"text"];
+			NSString *otStr = [ot isKindOfClass:[NSDictionary class]] ? (ot[@"text"] ?: @"") : ([ot isKindOfClass:[NSString class]] ? (NSString *)ot : @"?");
+			[titles addObject:otStr];
+		}
 		if (!titles.count){
 			[TGAlertSheet showMessage:@"This poll has no answers to look "
 									  @"behind." title:@"Poll Voters"
@@ -422,8 +427,11 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 		// the confirm.
 		NSArray *options = m[@"pollOptions"];
 		NSMutableArray *titles = [NSMutableArray array];
-		for (NSDictionary *option in options)
-			[titles addObject:option[@"text"][@"text"] ?: option[@"text"] ?: @"?"];
+		for (NSDictionary *option in options) {
+			id ot = option[@"text"];
+			NSString *otStr = [ot isKindOfClass:[NSDictionary class]] ? (ot[@"text"] ?: @"") : ([ot isKindOfClass:[NSString class]] ? (NSString *)ot : @"?");
+			[titles addObject:otStr];
+		}
 		int64_t chatId = self.chatId;
 		__weak typeof(self) weakSelf = self;
 		[TGAlertSheet showChoices:titles

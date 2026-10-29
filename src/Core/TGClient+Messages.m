@@ -145,10 +145,15 @@ NSDictionary *TGFlattenMessage(NSDictionary *m) {
 			docFileId   = sticker[@"sticker"][@"id"];
 			photoFileId = sticker[@"thumbnail"][@"file"][@"id"];
 			docName     = @"tgs";
+		} else if ([format isEqualToString:@"stickerFormatWebm"]){
+			// WebM VP9 video animation - TGLottieView plays it via TGWebMDecoder.
+			docFileId   = sticker[@"sticker"][@"id"];
+			photoFileId = sticker[@"thumbnail"][@"file"][@"id"];
+			docName     = @"webm";
 		} else if ([format isEqualToString:@"stickerFormatWebp"]){
 			photoFileId = sticker[@"sticker"][@"id"];
 		} else {
-			// .webm is VP9, which this device cannot decode - thumbnail only.
+			// fallback
 			photoFileId = sticker[@"thumbnail"][@"file"][@"id"];
 		}
 

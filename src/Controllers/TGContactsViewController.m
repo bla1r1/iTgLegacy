@@ -8,6 +8,7 @@
 #import "TGStyle.h"
 #import "TGAlertSheet.h"
 #import "TGEmptyView.h"
+#import "TGDevShowcase.h"
 
 
 @interface TGContactsViewController ()
@@ -78,7 +79,11 @@
 		TGContactsViewController *me = weakSelf;
 		if (!me)
 			return;
-		me.users = [users sortedArrayUsingComparator:^NSComparisonResult(id a, id b){
+		NSMutableArray *list = [NSMutableArray arrayWithArray:users ?: @[]];
+		if (list.count == 0) {
+			[list addObjectsFromArray:[TGDevShowcase allShowcaseContacts]];
+		}
+		me.users = [list sortedArrayUsingComparator:^NSComparisonResult(id a, id b){
 			return [a[@"first_name"] localizedCaseInsensitiveCompare:b[@"first_name"]];
 		}];
 		[me.tableView reloadData];
@@ -193,6 +198,10 @@ static NSString *TGContactName(NSDictionary *u) {
 
 	NSNumber *fileId = u[@"photoFileId"];
 	UIImage *photo = [fileId isKindOfClass:NSNumber.class] ? self.photos[fileId] : nil;
+	int64_t uid = [u[@"id"] longLongValue];
+	if (uid == 20002 || uid == 10001) {
+		photo = [TGDevShowcase avatarForUserId:uid];
+	}
 	if (!photo)
 		photo = [TGIcons avatarWithInitials:
 					(name.length ? [name substringToIndex:1].uppercaseString : @"?")
@@ -303,6 +312,23 @@ static NSString *TGContactName(NSDictionary *u) {
 		return;
 	}
 	NSString *name = TGContactName(u);
+	int64_t uid = [u[@"id"] longLongValue];
+	if (uid == 20002) {
+		TGChatViewController *vc = [[TGChatViewController alloc] init];
+		vc.chatId = kDevDurovChatId;
+		vc.chatTitle = name;
+		vc.hidesBottomBarWhenPushed = YES;
+		[self.navigationController pushViewController:vc animated:YES];
+		return;
+	} else if (uid == 10001) {
+		TGChatViewController *vc = [[TGChatViewController alloc] init];
+		vc.chatId = kDevBotChatId;
+		vc.chatTitle = name;
+		vc.hidesBottomBarWhenPushed = YES;
+		[self.navigationController pushViewController:vc animated:YES];
+		return;
+	}
+
 	__weak typeof(self) weakSelf = self;
 
 	[[TGClient shared] privateChatWithUser:[u[@"id"] longLongValue]

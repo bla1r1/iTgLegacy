@@ -4,10 +4,10 @@
 #import <UIKit/UIKit.h>
 
 typedef NS_ENUM(NSInteger, TGThemeStyle) {
-    TGThemeStyleSkeuomorphic = 0,   ///< "Classic"
-    TGThemeStyleFlat         = 1,   ///< "Day"
-    TGThemeStyleDark         = 2,   ///< "Night"
-    TGThemeStyleNightBlue    = 3    ///< "Night Blue"
+    TGThemeStyleSkeuomorphic = 0,   ///< "Classic" (Light iOS 6 Skeuomorphic)
+    TGThemeStyleDark         = 1,   ///< "Night" (Dark iOS 6 Skeuomorphic)
+    TGThemeStyleFlat         = TGThemeStyleSkeuomorphic,
+    TGThemeStyleNightBlue    = TGThemeStyleDark
 };
 
 /// Auto-Night, as their Appearance page offers it. There is no system dark

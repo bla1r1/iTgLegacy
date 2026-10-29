@@ -8,6 +8,7 @@
 #import <QuartzCore/QuartzCore.h>
 #import "TGStyle.h"
 #import "TGAlertSheet.h"
+#import "TGDevShowcase.h"
 
 // The chrome sits over the picture rather than beside it, which is what makes
 // the picture the whole screen. Both strips fade out on a tap and come back on
@@ -359,6 +360,14 @@ static const CGFloat kThumbStripH   = 54.0f;
 	if (![fileId isKindOfClass:NSNumber.class])
 		return;
 
+	if (fileId.longLongValue < 0) {
+		UIImage *fixture = [TGDevShowcase imageForPhotoId:fileId.longLongValue];
+		if (fixture) {
+			[btn setImage:fixture forState:UIControlStateNormal];
+			return;
+		}
+	}
+
 	__weak typeof(self) weakSelf = self;
 	__weak UIButton *weakBtn = btn;
 	[[TGClient shared] downloadFile:fileId.integerValue priority:TGDownloadPriorityOnScreen completion:^(NSString *path){
@@ -521,6 +530,15 @@ static const CGFloat kThumbStripH   = 54.0f;
 	NSNumber *fileId = [self fileIdForItem:item];
 	if (!fileId)
 		return;
+
+	if (fileId.longLongValue < 0) {
+		UIImage *fixture = [TGDevShowcase imageForPhotoId:fileId.longLongValue];
+		if (fixture) {
+			self.originals[@(page)] = fixture;
+			picture.image = fixture;
+			return;
+		}
+	}
 
 	CGSize screen = self.backdrop.bounds.size;
 	CGFloat scale = [UIScreen mainScreen].scale;

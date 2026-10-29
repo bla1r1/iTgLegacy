@@ -2,6 +2,7 @@
 #import "TGStatusText.h"
 #import "TGStyle.h"
 #import "TGAlertSheet.h"
+#import "TGDevShowcase.h"
 
 // Height of the folder pill strip above the chat list (official-style tabs).
 static const CGFloat kFolderTabRow = TGMetricFolderTabRow;
@@ -597,7 +598,20 @@ static const CGFloat kRowGlyph     = 28.0f;
 	// "All chats" means all of them: tdlib's chatListMain holds only the
 	// chats with no folder, the rest lives behind chatListFolder requests.
 	// The merge below fills the gap in the background.
-	self.chats = self.mergedChats ?: [TGClient shared].chats;
+	NSArray *baseChats = self.mergedChats ?: [TGClient shared].chats;
+	NSMutableArray *list = [NSMutableArray array];
+	BOOL hasShowcase = NO;
+	for (NSDictionary *c in baseChats) {
+		if ([TGDevShowcase isDevChatId:[c[@"id"] longLongValue]]) {
+			hasShowcase = YES;
+			break;
+		}
+	}
+	if (!hasShowcase) {
+		[list addObjectsFromArray:[TGDevShowcase allShowcaseChats]];
+	}
+	[list addObjectsFromArray:baseChats];
+	self.chats = list;
 	[self.tableView reloadData];
 	[self rebuildTableHeader];
 	[self fetchMissingAvatars];
@@ -656,7 +670,7 @@ static const CGFloat kRowGlyph     = 28.0f;
 	__weak typeof(self) weakSelf = self;
 	for (NSDictionary *c in self.chats){
 		NSNumber *fileId = c[@"photoFileId"];
-		if (!fileId || self.avatars[fileId] || [self.avatarsRequested containsObject:fileId])
+		if (!fileId || fileId.longLongValue < 0 || self.avatars[fileId] || [self.avatarsRequested containsObject:fileId])
 			continue;
 		// The mark follows the request from start to finish: set here, and
 		// lifted on a nil callback, so a watchdog timeout or a lost download
@@ -712,21 +726,20 @@ static NSString *TGChatDate(NSTimeInterval unix) {
 	if (self.searchResults)
 		return self.searchResults;
 
+	NSMutableArray *chats = [NSMutableArray array];
+	if (self.folderId == 0 && !self.showsArchive) {
+		[chats addObject:[TGDevShowcase devChatInfo]];
+	}
+
 	BOOL hideSaved = [[self headerRows] containsObject:@"saved"];
 	int64_t saved = hideSaved ? [[TGClient shared] savedMessagesChatId] : 0;
-	if (!hideSaved && !self.chatPendingDeletion)
-		return self.chats;
-
-	NSMutableArray *rest = [NSMutableArray array];
 	for (NSDictionary *c in self.chats){
 		int64_t chatId = [c[@"id"] longLongValue];
-		// A chat waiting on the undo plate is already off the list; putting it
-		// back is what UNDO does.
-		if (chatId == saved || chatId == self.chatPendingDeletion)
+		if (chatId == saved || chatId == self.chatPendingDeletion || chatId == kDevChatId)
 			continue;
-		[rest addObject:c];
+		[chats addObject:c];
 	}
-	return rest;
+	return chats;
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
@@ -834,8 +847,13 @@ static NSString *TGChatDate(NSTimeInterval unix) {
 
 	NSNumber *fileId = c[@"photoFileId"];
 	UIImage *photo = fileId ? self.avatars[fileId] : nil;
+	int64_t cid = [c[@"id"] longLongValue];
 	if ([c[@"isSaved"] boolValue])
 		photo = [TGIcons savedMessagesAvatarOfSide:kAvatar];
+	else if (cid == kDevChatId || cid == kDevBotChatId)
+		photo = [TGDevShowcase avatarForUserId:10001];
+	else if (cid == kDevDurovChatId)
+		photo = [TGDevShowcase avatarForUserId:20002];
 	if (!photo){
 		NSString *title = c[@"title"] ?: @"";
 		NSString *initials = title.length ? [title substringToIndex:1] : @"?";

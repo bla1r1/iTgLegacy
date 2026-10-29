@@ -78,6 +78,8 @@ INCLUDES  := -I$(ROOT_DIR)/include \
              -I$(ROOT_DIR)/src/Calls \
              -I$(ROOT_DIR)/src/Audio \
              -I$(ROOT_DIR)/third_party \
+             -I$(ROOT_DIR)/third_party/libvpx/include \
+             -I$(ROOT_DIR)/third_party/nestegg/include \
              -I$(ROOT_DIR)/third_party/ogg \
              -I$(ROOT_DIR)/third_party/ogg/ogg \
              -I$(ROOT_DIR)/third_party/opus/include \
@@ -126,7 +128,7 @@ TDLIB_LIBS_ARM64 := $(TDLIB_KEEP_ARM64) \
                     -ltde2e -ltdutils -ltdtl -lssl
 # libcrypto: TDLib brings its own copy inside the dylib, but libtgvoip is
 # linked into the app and needs AES and SHA here.
-DEPS_LIBS  := -lopus -lstdc++ -lz -lcrypto
+DEPS_LIBS  := -lopus -lvpx -lstdc++ -lz -lcrypto
 
 # ------------------------------------------------------------------------------
 # Source Files
@@ -232,6 +234,7 @@ APP_SRC_M := \
 	src/Views/TGEmojiPanel.m \
 	src/Views/TGAttachSheet.m \
 	src/Views/TGBubbleCell.m \
+	src/Controllers/TGDevShowcase.m \
 	src/Controllers/TGChatViewController.m \
 	src/Controllers/TGChatViewController+Selection.m \
 	src/Controllers/TGChatViewController+Audio.m \
@@ -268,6 +271,7 @@ APP_SRC_M := \
 	src/Audio/TGVoiceRecorder.m \
 	third_party/opusenc/opusenc.m \
 	src/Views/UIImage+WebP.m \
+	src/Views/TGWebMDecoder.m \
 	src/Views/TGMediaViewer.m \
 	src/Audio/TGMusicPlayer.m \
 	src/Calls/TGCallAudioEngine.m
@@ -283,6 +287,7 @@ APP_SRC_C := \
 	third_party/yyjson/yyjson.c \
 	compat/tlv_polyfill.c \
 	src/Calls/TGCallCrypto.c \
+	third_party/nestegg/nestegg.c \
 	third_party/opusfile/internal.c \
 	third_party/opusfile/opusfile.c \
 	third_party/opusfile/info.c \

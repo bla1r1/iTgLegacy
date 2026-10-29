@@ -122,6 +122,9 @@
 + (UIImage *)archiveAvatarOfSide:(CGFloat)side;
 + (UIImage *)savedMessagesAvatarOfSide:(CGFloat)side;
 
+/// Extracts safe 1-2 character initials for avatars, skipping emojis and symbols.
++ (NSString *)initialsForTitle:(NSString *)title;
+
 /// Circular avatar with initials, for chats and contacts without a photo.
 + (UIImage *)avatarWithInitials:(NSString *)initials
                            size:(CGFloat)size
@@ -133,6 +136,11 @@
 
 + (UIImage *)mapPinBadge;
 + (UIImage *)mapPlaceholderSize:(CGSize)size;
+
++ (UIImage *)thumbsUpSticker;
++ (UIImage *)goldStarSticker;
++ (UIImage *)cinemaSticker;
++ (UIImage *)synthwaveTrackArtwork;
 
 /// Read and decode a downloaded picture off the main thread, then hand it to
 /// the view. UIImage's own decode is lazy and lands on the main thread at draw
