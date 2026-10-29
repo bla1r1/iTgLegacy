@@ -2,6 +2,7 @@
 #import "TGAlertSheet.h"
 #import "TGForwardPicker.h"
 #import "TGStyle.h"
+#import "TGGalleryViewController.h"
 
 @implementation TGSettingsViewController (Pages)
 
@@ -426,6 +427,15 @@
 				  @"turns the schedule off until morning.", @[
 			TGTapRow(@"Auto-Night Mode", autoNightDetail, ^{
 				[weakSelf chooseAutoNight];
+			}),
+		]),
+
+		TGSection(@"Design System",
+				  @"Interactive gallery demonstrating iOS 6 Reimagined tactile "
+				  @"components, states, and live controls.", @[
+			TGTapRow(@"UI Component Gallery", @"Open Lab", ^{
+				TGGalleryViewController *gallery = [[TGGalleryViewController alloc] init];
+				[weakSelf.navigationController pushViewController:gallery animated:YES];
 			}),
 		]),
 

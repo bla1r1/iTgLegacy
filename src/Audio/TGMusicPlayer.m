@@ -13,6 +13,8 @@ NSString *const TGMusicPlayerChangedNotification = @"TGMusicPlayerChanged";
 @property (nonatomic, assign) NSInteger index;
 @property (nonatomic, assign) int64_t chatId;
 @property (nonatomic, strong) NSDictionary *current;
+@property (nonatomic, strong) UIImage *currentArtwork;
+@property (nonatomic, copy) NSString *currentArtworkPath;
 @property (nonatomic, assign) UIBackgroundTaskIdentifier backgroundTask;
 @end
 
@@ -113,6 +115,25 @@ NSString *const TGMusicPlayerChangedNotification = @"TGMusicPlayerChanged";
 
 #pragma mark - transport
 
+- (void)cycleRepeatMode {
+	_repeatMode = (TGMusicRepeatMode)((_repeatMode + 1) % 3);
+	[self announce];
+}
+
+- (void)toggleShuffle {
+	_shuffle = !_shuffle;
+	[self announce];
+}
+
+- (float)volume {
+	return self.player ? self.player.volume : 1.0f;
+}
+
+- (void)setVolume:(float)volume {
+	if (self.player)
+		self.player.volume = MIN(MAX(volume, 0.0f), 1.0f);
+}
+
 - (void)togglePlayPause {
 	if (!self.player)
 		return;
@@ -124,7 +145,28 @@ NSString *const TGMusicPlayerChangedNotification = @"TGMusicPlayerChanged";
 }
 
 - (void)next {
-	[self playIndex:self.index + 1];
+	if (!self.tracks.count)
+		return;
+
+	if (self.shuffle && self.tracks.count > 1) {
+		NSInteger nextIdx = self.index;
+		while (nextIdx == self.index) {
+			nextIdx = (NSInteger)(arc4random_uniform((uint32_t)self.tracks.count));
+		}
+		[self playIndex:nextIdx];
+		return;
+	}
+
+	NSInteger nextIdx = self.index + 1;
+	if (nextIdx >= (NSInteger)self.tracks.count) {
+		if (self.repeatMode == TGMusicRepeatAll) {
+			[self playIndex:0];
+		} else {
+			[self stop];
+		}
+		return;
+	}
+	[self playIndex:nextIdx];
 }
 
 - (void)previous {
@@ -135,7 +177,13 @@ NSString *const TGMusicPlayerChangedNotification = @"TGMusicPlayerChanged";
 		[self announce];
 		return;
 	}
-	[self playIndex:self.index - 1];
+	if (self.index > 0) {
+		[self playIndex:self.index - 1];
+	} else if (self.repeatMode == TGMusicRepeatAll && self.tracks.count > 0) {
+		[self playIndex:(NSInteger)self.tracks.count - 1];
+	} else {
+		[self playIndex:0];
+	}
 }
 
 - (void)seekToFraction:(CGFloat)fraction {
@@ -149,6 +197,8 @@ NSString *const TGMusicPlayerChangedNotification = @"TGMusicPlayerChanged";
 	[self.player stop];
 	self.player = nil;
 	self.current = nil;
+	self.currentArtwork = nil;
+	self.currentArtworkPath = nil;
 	self.index = NSNotFound;
 	self.tracks = nil;
 	[[UIApplication sharedApplication] endReceivingRemoteControlEvents];
@@ -159,6 +209,12 @@ NSString *const TGMusicPlayerChangedNotification = @"TGMusicPlayerChanged";
 }
 
 - (void)audioPlayerDidFinishPlaying:(AVAudioPlayer *)player successfully:(BOOL)ok {
+	if (self.repeatMode == TGMusicRepeatOne) {
+		self.player.currentTime = 0;
+		[self.player play];
+		[self announce];
+		return;
+	}
 	[self next];
 }
 
@@ -216,12 +272,16 @@ NSString *const TGMusicPlayerChangedNotification = @"TGMusicPlayerChanged";
 			UIImage *cover = [UIImage imageWithContentsOfFile:path];
 			if (!cover)
 				return;
+			me.currentArtwork = cover;
+			me.currentArtworkPath = path;
 			MPNowPlayingInfoCenter *now = [MPNowPlayingInfoCenter defaultCenter];
 			NSMutableDictionary *withArt = now.nowPlayingInfo
 					? [now.nowPlayingInfo mutableCopy] : [NSMutableDictionary dictionary];
 			withArt[MPMediaItemPropertyArtwork] =
 					[[MPMediaItemArtwork alloc] initWithImage:cover];
 			now.nowPlayingInfo = withArt;
+			[[NSNotificationCenter defaultCenter]
+					postNotificationName:TGMusicPlayerChangedNotification object:nil];
 		}];
 	}
 

@@ -103,6 +103,56 @@ extern NSString *const TGThemeChangedNotification;
 
 @end
 
+typedef NS_ENUM(NSInteger, TGButtonStyle) {
+    TGButtonStyleAction = 0,    ///< Glossy blue action button
+    TGButtonStyleSilver,        ///< Classic metallic silver button
+    TGButtonStyleDestructive,   ///< Glossy crimson destructive button
+    TGButtonStyleSuccess,       ///< Glossy green accept/call button
+    TGButtonStyleGhost          ///< Subtle translucent / etched ghost button
+};
+
+@interface TGTheme (Skeuomorphism)
+
+/// Procedural skeuomorphic background image for navigation bars.
++ (UIImage *)skeuomorphicBarImageWithColor:(UIColor *)tint height:(CGFloat)height;
+
+/// Procedural tactile button background image with specular gloss, bevel and drop shadow.
++ (UIImage *)skeuomorphicButtonImageWithColor:(UIColor *)tint
+                                       height:(CGFloat)height
+                                  highlighted:(BOOL)highlighted
+                                 cornerRadius:(CGFloat)radius;
+
+/// Returns standard stretchable button image for given button style and state.
++ (UIImage *)buttonImageForStyle:(TGButtonStyle)style
+                     highlighted:(BOOL)highlighted
+                          height:(CGFloat)height;
+
+/// Subtle procedural vertical pinstripe / linen pattern for grouped backgrounds.
++ (UIImage *)skeuomorphicPinstripePattern;
+
+/// Recessed well image for search fields and input bars.
++ (UIImage *)skeuomorphicWellImageWithHeight:(CGFloat)height cornerRadius:(CGFloat)radius;
+
+/// Metallic circular thumb for scrubbers and volume sliders.
++ (UIImage *)skeuomorphicSliderThumbWithRadius:(CGFloat)radius;
+
+/// Recessed track image for skeuomorphic slider (6pt height).
++ (UIImage *)skeuomorphicSliderTrackImageFilled:(BOOL)filled;
+
+/// Track background image for iOS 6 skeuomorphic switch (51x31 pt).
++ (UIImage *)skeuomorphicSwitchTrackImageOn:(BOOL)isOn;
+
+/// Tactile metallic knob for iOS 6 skeuomorphic switch (27x27 pt).
++ (UIImage *)skeuomorphicSwitchThumbImage;
+
+/// Applies tactile skeuomorphic styling to a generic button.
++ (void)applySkeuomorphicStyleToButton:(UIButton *)button style:(TGButtonStyle)style;
+
+/// Applies classic recessed well styling to a text field.
++ (void)applySkeuomorphicInputStyle:(UITextField *)field;
+
+@end
+
 @interface TGTheme (Palette)
 
 #pragma mark - palette

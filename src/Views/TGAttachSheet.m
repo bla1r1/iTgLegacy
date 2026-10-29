@@ -98,6 +98,8 @@ static const NSUInteger kRecentPhotos = 24;
 	[button setTitle:title forState:UIControlStateNormal];
 	[button setTitleColor:[[TGTheme shared] accentColour] forState:UIControlStateNormal];
 	[button setTitleColor:[[TGTheme shared] secondaryTextColour] forState:UIControlStateHighlighted];
+	[button setTitleShadowColor:[[TGTheme shared] etchedTextShadowColour] forState:UIControlStateNormal];
+	button.titleLabel.shadowOffset = CGSizeMake(0, 1.0f);
 	return button;
 }
 

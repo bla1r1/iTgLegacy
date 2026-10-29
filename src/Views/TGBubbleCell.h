@@ -19,6 +19,8 @@
 @property (nonatomic, strong) UILabel *quote;
 @property (nonatomic, strong) UILabel *quoteAuthor;
 @property (nonatomic, strong) UIImageView *ticks;
+/// Skeuomorphic top specular highlight reflection line for tactile iOS 6 bubbles.
+@property (nonatomic, strong) UIView *shineBar;
 
 /// The dot that says a voice note has not been listened to or a round note
 /// has not been watched. It lives beside the clock, not inside the bubble,

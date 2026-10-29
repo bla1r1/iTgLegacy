@@ -40,9 +40,6 @@ typedef NS_ENUM(NSInteger, TGLoginStep) {
 
 @property (nonatomic, strong) UILabel *themeSectionLabel;
 @property (nonatomic, strong) UISegmentedControl *themeSegmentedControl;
-@property (nonatomic, strong) CAGradientLayer *skeuoBgLayer;
-@property (nonatomic, strong) CAGradientLayer *skeuoBtnLayer;
-@property (nonatomic, strong) UIView *skeuoShineView;
 
 - (void)setupUI;
 - (void)applyTheme;
@@ -70,16 +67,5 @@ typedef NS_ENUM(NSInteger, TGLoginStep) {
 - (UIImage *)generateQRCodeForString:(NSString *)string size:(CGFloat)size;
 
 @end
-
-static inline UIColor *tgRGB(int r, int g, int b) {
-    return [UIColor colorWithRed:r/255.0f green:g/255.0f blue:b/255.0f alpha:1.0f];
-}
-
-static inline CAGradientLayer *tgGloss(CGRect frame, UIColor *top, UIColor *bottom) {
-    CAGradientLayer *g = [CAGradientLayer layer];
-    g.frame = frame;
-    g.colors = @[(id)top.CGColor, (id)bottom.CGColor];
-    return g;
-}
 
 #endif // TGLOGINVIEWCONTROLLERINTERNAL_H

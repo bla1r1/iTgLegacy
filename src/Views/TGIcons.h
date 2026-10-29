@@ -20,6 +20,12 @@
 + (UIImage *)pause;
 + (UIImage *)previousTrack;  ///< the player strip's queue
 + (UIImage *)nextTrack;
++ (UIImage *)repeatModeIcon:(NSInteger)mode;
++ (UIImage *)shuffleIconActive:(BOOL)active;
++ (UIImage *)volumeMin;
++ (UIImage *)volumeMax;
++ (UIImage *)queueList;
++ (UIImage *)chevronDown;
 + (UIImage *)document;
 + (UIImage *)pin;
 + (UIImage *)microphone;
@@ -78,6 +84,11 @@
 
 /// Verification checkmark badge for channels/bots
 + (UIImage *)verifiedBadge;
+
+/// Empty state vector illustrations
++ (UIImage *)emptyChatsIllustration;
++ (UIImage *)emptyContactsIllustration;
++ (UIImage *)emptySearchIllustration;
 
 /// Drop the cache after a theme change.
 + (void)flush;

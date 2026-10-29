@@ -966,13 +966,22 @@ static void TGPlaceTitleDetail(TGBubbleCell *cell, CGFloat x, CGFloat top,
 		if (!reactions) {
 			reactions = [[UILabel alloc] init];
 			reactions.tag = 0x9002;
-			reactions.backgroundColor = [UIColor clearColor];
 			reactions.font = TGFontCaption();
 			[cell.bubble addSubview:reactions];
 		}
 		reactions.hidden = NO;
 		reactions.text = reactionText;
 		reactions.textColor = [theme secondaryTextColour];
+		if (!theme.isFlat) {
+			reactions.backgroundColor = [theme cardBackgroundColour];
+			reactions.layer.cornerRadius = TGMetricCornerSmall;
+			reactions.layer.borderWidth = 1.0f;
+			reactions.layer.borderColor = [theme separatorColour].CGColor;
+			reactions.clipsToBounds = YES;
+		} else {
+			reactions.backgroundColor = [UIColor clearColor];
+			reactions.layer.borderWidth = 0.0f;
+		}
 		reactions.frame = CGRectMake(kPadH,
 				layout.bodyFrame.origin.y + layout.bodySize.height + TGMetricPadTiny,
 				layout.bubbleFrame.size.width - TGDoubled(kPadH), TGMetricLineCaption);
@@ -1000,6 +1009,32 @@ static void TGPlaceTitleDetail(TGBubbleCell *cell, CGFloat x, CGFloat top,
 		[cell.bubble bringSubviewToFront:cell.ticks];
 	}
 	[cell.bubble bringSubviewToFront:cell.time];
+
+	if (!theme.isFlat && !layout.isService && !layout.isSticker && !layout.isRound) {
+		cell.shineBar.hidden = NO;
+		cell.shineBar.backgroundColor = [theme skeuoShineColour];
+		CGFloat bubbleW = cell.bubble.bounds.size.width;
+		cell.shineBar.frame = CGRectMake(TGMetricPadSmall, 0.5f, bubbleW - TGDoubled(TGMetricPadSmall), 1.0f);
+		[cell.bubble bringSubviewToFront:cell.shineBar];
+
+		if (mine) {
+			cell.body.shadowColor = [theme navBarTextShadowColour];
+			cell.body.shadowOffset = CGSizeMake(0, -1.0f);
+			cell.time.shadowColor = [theme navBarTextShadowColour];
+			cell.time.shadowOffset = CGSizeMake(0, -1.0f);
+		} else {
+			cell.body.shadowColor = [theme etchedTextShadowColour];
+			cell.body.shadowOffset = CGSizeMake(0, 1.0f);
+			cell.time.shadowColor = [theme etchedTextShadowColour];
+			cell.time.shadowOffset = CGSizeMake(0, 1.0f);
+		}
+	} else {
+		cell.shineBar.hidden = YES;
+		cell.body.shadowColor = nil;
+		cell.body.shadowOffset = CGSizeZero;
+		cell.time.shadowColor = nil;
+		cell.time.shadowOffset = CGSizeZero;
+	}
 
 	return [self finalizeCell:cell message:m layout:layout isMine:mine];
 }

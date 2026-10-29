@@ -9,6 +9,11 @@
 		self.searchBar.barTintColor = [theme searchBarBackgroundColour];
 	self.searchBar.tintColor = [theme accentColour];
 	self.searchBar.backgroundColor = [theme searchBarBackgroundColour];
+	if (!theme.isFlat) {
+		[self.searchBar setBackgroundImage:[TGTheme skeuomorphicBarImageWithColor:[theme searchBarBackgroundColour] height:TGMetricRow]];
+	} else {
+		[self.searchBar setBackgroundImage:nil];
+	}
 	if ([self.searchBar respondsToSelector:@selector(setImage:forSearchBarIcon:state:)]) {
 		[self.searchBar setImage:[TGIcons searchLensOfSize:TGMetricSearchIconSize colour:[theme secondaryTextColour]]
 				forSearchBarIcon:UISearchBarIconSearch

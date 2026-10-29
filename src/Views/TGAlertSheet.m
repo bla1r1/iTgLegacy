@@ -97,9 +97,14 @@ static const CGFloat kFieldTop = TGMetricAlertFieldTop;
 	button.frame = CGRectMake(0, y, card.bounds.size.width, kRow);
 	button.titleLabel.font = destructive ? TGFontRowStrong() : TGFontRow();
 	[button setTitle:title forState:UIControlStateNormal];
-	[button setTitleColor:destructive ? [theme destructiveColour] : [theme accentColour]
-				 forState:UIControlStateNormal];
-	[button setTitleColor:[theme secondaryTextColour] forState:UIControlStateHighlighted];
+	if (!theme.isFlat) {
+		TGButtonStyle btnStyle = destructive ? TGButtonStyleDestructive : TGButtonStyleSilver;
+		[TGTheme applySkeuomorphicStyleToButton:button style:btnStyle];
+	} else {
+		[button setTitleColor:destructive ? [theme destructiveColour] : [theme accentColour]
+					 forState:UIControlStateNormal];
+		[button setTitleColor:[theme secondaryTextColour] forState:UIControlStateHighlighted];
+	}
 	[card addSubview:button];
 	return button;
 }
@@ -111,6 +116,9 @@ static const CGFloat kFieldTop = TGMetricAlertFieldTop;
 	UIButton *cancel = [self addRowTo:card atY:0 title:(title ?: @"Cancel")
 						  destructive:NO separator:NO];
 	cancel.titleLabel.font = TGFontRowStrong();
+	if (![TGTheme shared].isFlat) {
+		[TGTheme applySkeuomorphicStyleToButton:cancel style:TGButtonStyleSilver];
+	}
 	[cancel addTarget:self action:@selector(dismiss)
 	 forControlEvents:UIControlEventTouchUpInside];
 }
@@ -129,6 +137,9 @@ static const CGFloat kFieldTop = TGMetricAlertFieldTop;
 	[self addTextTo:card title:title message:message];
 	UIButton *ok = [sheet addRowTo:card atY:textHeight title:@"OK"
 					   destructive:NO separator:YES];
+	if (![TGTheme shared].isFlat) {
+		[TGTheme applySkeuomorphicStyleToButton:ok style:TGButtonStyleAction];
+	}
 	[ok addTarget:sheet action:@selector(dismiss)
  forControlEvents:UIControlEventTouchUpInside];
 	[sheet present];
@@ -233,7 +244,12 @@ static const CGFloat kFieldTop = TGMetricAlertFieldTop;
 	field.text = text ?: @"";
 	field.placeholder = placeholder;
 	field.textColor = [theme primaryTextColour];
-	field.borderStyle = UITextBorderStyleRoundedRect;
+	if (!theme.isFlat) {
+		field.borderStyle = UITextBorderStyleNone;
+		[TGTheme applySkeuomorphicInputStyle:field];
+	} else {
+		field.borderStyle = UITextBorderStyleRoundedRect;
+	}
 	field.autocorrectionType = UITextAutocorrectionTypeNo;
 	field.returnKeyType = UIReturnKeyDone;
 	field.clearButtonMode = UITextFieldViewModeWhileEditing;
@@ -245,6 +261,9 @@ static const CGFloat kFieldTop = TGMetricAlertFieldTop;
 
 	UIButton *done = [sheet addRowTo:card atY:textHeight + kFieldTop + fieldHeight
 							   title:(actionTitle ?: @"OK") destructive:NO separator:YES];
+	if (!theme.isFlat) {
+		[TGTheme applySkeuomorphicStyleToButton:done style:TGButtonStyleAction];
+	}
 	[done addTarget:sheet action:@selector(submitTapped)
    forControlEvents:UIControlEventTouchUpInside];
 	[field addTarget:sheet action:@selector(submitTapped)

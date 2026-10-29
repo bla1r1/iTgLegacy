@@ -88,6 +88,14 @@ static const CGFloat kRowGlyph     = 28.0f;
 		// connection is fine; the network names it otherwise. Before, READY
 		// reset the title to "Chats" and a chosen folder got erased (B4).
 		weakSelf.title = line ?: [weakSelf titleForCurrentList];
+		if (state == TGConnectionStateConnecting || state == TGConnectionStateUpdating) {
+			[TGStatusBanner showInView:weakSelf.view
+			                      kind:(state == TGConnectionStateConnecting ? TGStatusBannerKindConnecting : TGStatusBannerKindUpdating)
+			                      text:line
+			                  animated:YES];
+		} else {
+			[TGStatusBanner hideFromView:weakSelf.view animated:YES];
+		}
 	};
 	[self reload];
 }
@@ -594,6 +602,23 @@ static const CGFloat kRowGlyph     = 28.0f;
 	[self rebuildTableHeader];
 	[self fetchMissingAvatars];
 	[self mergeAllFolderChats];
+
+	BOOL hasContent = ([self visibleChats].count > 0 || self.searchResults != nil || [self headerRows].count > 0);
+	if (!hasContent) {
+		if (!self.emptyView) {
+			self.emptyView = [TGEmptyView emptyViewWithFrame:self.view.bounds
+			                                           image:[TGIcons emptyChatsIllustration]
+			                                           title:@"No Conversations"
+			                                        subtitle:@"Tap the compose button to start\nmessaging your friends and channels."
+			                                     buttonTitle:@"Start Messaging"
+			                                          target:self
+			                                          action:@selector(composeTapped)];
+			[self.view addSubview:self.emptyView];
+		}
+		self.emptyView.hidden = NO;
+	} else if (self.emptyView) {
+		self.emptyView.hidden = YES;
+	}
 }
 
 /// Chat list header rows. The archive strip sits below the pinned pills as

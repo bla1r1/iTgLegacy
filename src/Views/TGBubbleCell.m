@@ -41,6 +41,9 @@
 	self.picture.clipsToBounds = YES;
 	self.picture.layer.shouldRasterize = YES;
 	self.picture.layer.rasterizationScale = scale;
+	self.picture.layer.borderColor = [theme separatorColour].CGColor;
+	self.picture.layer.borderWidth = theme.isFlat ? 0.0f : 1.0f;
+	self.picture.layer.cornerRadius = TGMetricCornerSmall;
 	[self.bubble addSubview:self.picture];
 
 	self.body = [[UILabel alloc] init];
@@ -88,6 +91,11 @@
 	self.ticks = [[UIImageView alloc] init];
 	self.ticks.hidden = YES;
 	[self.bubble addSubview:self.ticks];
+
+	self.shineBar = [[UIView alloc] init];
+	self.shineBar.userInteractionEnabled = NO;
+	self.shineBar.hidden = YES;
+	[self.bubble addSubview:self.shineBar];
 
 	self.unreadDot = [[UIView alloc] init];
 	self.unreadDot.hidden = YES;

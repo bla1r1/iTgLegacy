@@ -7,9 +7,11 @@
 #import <QuartzCore/QuartzCore.h>
 #import "TGStyle.h"
 #import "TGAlertSheet.h"
+#import "TGEmptyView.h"
 
 
 @interface TGContactsViewController ()
+@property (nonatomic, strong) TGEmptyView *emptyView;
 @property (nonatomic, strong) NSArray *users;
 @property (nonatomic, strong) NSMutableDictionary *photos;   // fileId -> UIImage
 @property (nonatomic, strong) NSMutableSet *photosRequested;
@@ -81,6 +83,22 @@
 		}];
 		[me.tableView reloadData];
 		[me fetchMissingPhotos];
+
+		if (me.users.count == 0) {
+			if (!me.emptyView) {
+				me.emptyView = [TGEmptyView emptyViewWithFrame:me.view.bounds
+				                                         image:[TGIcons emptyContactsIllustration]
+				                                         title:@"No Contacts"
+				                                      subtitle:@"Find and add people to start\nchatting with them on Telegram."
+				                                   buttonTitle:@"Add Contact"
+				                                        target:me
+				                                        action:@selector(addContactTapped)];
+				[me.view addSubview:me.emptyView];
+			}
+			me.emptyView.hidden = NO;
+		} else if (me.emptyView) {
+			me.emptyView.hidden = YES;
+		}
 	}];
 }
 
@@ -185,6 +203,8 @@ static NSString *TGContactName(NSDictionary *u) {
 	cell.imageView.clipsToBounds = YES;
 	cell.imageView.layer.shouldRasterize = YES;
 	cell.imageView.layer.rasterizationScale = [UIScreen mainScreen].scale;
+	cell.imageView.layer.borderColor = [[TGTheme shared] separatorColour].CGColor;
+	cell.imageView.layer.borderWidth = 1.0f;
 	cell.imageView.contentMode = UIViewContentModeScaleAspectFill;
 
 	if ([TGTheme shared].isDark) {

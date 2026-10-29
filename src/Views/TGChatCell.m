@@ -50,6 +50,8 @@ static UIFont *TGChatCellTitleFont(void) {
 	self.avatar.clipsToBounds = YES;
 	self.avatar.layer.shouldRasterize = YES;
 	self.avatar.layer.rasterizationScale = scale;
+	self.avatar.layer.borderColor = [theme separatorColour].CGColor;
+	self.avatar.layer.borderWidth = 1.0f;
 	self.avatar.backgroundColor = [theme fileTileColour];
 	self.avatar.contentMode = UIViewContentModeScaleAspectFill;
 	[self.contentView addSubview:self.avatar];

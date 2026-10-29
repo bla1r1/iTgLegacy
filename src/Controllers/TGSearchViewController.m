@@ -92,6 +92,11 @@ static const CGFloat kSearchBarWidth = 240.0f;
 		self.bar.barTintColor = [theme searchBarBackgroundColour];
 	self.bar.tintColor = [theme accentColour];
 	self.bar.backgroundColor = [theme searchBarBackgroundColour];
+	if (!theme.isFlat) {
+		[self.bar setBackgroundImage:[TGTheme skeuomorphicBarImageWithColor:[theme searchBarBackgroundColour] height:TGMetricRow]];
+	} else {
+		[self.bar setBackgroundImage:nil];
+	}
 	if ([self.bar respondsToSelector:@selector(setImage:forSearchBarIcon:state:)]) {
 		[self.bar setImage:[TGIcons searchLensOfSize:TGMetricSearchIconSize colour:[theme secondaryTextColour]]
 		  forSearchBarIcon:UISearchBarIconSearch

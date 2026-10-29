@@ -12,6 +12,7 @@
 #import "TGTheme.h"
 #import "TGMusicPlayer.h"
 #import "TGStyle.h"
+#import "TGPlayerView.h"
 
 /// Compact navigation bar to maximize vertical space on 3.5" displays.
 static const CGFloat kCompactBarHeight = TGMetricCompactBarHeight;
@@ -28,6 +29,7 @@ static const CGFloat kCompactBarHeight = TGMetricCompactBarHeight;
 @end
 
 @interface RootViewController () <UINavigationControllerDelegate>
+@property (nonatomic, strong) TGPlayerMiniBar *playerMiniBar;
 @end
 
 @implementation RootViewController
@@ -86,6 +88,12 @@ static const CGFloat kCompactBarHeight = TGMetricCompactBarHeight;
 
 	[[TGTheme shared] styleTabBar:self.tabBar];
 
+	CGFloat barH = TGMetricPlayerBarHeight;
+	CGFloat barY = self.view.bounds.size.height - self.tabBar.bounds.size.height - barH;
+	self.playerMiniBar = [TGPlayerMiniBar miniBarWithFrame:CGRectMake(0, barY, self.view.bounds.size.width, barH)];
+	self.playerMiniBar.hidden = YES;
+	[self.view addSubview:self.playerMiniBar];
+
 	__weak typeof(self) weakSelf = self;
 	[[NSNotificationCenter defaultCenter] addObserverForName:TGThemeChangedNotification
 													  object:nil
@@ -93,6 +101,57 @@ static const CGFloat kCompactBarHeight = TGMetricCompactBarHeight;
 												  usingBlock:^(NSNotification *note) {
 		[[TGTheme shared] styleTabBar:weakSelf.tabBar];
 	}];
+
+	[[NSNotificationCenter defaultCenter] addObserverForName:TGMusicPlayerChangedNotification
+													  object:nil
+													   queue:[NSOperationQueue mainQueue]
+												  usingBlock:^(NSNotification *note) {
+		[weakSelf updateMiniPlayerLayoutAnimated:YES];
+	}];
+
+	[self updateMiniPlayerLayoutAnimated:NO];
+}
+
+- (void)viewDidLayoutSubviews {
+	[super viewDidLayoutSubviews];
+	if (self.playerMiniBar) {
+		CGFloat barH = TGMetricPlayerBarHeight;
+		CGFloat barY = self.view.bounds.size.height - self.tabBar.bounds.size.height - barH;
+		self.playerMiniBar.frame = CGRectMake(0, barY, self.view.bounds.size.width, barH);
+	}
+}
+
+- (void)updateMiniPlayerLayoutAnimated:(BOOL)animated {
+	TGMusicPlayer *player = [TGMusicPlayer shared];
+	BOOL shouldShow = (player.current != nil);
+
+	CGFloat barH = TGMetricPlayerBarHeight;
+	CGFloat barY = self.view.bounds.size.height - self.tabBar.bounds.size.height - barH;
+	self.playerMiniBar.frame = CGRectMake(0, barY, self.view.bounds.size.width, barH);
+
+	if (shouldShow && self.playerMiniBar.hidden) {
+		self.playerMiniBar.hidden = NO;
+		[self.playerMiniBar updateState];
+		if (animated) {
+			self.playerMiniBar.transform = CGAffineTransformMakeTranslation(0, barH);
+			[UIView animateWithDuration:TGAnimationDurationFast animations:^{
+				self.playerMiniBar.transform = CGAffineTransformIdentity;
+			}];
+		}
+	} else if (!shouldShow && !self.playerMiniBar.hidden) {
+		if (animated) {
+			[UIView animateWithDuration:TGAnimationDurationFast animations:^{
+				self.playerMiniBar.transform = CGAffineTransformMakeTranslation(0, barH);
+			} completion:^(BOOL finished) {
+				self.playerMiniBar.hidden = YES;
+				self.playerMiniBar.transform = CGAffineTransformIdentity;
+			}];
+		} else {
+			self.playerMiniBar.hidden = YES;
+		}
+	} else if (shouldShow) {
+		[self.playerMiniBar updateState];
+	}
 }
 
 #pragma mark - lock screen

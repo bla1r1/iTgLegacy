@@ -85,6 +85,12 @@ static TGSheet *sOpenSheet = nil;
 		card.layer.borderColor = [[TGTheme shared] separatorColour].CGColor;
 		card.layer.borderWidth = TGMetricHairline;
 	}
+
+	UIView *shine = [[UIView alloc] initWithFrame:CGRectMake(TGMetricPadSmall, 0.5f, width - TGDoubled(TGMetricPadSmall), 1.0f)];
+	shine.backgroundColor = [[TGTheme shared] skeuoShineColour];
+	shine.userInteractionEnabled = NO;
+	[card addSubview:shine];
+
 	[_cards addObject:card];
 	[_edgeFlags addObject:@(edgeToEdge)];
 	[self addSubview:card];

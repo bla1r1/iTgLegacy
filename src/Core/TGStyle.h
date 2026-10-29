@@ -784,6 +784,48 @@ static const CGFloat TGMetricTrackRow           = 60.0f;
 /// gap, and room for a title that gets truncated rather than growing it.
 static const CGFloat TGMetricTrackContent       = 200.0f;
 
+#pragma mark - iOS 6 Reimagined player and chrome metrics
+
+/// Fullscreen modal player album art square side.
+static const CGFloat TGMetricPlayerModalArtSide    = 190.0f;
+/// Fullscreen modal player main play/pause button side.
+static const CGFloat TGMetricPlayerModalButtonMain = 58.0f;
+/// Fullscreen modal player secondary transport button side.
+static const CGFloat TGMetricPlayerModalButtonSide = 44.0f;
+/// Fullscreen modal player volume / scrubber touch height.
+static const CGFloat TGMetricPlayerModalSliderH   = 28.0f;
+/// Empty state vector illustration side.
+static const CGFloat TGMetricEmptyIconSide         = 64.0f;
+/// Pinned connection status banner height.
+static const CGFloat TGMetricConnectionBannerH     = 28.0f;
+/// Tactile segmented control height.
+static const CGFloat TGMetricSegmentedHeight       = 30.0f;
+
+#pragma mark - iOS 6 Reimagined UI Component metrics
+
+/// Small tactile button height (28 pt).
+static const CGFloat TGMetricButtonSmallH          = 28.0f;
+/// Medium tactile button height (36 pt).
+static const CGFloat TGMetricButtonMediumH         = 36.0f;
+/// Large tactile action button height (44 pt).
+static const CGFloat TGMetricButtonLargeH          = 44.0f;
+/// iOS 6 tactile toggle switch width (51 pt).
+static const CGFloat TGMetricSwitchW               = 51.0f;
+/// iOS 6 tactile toggle switch height (31 pt).
+static const CGFloat TGMetricSwitchH               = 31.0f;
+/// iOS 6 tactile toggle knob diameter (27 pt).
+static const CGFloat TGMetricSwitchThumbD          = 27.0f;
+/// Tactile slider touch height (28 pt).
+static const CGFloat TGMetricSliderH               = 28.0f;
+/// Tactile slider thumb diameter (22 pt).
+static const CGFloat TGMetricSliderThumbD          = 22.0f;
+/// Tactile slider recessed track height (6 pt).
+static const CGFloat TGMetricSliderTrackH          = 6.0f;
+/// Tactile input field height (36 pt).
+static const CGFloat TGMetricTextFieldH            = 36.0f;
+/// Tactile pill badge height (18 pt).
+static const CGFloat TGMetricBadgeH                = 18.0f;
+
 #ifdef __cplusplus
 }
 #endif

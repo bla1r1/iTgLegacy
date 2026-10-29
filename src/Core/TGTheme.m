@@ -353,6 +353,17 @@ static NSString *TGIdForStyle(TGThemeStyle style) {
 	} else {
 		bar.tintColor = [self barColour];
 	}
+
+	if (!self.isFlat) {
+		UIImage *tabBg = [TGTheme skeuomorphicBarImageWithColor:TGThemeRGB(0x1C, 0x20, 0x26) height:49.0f];
+		if ([bar respondsToSelector:@selector(setBackgroundImage:)]) {
+			bar.backgroundImage = tabBg;
+		}
+	} else {
+		if ([bar respondsToSelector:@selector(setBackgroundImage:)]) {
+			bar.backgroundImage = nil;
+		}
+	}
 }
 
 #pragma mark - wallpaper
@@ -402,27 +413,46 @@ static NSString *TGIdForStyle(TGThemeStyle style) {
 	// A dark bar needs light status-bar glyphs, which is what barStyle decides.
 	bar.barStyle = self.isDark ? UIBarStyleBlack : UIBarStyleDefault;
 
-	if ([bar respondsToSelector:@selector(setBarTintColor:)]){
-		// A translucent bar blends with whatever is behind it, which turns a
-		// dark bar pale. Anything dark gets an opaque bar.
-		// Opaque, always. iOS 7 builds a bar's backdrop when translucency is
-		// switched on and then keeps it: turning it on during a theme change
-		// left the bar painted in the theme before last, whatever it was asked
-		// to redraw afterwards. Nothing scrolls under a bar here anyway - every
-		// screen sets edgesForExtendedLayout to none - so translucency was only
-		// ever costing a blur nobody sees.
-		bar.translucent = NO;
-		bar.barTintColor = [self barColour];
-		bar.tintColor = [self barButtonColour];
-		// The settings bar is short, so the title has to be too or it sits with
-		// its descenders against the hairline.
-		bar.titleTextAttributes = @{
-			NSForegroundColorAttributeName : [self barTitleColour],
-			NSFontAttributeName            : TGFontRowStrong(),
-		};
+	if (!self.isFlat) {
+		CGFloat barHeight = bar.bounds.size.height > 0 ? bar.bounds.size.height : 44.0f;
+		UIImage *bgImage = [TGTheme skeuomorphicBarImageWithColor:[self barColour] height:barHeight];
+		if ([bar respondsToSelector:@selector(setBackgroundImage:forBarMetrics:)]) {
+			[bar setBackgroundImage:bgImage forBarMetrics:UIBarMetricsDefault];
+		}
+		if ([bar respondsToSelector:@selector(setShadowImage:)]) {
+			[bar setShadowImage:[[UIImage alloc] init]];
+		}
+		if ([bar respondsToSelector:@selector(setBarTintColor:)]) {
+			bar.translucent = NO;
+			bar.barTintColor = [self barColour];
+			bar.tintColor = [self barButtonColour];
+			bar.titleTextAttributes = @{
+				NSForegroundColorAttributeName : [self barTitleColour],
+				NSFontAttributeName            : TGFontRowStrong(),
+			};
+		} else {
+			bar.tintColor = [self barColour];
+			bar.titleTextAttributes = @{ UITextAttributeTextColor : [self barTitleColour] };
+		}
 	} else {
-		bar.tintColor = [self barColour];
-		bar.titleTextAttributes = @{ UITextAttributeTextColor : [self barTitleColour] };
+		if ([bar respondsToSelector:@selector(setBackgroundImage:forBarMetrics:)]) {
+			[bar setBackgroundImage:nil forBarMetrics:UIBarMetricsDefault];
+		}
+		if ([bar respondsToSelector:@selector(setShadowImage:)]) {
+			[bar setShadowImage:nil];
+		}
+		if ([bar respondsToSelector:@selector(setBarTintColor:)]){
+			bar.translucent = NO;
+			bar.barTintColor = [self barColour];
+			bar.tintColor = [self barButtonColour];
+			bar.titleTextAttributes = @{
+				NSForegroundColorAttributeName : [self barTitleColour],
+				NSFontAttributeName            : TGFontRowStrong(),
+			};
+		} else {
+			bar.tintColor = [self barColour];
+			bar.titleTextAttributes = @{ UITextAttributeTextColor : [self barTitleColour] };
+		}
 	}
 }
 

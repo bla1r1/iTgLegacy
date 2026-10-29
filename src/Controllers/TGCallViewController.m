@@ -104,6 +104,8 @@ static NSArray *TGCallGradient(NSArray *colours) {
     self.avatarView.clipsToBounds = YES;
     self.avatarView.layer.shouldRasterize = YES;
     self.avatarView.layer.rasterizationScale = [UIScreen mainScreen].scale;
+    self.avatarView.layer.borderColor = [[TGTheme shared] separatorColour].CGColor;
+    self.avatarView.layer.borderWidth = 1.0f;
     self.avatarView.image = [TGIcons avatarWithInitials:
             (self.peerName.length ? [self.peerName substringToIndex:1].uppercaseString : @"?")
                                                    size:side colourId:self.userId];
@@ -142,12 +144,24 @@ static NSArray *TGCallGradient(NSArray *colours) {
     self.micLbl = self.lastCreatedLabel;
     self.endBtn = [self createButtonWithTitle:@"End" icon:@"endcall"];
     self.endLbl = self.lastCreatedLabel;
-    self.endBtn.backgroundColor = [[TGTheme shared] callEndColour];
 
     self.acceptBtn = [self createButtonWithTitle:@"Accept" icon:@"call"];
     self.acceptLbl = self.lastCreatedLabel;
-    self.acceptBtn.backgroundColor = [[TGTheme shared] callAcceptColour];
     [self.acceptBtn addTarget:self action:@selector(acceptCall) forControlEvents:UIControlEventTouchUpInside];
+
+    TGTheme *theme = [TGTheme shared];
+    if (!theme.isFlat) {
+        [self.endBtn setBackgroundImage:[TGTheme buttonImageForStyle:TGButtonStyleDestructive highlighted:NO height:TGMetricCallButtonSide] forState:UIControlStateNormal];
+        [self.endBtn setBackgroundImage:[TGTheme buttonImageForStyle:TGButtonStyleDestructive highlighted:YES height:TGMetricCallButtonSide] forState:UIControlStateHighlighted];
+        self.endBtn.backgroundColor = [UIColor clearColor];
+
+        [self.acceptBtn setBackgroundImage:[TGTheme buttonImageForStyle:TGButtonStyleSuccess highlighted:NO height:TGMetricCallButtonSide] forState:UIControlStateNormal];
+        [self.acceptBtn setBackgroundImage:[TGTheme buttonImageForStyle:TGButtonStyleSuccess highlighted:YES height:TGMetricCallButtonSide] forState:UIControlStateHighlighted];
+        self.acceptBtn.backgroundColor = [UIColor clearColor];
+    } else {
+        self.endBtn.backgroundColor = [theme callEndColour];
+        self.acceptBtn.backgroundColor = [theme callAcceptColour];
+    }
 
     [self.speakerBtn addTarget:self action:@selector(toggleSpeaker) forControlEvents:UIControlEventTouchUpInside];
     [self.micBtn addTarget:self action:@selector(toggleMute) forControlEvents:UIControlEventTouchUpInside];

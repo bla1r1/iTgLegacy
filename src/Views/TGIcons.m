@@ -314,6 +314,235 @@ static void TGDrawTabPath(CGContextRef ctx, UIBezierPath *path, BOOL filled) {
 	}];
 }
 
++ (UIImage *)repeatModeIcon:(NSInteger)mode {
+	NSString *name = [NSString stringWithFormat:@"repeat-%ld", (long)mode];
+	return [self iconNamed:name draw:^(CGContextRef ctx, CGFloat s){
+		CGContextSetLineWidth(ctx, TGIconStroke);
+		CGContextSetLineCap(ctx, kCGLineCapRound);
+		CGContextSetLineJoin(ctx, kCGLineJoinRound);
+
+		CGFloat left = 6.0f, right = s - 6.0f, top = 8.0f, bottom = s - 8.0f;
+		CGFloat rad = 4.0f;
+
+		// Top path going right with arrowhead
+		CGContextMoveToPoint(ctx, left + rad, top);
+		CGContextAddLineToPoint(ctx, right - rad, top);
+		CGContextAddArcToPoint(ctx, right, top, right, top + rad, rad);
+		CGContextAddLineToPoint(ctx, right, top + 4.0f);
+		CGContextStrokePath(ctx);
+
+		// Top arrow head
+		CGContextMoveToPoint(ctx, right - 3.5f, top - 3.0f);
+		CGContextAddLineToPoint(ctx, right + 1.0f, top);
+		CGContextAddLineToPoint(ctx, right - 3.5f, top + 3.0f);
+		CGContextStrokePath(ctx);
+
+		// Bottom path going left with arrowhead
+		CGContextMoveToPoint(ctx, right - rad, bottom);
+		CGContextAddLineToPoint(ctx, left + rad, bottom);
+		CGContextAddArcToPoint(ctx, left, bottom, left, bottom - rad, rad);
+		CGContextAddLineToPoint(ctx, left, bottom - 4.0f);
+		CGContextStrokePath(ctx);
+
+		// Bottom arrow head
+		CGContextMoveToPoint(ctx, left + 3.5f, bottom - 3.0f);
+		CGContextAddLineToPoint(ctx, left - 1.0f, bottom);
+		CGContextAddLineToPoint(ctx, left + 3.5f, bottom + 3.0f);
+		CGContextStrokePath(ctx);
+
+		if (mode == 2) {
+			// Numeral '1' in the center
+			CGContextSetLineWidth(ctx, TGIconStrokeFine);
+			CGContextMoveToPoint(ctx, TGHalf(s) - 2.0f, TGHalf(s) - 2.0f);
+			CGContextAddLineToPoint(ctx, TGHalf(s), TGHalf(s) - 4.0f);
+			CGContextAddLineToPoint(ctx, TGHalf(s), TGHalf(s) + 4.0f);
+			CGContextStrokePath(ctx);
+		}
+	}];
+}
+
++ (UIImage *)shuffleIconActive:(BOOL)active {
+	NSString *name = [NSString stringWithFormat:@"shuffle-%d", active ? 1 : 0];
+	return [self iconNamed:name draw:^(CGContextRef ctx, CGFloat s){
+		CGContextSetLineWidth(ctx, TGIconStroke);
+		CGContextSetLineCap(ctx, kCGLineCapRound);
+		CGContextSetLineJoin(ctx, kCGLineJoinRound);
+
+		CGFloat left = 6.0f, right = s - 6.0f;
+		CGFloat mid = TGHalf(s);
+		CGFloat top = 8.0f, bottom = s - 8.0f;
+
+		// Diagonal 1: bottom-left to top-right
+		CGContextMoveToPoint(ctx, left, bottom);
+		CGContextAddCurveToPoint(ctx, mid - 2.0f, bottom, mid + 2.0f, top, right, top);
+		CGContextStrokePath(ctx);
+
+		// Arrow 1 head
+		CGContextMoveToPoint(ctx, right - 3.5f, top - 3.0f);
+		CGContextAddLineToPoint(ctx, right + 1.0f, top);
+		CGContextAddLineToPoint(ctx, right - 3.5f, top + 3.0f);
+		CGContextStrokePath(ctx);
+
+		// Diagonal 2: top-left to bottom-right (broken in center for depth)
+		CGContextMoveToPoint(ctx, left, top);
+		CGContextAddCurveToPoint(ctx, mid - 4.0f, top, mid - 3.0f, mid - 2.0f, mid - 2.0f, mid);
+		CGContextStrokePath(ctx);
+
+		CGContextMoveToPoint(ctx, mid + 2.0f, mid + 2.0f);
+		CGContextAddCurveToPoint(ctx, mid + 3.0f, bottom - 1.0f, mid + 4.0f, bottom, right, bottom);
+		CGContextStrokePath(ctx);
+
+		// Arrow 2 head
+		CGContextMoveToPoint(ctx, right - 3.5f, bottom - 3.0f);
+		CGContextAddLineToPoint(ctx, right + 1.0f, bottom);
+		CGContextAddLineToPoint(ctx, right - 3.5f, bottom + 3.0f);
+		CGContextStrokePath(ctx);
+	}];
+}
+
++ (UIImage *)volumeMin {
+	return [self iconNamed:@"volumeMin" draw:^(CGContextRef ctx, CGFloat s){
+		CGContextSetLineWidth(ctx, TGIconStrokeFine);
+		CGContextSetLineCap(ctx, kCGLineCapRound);
+		CGContextSetLineJoin(ctx, kCGLineJoinRound);
+
+		CGFloat mid = TGHalf(s);
+		// Speaker body
+		CGContextMoveToPoint(ctx, 6.0f, mid - 3.5f);
+		CGContextAddLineToPoint(ctx, 9.5f, mid - 3.5f);
+		CGContextAddLineToPoint(ctx, 14.5f, mid - 7.5f);
+		CGContextAddLineToPoint(ctx, 14.5f, mid + 7.5f);
+		CGContextAddLineToPoint(ctx, 9.5f, mid + 3.5f);
+		CGContextAddLineToPoint(ctx, 6.0f, mid + 3.5f);
+		CGContextClosePath(ctx);
+		CGContextFillPath(ctx);
+
+		// Single small wave arc
+		CGContextAddArc(ctx, 15.0f, mid, 5.0f, -0.6f, 0.6f, 0);
+		CGContextStrokePath(ctx);
+	}];
+}
+
++ (UIImage *)volumeMax {
+	return [self iconNamed:@"volumeMax" draw:^(CGContextRef ctx, CGFloat s){
+		CGContextSetLineWidth(ctx, TGIconStrokeFine);
+		CGContextSetLineCap(ctx, kCGLineCapRound);
+		CGContextSetLineJoin(ctx, kCGLineJoinRound);
+
+		CGFloat mid = TGHalf(s);
+		// Speaker body
+		CGContextMoveToPoint(ctx, 5.0f, mid - 3.5f);
+		CGContextAddLineToPoint(ctx, 8.5f, mid - 3.5f);
+		CGContextAddLineToPoint(ctx, 13.5f, mid - 7.5f);
+		CGContextAddLineToPoint(ctx, 13.5f, mid + 7.5f);
+		CGContextAddLineToPoint(ctx, 8.5f, mid + 3.5f);
+		CGContextAddLineToPoint(ctx, 5.0f, mid + 3.5f);
+		CGContextClosePath(ctx);
+		CGContextFillPath(ctx);
+
+		// Two concentric sound wave arcs
+		CGContextAddArc(ctx, 14.0f, mid, 5.0f, -0.65f, 0.65f, 0);
+		CGContextStrokePath(ctx);
+		CGContextAddArc(ctx, 14.0f, mid, 9.0f, -0.65f, 0.65f, 0);
+		CGContextStrokePath(ctx);
+	}];
+}
+
++ (UIImage *)queueList {
+	return [self iconNamed:@"queueList" draw:^(CGContextRef ctx, CGFloat s){
+		CGContextSetLineWidth(ctx, TGIconStroke);
+		CGContextSetLineCap(ctx, kCGLineCapRound);
+
+		CGFloat x1 = 10.0f, x2 = s - 6.0f;
+		CGFloat y1 = 8.0f, y2 = TGHalf(s), y3 = s - 8.0f;
+
+		// 3 horizontal track rows
+		CGContextMoveToPoint(ctx, x1, y1);
+		CGContextAddLineToPoint(ctx, x2, y1);
+		CGContextMoveToPoint(ctx, x1, y2);
+		CGContextAddLineToPoint(ctx, x2, y2);
+		CGContextMoveToPoint(ctx, x1, y3);
+		CGContextAddLineToPoint(ctx, x2, y3);
+		CGContextStrokePath(ctx);
+
+		// Bullet dots on left
+		CGFloat dotR = 1.6f;
+		CGContextFillEllipseInRect(ctx, CGRectMake(5.5f - dotR, y1 - dotR, dotR * 2, dotR * 2));
+		CGContextFillEllipseInRect(ctx, CGRectMake(5.5f - dotR, y2 - dotR, dotR * 2, dotR * 2));
+		CGContextFillEllipseInRect(ctx, CGRectMake(5.5f - dotR, y3 - dotR, dotR * 2, dotR * 2));
+	}];
+}
+
++ (UIImage *)chevronDown {
+	return [self iconNamed:@"chevronDown" draw:^(CGContextRef ctx, CGFloat s){
+		CGContextSetLineWidth(ctx, TGIconStroke);
+		CGContextSetLineCap(ctx, kCGLineCapRound);
+		CGContextSetLineJoin(ctx, kCGLineJoinRound);
+
+		CGFloat mid = TGHalf(s);
+		CGContextMoveToPoint(ctx, 7.0f, mid - 3.5f);
+		CGContextAddLineToPoint(ctx, mid, mid + 3.5f);
+		CGContextAddLineToPoint(ctx, s - 7.0f, mid - 3.5f);
+		CGContextStrokePath(ctx);
+	}];
+}
+
++ (UIImage *)emptyChatsIllustration {
+	return [self iconNamed:@"emptyChats" draw:^(CGContextRef ctx, CGFloat s){
+		// Stylized dual speech bubbles with tactile overlapping depth
+		CGContextSetLineWidth(ctx, TGIconStroke);
+		CGContextSetLineJoin(ctx, kCGLineJoinRound);
+
+		// Back bubble
+		UIBezierPath *b1 = [UIBezierPath bezierPathWithRoundedRect:CGRectMake(8.0f, 4.0f, s - 14.0f, s * 0.44f) cornerRadius:6.0f];
+		CGContextAddPath(ctx, b1.CGPath);
+		CGContextStrokePath(ctx);
+
+		// Front bubble with offset
+		UIBezierPath *b2 = [UIBezierPath bezierPathWithRoundedRect:CGRectMake(4.0f, 13.0f, s - 14.0f, s * 0.44f) cornerRadius:6.0f];
+		CGContextAddPath(ctx, b2.CGPath);
+		CGContextStrokePath(ctx);
+	}];
+}
+
++ (UIImage *)emptyContactsIllustration {
+	return [self iconNamed:@"emptyContacts" draw:^(CGContextRef ctx, CGFloat s){
+		CGContextSetLineWidth(ctx, TGIconStroke);
+		CGContextSetLineJoin(ctx, kCGLineJoinRound);
+
+		// Address book outline
+		CGRect r = CGRectMake(6.0f, 4.0f, s - 12.0f, s - 8.0f);
+		UIBezierPath *book = [UIBezierPath bezierPathWithRoundedRect:r cornerRadius:4.0f];
+		CGContextAddPath(ctx, book.CGPath);
+		CGContextStrokePath(ctx);
+
+		// Profile silhouette inside
+		CGFloat mid = TGHalf(s);
+		CGContextFillEllipseInRect(ctx, CGRectMake(mid - 4.0f, 9.0f, 8.0f, 8.0f));
+		UIBezierPath *body = [UIBezierPath bezierPathWithRoundedRect:CGRectMake(mid - 7.0f, 19.0f, 14.0f, 7.0f) cornerRadius:3.5f];
+		CGContextAddPath(ctx, body.CGPath);
+		CGContextFillPath(ctx);
+	}];
+}
+
++ (UIImage *)emptySearchIllustration {
+	return [self iconNamed:@"emptySearch" draw:^(CGContextRef ctx, CGFloat s){
+		CGContextSetLineWidth(ctx, TGIconStroke);
+		CGContextSetLineCap(ctx, kCGLineCapRound);
+
+		// Large magnifying glass
+		CGFloat r = 8.0f;
+		CGPoint c = CGPointMake(TGHalf(s) - 2.0f, TGHalf(s) - 2.0f);
+		CGContextAddArc(ctx, c.x, c.y, r, 0, (CGFloat)(M_PI * 2.0), 1);
+		CGContextStrokePath(ctx);
+
+		// Handle
+		CGContextMoveToPoint(ctx, c.x + 5.5f, c.y + 5.5f);
+		CGContextAddLineToPoint(ctx, s - 6.0f, s - 6.0f);
+		CGContextStrokePath(ctx);
+	}];
+}
+
 + (UIImage *)pause {
 	return [self iconNamed:@"pause" draw:^(CGContextRef ctx, CGFloat s){
 		CGContextFillRect(ctx, CGRectMake(s * 0.32f, 5, s * 0.13f, s - 10));

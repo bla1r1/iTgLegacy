@@ -692,6 +692,8 @@ static const CGFloat kMeTextInset  = TGMetricPadMedium;
 	self.avatarView.clipsToBounds = YES;
 	self.avatarView.layer.shouldRasterize = YES;
 	self.avatarView.layer.rasterizationScale = [UIScreen mainScreen].scale;
+	self.avatarView.layer.borderColor = [theme separatorColour].CGColor;
+	self.avatarView.layer.borderWidth = 1.0f;
 	self.avatarView.contentMode = UIViewContentModeScaleAspectFill;
 	self.avatarView.image = [TGIcons avatarWithInitials:
 			[name substringToIndex:1].uppercaseString

@@ -12,10 +12,13 @@
 #import "TGSnackbar.h"
 #import "TGSearchViewController.h"
 #import "TGChatCell.h"
+#import "TGEmptyView.h"
+#import "TGStatusBanner.h"
 #import <QuartzCore/QuartzCore.h>
 
 @interface TGChatListViewController () <UISearchBarDelegate>
 
+@property (nonatomic, strong) TGEmptyView *emptyView;
 @property (nonatomic, strong) NSArray *chats;
 @property (nonatomic, assign) BOOL showsArchive;      // this IS the archive screen
 @property (nonatomic, assign) NSInteger folderId;     // 0 = no folder

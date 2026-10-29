@@ -3,6 +3,7 @@
 #import "TGVoiceDecoder.h"
 #import "TGMusicPlayer.h"
 #import "TGStyle.h"
+#import "TGPlayerView.h"
 
 static CGPoint sTouchStart;
 static CGFloat sDragDeltaX;
@@ -497,6 +498,9 @@ static BOOL sIsCancelled;
 		self.playerArtwork.clipsToBounds = YES;
 		self.playerArtwork.layer.cornerRadius = TGMetricCornerSmall;
 		self.playerArtwork.hidden = YES;
+		self.playerArtwork.userInteractionEnabled = YES;
+		[self.playerArtwork addGestureRecognizer:[[UITapGestureRecognizer alloc]
+				initWithTarget:self action:@selector(openFullPlayerTapped)]];
 		[self.playerBar addSubview:self.playerArtwork];
 
 		self.playerToggle = [UIButton buttonWithType:UIButtonTypeCustom];
@@ -511,6 +515,9 @@ static BOOL sIsCancelled;
 		self.playerLabel.font = TGFontCaptionStrong();
 		self.playerLabel.backgroundColor = [UIColor clearColor];
 		self.playerLabel.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+		self.playerLabel.userInteractionEnabled = YES;
+		[self.playerLabel addGestureRecognizer:[[UITapGestureRecognizer alloc]
+				initWithTarget:self action:@selector(openFullPlayerTapped)]];
 		[self.playerBar addSubview:self.playerLabel];
 
 		self.playerDetail = [[UILabel alloc] init];
@@ -761,6 +768,12 @@ static NSString *TGClockText(NSTimeInterval position, NSTimeInterval duration) {
 
 - (void)musicPreviousTapped { [[TGMusicPlayer shared] previous]; }
 - (void)musicNextTapped     { [[TGMusicPlayer shared] next]; }
+
+- (void)openFullPlayerTapped {
+	if ([TGMusicPlayer shared].current) {
+		[TGPlayerModalViewController presentFromViewController:self animated:YES];
+	}
+}
 
 /// Called on the notification as well as directly, so the strip follows a
 /// track change that came from the lock screen rather than from this screen.

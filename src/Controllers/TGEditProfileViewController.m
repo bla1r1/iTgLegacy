@@ -414,6 +414,8 @@ static const CGFloat kFieldWidth = 290.0f;
 	self.photoView.clipsToBounds = YES;
 	self.photoView.layer.shouldRasterize = YES;
 	self.photoView.layer.rasterizationScale = [UIScreen mainScreen].scale;
+	self.photoView.layer.borderColor = [theme separatorColour].CGColor;
+	self.photoView.layer.borderWidth = 1.0f;
 	self.photoView.contentMode = UIViewContentModeScaleAspectFill;
 	self.photoView.image = [TGIcons avatarWithInitials:
 			[name substringToIndex:1].uppercaseString

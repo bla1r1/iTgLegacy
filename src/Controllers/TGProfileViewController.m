@@ -136,6 +136,8 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 	self.avatarView.clipsToBounds = YES;
 	self.avatarView.layer.shouldRasterize = YES;
 	self.avatarView.layer.rasterizationScale = [UIScreen mainScreen].scale;
+	self.avatarView.layer.borderColor = [[TGTheme shared] separatorColour].CGColor;
+	self.avatarView.layer.borderWidth = 1.0f;
 	self.avatarView.contentMode = UIViewContentModeScaleAspectFill;
 	NSString *initials = self.name.length ? [self.name substringToIndex:1] : @"?";
 	self.avatarView.image = [TGIcons avatarWithInitials:initials.uppercaseString

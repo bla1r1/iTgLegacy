@@ -74,6 +74,7 @@ INCLUDES  := -I$(ROOT_DIR)/include \
              -I$(ROOT_DIR)/src/Core \
              -I$(ROOT_DIR)/src/Controllers \
              -I$(ROOT_DIR)/src/Views \
+             -I$(ROOT_DIR)/src/UI \
              -I$(ROOT_DIR)/src/Calls \
              -I$(ROOT_DIR)/src/Audio \
              -I$(ROOT_DIR)/third_party \
@@ -203,6 +204,20 @@ APP_SRC_M := \
 	src/Views/TGAlertSheet.m \
 	src/Views/TGGiftViewer.m \
 	src/Views/TGSnackbar.m \
+	src/Views/TGPlayerView.m \
+	src/Views/TGEmptyView.m \
+	src/Views/TGStatusBanner.m \
+	src/UI/TGButton.m \
+	src/UI/TGSwitch.m \
+	src/UI/TGSlider.m \
+	src/UI/TGTextField.m \
+	src/UI/TGSegmentedControl.m \
+	src/UI/TGCardView.m \
+	src/UI/TGBadge.m \
+	src/UI/TGReactionPicker.m \
+	src/UI/TGAvatarView.m \
+	src/UI/TGSearchBar.m \
+	src/UI/TGGalleryViewController.m \
 	src/Controllers/TGSearchViewController.m \
 	src/Controllers/TGPlaceholderViewController.m \
 	src/Controllers/TGQRViewController.m \

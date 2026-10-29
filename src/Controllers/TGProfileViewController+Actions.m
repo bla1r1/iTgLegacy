@@ -106,8 +106,15 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 	for (NSUInteger i = 0; i < tiles.count; i++){
 		UIButton *tile = [UIButton buttonWithType:UIButtonTypeCustom];
 		tile.frame = CGRectMake(margin + i * (tileW + gap), y, tileW, kActionTile);
-		tile.backgroundColor = [theme actionTileBackgroundColour];
+		if (!theme.isFlat) {
+			[tile setBackgroundImage:[TGTheme buttonImageForStyle:TGButtonStyleSecondary highlighted:NO height:kActionTile] forState:UIControlStateNormal];
+			[tile setBackgroundImage:[TGTheme buttonImageForStyle:TGButtonStyleSecondary highlighted:YES height:kActionTile] forState:UIControlStateHighlighted];
+			tile.backgroundColor = [UIColor clearColor];
+		} else {
+			tile.backgroundColor = [theme actionTileBackgroundColour];
+		}
 		tile.layer.cornerRadius = TGMetricCornerControl;
+		tile.clipsToBounds = YES;
 		tile.tag = i;
 		[tile addTarget:self action:@selector(actionTileTapped:)
 	   forControlEvents:UIControlEventTouchUpInside];

@@ -33,6 +33,7 @@ CFLAGS  := \
     -I$(SRC)/Core \
     -I$(SRC)/Controllers \
     -I$(SRC)/Views \
+    -I$(SRC)/UI \
     -I$(SRC)/Calls \
     -I$(SRC)/Audio \
     -I$(ROOT)/third_party \

@@ -3,6 +3,7 @@
 #import "TGPopupMenu.h"
 #import "TGStyle.h"
 #import "TGAlertSheet.h"
+#import "TGReactionPicker.h"
 
 /// What the reply strip shows on its second line. The rows here are already
 /// flattened, so TGMessagePreview - which reads a raw TDLib content - cannot
@@ -128,12 +129,10 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 			@{@"title" : @"Forward", @"icon" : @"forward"},
 	]];
 	// One reaction at a time is what TDLib allows here, so the menu either
-	// offers to put one on or to take yours off - never both.
+	// offers to remove yours or the reaction bar at top lets you pick one.
 	if (myReaction.length)
 		[items addObject:@{@"title" : [NSString stringWithFormat:
 				@"Remove %@", myReaction], @"icon" : @"react"}];
-	else
-		[items addObject:@{@"title" : @"React", @"icon" : @"react"}];
 	[items addObject:@{@"title" : @"Select", @"icon" : @"select"}];
 	if ([m[@"text"] length])
 		[items addObject:@{@"title" : @"Copy", @"icon" : @"copy"}];
@@ -199,9 +198,23 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 				CGRectGetMaxY(rect) - TGMetricCardMargin) toView:self.view];
 	}
 
+	NSArray *reactions = [TGReactionPicker defaultReactions];
 	__weak typeof(self) weakSelf = self;
-	[TGPopupMenu showItems:items atPoint:where inView:self.view
-				  onChoice:^(NSInteger index, NSString *title){
+	[TGPopupMenu showItems:items
+				   atPoint:where
+					inView:self.view
+				 reactions:reactions
+		  selectedReaction:myReaction
+				onReaction:^(NSString *emoji) {
+		TGChatViewController *me = weakSelf;
+		if (!me) return;
+		if ([emoji isEqualToString:myReaction]) {
+			[[TGClient shared] removeReaction:myReaction fromMessage:heldId inChat:me.chatId];
+		} else {
+			[[TGClient shared] reactTo:heldId inChat:me.chatId emoji:emoji];
+		}
+		[me reload];
+	} onChoice:^(NSInteger index, NSString *title) {
 		[weakSelf runMessageAction:title];
 	}];
 }

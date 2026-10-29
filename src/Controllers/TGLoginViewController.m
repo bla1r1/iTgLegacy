@@ -53,9 +53,7 @@
     CGFloat width = self.view.bounds.size.width;
     CGFloat height = self.view.bounds.size.height;
 
-    // Classic skeuomorphic background gradient layer
-    self.skeuoBgLayer = tgGloss(self.view.bounds, tgRGB(222, 226, 232), tgRGB(186, 193, 203));
-    [self.view.layer insertSublayer:self.skeuoBgLayer atIndex:0];
+    self.view.backgroundColor = [[TGTheme shared] groupedBackgroundColour];
 
     self.scrollView = [[UIScrollView alloc] initWithFrame:CGRectMake(0, 0, width, height)];
     self.scrollView.backgroundColor = [UIColor clearColor];
@@ -132,18 +130,6 @@
     [self.actionButton setTitle:@"Next" forState:UIControlStateNormal];
     self.actionButton.titleLabel.font = TGFontRowStrong();
     [self.actionButton addTarget:self action:@selector(actionButtonTapped) forControlEvents:UIControlEventTouchUpInside];
-
-    // Skeuomorphic button gloss layer
-    self.skeuoBtnLayer = tgGloss(CGRectMake(0, 0, inner, TGMetricRow),
-            tgRGB(92, 156, 210), tgRGB(38, 92, 148));
-    [self.actionButton.layer insertSublayer:self.skeuoBtnLayer atIndex:0];
-
-    self.skeuoShineView = [[UIView alloc] initWithFrame:
-            CGRectMake(0, 0, inner, TGHalf(TGMetricRow))];
-    self.skeuoShineView.backgroundColor = [[TGTheme shared] skeuoShineColour];
-    self.skeuoShineView.userInteractionEnabled = NO;
-    [self.actionButton addSubview:self.skeuoShineView];
-
     [self.scrollView addSubview:self.actionButton];
 
     // Activity spinner inside action button
@@ -202,13 +188,7 @@
     }
 
     // View background
-    if (!theme.isFlat) {
-        self.skeuoBgLayer.hidden = NO;
-        self.view.backgroundColor = tgRGB(203, 209, 216);
-    } else {
-        self.skeuoBgLayer.hidden = YES;
-        self.view.backgroundColor = [theme groupedBackgroundColour];
-    }
+    self.view.backgroundColor = [theme groupedBackgroundColour];
 
     // Labels
     self.subtitleLabel.textColor = [theme secondaryTextColour];
@@ -235,14 +215,13 @@
 
     // Action button
     if (!theme.isFlat) {
-        self.skeuoBtnLayer.hidden = NO;
-        self.skeuoShineView.hidden = NO;
+        [self.actionButton setBackgroundImage:[TGTheme buttonImageForStyle:TGButtonStyleAction highlighted:NO height:TGMetricRow] forState:UIControlStateNormal];
+        [self.actionButton setBackgroundImage:[TGTheme buttonImageForStyle:TGButtonStyleAction highlighted:YES height:TGMetricRow] forState:UIControlStateHighlighted];
         self.actionButton.backgroundColor = [UIColor clearColor];
-        self.actionButton.layer.borderWidth = TGMetricBorderWidth;
-        self.actionButton.layer.borderColor = tgRGB(26, 66, 102).CGColor;
+        self.actionButton.layer.borderWidth = 0.0f;
     } else {
-        self.skeuoBtnLayer.hidden = YES;
-        self.skeuoShineView.hidden = YES;
+        [self.actionButton setBackgroundImage:nil forState:UIControlStateNormal];
+        [self.actionButton setBackgroundImage:nil forState:UIControlStateHighlighted];
         self.actionButton.backgroundColor = [theme accentColour];
         self.actionButton.layer.borderWidth = TGMetricBorderNone;
     }
