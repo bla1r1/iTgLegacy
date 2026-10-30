@@ -204,12 +204,21 @@ UIColor *TGSenderColour(int64_t userId) {
 
 - (TGMessageLayout *)layoutForMessage:(NSDictionary *)m atRow:(NSInteger)row {
 	NSNumber *msgId = m[@"id"];
+	BOOL runStart = [self runStartsAtRow:row];
+	BOOL runEnd = [self runEndsAtRow:row];
 	if (msgId) {
 		TGMessageLayout *hit = self.layoutCache[msgId];
-		if (hit) return hit;
+		// Loading older or newer history re-groups the whole array, so a
+		// message that opened a run can end up in the middle of one. Its
+		// height moves with the run gap while its cached frames do not, and
+		// the two drift apart into bubbles that overlap their neighbours.
+		if (hit && hit.runStart == runStart && hit.runEnd == runEnd)
+			return hit;
 	}
 
 	TGMessageLayout *layout = [[TGMessageLayout alloc] init];
+	layout.runStart = runStart;
+	layout.runEnd = runEnd;
 	CGFloat tableW = self.table.bounds.size.width;
 	if (tableW <= 0) tableW = TGMetricScreenWidth;
 

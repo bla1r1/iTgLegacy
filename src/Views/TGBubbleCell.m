@@ -49,13 +49,29 @@ static const CGFloat kWaveUnplayedAlpha = 0.32f;
 	self.bubble.layer.rasterizationScale = scale;
 	[self.contentView addSubview:self.bubble];
 
+	// These three outlive the cell and are re-pointed at a different message
+	// on every reuse. Without the null actions CoreAnimation animates each
+	// change over a quarter of a second, so bubbles visibly re-draw
+	// themselves mid-scroll and the phone pays for the morph.
+	NSDictionary *still = @{@"frame"    : [NSNull null],
+							@"bounds"   : [NSNull null],
+							@"position" : [NSNull null],
+							@"path"     : [NSNull null],
+							@"colors"   : [NSNull null],
+							@"hidden"   : [NSNull null]};
+
 	self.gradientLayer = [CAGradientLayer layer];
 	self.gradientLayer.hidden = YES;
+	self.gradientLayer.actions = still;
 	[self.bubble.layer insertSublayer:self.gradientLayer atIndex:0];
 
 	self.borderLayer = [CAShapeLayer layer];
 	self.borderLayer.hidden = YES;
+	self.borderLayer.actions = still;
 	[self.bubble.layer addSublayer:self.borderLayer];
+
+	self.bubbleMask = [CAShapeLayer layer];
+	self.bubbleMask.actions = still;
 
 	self.picture = [[UIImageView alloc] init];
 	self.picture.contentMode = UIViewContentModeScaleAspectFill;
@@ -513,6 +529,8 @@ static const CGFloat kWaveUnplayedAlpha = 0.32f;
 	self.gradientLayer.hidden = YES;
 	self.borderLayer.hidden = YES;
 	self.shineBar.hidden = YES;
+	// Detached, not thrown away: willDisplayCell: points the bubble back at
+	// it with a new path.
 	self.bubble.layer.mask = nil;
 	self.checkbox.hidden = YES;
 	self.disc.hidden = YES;
@@ -537,11 +555,14 @@ static const CGFloat kWaveUnplayedAlpha = 0.32f;
 	self.mediaStamp.text = nil;
 	self.unreadDot.hidden = YES;
 
-	// Dynamic poll options cleanup
-	for (UIView *old in [self.bubble.subviews copy]) {
-		if (old.tag >= 0x9100 && old.tag < 0x9200) [old removeFromSuperview];
+	// The poll's option rows are five views apiece and were torn down and
+	// built again on every single reuse, because clearing pollMessageId here
+	// meant the cell's own "same poll, keep them" check could never hold.
+	// Hidden instead: the poll branch rebuilds them when the message under
+	// the cell actually changes.
+	for (UIView *old in self.bubble.subviews) {
+		if (old.tag >= 0x9100 && old.tag < 0x9200) old.hidden = YES;
 	}
-	self.pollMessageId = 0;
 
 	// A round note moves the clock and the ticks out of the bubble, because a
 	// circle clips them away. Every other kind places them in the bubble's

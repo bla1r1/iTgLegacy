@@ -24,17 +24,10 @@
 
 	[cell resetForReuse];
 
-	// 1. Service cells (service messages, separators, polls, docs, contacts, locations)
-	if ([self configureServiceCell:cell message:m layout:layout isMine:mine indexPath:indexPath]) {
-		return [self finalizeCell:cell message:m layout:layout isMine:mine];
-	}
-
-	// 2. Audio cells (calls, audio tracks, voice notes)
-	if ([self configureAudioCell:cell message:m layout:layout isMine:mine indexPath:indexPath]) {
-		return [self finalizeCell:cell message:m layout:layout isMine:mine];
-	}
-
-	// 3. Sender info for general bubbles
+	// 1. Who wrote it. This runs before the service and audio branches
+	// return: the layout indents the bubble by the avatar column and keeps a
+	// line for the name whether or not the branch draws one, so a track or a
+	// voice note skipping it looked shifted under an empty strip.
 	int64_t senderId = [m[@"senderId"] longLongValue];
 	if (layout.senderName.length) {
 		cell.senderAvatar.hidden = NO;
@@ -45,6 +38,16 @@
 		cell.sender.text = layout.senderName;
 		cell.sender.textColor = TGSenderColour(senderId);
 		cell.sender.frame = layout.senderFrame;
+	}
+
+	// 2. Service cells (service messages, separators, polls, docs, contacts, locations)
+	if ([self configureServiceCell:cell message:m layout:layout isMine:mine indexPath:indexPath]) {
+		return [self finalizeCell:cell message:m layout:layout isMine:mine];
+	}
+
+	// 3. Audio cells (calls, audio tracks, voice notes)
+	if ([self configureAudioCell:cell message:m layout:layout isMine:mine indexPath:indexPath]) {
+		return [self finalizeCell:cell message:m layout:layout isMine:mine];
 	}
 
 	cell.bubble.frame = layout.bubbleFrame;
@@ -395,7 +398,7 @@ static UIBezierPath *TGBubbleUnifiedPath(CGSize size, CGFloat tl, CGFloat tr, CG
 	cell.bubble.layer.borderWidth = 0;
 	cell.bubble.layer.borderColor = [UIColor clearColor].CGColor;
 
-	CAShapeLayer *mask = [CAShapeLayer layer];
+	CAShapeLayer *mask = cell.bubbleMask;
 	mask.frame = layerFrame;
 	mask.path = path.CGPath;
 	cell.bubble.layer.mask = mask;

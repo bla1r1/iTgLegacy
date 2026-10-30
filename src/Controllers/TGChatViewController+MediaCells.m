@@ -97,10 +97,16 @@
 		cell.bubble.frame = layout.bubbleFrame;
 		cell.picture.hidden = YES;
 		cell.body.hidden = YES;
-		cell.lottie.hidden = NO;
 		cell.lottie.frame = CGRectMake(TGMetricZero, TGMetricZero, side, side);
-		[cell.lottie loadStickerFile:animPath];
-		[cell.lottie play];
+		BOOL playable = [cell.lottie loadStickerFile:animPath];
+		cell.lottie.hidden = !playable;
+		if (playable) {
+			[cell.lottie play];
+		} else {
+			// A .tgs that is not gzip, or a .webm this decoder cannot open,
+			// otherwise leaves a sticker-sized hole with a clock in it.
+			[self placeStickerEmoji:cell message:m inFrame:cell.lottie.frame];
+		}
 
 		static NSDateFormatter *hmt = nil;
 		if (!hmt) { hmt = [[NSDateFormatter alloc] init]; [hmt setDateFormat:@"HH:mm"]; }
@@ -112,6 +118,23 @@
 	}
 
 	return NO;
+}
+
+/// What Telegram shows while a sticker is still a promise: the emoji it
+/// stands for, drawn where the sticker would have been.
+- (void)placeStickerEmoji:(TGBubbleCell *)cell message:(NSDictionary *)m inFrame:(CGRect)frame {
+	NSString *emoji = m[@"extra"] ?: m[@"emoji"];
+	if (!emoji.length || frame.size.height <= 0)
+		return;
+	cell.icon.hidden = NO;
+	cell.icon.backgroundColor = [UIColor clearColor];
+	cell.icon.layer.cornerRadius = TGMetricCornerNone;
+	cell.icon.textColor = [[TGTheme shared] primaryTextColour];
+	cell.icon.font = TGEmojiFontOfSize(TGHalf(frame.size.height));
+	cell.icon.textAlignment = NSTextAlignmentCenter;
+	cell.icon.text = emoji;
+	cell.icon.frame = frame;
+	[cell.bubble bringSubviewToFront:cell.icon];
 }
 
 - (void)configureMediaForCell:(TGBubbleCell *)cell message:(NSDictionary *)m layout:(TGMessageLayout *)layout isMine:(BOOL)mine {
@@ -181,12 +204,23 @@
 		cell.picture.layer.borderWidth = (layout.isSticker || layout.isRound) ? 0.0f : (theme.isFlat ? 0.0f : 1.0f);
 		cell.picture.clipsToBounds = YES;
 
+		// A sticker draws on nothing but its own image: no fill, no body text.
+		// Until the file arrives the row is a hole in the wallpaper with a
+		// clock floating in it.
+		if (layout.isSticker && !img)
+			[self placeStickerEmoji:cell message:m inFrame:layout.pictureFrame];
+
 		cell.disc.hidden = ![kind isEqualToString:@"messageVideo"] && ![kind isEqualToString:@"messageAnimation"];
 		if (!cell.disc.hidden) {
 			CGFloat disc = kGifDisc;
 			cell.disc.image = [TGIcons mediaDiscOfSide:disc playing:NO];
-			cell.disc.frame = CGRectMake(kPadH + TGCenteredOrigin(layout.picSize.width, disc),
-										 layout.pictureFrame.origin.y + TGCenteredOrigin(layout.picSize.height, disc), disc, disc);
+			// Centred on the frame the picture actually got, not on kPadH and
+			// the picture's natural size: a wide bubble stretches the one and
+			// leaves the other behind, which pushed the arrow off to the left.
+			cell.disc.frame = CGRectMake(
+					CGRectGetMinX(layout.pictureFrame) + TGCenteredOrigin(CGRectGetWidth(layout.pictureFrame), disc),
+					CGRectGetMinY(layout.pictureFrame) + TGCenteredOrigin(CGRectGetHeight(layout.pictureFrame), disc),
+					disc, disc);
 		}
 
 		if ([kind isEqualToString:@"messageAnimation"] && ![TGCapabilities canAutoplayGIFs]) {

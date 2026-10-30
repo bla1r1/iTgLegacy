@@ -76,6 +76,11 @@ CGSize TGTextSizeWithEntities(NSString *text, NSArray *entities, UIFont *font, C
 @property (nonatomic, assign) BOOL isLocation;
 @property (nonatomic, assign) BOOL isAlbum;
 @property (nonatomic, assign) CGFloat fwdHeight;
+/// Where this message sat in its run when the geometry was worked out. The
+/// row height carries a gap that depends on both, so a cached layout whose
+/// neighbours have since changed is no longer the right one.
+@property (nonatomic, assign) BOOL runStart;
+@property (nonatomic, assign) BOOL runEnd;
 @property (nonatomic, strong) NSArray *entities;
 @property (nonatomic, strong) NSAttributedString *attributedBody;
 @end

@@ -233,6 +233,9 @@ static const CGFloat kBannerCloseGlyph = 16.0f;
 @property (nonatomic, assign) BOOL isLoadingMoreHistory;
 @property (nonatomic, assign) BOOL isLoadingNewerHistory;
 @property (nonatomic, assign) BOOL atChatEnd;
+/// The other end of the same thing: the history is open to its first message
+/// and asking for more only costs a round trip.
+@property (nonatomic, assign) BOOL atChatStart;
 @property (nonatomic, strong) TGMessageStreamStore *streamStore;
 @property (nonatomic, strong) NSTimer *playbackTimer;
 @property (nonatomic, strong) MPMoviePlayerController *videoNotePlayer;
@@ -487,6 +490,7 @@ static const CGFloat kBannerCloseGlyph = 16.0f;
 - (BOOL)configureAudioCell:(TGBubbleCell *)cell message:(NSDictionary *)m layout:(TGMessageLayout *)layout isMine:(BOOL)mine indexPath:(NSIndexPath *)indexPath;
 - (BOOL)configureRoundOrStickerCell:(TGBubbleCell *)cell message:(NSDictionary *)m layout:(TGMessageLayout *)layout isMine:(BOOL)mine;
 - (void)configureMediaForCell:(TGBubbleCell *)cell message:(NSDictionary *)m layout:(TGMessageLayout *)layout isMine:(BOOL)mine;
+- (void)placeStickerEmoji:(TGBubbleCell *)cell message:(NSDictionary *)m inFrame:(CGRect)frame;
 - (void)startGifIfWantedIn:(TGBubbleCell *)cell message:(NSDictionary *)m;
 
 @end

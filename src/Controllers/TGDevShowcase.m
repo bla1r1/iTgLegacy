@@ -220,6 +220,29 @@
 	return path;
 }
 
+/// A plausible voice note: five-bit samples swelling and falling the way
+/// speech does, so the showcase draws real bars.
+static NSData *TGShowcaseWaveform(void) {
+	uint8_t samples[64];
+	for (NSUInteger i = 0; i < sizeof(samples); i++) {
+		double t = (double)i / sizeof(samples);
+		double envelope = sin(t * M_PI);
+		double detail = 0.55 + 0.45 * sin(t * 37.0);
+		samples[i] = (uint8_t)(31.0 * envelope * detail) & 0x1F;
+	}
+
+	// Pack them five bits at a time, least significant bit first.
+	NSMutableData *packed = [NSMutableData dataWithLength:(sizeof(samples) * 5 + 7) / 8];
+	uint8_t *out = (uint8_t *)packed.mutableBytes;
+	for (NSUInteger i = 0; i < sizeof(samples); i++) {
+		NSUInteger bit = i * 5;
+		out[bit / 8] |= (uint8_t)(samples[i] << (bit % 8));
+		if ((bit % 8) > 3)
+			out[bit / 8 + 1] |= (uint8_t)(samples[i] >> (8 - (bit % 8)));
+	}
+	return packed;
+}
+
 + (NSArray *)allShowcaseMessages {
 	double now = [[NSDate date] timeIntervalSince1970];
 	double baseTime = now - 3600.0;
@@ -433,6 +456,9 @@
 		@"date"       : @(baseTime + 150),
 		@"kind"       : @"messageVoiceNote",
 		@"duration"   : @28,
+		// Five bits a sample, the way Telegram sends it, so the harness
+		// shows the bars and not just the fallback for a missing waveform.
+		@"waveform"   : TGShowcaseWaveform(),
 	}];
 
 	// 16. Audio Track (Music)

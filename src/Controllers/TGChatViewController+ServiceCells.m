@@ -74,11 +74,22 @@
 				layout.bubbleFrame.size.width - TGDoubled(kPadH), TGMetricLineCaption);
 
 		int64_t msgId = [m[@"id"] longLongValue];
-		if (cell.pollMessageId != msgId) {
+		NSUInteger revision = (NSUInteger)([m[@"pollTotal"] integerValue] * 31
+				+ (NSInteger)options.count * 7 + (closed ? 1 : 0));
+		for (NSUInteger i = 0; i < options.count; i++) {
+			if ([options[i][@"is_chosen"] boolValue])
+				revision += (i + 1) * 131;
+		}
+		if (cell.pollMessageId == msgId && cell.pollRevision == revision) {
+			for (UIView *row in cell.bubble.subviews) {
+				if (row.tag >= 0x9100 && row.tag < 0x9200) row.hidden = NO;
+			}
+		} else {
 			for (UIView *old in [cell.bubble.subviews copy]) {
 				if (old.tag >= 0x9100 && old.tag < 0x9200) [old removeFromSuperview];
 			}
 			cell.pollMessageId = msgId;
+			cell.pollRevision = revision;
 
 			CGFloat y = kPadV + qs.height + kPollVotedLine;
 			for (NSUInteger i = 0; i < options.count; i++) {

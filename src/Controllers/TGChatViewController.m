@@ -659,6 +659,7 @@
 		me.rawMessages = [me.streamStore messages];
 		me.messages = [me groupedMessagesFromMessages:me.rawMessages];
 		me.atChatEnd = NO;
+		me.atChatStart = NO;
 		[me.table reloadData];
 		if (![me scrollToMessageId:pinned])
 			[TGSnackbar showInView:me.view text:@"The pinned message is gone"
@@ -708,6 +709,7 @@
 			me.rawMessages = [me.streamStore messages];
 			me.messages = [me groupedMessagesFromMessages:me.rawMessages];
 			me.atChatEnd = NO;
+			me.atChatStart = NO;
 			[me.table reloadData];
 			if ([me scrollToMessageId:replyId])
 				return;
@@ -1098,7 +1100,7 @@
         return;
     
     // 1. Load older messages when scrolled near the top
-    if (scrollView.contentOffset.y < (CGFloat)TGMetricHistoryTopGate && !self.isLoadingMoreHistory) {
+    if (scrollView.contentOffset.y < (CGFloat)TGMetricHistoryTopGate && !self.isLoadingMoreHistory && !self.atChatStart) {
         self.isLoadingMoreHistory = YES;
         int64_t fromMessageId = self.streamStore.oldestMessageId;
         if (!fromMessageId) {
@@ -1112,13 +1114,22 @@
                 TGChatViewController *me = weakScroll;
                 if (!me) return;
                 me.isLoadingMoreHistory = NO;
-                if (older.count == 0) return;
-                
+                // Without this the next scroll event asks again, and a chat
+                // that has nothing older - a local one above all - answers
+                // an empty list a hundred times a second.
+                if (older.count == 0) {
+                    me.atChatStart = YES;
+                    return;
+                }
+
                 CGFloat oldHeight = me.table.contentSize.height;
                 CGFloat oldOffset = me.table.contentOffset.y;
 
                 NSUInteger added = [me.streamStore prependOlderMessages:older];
-                if (!added) return;
+                if (!added) {
+                    me.atChatStart = YES;
+                    return;
+                }
 
                 me.rawMessages = [me.streamStore messages];
                 me.messages = [me groupedMessagesFromMessages:me.rawMessages];

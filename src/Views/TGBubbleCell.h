@@ -24,6 +24,9 @@
 @property (nonatomic, strong) CAGradientLayer *gradientLayer;
 @property (nonatomic, strong) CAShapeLayer *borderLayer;
 @property (nonatomic, strong) CAGradientLayer *shineGradientLayer;
+/// The bubble's contour mask. One layer per cell, reused: building a fresh
+/// CAShapeLayer for every appearance is what made scrolling cost a redraw.
+@property (nonatomic, strong) CAShapeLayer *bubbleMask;
 
 /// The dot that says a voice note has not been listened to or a round note
 /// has not been watched. It lives beside the clock, not inside the bubble,
@@ -49,6 +52,10 @@
 @property (nonatomic, strong) UILabel *mediaStamp;
 @property (nonatomic, assign) int64_t voiceMessageId;
 @property (nonatomic, assign) int64_t pollMessageId;
+/// What the option rows were built from: the tally, the chosen answer and
+/// whether it is closed. Keeping it lets a reused cell keep its rows while
+/// still rebuilding them the moment a vote lands.
+@property (nonatomic, assign) NSUInteger pollRevision;
 @property (nonatomic, strong) UILabel *forwardLabel;
 
 // Contact card components

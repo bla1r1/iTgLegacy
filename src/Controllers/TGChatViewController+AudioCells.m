@@ -15,7 +15,8 @@
 		BOOL missed = [m[@"callState"] isEqualToString:@"missed"];
 		NSString *line = m[@"text"] ?: @"Call";
 
-		CGFloat fwd = [self layoutForwardIn:cell message:m width:layout.bubbleFrame.size.width];
+		CGFloat fwd = [self layoutForwardIn:cell message:m width:layout.bubbleFrame.size.width]
+				+ (layout.senderName.length ? TGMetricSenderLineHeight : TGMetricZero);
 		cell.bubble.frame = layout.bubbleFrame;
 		cell.bubble.backgroundColor = mine ? [callTheme bubbleMineColour] : [callTheme bubbleTheirsColour];
 		cell.bubble.layer.borderWidth = TGMetricBorderNone;
@@ -64,7 +65,8 @@
 	// Audio Tracks
 	if (layout.isTrack) {
 		TGTheme *cardTheme = [TGTheme shared];
-		CGFloat fwd = [self layoutForwardIn:cell message:m width:layout.bubbleFrame.size.width];
+		CGFloat fwd = [self layoutForwardIn:cell message:m width:layout.bubbleFrame.size.width]
+				+ (layout.senderName.length ? TGMetricSenderLineHeight : TGMetricZero);
 		cell.bubble.frame = layout.bubbleFrame;
 		cell.bubble.backgroundColor = mine ? [cardTheme bubbleMineColour]
 										   : [cardTheme bubbleTheirsColour];
@@ -130,7 +132,17 @@
 
 		cell.voiceMessageId = [m[@"id"] longLongValue];
 
-		CGFloat fwd = layout.fwdHeight;
+		// Every other branch stands its own bubble up; this one never did,
+		// so the pill kept whatever frame the reused cell came with and the
+		// disc, the waveform and the clock floated on the wallpaper.
+		CGFloat fwd = [self layoutForwardIn:cell message:m width:layout.bubbleFrame.size.width]
+				+ (layout.senderName.length ? TGMetricSenderLineHeight : TGMetricZero);
+		cell.bubble.frame = layout.bubbleFrame;
+		cell.bubble.backgroundColor = mine ? [voiceTheme bubbleMineColour]
+										   : [voiceTheme bubbleTheirsColour];
+		cell.bubble.layer.borderWidth = TGMetricBorderNone;
+		cell.bubble.layer.borderColor = [UIColor clearColor].CGColor;
+		cell.bubble.layer.cornerRadius = [voiceTheme bubbleCornerRadius];
 
 		cell.disc.hidden = NO;
 		cell.disc.userInteractionEnabled = YES;

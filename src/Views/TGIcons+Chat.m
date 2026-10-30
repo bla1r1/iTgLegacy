@@ -132,7 +132,11 @@ static const CGFloat kTailHeight = 13.0f;
 }
 
 + (UIBezierPath *)waveformPath:(NSData *)waveform size:(CGSize)size {
-	if (!waveform.length || size.width <= 0 || size.height <= 0)
+	// No waveform is not the same as no bars. Telegram still draws the shape
+	// of the sound, flat, until the real one arrives; the loop below already
+	// falls back to a resting height per bar, and bailing out here meant a
+	// voice note with no waveform data drew nothing at all.
+	if (size.width <= 0 || size.height <= 0)
 		return nil;
 
 	const uint8_t *bytes = (const uint8_t *)waveform.bytes;
