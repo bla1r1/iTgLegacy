@@ -33,30 +33,57 @@ static void put16(unsigned char *p, uint16_t v) {
 	const int rate = 48000;
 	const int channels = 2;
 
-	NSMutableData *pcm = [NSMutableData data];
-	opus_int16 buffer[5760 * 2];   // 120ms at 48kHz, stereo
+	NSString *out = [NSTemporaryDirectory() stringByAppendingPathComponent:@"voice.wav"];
+	FILE *fp = fopen(out.UTF8String, "wb+");
+	if (!fp) {
+		NSLog(@"TGVoiceDecoder: cannot create %@", out);
+		op_free(of);
+		return nil;
+	}
+
+	// 44-byte placeholder header
+	unsigned char header[44] = {0};
+	if (fwrite(header, 1, sizeof(header), fp) != sizeof(header)) {
+		NSLog(@"TGVoiceDecoder: failed to write header placeholder");
+		fclose(fp);
+		op_free(of);
+		return nil;
+	}
+
+	opus_int16 buffer[1920 * 2];   // 40ms at 48kHz, stereo (<8 KB stack buffer)
+	uint32_t totalBytesWritten = 0;
 
 	for (;;){
 		int samples = op_read_stereo(of, buffer, (int)(sizeof(buffer) / sizeof(buffer[0])));
 		if (samples < 0){
 			NSLog(@"TGVoiceDecoder: op_read_stereo failed (%d)", samples);
+			fclose(fp);
 			op_free(of);
 			return nil;
 		}
 		if (samples == 0)
 			break;
-		[pcm appendBytes:buffer length:samples * channels * sizeof(opus_int16)];
+
+		size_t bytes = (size_t)samples * channels * sizeof(opus_int16);
+		if (fwrite(buffer, 1, bytes, fp) != bytes) {
+			NSLog(@"TGVoiceDecoder: failed to write audio chunk");
+			fclose(fp);
+			op_free(of);
+			return nil;
+		}
+		totalBytesWritten += (uint32_t)bytes;
 	}
 	op_free(of);
 
-	if (!pcm.length){
+	if (totalBytesWritten == 0){
 		NSLog(@"TGVoiceDecoder: decoded nothing");
+		fclose(fp);
+		[[NSFileManager defaultManager] removeItemAtPath:out error:nil];
 		return nil;
 	}
 
 	// 44-byte canonical WAV header
-	unsigned char header[44];
-	uint32_t dataSize = (uint32_t)pcm.length;
+	uint32_t dataSize = totalBytesWritten;
 	uint32_t byteRate = rate * channels * 2;
 
 	memcpy(header, "RIFF", 4);
@@ -72,15 +99,14 @@ static void put16(unsigned char *p, uint16_t v) {
 	memcpy(header + 36, "data", 4);
 	put32(header + 40, dataSize);
 
-	NSMutableData *wav = [NSMutableData dataWithBytes:header length:sizeof(header)];
-	[wav appendData:pcm];
-
-	NSString *out = [NSTemporaryDirectory()
-			stringByAppendingPathComponent:@"voice.wav"];
-	if (![wav writeToFile:out atomically:YES]){
-		NSLog(@"TGVoiceDecoder: cannot write %@", out);
+	// Seek back to 0 and write the finalized WAV header
+	if (fseek(fp, 0, SEEK_SET) != 0 || fwrite(header, 1, sizeof(header), fp) != sizeof(header)) {
+		NSLog(@"TGVoiceDecoder: failed to write finalized WAV header");
+		fclose(fp);
 		return nil;
 	}
+
+	fclose(fp);
 	return out;
 }
 

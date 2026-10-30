@@ -1,7 +1,7 @@
 #!/bin/sh
 # lint_tokens.sh - fail the build when a screen names its own size or colour.
 #
-# Colour has always come from TGTheme+Palette; type and metrics come from
+# Colour has always come from TGTheme+Colours; type and metrics come from
 # TGStyle. The point of both is that one value is set in one place, and the
 # only way that survives is if a new literal cannot get merged. So this runs
 # as part of the test suite, not as advice.
@@ -42,12 +42,12 @@ if [ -n "$hits" ]; then
 fi
 
 # ── 3. a colour mixed by hand outside the palette ────────────────────────────
-# All colours must originate from TGTheme+Palette.
+# All colours must originate from TGTheme+Colours.
 hits=$(grep -rnE '\[UIColor colorWith(Red|Hue|White):[0-9]' src \
         --include='*.m' --include='*.mm' --include='*.h' | grep -v '^src/Core/')
 if [ -n "$hits" ]; then
     report "A colour is mixed in a screen instead of coming from the palette:" \
-            "add a name to TGTheme+Palette.m and ask the theme for it"
+            "add a name to TGTheme+Colours.m and ask the theme for it"
     echo "$hits"
 fi
 
@@ -166,12 +166,12 @@ if [ -n "$hits" ]; then
 fi
 
 # ── 14. a colour alpha mixed manually outside palette ────────────────────────
-# Ad-hoc transparency creates uncalibrated tints. Put semantic colors in TGTheme+Palette.
+# Ad-hoc transparency creates uncalibrated tints. Put semantic colors in TGTheme+Colours.m.
 hits=$(grep -rnE 'colorWithAlphaComponent:\s*[0-9]' src --include='*.m' --include='*.mm' --include='*.h' \
         | grep -v '^src/Core/')
 if [ -n "$hits" ]; then
     report "colorWithAlphaComponent: with literal alpha is used outside Core palette:" \
-            "define a semantic color in TGTheme+Palette.m instead"
+            "define a semantic color in TGTheme+Colours.m instead"
     echo "$hits"
 fi
 

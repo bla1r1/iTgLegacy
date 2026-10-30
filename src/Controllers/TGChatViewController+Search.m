@@ -13,19 +13,19 @@
 	}
 
 	CGRect b = self.view.bounds;
-	self.chatSearchBar = [[UISearchBar alloc] initWithFrame:CGRectMake(0, 0, b.size.width, TGMetricRow)];
+	self.chatSearchBar = [[TGSearchBar alloc] initWithFrame:CGRectMake(0, 0, b.size.width, TGMetricRow)];
 	self.chatSearchBar.delegate = self;
 	self.chatSearchBar.placeholder = @"Search in chat";
-	self.chatSearchBar.showsCancelButton = YES;
 	self.chatSearchBar.autoresizingMask = UIViewAutoresizingFlexibleWidth;
 	[self.view addSubview:self.chatSearchBar];
-	[self.chatSearchBar becomeFirstResponder];
+	[self.chatSearchBar setEditing:YES animated:NO];
+	[self.chatSearchBar.textField becomeFirstResponder];
 
 	self.messagesBeforeSearch = self.messages;
 }
 
 - (void)endChatSearch {
-	[self.chatSearchBar resignFirstResponder];
+	[self.chatSearchBar.textField resignFirstResponder];
 	[self.chatSearchBar removeFromSuperview];
 	self.chatSearchBar = nil;
 
@@ -37,11 +37,11 @@
 	}
 }
 
-- (void)searchBarCancelButtonClicked:(UISearchBar *)searchBar {
+- (void)searchBarCancelButtonClicked:(id)searchBar {
 	[self endChatSearch];
 }
 
-- (void)searchBar:(UISearchBar *)searchBar textDidChange:(NSString *)query {
+- (void)searchBar:(id)searchBar textDidChange:(NSString *)query {
 	if (!query.length){
 		self.messages = self.messagesBeforeSearch ?: @[];
 		[self.table reloadData];

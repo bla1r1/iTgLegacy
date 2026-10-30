@@ -64,9 +64,9 @@
 - **Classic Header Blue (Skeuomorphic):** `rgb(0x51, 0x7D, 0xA2)` to `rgb(0x3B, 0x64, 0x88)` satin gradient.
 - **Classic Tab Bar Matte Slate:** `rgb(0x1B, 0x1F, 0x24)` with top bevel line `rgb(0x33, 0x38, 0x40)`.
 - **Grouped Background:** Subtle iOS 6 textured pinstripe / linen canvas.
-- **Chat Canvas:** Soft paper/canvas grain `rgb(0xD9, 0xDE, 0xD4)`.
-- **Incoming Bubble:** Crisp porcelain white with tactile outer border and soft drop shadow.
-- **Outgoing Bubble:** Delicate sage green `rgb(0xEF, 0xFE, 0xDD)` with soft green stroke.
+- **Chat Canvas:** Crisp linen/paper grain `rgb(0xDE, 0xE2, 0xE6)` in Light, neutral charcoal in Dark.
+- **Incoming Bubble:** Crisp porcelain white (`#FFFFFF`) with tactile outer bevel and specular highlight.
+- **Outgoing Bubble:** Authentic Telegram celestial blue `rgb(0xDF, 0xEE, 0xFA)` with glossy skeuomorphic gradient (`#E6F2FD` to `#B4DAF5`) and tactile blue stroke `rgb(0x99, 0xC4, 0xE8)`. In Dark, deep night blue (`#286E9B` to `#14466A`).
 - **Accent Blue:** `rgb(0x1A, 0x77, 0xD4)` (links, unread badge, active controls).
 - **Destructive Red:** `rgb(0xD3, 0x2F, 0x2F)` with deep crimson bevel.
 - **Success / Online Green:** `rgb(0x4C, 0xAF, 0x50)`.
@@ -119,7 +119,7 @@
 - [x] Worktree initialization (`redesign/ios6-reimagined`)
 - [x] Codebase & UX audit (Routes, tokens, controllers, assets)
 - [x] Design specification (`DESIGN_SPEC.md`)
-- [x] Skeuomorphic procedural drawing engine (`TGTheme+Palette.m`, `TGStyle.h/m`)
+- [x] Skeuomorphic procedural drawing engine (`TGTheme+Drawing.m`, `TGStyle.h/m`)
 - [x] Tactile vector iconography extensions (`TGIcons.h/m`)
 - [x] Dedicated Music Player System (`TGMusicPlayer`, `TGPlayerView` Mini & Modal)
 - [x] RootViewController global mini-player integration

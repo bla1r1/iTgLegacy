@@ -478,19 +478,22 @@ static NSString *TGBase64FromImage(UIImage *img) {
 	// itglegacy://gallery - open the UI Component Gallery Design Lab
 	if ([host isEqualToString:@"gallery"]){
 		dispatch_async(dispatch_get_main_queue(), ^{
+			[self showMainUI];
 			UITabBarController *tabs = [self activeTabBarController];
+			if (!tabs) {
+				[self showMainUI];
+				tabs = [self activeTabBarController];
+			}
 			if (![tabs isKindOfClass:UITabBarController.class])
 				return;
-			if ([tabs isKindOfClass:[RootViewController class]]) {
-				[(RootViewController *)tabs switchToTab:tabs.viewControllers.count - 1 popToRoot:YES];
-			} else {
-				tabs.selectedIndex = tabs.viewControllers.count - 1;
-			}
-			UINavigationController *nc = tabs.viewControllers[tabs.selectedIndex];
+			tabs.selectedIndex = 0;
+			UINavigationController *nc = tabs.viewControllers[0];
 			[nc popToRootViewControllerAnimated:NO];
+
 			TGGalleryViewController *gallery = [[TGGalleryViewController alloc] init];
 			gallery.hidesBottomBarWhenPushed = YES;
 			[nc pushViewController:gallery animated:NO];
+			NSLog(@"open gallery directly on main nc");
 		});
 		return YES;
 	}
@@ -791,6 +794,18 @@ static NSString *TGBase64FromImage(UIImage *img) {
 					[[TGTheme shared] selectThemeId:themeId] ? @"applied" : @"rejected");
 		});
 		return YES;
+	}
+
+	// itglegacy://fontsize/<pt> - set message font size and refresh UI.
+	if ([host isEqualToString:@"fontsize"]) {
+		CGFloat pt = [arg floatValue];
+		if (pt >= 10.0f && pt <= 30.0f) {
+			dispatch_async(dispatch_get_main_queue(), ^{
+				[TGTheme shared].messageFontSize = pt;
+				NSLog(@"fontsize: set to %.1f pt", pt);
+			});
+			return YES;
+		}
 	}
 
 	// itglegacy://profile - open the profile of the chat already on screen.

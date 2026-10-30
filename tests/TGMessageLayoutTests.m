@@ -357,4 +357,38 @@ static NSString *kWord2 = @"antidisestablishmentarianism";
 	XCTAssertTrue(fabs(leftMargin - rightMargin) < 0.01);
 }
 
+#pragma mark - C++ LRU layout cache tests
+
+- (void)testMessageLayoutCache_LruEvictionAndPromotion {
+	TGMessageLayoutCache *cache = [[TGMessageLayoutCache alloc] initWithCapacity:3];
+	XCTAssertEqual(cache.count, (NSUInteger)0);
+
+	cache[@1] = @"one";
+	cache[@2] = @"two";
+	cache[@3] = @"three";
+	XCTAssertEqual(cache.count, (NSUInteger)3);
+	XCTAssertEqualObjects(cache[@1], @"one");
+	XCTAssertEqualObjects(cache[@2], @"two");
+	XCTAssertEqualObjects(cache[@3], @"three");
+
+	// Accessing @1 promotes it to MRU (order now: 2, 3, 1)
+	id val1 = cache[@1];
+	XCTAssertEqualObjects(val1, @"one");
+
+	// Inserting 4th item must evict LRU (@2)
+	cache[@4] = @"four";
+	XCTAssertEqual(cache.count, (NSUInteger)3);
+	XCTAssertNil(cache[@2]); // @2 evicted!
+	XCTAssertEqualObjects(cache[@1], @"one");
+	XCTAssertEqualObjects(cache[@3], @"three");
+	XCTAssertEqualObjects(cache[@4], @"four");
+
+	// Clear cache
+	[cache removeAllObjects];
+	XCTAssertEqual(cache.count, (NSUInteger)0);
+	XCTAssertNil(cache[@1]);
+	XCTAssertNil(cache[@3]);
+	XCTAssertNil(cache[@4]);
+}
+
 @end

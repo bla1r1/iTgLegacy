@@ -77,6 +77,7 @@ CLIENT_OBJC_SRCS := \
     $(SRC)/Core/TGClient.m \
     $(SRC)/Core/TGClient+Chats.mm \
     $(SRC)/Core/TGMessageStreamStore.mm \
+    $(SRC)/Core/TGUpdateBatcher.mm \
     $(SRC)/Core/TGClient+Messages.m \
     $(SRC)/Core/TGClient+Stickers.m \
     $(SRC)/Core/TGClient+Files.m \
@@ -86,7 +87,9 @@ CLIENT_OBJC_SRCS := \
     $(SRC)/Core/TGClient+Downloads.m \
     $(SRC)/Core/TGClient+Secret.m \
     $(SRC)/Core/TGClient+Account.m \
-    $(SRC)/Core/TGClient+Auth.m
+    $(SRC)/Core/TGClient+Auth.m \
+    $(SRC)/Core/TGThemeFile.m \
+    $(SRC)/Core/TGImageLruCache.mm
 
 # Test helper ObjC sources. TGClientStub and TGCallAudioEngineStub stand in
 # for the iOS-only production classes that TGCall.mm would otherwise need.
@@ -128,7 +131,8 @@ CLIENT_TEST_SRCS := \
     $(TESTS)/TGClientGroupsTests.m \
     $(TESTS)/TGMessageParserTests.m \
     $(TESTS)/TGClientAccountTests.m \
-    $(TESTS)/TGClientComposeTests.m
+    $(TESTS)/TGClientComposeTests.m \
+    $(TESTS)/TGThemeFileTests.m
 
 TEST_BINARY := $(BUILD)/TGCallTests
 CLIENT_BINARY := $(BUILD)/TGClientTests
@@ -175,7 +179,7 @@ tokens:
 
 TEST_BINARY_DEPS := $(TESTS)/main.m $(C_SRCS) $(OBJC_SRCS) $(TEST_HELPER_SRCS) $(TEST_SRCS) \
                 $(TESTS)/TGTestRunner.h $(TESTS)/TGCallTestHelpers.h
-CLIENT_BINARY_DEPS := $(TESTS)/main_client.m $(CLIENT_OBJC_SRCS) $(CLIENT_HELPER_SRCS) \
+CLIENT_BINARY_DEPS := $(TESTS)/main_client.mm $(CLIENT_OBJC_SRCS) $(CLIENT_HELPER_SRCS) \
                 $(CLIENT_TEST_SRCS) $(TESTS)/TGTestRunner.h
 SIM_BINARY_DEPS := $(TESTS)/call_sim.mm $(C_SRCS) $(OBJC_SRCS) $(TEST_HELPER_SRCS) \
                 $(TESTS)/TGCallTestHelpers.h
@@ -213,7 +217,7 @@ $(CLIENT_BINARY): $(CLIENT_BINARY_DEPS)
 	$(CLANG) $(CFLAGS) \
 	    $(CLIENT_OBJC_SRCS) \
 	    $(CLIENT_HELPER_SRCS) \
-	    $(TESTS)/main_client.m \
+	    $(TESTS)/main_client.mm \
 	    $(LDFLAGS) \
 	    -o $@
 	@echo "  Built $(notdir $@)"

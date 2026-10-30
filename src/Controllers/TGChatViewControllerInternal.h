@@ -5,6 +5,7 @@
 #define TGCHATVIEWCONTROLLERINTERNAL_H
 
 #import "TGChatViewController.h"
+#import "TGUI.h"
 #import "TGClient.h"
 #import "TGSheet.h"
 #import "TGTheme.h"
@@ -15,6 +16,7 @@
 #import "TGMediaViewer.h"
 #import "TGEmojiPanel.h"
 #import "TGStreamingVoicePlayer.h"
+#import "TGImageLruCache.h"
 #import <MediaPlayer/MediaPlayer.h>
 #import <AVFoundation/AVFoundation.h>
 #import <CoreLocation/CoreLocation.h>
@@ -187,7 +189,7 @@ static const CGFloat kBannerCloseGlyph = 16.0f;
 
 @class TGMessageStreamStore;
 
-@interface TGChatViewController () <UISearchBarDelegate, CLLocationManagerDelegate, TGEmojiPanelDelegate,
+@interface TGChatViewController () <UISearchBarDelegate, TGSearchBarDelegate, CLLocationManagerDelegate, TGEmojiPanelDelegate,
 		UIScrollViewDelegate, AVAudioPlayerDelegate, TGStreamingVoicePlayerDelegate,
 		ABPeoplePickerNavigationControllerDelegate>
 
@@ -197,12 +199,12 @@ static const CGFloat kBannerCloseGlyph = 16.0f;
 @property (nonatomic, strong) UIButton *sendButton;
 @property (nonatomic, strong) NSArray *messages;          // flattened TDLib dicts (may contain grouped album composites)
 @property (nonatomic, strong) NSArray *rawMessages;       // raw flattened messages before grouping
-@property (nonatomic, strong) NSMutableDictionary *images; // fileId -> UIImage
+@property (nonatomic, strong) TGImageLruCache *images;    // fileId -> UIImage (cap 40)
 @property (nonatomic, strong) NSMutableSet *imagesRequested;
 @property (nonatomic, strong) TGStreamingVoicePlayer *voicePlayer;
 @property (nonatomic, assign) BOOL anchorToBottom;
 @property (nonatomic, strong) NSMutableDictionary *lottiePaths;   // fileId -> path
-@property (nonatomic, strong) NSMutableDictionary *maps;          // messageId -> UIImage
+@property (nonatomic, strong) TGImageLruCache *maps;             // messageId -> UIImage (cap 20)
 @property (nonatomic, strong) NSMutableSet *mapsRequested;
 @property (nonatomic, strong) NSMutableDictionary *quotes;       // messageId -> flattened
 @property (nonatomic, strong) NSMutableSet *quotesRequested;
@@ -217,7 +219,7 @@ static const CGFloat kBannerCloseGlyph = 16.0f;
 /// Following a reply: the quote header is the button; this is where it lands.
 - (void)jumpToReplyById:(int64_t)replyId;
 - (void)refreshActionBar;
-@property (nonatomic, strong) UISearchBar *chatSearchBar;
+@property (nonatomic, strong) TGSearchBar *chatSearchBar;
 @property (nonatomic, strong) NSArray *messagesBeforeSearch;
 @property (nonatomic, strong) NSTimer *recordTimer;
 @property (nonatomic, strong) UIView *recordPanel;      // shown while holding
@@ -242,7 +244,7 @@ static const CGFloat kBannerCloseGlyph = 16.0f;
 @property (nonatomic, strong) UIButton *musicPrevious;
 @property (nonatomic, strong) UIButton *musicNext;
 @property (nonatomic, strong) UILabel *playerLabel;
-@property (nonatomic, strong) NSMutableDictionary *senderAvatars;   // userId -> UIImage
+@property (nonatomic, strong) TGImageLruCache *senderAvatars;   // userId -> UIImage (cap 50)
 @property (nonatomic, strong) NSMutableSet *senderAvatarsRequested;
 @property (nonatomic, strong) UILabel *downloadHUD;
 @property (nonatomic, assign) NSInteger downloadingFileId;
@@ -259,7 +261,7 @@ static const CGFloat kBannerCloseGlyph = 16.0f;
 @property (nonatomic, strong) UIImageView *wallpaperView;
 @property (nonatomic, strong) UIButton *stickerButton;
 @property (nonatomic, strong) TGEmojiPanel *stickerPanel;   // emoji, stickers, GIFs
-@property (nonatomic, strong) NSMutableDictionary *layoutCache;
+@property (nonatomic, strong) TGMessageLayoutCache *layoutCache;
 @property (nonatomic, strong) NSMutableDictionary *gifPaths;       // docId -> local MP4
 // Chrome (TGChatViewController+Chrome)
 @property (nonatomic, assign) int64_t readInboxAtOpen;   // where you had read up to
@@ -481,7 +483,38 @@ static const CGFloat kBannerCloseGlyph = 16.0f;
 - (void)stopChrome;
 - (void)sendImage:(UIImage *)image;
 
+- (BOOL)configureServiceCell:(TGBubbleCell *)cell message:(NSDictionary *)m layout:(TGMessageLayout *)layout isMine:(BOOL)mine indexPath:(NSIndexPath *)indexPath;
+- (BOOL)configureAudioCell:(TGBubbleCell *)cell message:(NSDictionary *)m layout:(TGMessageLayout *)layout isMine:(BOOL)mine indexPath:(NSIndexPath *)indexPath;
+- (BOOL)configureRoundOrStickerCell:(TGBubbleCell *)cell message:(NSDictionary *)m layout:(TGMessageLayout *)layout isMine:(BOOL)mine;
+- (void)configureMediaForCell:(TGBubbleCell *)cell message:(NSDictionary *)m layout:(TGMessageLayout *)layout isMine:(BOOL)mine;
+- (void)startGifIfWantedIn:(TGBubbleCell *)cell message:(NSDictionary *)m;
+
 @end
+
+static inline void TGPlaceStamp(TGBubbleCell *cell, CGRect bubbleFrame,
+								CGFloat timeWidth, BOOL mine) {
+	cell.time.frame = CGRectMake(
+			bubbleFrame.size.width - timeWidth - kPadH,
+			bubbleFrame.size.height - TGMetricStampBottomInset,
+			timeWidth - (mine ? TGMetricStampTicksRoom : 0),
+			TGMetricStampHeight);
+}
+
+static inline void TGPlaceTicks(TGBubbleCell *cell, CGRect bubbleFrame) {
+	CGFloat stampTop = cell.time.frame.origin.y > 0 ? cell.time.frame.origin.y : (bubbleFrame.size.height - TGMetricStampBottomInset);
+	cell.ticks.frame = CGRectMake(
+			bubbleFrame.size.width - kPadH - TGMetricTicksWidth,
+			stampTop + TGCenteredOrigin(TGMetricStampHeight, TGMetricTicksHeight),
+			TGMetricTicksWidth, TGMetricTicksHeight);
+}
+
+static inline void TGPlaceTitleDetail(TGBubbleCell *cell, CGFloat x, CGFloat top,
+									  CGFloat width) {
+	cell.body.frame = CGRectMake(x, top + TGMetricBubbleTitleTop, width,
+								 TGMetricBubbleTitleHeight);
+	cell.subtitle.frame = CGRectMake(x, top + TGMetricBubbleDetailTop, width,
+									 TGMetricBubbleDetailHeight);
+}
 
 UIColor *TGSenderColour(int64_t userId);
 

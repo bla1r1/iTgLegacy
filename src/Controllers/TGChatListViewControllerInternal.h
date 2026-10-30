@@ -14,6 +14,7 @@
 #import "TGChatCell.h"
 #import "TGEmptyView.h"
 #import "TGStatusBanner.h"
+#import "TGImageLruCache.h"
 #import <QuartzCore/QuartzCore.h>
 
 @interface TGChatListViewController () <UISearchBarDelegate>
@@ -26,7 +27,7 @@
 // grabbed it, and the frame it lifted from.
 @property (nonatomic, assign) CGFloat folderDragOffset;
 @property (nonatomic, assign) CGRect folderDragFrame;
-@property (nonatomic, strong) NSMutableDictionary *avatars;   // fileId -> UIImage
+@property (nonatomic, strong) TGImageLruCache *avatars;   // fileId -> UIImage (cap 50)
 @property (nonatomic, strong) NSMutableSet *avatarsRequested;
 @property (nonatomic, strong) UISearchBar *searchBar;
 @property (nonatomic, strong) NSArray *searchResults;   // nil = not searching

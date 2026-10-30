@@ -129,6 +129,9 @@ typedef NS_ENUM(NSInteger, TGButtonStyle) {
 
 @interface TGTheme (Skeuomorphism)
 
+/// The procedural engine lives in TGTheme+Drawing.m: it turns the tokens
+/// (Colours, Gradients, Effects) into cached raster images.
+
 /// Procedural skeuomorphic background image for navigation bars.
 + (UIImage *)skeuomorphicBarImageWithColor:(UIColor *)tint height:(CGFloat)height;
 
@@ -154,6 +157,9 @@ typedef NS_ENUM(NSInteger, TGButtonStyle) {
 
 /// Recessed well image for search fields and input bars.
 + (UIImage *)skeuomorphicWellImageWithHeight:(CGFloat)height cornerRadius:(CGFloat)radius;
+
+/// Wallpaper texture for a preset, keyed by TGWallpaperType.
++ (UIImage *)textureImageForType:(TGWallpaperType)type;
 
 /// Metallic circular thumb for scrubbers and volume sliders.
 + (UIImage *)skeuomorphicSliderThumbWithRadius:(CGFloat)radius;
@@ -190,15 +196,21 @@ typedef NS_ENUM(NSInteger, TGButtonStyle) {
 
 @end
 
-@interface TGTheme (Palette)
+// The visual language is spread across five homes, one concern per category:
+//
+//   TGTheme (Colours)       flat colour roles - the answer to "what colour"
+//   TGTheme (Gradients)     multi-stop colour sets - "which colours, order"
+//   TGTheme (Effects)       depth: frosted glass (the no-blur substitute),
+//                           shadows, gloss, bevels - "which material"
+//   TGTheme (Skeuomorphism) the procedural drawing engine: turns tokens in
+//                           raster images (TGTheme+Drawing.m)
+//
+// Profile/metrics live in TGStyle.h. Token map: docs/theme_system.md.
+//
+// Nothing in feature code may invent a colour or a font; scripts/lint_tokens.sh
+// enforces it.
 
-- (NSArray *)skeuoBubbleMineGradientColours;
-- (NSArray *)skeuoBubbleTheirsGradientColours;
-- (UIColor *)skeuoBubbleMineBorderColour;
-- (UIColor *)skeuoBubbleTheirsBorderColour;
-+ (UIImage *)textureImageForType:(TGWallpaperType)type;
-
-#pragma mark - palette
+@interface TGTheme (Colours)
 
 - (UIColor *)barColour;             ///< navigation bar background
 - (UIColor *)barTitleColour;
@@ -245,13 +257,6 @@ typedef NS_ENUM(NSInteger, TGButtonStyle) {
 - (UIColor *)mediaViewerBackdropColour; ///< full-screen media viewer black background
 - (UIColor *)scrimColour;           ///< backdrop dimming behind modal sheets and alerts
 - (UIColor *)menuWashColour;        ///< subtle wash behind contextual popup menu
-- (UIColor *)calloutBackgroundColour; ///< dark satin glass for iOS 6 callout popup menu
-- (UIColor *)calloutTrayColour;       ///< recessed dark well for reactions
-- (UIColor *)calloutBorderColour;     ///< hairline border for callout
-- (UIColor *)calloutDividerDarkColour; ///< etched dark groove
-- (UIColor *)calloutDividerLightColour; ///< etched specular highlight
-- (UIColor *)calloutGlossTopColour;   ///< specular top reflection for callout popup menu
-- (UIColor *)calloutGlossBottomColour;///< specular fade reflection for callout popup menu
 
 #pragma mark - chat list
 
@@ -285,35 +290,64 @@ typedef NS_ENUM(NSInteger, TGButtonStyle) {
 
 #pragma mark - the call screen
 
+- (UIColor *)callEndColour;
+- (UIColor *)callAcceptColour;
+- (UIColor *)callControlBaseColour; ///< opaque metal plate the embossed controls are carved from
+- (UIColor *)callControlColour;     ///< translucent button background on call screen
+- (UIColor *)callControlActiveColour;
+- (UIColor *)callSubtitleColour;    ///< subtitle text colour on call screen
+
+- (UIColor *)giftStarColour;        ///< the gold on a gift's star
+
+@end
+
+@interface TGTheme (Gradients)
+
 /// Two colours, top to bottom, behind a call in each of its three moods.
 - (NSArray *)callGradientColours;
 - (NSArray *)callGradientColoursConnected;
 - (NSArray *)callGradientColoursFailed;
-- (UIColor *)callEndColour;
-- (UIColor *)callAcceptColour;
-- (UIColor *)callControlColour;     ///< translucent button background on call screen
-- (UIColor *)callControlActiveColour;
 
-#pragma mark - charts
+/// Vertical greens for your own skeuomorphic bubble.
+- (NSArray *)skeuoBubbleMineGradientColours;
+/// Vertical whites in light, vertical charcoals in dark.
+- (NSArray *)skeuoBubbleTheirsGradientColours;
+
+/// Top glossy highlight on iOS 6 buttons.
+- (NSArray *)skeuoShineGradientColours;
 
 /// Six colours for the storage ring, in the order its slices are drawn.
 - (NSArray *)chartPalette;
-/// The gold on a gift's star.
-- (UIColor *)giftStarColour;
 
-#pragma mark - skeuomorphic and depth effects
+@end
+
+@interface TGTheme (Effects)
+
+#pragma mark - frosted glass (the "blur" substitute: there is no GPU blur)
+
+- (UIColor *)calloutBackgroundColour; ///< dark satin glass for iOS 6 callout popup menu
+- (UIColor *)calloutTrayColour;       ///< recessed dark well for reactions
+- (UIColor *)calloutBorderColour;     ///< hairline border for callout
+- (UIColor *)calloutDividerDarkColour; ///< etched dark groove
+- (UIColor *)calloutDividerLightColour; ///< etched specular highlight
+- (UIColor *)calloutGlossTopColour;   ///< specular top reflection for callout popup menu
+- (UIColor *)calloutGlossBottomColour;///< specular fade reflection for callout popup menu
+
+#pragma mark - shadows, gloss and bevels
 
 /// Top glossy highlight shine on iOS 6 buttons.
 - (UIColor *)skeuoShineColour;
-- (NSArray *)skeuoShineGradientColours;
 /// Etched light drop shadow under text in iOS 6 style.
 - (UIColor *)etchedTextShadowColour;
 /// Dark text shadow under embossed navigation titles.
 - (UIColor *)navBarTextShadowColour;
 /// Highlighted tint for action buttons.
 - (UIColor *)buttonHighlightColour;
-/// Subtitle text colour on call screen.
-- (UIColor *)callSubtitleColour;
+
+/// Soft green stroke on your own skeuomorphic bubble.
+- (UIColor *)skeuoBubbleMineBorderColour;
+/// Tactile outer border on theirs.
+- (UIColor *)skeuoBubbleTheirsBorderColour;
 
 - (CGFloat)bubbleCornerRadius;
 - (CGFloat)bubbleJoinedCornerRadius; ///< corners where bubbles of one run meet

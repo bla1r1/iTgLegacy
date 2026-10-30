@@ -121,14 +121,10 @@
     [self.inputContainer addSubview:self.inputField];
 
     // Action button ("Next")
-    self.actionButton = [UIButton buttonWithType:UIButtonTypeCustom];
+    self.actionButton = [TGButton buttonWithTitle:@"Next" variant:TGButtonVariantPrimary size:TGButtonSizeLarge];
     y += TGMetricRow + TGMetricStackStep;
     // One control height, not 44 for the field and 42 for the button under it.
     self.actionButton.frame = CGRectMake(TGMetricGutter, y, inner, TGMetricRow);
-    self.actionButton.layer.cornerRadius = TGMetricCornerControl;
-    self.actionButton.clipsToBounds = YES;
-    [self.actionButton setTitle:@"Next" forState:UIControlStateNormal];
-    self.actionButton.titleLabel.font = TGFontRowStrong();
     [self.actionButton addTarget:self action:@selector(actionButtonTapped) forControlEvents:UIControlEventTouchUpInside];
     [self.scrollView addSubview:self.actionButton];
 
@@ -139,12 +135,10 @@
     [self.actionButton addSubview:self.spinner];
 
     // Log in with QR Code button
-    self.qrCodeButton = [UIButton buttonWithType:UIButtonTypeCustom];
+    self.qrCodeButton = [TGButton buttonWithTitle:@"Log in with QR Code" variant:TGButtonVariantGhost size:TGButtonSizeMedium];
     y += TGMetricRow + TGMetricStackStep;
     self.qrCodeButton.frame = CGRectMake(TGMetricGutter, y, inner,
                                          TGMetricLoginLinkHeight);
-    [self.qrCodeButton setTitle:@"Log in with QR Code" forState:UIControlStateNormal];
-    self.qrCodeButton.titleLabel.font = TGFontBody();
     [self.qrCodeButton addTarget:self action:@selector(qrCodeButtonTapped) forControlEvents:UIControlEventTouchUpInside];
     [self.scrollView addSubview:self.qrCodeButton];
 

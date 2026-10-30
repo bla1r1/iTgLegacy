@@ -1264,6 +1264,10 @@ static NSDictionary *TGFolderObject(NSString *name, NSString *icon,
 		info[@"date"] = last[@"date"] ?: @(0);
 	}
 
+	if (self.updateCoalescer) {
+		[self.updateCoalescer markChatDirty:[chat[@"id"] longLongValue]];
+		[self.updateCoalescer markOrderDirty];
+	}
 	[self rebuildChats];
 }
 
@@ -1379,6 +1383,10 @@ static NSDictionary *TGFolderObject(NSString *name, NSString *icon,
 		// every time its folder reshuffled.
 	}
 
+	if (self.updateCoalescer) {
+		[self.updateCoalescer markChatDirty:[chatId longLongValue]];
+		[self.updateCoalescer markOrderDirty];
+	}
 	[self rebuildChats];
 }
 

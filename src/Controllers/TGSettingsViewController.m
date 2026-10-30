@@ -415,15 +415,30 @@ static const CGFloat kVersionRow   = 40.0f;
 static const CGFloat kFooterMinW   = 100.0f;
 static const CGFloat kFooterMaxH   = 400.0f;
 /// The theme preview: a strip of wallpaper with two bubbles on it.
-static const CGFloat kPreviewRow      = TGMetricSettingsPreviewRow;
-static const CGFloat kPreviewBubbleW  = 176.0f;
-static const CGFloat kPreviewBubbleH  = 34.0f;
 static const CGFloat kPreviewInset    = TGMetricPadMedium + TGMetricPadTiny;
 static const CGFloat kPreviewTop      = TGMetricPadLarge - TGMetricPadTiny;
 static const CGFloat kPreviewGap      = TGMetricPad;
 static const CGFloat kPreviewTextLeft = 9.0f;
 static const CGFloat kPreviewStampRoom = 46.0f;
 static const CGFloat kPreviewStampW   = 30.0f;
+static const CGFloat kPreviewStampMineRoom = 22.0f;
+static const CGFloat kPreviewTicksLeft = 18.0f;
+static const CGFloat kPreviewTextMaxW = 230.0f;
+static const CGFloat kPreviewTextMaxH = 80.0f;
+static const CGFloat kPreviewBubbleMinH = 34.0f;
+static const CGFloat kPreviewBubblePadV = TGMetricPadMedium + TGMetricPadTiny;
+
+static NSArray *TGPreviewLines(void) {
+	return @[@"How does this one look?", @"Like Telegram, only older."];
+}
+
+static CGSize TGPreviewSizeForLine(NSString *line, CGFloat fontSize) {
+	UIFont *font = TGFontAtSize(fontSize);
+	CGSize textSize = [line sizeWithFont:font constrainedToSize:CGSizeMake(kPreviewTextMaxW, kPreviewTextMaxH)];
+	CGFloat bubbleW = ceilf(textSize.width + kPreviewStampRoom + TGMetricPadMedium);
+	CGFloat bubbleH = ceilf(MAX(kPreviewBubbleMinH, textSize.height + kPreviewBubblePadV));
+	return CGSizeMake(bubbleW, bubbleH);
+}
 /// The account header: the picture, the name under it, the phone under that.
 static const CGFloat kMeAvatarTop  = TGMetricPadLarge + TGMetricPadTiny;
 static const CGFloat kMeNameTop    = TGMetricPadMedium;
@@ -450,7 +465,13 @@ static const CGFloat kMeTextInset  = TGMetricPadMedium;
 	NSDictionary *row = [self rowAt:path];
 	NSString *kind = row[TGRowKind];
 	if ([kind isEqualToString:TGKindProfile]) return TGMetricSettingsProfileRow;
-	if ([kind isEqualToString:TGKindPreview]) return TGMetricSettingsPreviewRow;
+	if ([kind isEqualToString:TGKindPreview]) {
+		CGFloat fontSize = [TGTheme shared].messageFontSize;
+		NSArray *lines = TGPreviewLines();
+		CGSize s0 = TGPreviewSizeForLine(lines[0], fontSize);
+		CGSize s1 = TGPreviewSizeForLine(lines[1], fontSize);
+		return kPreviewTop + s0.height + kPreviewGap + s1.height + kPreviewTop;
+	}
 	if ([kind isEqualToString:TGKindToggleInfo]){
 		// Glyph, name, and the description wrapped in what is left once the
 		// switch has taken its side.
@@ -474,7 +495,13 @@ static const CGFloat kMeTextInset  = TGMetricPadMedium;
 			initWithStyle:UITableViewCellStyleDefault reuseIdentifier:nil];
 	cell.selectionStyle = UITableViewCellSelectionStyleNone;
 
-	UIView *canvas = [[UIView alloc] initWithFrame:CGRectMake(0, 0, width, kPreviewRow)];
+	CGFloat fontSize = theme.messageFontSize;
+	NSArray *lines = TGPreviewLines();
+	CGSize s0 = TGPreviewSizeForLine(lines[0], fontSize);
+	CGSize s1 = TGPreviewSizeForLine(lines[1], fontSize);
+	CGFloat totalH = kPreviewTop + s0.height + kPreviewGap + s1.height + kPreviewTop;
+
+	UIView *canvas = [[UIView alloc] initWithFrame:CGRectMake(0, 0, width, totalH)];
 	canvas.backgroundColor = [theme chatBackgroundColour];
 	canvas.clipsToBounds = YES;
 	if (theme.wallpaper){
@@ -485,39 +512,67 @@ static const CGFloat kMeTextInset  = TGMetricPadMedium;
 	}
 	[cell.contentView addSubview:canvas];
 
-	NSArray *lines = @[@"How does this one look?", @"Like Telegram, only older."];
+	CGFloat yOffset = kPreviewTop;
 	for (NSUInteger i = 0; i < 2; i++){
 		BOOL mine = (i == 1);
-		CGFloat bubbleW = kPreviewBubbleW, bubbleH = kPreviewBubbleH;
-		UIView *bubble = [[UIView alloc] initWithFrame:CGRectMake(
-				mine ? width - bubbleW - kPreviewInset : kPreviewInset,
-				kPreviewTop + i * (bubbleH + kPreviewGap),
-				bubbleW, bubbleH)];
-		bubble.backgroundColor = mine ? [theme bubbleMineColour]
-									  : [theme bubbleTheirsColour];
+		CGSize bSize = (i == 0) ? s0 : s1;
+		CGFloat bubbleW = bSize.width;
+		CGFloat bubbleH = bSize.height;
+		CGFloat bubbleX = mine ? (width - bubbleW - kPreviewInset) : kPreviewInset;
+		CGFloat bubbleY = yOffset;
+		yOffset += bubbleH + kPreviewGap;
+
+		UIView *bubble = [[UIView alloc] initWithFrame:CGRectMake(bubbleX, bubbleY, bubbleW, bubbleH)];
+
+		CAGradientLayer *grad = [CAGradientLayer layer];
+		grad.frame = bubble.bounds;
+		grad.colors = mine ? [theme skeuoBubbleMineGradientColours] : [theme skeuoBubbleTheirsGradientColours];
+		grad.cornerRadius = [theme bubbleCornerRadius];
+		[bubble.layer insertSublayer:grad atIndex:0];
+
+		bubble.backgroundColor = [UIColor clearColor];
 		bubble.layer.cornerRadius = [theme bubbleCornerRadius];
-		bubble.layer.borderWidth = [theme bubbleBorderWidth];
-		bubble.layer.borderColor = [theme bubbleBorderColour].CGColor;
+		bubble.layer.borderWidth = 1.0f;
+		bubble.layer.borderColor = (mine ? [theme skeuoBubbleMineBorderColour] : [theme skeuoBubbleTheirsBorderColour]).CGColor;
+		bubble.clipsToBounds = YES;
 		[canvas addSubview:bubble];
 
+		UIFont *font = TGFontAtSize(fontSize);
+		CGSize tFit = [lines[i] sizeWithFont:font constrainedToSize:CGSizeMake(bubbleW - kPreviewStampRoom, bubbleH)];
+		CGFloat textTop = ceilf(TGCenteredOrigin(bubbleH, tFit.height));
 		UILabel *text = [[UILabel alloc] initWithFrame:
-				CGRectMake(kPreviewTextLeft, 0, bubbleW - kPreviewStampRoom, bubbleH)];
+				CGRectMake(kPreviewTextLeft, textTop, bubbleW - kPreviewStampRoom, tFit.height)];
 		text.text = lines[i];
-		text.font = TGFontAtSize(MIN(theme.messageFontSize, TGFontMessageBaseCap));
-		text.textColor = [theme primaryTextColour];
+		text.font = font;
+		text.textColor = mine ? (theme.isDarkStyle ? [UIColor whiteColor] : [theme primaryTextColour]) : [theme primaryTextColour];
 		text.backgroundColor = [UIColor clearColor];
-		text.adjustsFontSizeToFitWidth = YES;
+		text.adjustsFontSizeToFitWidth = NO;
+		text.numberOfLines = 0;
+		if (theme.isDarkStyle && mine) {
+			text.shadowColor = [theme navBarTextShadowColour];
+			text.shadowOffset = CGSizeMake(0, -1.0f);
+		} else {
+			text.shadowColor = [theme etchedTextShadowColour];
+			text.shadowOffset = CGSizeMake(0, 1.0f);
+		}
 		[bubble addSubview:text];
 
 		UILabel *stamp = [[UILabel alloc] initWithFrame:
-				CGRectMake(bubbleW - kPreviewStampW - TGMetricPad,
+				CGRectMake(bubbleW - kPreviewStampW - (mine ? kPreviewStampMineRoom : TGMetricPad),
 						bubbleH - TGMetricLineCaption, kPreviewStampW, TGMetricStampHeight)];
 		stamp.text = @"9:41";
 		stamp.font = TGFontMicro();
-		stamp.textColor = [theme timeColour];
+		stamp.textColor = mine ? [theme timeMineColour] : [theme timeColour];
 		stamp.backgroundColor = [UIColor clearColor];
 		stamp.textAlignment = NSTextAlignmentRight;
 		[bubble addSubview:stamp];
+
+		if (mine) {
+			UIImageView *ticks = [[UIImageView alloc] initWithFrame:
+					CGRectMake(bubbleW - kPreviewTicksLeft, bubbleH - TGMetricLineCaption + 1.0f, TGMetricTicksWidth, TGMetricTicksHeight)];
+			ticks.image = [TGIcons ticksColour:[theme timeMineColour] read:YES];
+			[bubble addSubview:ticks];
+		}
 	}
 	return cell;
 }
@@ -570,7 +625,7 @@ static const CGFloat kMeTextInset  = TGMetricPadMedium;
 													color:row[TGRowColour]];
 
 	if ([kind isEqualToString:TGKindToggle]){
-		UISwitch *toggle = [[UISwitch alloc] init];
+		TGSwitch *toggle = [[TGSwitch alloc] init];
 		toggle.on = [row[TGRowOn] boolValue];
 		toggle.tag = path.section * 100 + path.row;
 		[toggle addTarget:self action:@selector(toggleChanged:)
@@ -625,7 +680,7 @@ static const CGFloat kMeTextInset  = TGMetricPadMedium;
 	cell.imageView.image = row[TGRowIcon]
 			? [TGIcons settingsIconNamed:row[TGRowIcon] color:row[TGRowColour]] : nil;
 
-	UISwitch *toggle = [[UISwitch alloc] init];
+	TGSwitch *toggle = [[TGSwitch alloc] init];
 	toggle.on = [row[TGRowOn] boolValue];
 	toggle.tag = path.section * 100 + path.row;
 	[toggle addTarget:self action:@selector(toggleChanged:)

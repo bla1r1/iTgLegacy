@@ -116,7 +116,7 @@ static NSArray *TGCallGradient(NSArray *colours) {
     self.nameLabel = [[UILabel alloc] initWithFrame:CGRectMake(gutter, y, textWidth, TGMetricCallNameHeight)];
     self.nameLabel.text = self.peerName;
     self.nameLabel.font = TGFontHero();
-    self.nameLabel.textColor = [UIColor whiteColor];
+    self.nameLabel.textColor = [[TGTheme shared] onAccentColour];
     self.nameLabel.textAlignment = NSTextAlignmentCenter;
     self.nameLabel.backgroundColor = [UIColor clearColor];
     [self.view addSubview:self.nameLabel];
@@ -162,6 +162,14 @@ static NSArray *TGCallGradient(NSArray *colours) {
         self.endBtn.backgroundColor = [theme callEndColour];
         self.acceptBtn.backgroundColor = [theme callAcceptColour];
     }
+    // Both plate moods (glossy image or flat colour) are saturated, so the
+    // end/accept glyphs stay light whatever the controls around them carry.
+    [self.endBtn setImage:[TGIcons glyphNamed:@"endcall" colour:[theme onAccentColour]
+                                         side:TGMetricCallGlyphSide]
+                 forState:UIControlStateNormal];
+    [self.acceptBtn setImage:[TGIcons glyphNamed:@"call" colour:[theme onAccentColour]
+                                          side:TGMetricCallGlyphSide]
+                    forState:UIControlStateNormal];
 
     [self.speakerBtn addTarget:self action:@selector(toggleSpeaker) forControlEvents:UIControlEventTouchUpInside];
     [self.micBtn addTarget:self action:@selector(toggleMute) forControlEvents:UIControlEventTouchUpInside];
@@ -202,13 +210,30 @@ static NSArray *TGCallGradient(NSArray *colours) {
     btn.clipsToBounds = YES;
     btn.layer.shouldRasterize = YES;
     btn.layer.rasterizationScale = [UIScreen mainScreen].scale;
-    btn.backgroundColor = [[TGTheme shared] callControlColour];
+    // An embossed metal plate, not a flat wash: the procedural engine carves
+    // the gloss, bevel and shadow out of the token colour (§2). The two
+    // states share the same geometry, only the light differs.
+    TGTheme *theme = [TGTheme shared];
+    [btn setBackgroundImage:
+            [TGTheme skeuomorphicButtonImageWithColor:[theme callControlBaseColour]
+                                               height:TGMetricCallButtonSide
+                                          highlighted:NO
+                                         cornerRadius:TGHalf(TGMetricCallButtonSide)]
+              forState:UIControlStateNormal];
+    [btn setBackgroundImage:
+            [TGTheme skeuomorphicButtonImageWithColor:[theme callControlBaseColour]
+                                               height:TGMetricCallButtonSide
+                                          highlighted:YES
+                                         cornerRadius:TGHalf(TGMetricCallButtonSide)]
+              forState:UIControlStateHighlighted];
+    btn.backgroundColor = [UIColor clearColor];
     // Drawn glyphs rather than emoji: iOS 7's font has no colour glyph for
     // some of these, and the ones it does have do not match the rest of the
-    // iconography.
+    // iconography. Inactive controls sit on the steel plate, so their glyph
+    // is primary text, not white.
     UIImage *glyph = [icon isEqualToString:@"microphone"]
-            ? [TGIcons microphoneOfSide:TGMetricCallGlyphSide colour:[UIColor whiteColor]]
-            : [TGIcons glyphNamed:icon colour:[UIColor whiteColor] side:TGMetricCallGlyphSide];
+            ? [TGIcons microphoneOfSide:TGMetricCallGlyphSide colour:[theme primaryTextColour]]
+            : [TGIcons glyphNamed:icon colour:[theme primaryTextColour] side:TGMetricCallGlyphSide];
     if (glyph){
         [btn setImage:glyph forState:UIControlStateNormal];
     } else {
@@ -220,7 +245,7 @@ static NSArray *TGCallGradient(NSArray *colours) {
     UILabel *lbl = [[UILabel alloc] initWithFrame:
             CGRectMake(0, 0, TGMetricCallLabelWidth, TGMetricCallLabelHeight)];
     lbl.text = title;
-    lbl.textColor = [UIColor whiteColor];
+    lbl.textColor = [[TGTheme shared] onAccentColour];
     lbl.font = TGFontMeta();
     lbl.textAlignment = NSTextAlignmentCenter;
     lbl.backgroundColor = [UIColor clearColor];
@@ -380,37 +405,55 @@ static NSArray *TGCallGradient(NSArray *colours) {
 
 // One place decides what the two toggles look like, so the drawing can never
 // disagree with the call. Both used to change colour only, which on a dark
-// screen read as nothing at all.
+// screen read as nothing at all. Each toggle carries two glyphs: a dark one
+// for the steel plate, a light one for the lit accent plate.
 - (void)refreshControls {
     BOOL muted = [TGCall shared].muted;
     TGTheme *theme = [TGTheme shared];
 
     UIImage *mic = muted
-            ? [TGIcons microphoneOffOfSide:TGMetricCallGlyphSide colour:[UIColor whiteColor]]
-            : [TGIcons microphoneOfSide:TGMetricCallGlyphSide colour:[UIColor whiteColor]];
+            ? [TGIcons microphoneOffOfSide:TGMetricCallGlyphSide colour:[theme primaryTextColour]]
+            : [TGIcons microphoneOfSide:TGMetricCallGlyphSide colour:[theme primaryTextColour]];
+    // the lit state always shows the crossed-out mic, in the light colour
+    UIImage *micActive = [TGIcons microphoneOffOfSide:TGMetricCallGlyphSide
+                                               colour:[theme onAccentColour]];
     UIImage *spk = [TGIcons glyphNamed:(self.speakerOn ? @"speakerOn" : @"unmute")
-                                colour:[UIColor whiteColor] side:TGMetricCallGlyphSide];
+                                colour:[theme primaryTextColour] side:TGMetricCallGlyphSide];
+    UIImage *spkActive = [TGIcons glyphNamed:(self.speakerOn ? @"speakerOn" : @"unmute")
+                                      colour:[theme onAccentColour] side:TGMetricCallGlyphSide];
 
-    [self setGlyph:mic on:self.micBtn active:muted];
-    [self setGlyph:spk on:self.speakerBtn active:self.speakerOn];
+    [self setGlyph:mic activeGlyph:micActive on:self.micBtn active:muted];
+    [self setGlyph:spk activeGlyph:spkActive on:self.speakerBtn active:self.speakerOn];
 
     self.micLbl.text = muted ? @"Unmute" : @"Mute";
     self.speakerLbl.text = @"Speaker";
-    self.micLbl.textColor = muted ? [theme callControlActiveColour] : [UIColor whiteColor];
-    self.speakerLbl.textColor = self.speakerOn ? [theme callControlActiveColour] : [UIColor whiteColor];
+    self.micLbl.textColor = muted ? [theme callControlActiveColour] : [theme onAccentColour];
+    self.speakerLbl.textColor = self.speakerOn ? [theme callControlActiveColour] : [theme onAccentColour];
 }
 
 // Telegram crosses a control over to white-on-light when it is on; the swap
-// is worth a frame of animation so the eye follows which button moved.
-- (void)setGlyph:(UIImage *)glyph on:(UIButton *)button active:(BOOL)active {
+// is worth a frame of animation so the eye follows which button moved. The
+// plate changes with it: steel when idle, accent when lit.
+- (void)setGlyph:(UIImage *)glyph activeGlyph:(UIImage *)activeGlyph
+              on:(UIButton *)button active:(BOOL)active {
     TGTheme *theme = [TGTheme shared];
     [UIView transitionWithView:button duration:TGAnimationDurationFast
                        options:UIViewAnimationOptionTransitionCrossDissolve
                     animations:^{
-        [button setImage:glyph forState:UIControlStateNormal];
-        button.backgroundColor = active ? [theme callControlActiveColour]
-                                        : [theme callControlColour];
-        button.tintColor = active ? [theme callControlActiveColour] : [UIColor whiteColor];
+        UIImage *plate = [TGTheme skeuomorphicButtonImageWithColor:
+                (active ? [theme accentColour] : [theme callControlBaseColour])
+                                   height:TGMetricCallButtonSide
+                              highlighted:NO
+                             cornerRadius:TGHalf(TGMetricCallButtonSide)];
+        [button setBackgroundImage:plate forState:UIControlStateNormal];
+        [button setBackgroundImage:
+                [TGTheme skeuomorphicButtonImageWithColor:
+                 (active ? [theme accentColour] : [theme callControlBaseColour])
+                                    height:TGMetricCallButtonSide
+                               highlighted:YES
+                              cornerRadius:TGHalf(TGMetricCallButtonSide)]
+              forState:UIControlStateHighlighted];
+        [button setImage:active ? activeGlyph : glyph forState:UIControlStateNormal];
     } completion:nil];
 }
 
@@ -423,7 +466,7 @@ static NSArray *TGCallGradient(NSArray *colours) {
     ring.userInteractionEnabled = NO;
     ring.layer.cornerRadius = TGHalf(side);
     ring.layer.borderWidth = TGMetricBorderThick;
-    ring.layer.borderColor = [[UIColor whiteColor]
+    ring.layer.borderColor = [[[TGTheme shared] onAccentColour]
             colorWithAlphaComponent:TGAlphaRingTrack].CGColor;
     ring.transform = CGAffineTransformMakeScale(TGTransformScaleButtonActive,
                                                 TGTransformScaleButtonActive);

@@ -80,6 +80,22 @@ CGSize TGTextSizeWithEntities(NSString *text, NSArray *entities, UIFont *font, C
 @property (nonatomic, strong) NSAttributedString *attributedBody;
 @end
 
+@interface TGMessageLayoutCache : NSObject
+
+- (instancetype)initWithCapacity:(NSUInteger)capacity;
+- (TGMessageLayout *)layoutForMessageId:(int64_t)msgId;
+- (void)setLayout:(TGMessageLayout *)layout forMessageId:(int64_t)msgId;
+- (void)removeLayoutForMessageId:(int64_t)msgId;
+- (void)clear;
+- (NSUInteger)count;
+
+- (TGMessageLayout *)objectForKeyedSubscript:(id)key;
+- (void)setObject:(TGMessageLayout *)obj forKeyedSubscript:(id)key;
+- (void)removeAllObjects;
+- (void)removeObjectForKey:(id)key;
+
+@end
+
 #ifdef __cplusplus
 extern "C" {
 #endif

@@ -3,52 +3,82 @@
 //
 #import "TGMessageLayout.h"
 #import "TGStyle.h"
-#include <unordered_map>
-#include <list>
+#import "TGLruCache.hpp"
 
 #ifndef typeof
 #define typeof __typeof__
 #endif
 
-// ─── C++ LRU Cache ───────────────────────────────────────────────────────────
+@interface TGMessageLayoutCache () {
+	TGLruCache<int64_t, TGMessageLayout *> _lru;
+}
+@end
 
-template <typename Key, typename Value>
-class TGLruCache {
-private:
-	size_t _capacity;
-	std::list<std::pair<Key, Value>> _items;
-	std::unordered_map<Key, typename std::list<std::pair<Key, Value>>::iterator> _index;
+@implementation TGMessageLayoutCache
 
-public:
-	explicit TGLruCache(size_t capacity) : _capacity(capacity) {}
+- (instancetype)init {
+	return [self initWithCapacity:500];
+}
 
-	bool get(const Key &key, Value &outValue) {
-		auto it = _index.find(key);
-		if (it == _index.end()) return false;
-		_items.splice(_items.begin(), _items, it->second);
-		outValue = it->second->second;
-		return true;
+- (instancetype)initWithCapacity:(NSUInteger)capacity {
+	if ((self = [super init])) {
+		_lru.set_capacity(capacity ? capacity : 500);
 	}
+	return self;
+}
 
-	void put(const Key &key, const Value &value) {
-		auto it = _index.find(key);
-		if (it != _index.end()) {
-			_items.splice(_items.begin(), _items, it->second);
-			it->second->second = value;
-			return;
-		}
-
-		if (_items.size() >= _capacity) {
-			auto last = _items.end();
-			--last;
-			_index.erase(last->first);
-			_items.pop_back();
-		}
-
-		_items.emplace_front(key, value);
-		_index[key] = _items.begin();
+- (TGMessageLayout *)layoutForMessageId:(int64_t)msgId {
+	TGMessageLayout *hit = nil;
+	if (_lru.get(msgId, hit)) {
+		return hit;
 	}
-};
+	return nil;
+}
+
+- (void)setLayout:(TGMessageLayout *)layout forMessageId:(int64_t)msgId {
+	if (layout) {
+		_lru.put(msgId, layout);
+	} else {
+		_lru.remove(msgId);
+	}
+}
+
+- (void)removeLayoutForMessageId:(int64_t)msgId {
+	_lru.remove(msgId);
+}
+
+- (void)clear {
+	_lru.clear();
+}
+
+- (NSUInteger)count {
+	return _lru.size();
+}
+
+- (TGMessageLayout *)objectForKeyedSubscript:(id)key {
+	if ([key respondsToSelector:@selector(longLongValue)]) {
+		return [self layoutForMessageId:[key longLongValue]];
+	}
+	return nil;
+}
+
+- (void)setObject:(TGMessageLayout *)obj forKeyedSubscript:(id)key {
+	if ([key respondsToSelector:@selector(longLongValue)]) {
+		[self setLayout:obj forMessageId:[key longLongValue]];
+	}
+}
+
+- (void)removeAllObjects {
+	_lru.clear();
+}
+
+- (void)removeObjectForKey:(id)key {
+	if ([key respondsToSelector:@selector(longLongValue)]) {
+		_lru.remove([key longLongValue]);
+	}
+}
+
+@end
 
 // ─── Key hashing ──────────────────────────────────────────────────────────────
 

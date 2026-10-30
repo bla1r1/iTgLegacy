@@ -154,4 +154,9 @@
 					 fill:(BOOL)fill
 					scale:(CGFloat)scale;
 
++ (UIImage *)decodedImageAtPath:(NSString *)path
+					fittingSize:(CGSize)target
+						   fill:(BOOL)fill
+						  scale:(CGFloat)scale;
+
 @end

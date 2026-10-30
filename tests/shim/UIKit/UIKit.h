@@ -23,6 +23,7 @@
 // pointSize, fontName; blackColor, colorWithRed:green:blue:alpha:).
 typedef NSFont UIFont;
 typedef NSColor UIColor;
+typedef NSImage UIImage;
 
 // Host gaps AppKit does not cover. NSFont lacks the italic convenience and
 // the geometry NSValue accessors only exist on iOS in this spelling.

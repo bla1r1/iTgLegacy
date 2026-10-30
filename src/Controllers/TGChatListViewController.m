@@ -29,7 +29,7 @@ static const CGFloat kRowGlyph     = 28.0f;
 	// The top "Folders" button retired: the pill strip is the switcher now,
 	// and every action on the list sits on the bars already.
 	self.chats = @[];
-	self.avatars = [NSMutableDictionary dictionary];
+	self.avatars = [[TGImageLruCache alloc] initWithCapacity:50];
 	self.avatarsRequested = [NSMutableSet set];
 
 	self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc]
@@ -668,6 +668,7 @@ static const CGFloat kRowGlyph     = 28.0f;
 /// Avatars are fetched once each and cached by file id.
 - (void)fetchMissingAvatars {
 	__weak typeof(self) weakSelf = self;
+	CGFloat screenScale = [UIScreen mainScreen].scale;
 	for (NSDictionary *c in self.chats){
 		NSNumber *fileId = c[@"photoFileId"];
 		if (!fileId || fileId.longLongValue < 0 || self.avatars[fileId] || [self.avatarsRequested containsObject:fileId])
@@ -687,7 +688,10 @@ static const CGFloat kRowGlyph     = 28.0f;
 				return;
 			}
 			dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_BACKGROUND, 0), ^{
-				UIImage *img = [UIImage imageWithContentsOfFile:path];
+				CGSize avatarSize = CGSizeMake(TGMetricListAvatar, TGMetricListAvatar);
+				UIImage *img = [TGIcons decodedImageAtPath:path fittingSize:avatarSize fill:YES scale:screenScale];
+				if (!img)
+					img = [TGIcons decodedImage:[UIImage imageWithContentsOfFile:path] fittingSize:avatarSize fill:YES scale:screenScale];
 				if (!img) return;
 				dispatch_async(dispatch_get_main_queue(), ^{
 					TGChatListViewController *me = weakSelf;

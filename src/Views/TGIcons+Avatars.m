@@ -1,5 +1,6 @@
 #import "TGIconsInternal.h"
 #import "TGStyle.h"
+#import <ImageIO/ImageIO.h>
 
 #pragma mark - avatars
 
@@ -207,7 +208,7 @@ static UIImage *TGGlyphAvatar(CGFloat side, void (^draw)(CGContextRef ctx, CGFlo
 	return image;
 }
 
-/// Pre-decodes image onto offscreen bitmap context and scales to target size.
+/// Pre-decodes image onto offscreen bitmap context and scales to target size using ImageIO DCT downsampling.
 + (UIImage *)decodedImage:(UIImage *)image
 			  fittingSize:(CGSize)target
 					 fill:(BOOL)fill
@@ -219,14 +220,80 @@ static UIImage *TGGlyphAvatar(CGFloat side, void (^draw)(CGContextRef ctx, CGFlo
 	if (size.width < 1 || size.height < 1)
 		return image;
 
-	// Fill covers the box and comes back at exactly that size, cropped - a
-	// nine-by-sixteen story thumbnail scaled to "cover" a 40pt square is still
-	// 40x71, which then pushed the row it sat in out of shape. Fit sits inside
-	// the box instead and keeps its own proportions (a photo in a bubble).
+	CGFloat effectiveScale = (scale > 0.0f) ? scale : 1.0f;
+
+	// Try ImageIO DCT downsampling via provider if available
+	CGImageRef cgImage = image.CGImage;
+	if (cgImage) {
+		CGDataProviderRef provider = CGImageGetDataProvider(cgImage);
+		if (provider) {
+			CGImageSourceRef source = CGImageSourceCreateWithDataProvider(provider, NULL);
+			if (source) {
+				if (CGImageSourceGetCount(source) > 0 && CGImageSourceGetStatus(source) == kCGImageStatusComplete) {
+					CGFloat maxPixelSize = 0.0f;
+					if (target.width > 0 && target.height > 0) {
+						if (fill) {
+							CGFloat grow = MAX(target.width / size.width, target.height / size.height);
+							if (grow >= 1.0f)
+								maxPixelSize = MAX(size.width, size.height) * effectiveScale;
+							else
+								maxPixelSize = ceilf(MAX(size.width * grow, size.height * grow) * effectiveScale);
+						} else {
+							CGFloat shrink = MIN(target.width / size.width, target.height / size.height);
+							if (shrink < 1.0f)
+								maxPixelSize = ceilf(MAX(target.width, target.height) * effectiveScale);
+							else
+								maxPixelSize = MAX(size.width, size.height) * effectiveScale;
+						}
+					} else {
+						maxPixelSize = MAX(size.width, size.height) * effectiveScale;
+					}
+
+					if (maxPixelSize < 1.0f) maxPixelSize = 1.0f;
+
+					NSDictionary *options = @{
+						(id)kCGImageSourceCreateThumbnailFromImageAlways : @YES,
+						(id)kCGImageSourceThumbnailMaxPixelSize          : @((int)maxPixelSize),
+						(id)kCGImageSourceCreateThumbnailWithTransform   : @YES,
+						(id)kCGImageSourceShouldCacheImmediately        : @YES
+					};
+
+					CGImageRef thumb = CGImageSourceCreateThumbnailAtIndex(source, 0, (__bridge CFDictionaryRef)options);
+					CFRelease(source);
+
+					if (thumb) {
+						if (fill && target.width > 0 && target.height > 0) {
+							size_t tw = CGImageGetWidth(thumb);
+							size_t th = CGImageGetHeight(thumb);
+							CGFloat reqW = target.width * effectiveScale;
+							CGFloat reqH = target.height * effectiveScale;
+							if (tw > reqW + 1 || th > reqH + 1) {
+								CGFloat cropW = MIN((CGFloat)tw, reqW);
+								CGFloat cropH = MIN((CGFloat)th, reqH);
+								CGFloat cropX = TGHalf((CGFloat)tw - cropW);
+								CGFloat cropY = TGHalf((CGFloat)th - cropH);
+								CGImageRef cropped = CGImageCreateWithImageInRect(thumb, CGRectMake(cropX, cropY, cropW, cropH));
+								CGImageRelease(thumb);
+								thumb = cropped;
+							}
+						}
+
+						UIImage *decodedThumb = [UIImage imageWithCGImage:thumb scale:effectiveScale orientation:UIImageOrientationUp];
+						CGImageRelease(thumb);
+						return decodedThumb;
+					}
+				} else {
+					CFRelease(source);
+				}
+			}
+		}
+	}
+
+	// Fallback to offscreen context drawing
 	if (fill && target.width > 0 && target.height > 0){
 		CGFloat grow = MAX(target.width / size.width, target.height / size.height);
 		CGSize drawn = CGSizeMake(size.width * grow, size.height * grow);
-		UIGraphicsBeginImageContextWithOptions(target, NO, scale > 0 ? scale : 1.0f);
+		UIGraphicsBeginImageContextWithOptions(target, NO, effectiveScale);
 		[image drawInRect:CGRectMake((target.width - drawn.width) / 2,
 									 (target.height - drawn.height) / 2,
 									 drawn.width, drawn.height)];
@@ -243,11 +310,98 @@ static UIImage *TGGlyphAvatar(CGFloat side, void (^draw)(CGContextRef ctx, CGFlo
 							  MAX(1.0f, floorf(size.height * shrink)));
 	}
 
-	UIGraphicsBeginImageContextWithOptions(size, NO, scale > 0 ? scale : 1.0f);
+	UIGraphicsBeginImageContextWithOptions(size, NO, effectiveScale);
 	[image drawInRect:CGRectMake(0, 0, size.width, size.height)];
 	UIImage *decoded = UIGraphicsGetImageFromCurrentImageContext();
 	UIGraphicsEndImageContext();
 	return decoded ?: image;
+}
+
++ (UIImage *)decodedImageAtPath:(NSString *)path
+					fittingSize:(CGSize)target
+						   fill:(BOOL)fill
+						  scale:(CGFloat)scale
+{
+	if (!path.length)
+		return nil;
+
+	NSURL *url = [NSURL fileURLWithPath:path];
+	CGImageSourceRef source = CGImageSourceCreateWithURL((__bridge CFURLRef)url, NULL);
+	if (!source || CGImageSourceGetCount(source) == 0) {
+		if (source) CFRelease(source);
+		return [self decodedImage:[UIImage imageWithContentsOfFile:path] fittingSize:target fill:fill scale:scale];
+	}
+
+	CGFloat effectiveScale = (scale > 0.0f) ? scale : 1.0f;
+	CGFloat maxPixelSize = 0.0f;
+
+	CFDictionaryRef props = CGImageSourceCopyPropertiesAtIndex(source, 0, NULL);
+	CGFloat origW = 0, origH = 0;
+	if (props) {
+		CFNumberRef wNum = (CFNumberRef)CFDictionaryGetValue(props, kCGImagePropertyPixelWidth);
+		CFNumberRef hNum = (CFNumberRef)CFDictionaryGetValue(props, kCGImagePropertyPixelHeight);
+		if (wNum) CFNumberGetValue(wNum, kCFNumberCGFloatType, &origW);
+		if (hNum) CFNumberGetValue(hNum, kCFNumberCGFloatType, &origH);
+		CFRelease(props);
+	}
+
+	if (origW < 1 || origH < 1) {
+		CFRelease(source);
+		return [self decodedImage:[UIImage imageWithContentsOfFile:path] fittingSize:target fill:fill scale:scale];
+	}
+
+	if (target.width > 0 && target.height > 0) {
+		if (fill) {
+			CGFloat grow = MAX(target.width / origW, target.height / origH);
+			if (grow >= 1.0f)
+				maxPixelSize = MAX(origW, origH) * effectiveScale;
+			else
+				maxPixelSize = ceilf(MAX(origW * grow, origH * grow) * effectiveScale);
+		} else {
+			CGFloat shrink = MIN(target.width / origW, target.height / origH);
+			if (shrink < 1.0f)
+				maxPixelSize = ceilf(MAX(target.width, target.height) * effectiveScale);
+			else
+				maxPixelSize = MAX(origW, origH) * effectiveScale;
+		}
+	} else {
+		maxPixelSize = MAX(origW, origH) * effectiveScale;
+	}
+
+	if (maxPixelSize < 1.0f) maxPixelSize = 1.0f;
+
+	NSDictionary *options = @{
+		(id)kCGImageSourceCreateThumbnailFromImageAlways : @YES,
+		(id)kCGImageSourceThumbnailMaxPixelSize          : @((int)maxPixelSize),
+		(id)kCGImageSourceCreateThumbnailWithTransform   : @YES,
+		(id)kCGImageSourceShouldCacheImmediately        : @YES
+	};
+
+	CGImageRef thumb = CGImageSourceCreateThumbnailAtIndex(source, 0, (__bridge CFDictionaryRef)options);
+	CFRelease(source);
+
+	if (!thumb)
+		return [self decodedImage:[UIImage imageWithContentsOfFile:path] fittingSize:target fill:fill scale:scale];
+
+	if (fill && target.width > 0 && target.height > 0) {
+		size_t tw = CGImageGetWidth(thumb);
+		size_t th = CGImageGetHeight(thumb);
+		CGFloat reqW = target.width * effectiveScale;
+		CGFloat reqH = target.height * effectiveScale;
+		if (tw > reqW + 1 || th > reqH + 1) {
+			CGFloat cropW = MIN((CGFloat)tw, reqW);
+			CGFloat cropH = MIN((CGFloat)th, reqH);
+			CGFloat cropX = TGHalf((CGFloat)tw - cropW);
+			CGFloat cropY = TGHalf((CGFloat)th - cropH);
+			CGImageRef cropped = CGImageCreateWithImageInRect(thumb, CGRectMake(cropX, cropY, cropW, cropH));
+			CGImageRelease(thumb);
+			thumb = cropped;
+		}
+	}
+
+	UIImage *res = [UIImage imageWithCGImage:thumb scale:effectiveScale orientation:UIImageOrientationUp];
+	CGImageRelease(thumb);
+	return res;
 }
 
 + (void)loadImageAtPath:(NSString *)path into:(UIImageView *)view {
@@ -257,8 +411,7 @@ static UIImage *TGGlyphAvatar(CGFloat side, void (^draw)(CGContextRef ctx, CGFlo
 	CGSize target = view.bounds.size;
 	CGFloat screenScale = [UIScreen mainScreen].scale;   // UIScreen is main-thread only
 	dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_LOW, 0), ^{
-		UIImage *decoded = [TGIcons decodedImage:[UIImage imageWithContentsOfFile:path]
-									 fittingSize:target fill:YES scale:screenScale];
+		UIImage *decoded = [TGIcons decodedImageAtPath:path fittingSize:target fill:YES scale:screenScale];
 		if (!decoded)
 			return;
 		dispatch_async(dispatch_get_main_queue(), ^{

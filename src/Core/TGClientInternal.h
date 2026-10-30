@@ -1,4 +1,5 @@
 #import "TGClient.h"
+#import "TGUpdateBatcher.hpp"
 #import <UIKit/UIKit.h>
 
 typedef void *(*td_create_fn)(void);
@@ -44,6 +45,7 @@ NSDictionary *TGStickerInfo(NSDictionary *sticker);
 @property (nonatomic, strong) NSArray *chats;
 @property (nonatomic, assign) BOOL batchingUpdates;
 @property (nonatomic, assign) BOOL chatsNeedRebuild;
+@property (nonatomic, strong) TGUpdateCoalescer *updateCoalescer;
 @property (nonatomic, strong) NSMutableArray *outbox;   // JSON strings awaiting send
 @property (nonatomic, strong) NSLock *outboxLock;
 @property (nonatomic, assign) NSUInteger chatsAtLastLoad;

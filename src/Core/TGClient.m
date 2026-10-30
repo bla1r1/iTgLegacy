@@ -51,6 +51,15 @@ NSString *const TGChatActionBarChangedNotification = @"TGChatActionBarChangedNot
 		s.fileWaiters = [NSMutableDictionary dictionary];
 		s.fileWaiterPriorities = [NSMutableDictionary dictionary];
 		s.outboxLock = [[NSLock alloc] init];
+		s.updateCoalescer = [[TGUpdateCoalescer alloc] initWithIntervalMs:100];
+		__weak TGClient *weakClient = s;
+		[s.updateCoalescer setFlushHandler:^(NSSet *dirtyChatIds, NSSet *dirtyUserIds, BOOL orderChanged) {
+			TGClient *client = weakClient;
+			if (!client) return;
+			if (orderChanged || dirtyChatIds.count > 0) {
+				[client rebuildChats];
+			}
+		}];
 	});
 	return s;
 }
@@ -320,6 +329,9 @@ NSDictionary *TGFormattedText(NSString *text) {
 		if (u[@"id"] && name.length)
 			self.usersById[u[@"id"]] = name;
 		[self cacheProfilePhoto:u];
+		if (u[@"id"] && self.updateCoalescer) {
+			[self.updateCoalescer markUserDirty:[u[@"id"] longLongValue]];
+		}
 		return;
 	}
 

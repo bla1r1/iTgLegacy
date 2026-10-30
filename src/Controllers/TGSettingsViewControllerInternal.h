@@ -5,6 +5,7 @@
 #define TGSETTINGSVIEWCONTROLLERINTERNAL_H
 
 #import "TGSettingsViewController.h"
+#import "TGUI.h"
 #import "TGClient.h"
 #import "TGTheme.h"
 #import "TGThemeFile.h"
@@ -209,6 +210,7 @@ static inline NSString *TGBytes(long long bytes) {
 - (void)presentWallpaperPicker;
 - (void)uploadProfilePhoto:(UIImage *)image;
 - (void)pickProfilePhoto;
+- (void)clearTemporaryFiles;
 
 - (NSArray *)buildSections;
 - (NSArray *)rootSections;
@@ -222,6 +224,9 @@ static inline NSString *TGBytes(long long bytes) {
 - (NSArray *)recentCallSections;
 - (NSArray *)wallpaperSections;
 - (NSArray *)debugSections;
+- (NSArray *)folderSections;
+- (NSArray *)proxySections;
+- (NSArray *)downloadSections;
 
 @end
 

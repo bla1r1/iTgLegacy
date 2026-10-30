@@ -254,12 +254,9 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
         action:@selector(showPhoneStep)];
 
     if (!self.resendButton) {
-        self.resendButton = [UIButton buttonWithType:UIButtonTypeCustom];
+        self.resendButton = [TGButton buttonWithTitle:@"Send code via SMS / Resend" variant:TGButtonVariantGhost size:TGButtonSizeSmall];
         self.resendButton.frame = CGRectMake(TGMetricGutter, codeY,
                 width - TGDoubled(TGMetricGutter), TGMetricLoginLinkHeight);
-        [self.resendButton setTitleColor:[[TGTheme shared] accentColour] forState:UIControlStateNormal];
-        [self.resendButton setTitleColor:[[TGTheme shared] secondaryTextColour] forState:UIControlStateDisabled];
-        self.resendButton.titleLabel.font = TGFontSubhead();
         [self.resendButton addTarget:self action:@selector(resendButtonTapped) forControlEvents:UIControlEventTouchUpInside];
         [self.scrollView addSubview:self.resendButton];
     } else {
@@ -268,13 +265,10 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
     }
 
     if (!self.codeStepQrButton) {
-        self.codeStepQrButton = [UIButton buttonWithType:UIButtonTypeCustom];
+        self.codeStepQrButton = [TGButton buttonWithTitle:@"Log in with QR Code instead" variant:TGButtonVariantGhost size:TGButtonSizeSmall];
         self.codeStepQrButton.frame = CGRectMake(TGMetricGutter,
                 codeY + TGMetricLoginLinkHeight + TGMetricPadSmall,
                 width - TGDoubled(TGMetricGutter), TGMetricLoginLinkHeight);
-        [self.codeStepQrButton setTitle:@"Log in with QR Code instead" forState:UIControlStateNormal];
-        [self.codeStepQrButton setTitleColor:[[TGTheme shared] accentColour] forState:UIControlStateNormal];
-        self.codeStepQrButton.titleLabel.font = TGFontSubheadStrong();
         [self.codeStepQrButton addTarget:self action:@selector(qrCodeButtonTapped) forControlEvents:UIControlEventTouchUpInside];
         [self.scrollView addSubview:self.codeStepQrButton];
     } else {

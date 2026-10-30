@@ -8,6 +8,9 @@
 #include <zlib.h>
 #include <vector>
 #include <cmath>
+#include <algorithm>
+#include <memory>
+#import <objc/runtime.h>
 
 #ifndef typeof
 #define typeof __typeof__
@@ -46,108 +49,189 @@ static NSData *TGGunzip(NSData *input) {
 	return out;
 }
 
-#pragma mark - fast keyframed evaluation (zero-allocation C++ float math)
+#pragma mark - fast keyframed evaluation (zero-allocation C++ LottieProperty binary search)
+
+struct LottieKeyframe {
+	double t;
+	float s[8];
+	int s_count;
+	float e[8];
+	int e_count;
+};
+
+struct LottieProperty {
+	enum Type { Empty, StaticNumber, StaticArray, Keyframed };
+	Type type = Empty;
+	float static_vals[8] = {0};
+	int static_count = 0;
+	std::vector<LottieKeyframe> keyframes;
+
+	int evaluate(double frame, float *outVals, int maxVals) const {
+		if (maxVals <= 0) return 0;
+		switch (type) {
+			case Empty:
+				return 0;
+			case StaticNumber:
+			case StaticArray: {
+				int n = std::min(static_count, maxVals);
+				for (int i = 0; i < n; i++) {
+					outVals[i] = static_vals[i];
+				}
+				return n;
+			}
+			case Keyframed: {
+				if (keyframes.empty()) return 0;
+				if (frame <= keyframes.front().t || keyframes.size() == 1) {
+					const auto &first = keyframes.front();
+					int n = std::min(first.s_count, maxVals);
+					for (int i = 0; i < n; i++) {
+						outVals[i] = first.s[i];
+					}
+					return n;
+				}
+
+				if (frame >= keyframes.back().t) {
+					const auto &last = keyframes.back();
+					int n = std::min(last.e_count > 0 ? last.e_count : last.s_count, maxVals);
+					const float *vals = (last.e_count > 0) ? last.e : last.s;
+					for (int i = 0; i < n; i++) {
+						outVals[i] = vals[i];
+					}
+					return n;
+				}
+
+				auto it = std::lower_bound(keyframes.begin(), keyframes.end(), frame,
+					[](const LottieKeyframe &kf, double val) {
+						return kf.t <= val;
+					});
+
+				const auto &after = *it;
+				const auto &before = *(it - 1);
+
+				double t0 = before.t;
+				double t1 = after.t;
+				double p = (t1 > t0) ? (frame - t0) / (t1 - t0) : 0.0;
+				if (p < 0.0) p = 0.0;
+				if (p > 1.0) p = 1.0;
+				float pf = (float)p;
+
+				int count = std::max(before.s_count, before.e_count);
+				if (!count) return 0;
+				count = std::min(count, maxVals);
+
+				for (int i = 0; i < count; i++) {
+					float a = (i < before.s_count) ? before.s[i] : (i < before.e_count ? before.e[i] : 0.0f);
+					float b = (i < before.e_count) ? before.e[i] : a;
+					outVals[i] = a + (b - a) * pf;
+				}
+				return count;
+			}
+		}
+		return 0;
+	}
+};
+
+static LottieProperty ParseLottieProperty(NSDictionary *prop) {
+	LottieProperty lp;
+	if (!prop) return lp;
+	id k = prop[@"k"];
+	if (!k) return lp;
+
+	if ([k isKindOfClass:[NSNumber class]]) {
+		lp.type = LottieProperty::StaticNumber;
+		lp.static_vals[0] = (float)[(NSNumber *)k doubleValue];
+		lp.static_count = 1;
+		return lp;
+	}
+
+	if ([k isKindOfClass:[NSArray class]]) {
+		NSArray *arr = (NSArray *)k;
+		if (!arr.count) return lp;
+		id first = arr[0];
+		if (![first isKindOfClass:[NSDictionary class]]) {
+			lp.type = LottieProperty::StaticArray;
+			lp.static_count = (int)MIN((NSUInteger)8, arr.count);
+			for (int i = 0; i < lp.static_count; i++) {
+				lp.static_vals[i] = (float)[arr[i] doubleValue];
+			}
+			return lp;
+		}
+
+		lp.type = LottieProperty::Keyframed;
+		lp.keyframes.reserve(arr.count);
+		for (NSUInteger idx = 0; idx < arr.count; idx++) {
+			NSDictionary *kf = arr[idx];
+			if (![kf isKindOfClass:[NSDictionary class]]) continue;
+			LottieKeyframe lkf;
+			lkf.t = [kf[@"t"] doubleValue];
+			lkf.s_count = 0;
+			lkf.e_count = 0;
+
+			id s = kf[@"s"];
+			if ([s isKindOfClass:[NSArray class]]) {
+				NSArray *sArr = (NSArray *)s;
+				lkf.s_count = (int)MIN((NSUInteger)8, sArr.count);
+				for (int i = 0; i < lkf.s_count; i++) {
+					lkf.s[i] = (float)[sArr[i] doubleValue];
+				}
+			} else if ([s isKindOfClass:[NSNumber class]]) {
+				lkf.s[0] = (float)[(NSNumber *)s doubleValue];
+				lkf.s_count = 1;
+			}
+
+			id e = kf[@"e"];
+			if (!e && idx + 1 < arr.count && [arr[idx + 1] isKindOfClass:[NSDictionary class]]) {
+				e = arr[idx + 1][@"s"];
+			}
+			if ([e isKindOfClass:[NSArray class]]) {
+				NSArray *eArr = (NSArray *)e;
+				lkf.e_count = (int)MIN((NSUInteger)8, eArr.count);
+				for (int i = 0; i < lkf.e_count; i++) {
+					lkf.e[i] = (float)[eArr[i] doubleValue];
+				}
+			} else if ([e isKindOfClass:[NSNumber class]]) {
+				lkf.e[0] = (float)[(NSNumber *)e doubleValue];
+				lkf.e_count = 1;
+			} else if (lkf.s_count > 0) {
+				lkf.e_count = lkf.s_count;
+				for (int i = 0; i < lkf.s_count; i++) {
+					lkf.e[i] = lkf.s[i];
+				}
+			}
+
+			lp.keyframes.push_back(lkf);
+		}
+		return lp;
+	}
+	return lp;
+}
+
+@interface TGLottiePropertyBox : NSObject
+@property (nonatomic, assign) std::shared_ptr<LottieProperty> prop;
+@end
+@implementation TGLottiePropertyBox
+@end
+
+static const char kLottiePropertyKey = 0;
+
+static inline const LottieProperty *GetOrParseLottieProperty(NSDictionary *prop) {
+	if (!prop) return nullptr;
+	TGLottiePropertyBox *box = objc_getAssociatedObject(prop, &kLottiePropertyKey);
+	if (!box) {
+		box = [[TGLottiePropertyBox alloc] init];
+		box.prop = std::make_shared<LottieProperty>(ParseLottieProperty(prop));
+		objc_setAssociatedObject(prop, &kLottiePropertyKey, box, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+	}
+	return box.prop.get();
+}
 
 static inline int TGValueAtFast(NSDictionary *prop, double frame, float *outVals, int maxVals) {
 	if (!prop || !maxVals)
 		return 0;
-	id k = prop[@"k"];
-	if (!k)
+	const LottieProperty *lp = GetOrParseLottieProperty(prop);
+	if (!lp)
 		return 0;
-
-	// 1. Static single number
-	if ([k isKindOfClass:NSNumber.class]){
-		outVals[0] = (float)[(NSNumber *)k doubleValue];
-		return 1;
-	}
-
-	// 2. Static array of numbers or keyframed array of dicts
-	if ([k isKindOfClass:NSArray.class]){
-		NSArray *arr = (NSArray *)k;
-		if (!arr.count)
-			return 0;
-
-		id first = arr[0];
-		if (![first isKindOfClass:NSDictionary.class]){
-			int n = (int)MIN((NSUInteger)maxVals, arr.count);
-			for (int i = 0; i < n; i++)
-				outVals[i] = (float)[arr[i] doubleValue];
-			return n;
-		}
-
-		// Keyframed interpolation
-		NSDictionary *before = nil, *after = nil;
-		for (NSDictionary *kf in arr){
-			double t = [kf[@"t"] doubleValue];
-			if (t <= frame)
-				before = kf;
-			else {
-				after = kf;
-				break;
-			}
-		}
-
-		if (!before){
-			id s = [first objectForKey:@"s"];
-			if ([s isKindOfClass:NSArray.class]){
-				int n = (int)MIN((NSUInteger)maxVals, [(NSArray *)s count]);
-				for (int i = 0; i < n; i++)
-					outVals[i] = (float)[s[i] doubleValue];
-				return n;
-			} else if ([s isKindOfClass:NSNumber.class]){
-				outVals[0] = (float)[s doubleValue];
-				return 1;
-			}
-			return 0;
-		}
-
-		id fromObj = before[@"s"];
-		id toObj   = before[@"e"] ?: after[@"s"];
-		if (!fromObj) fromObj = toObj;
-		if (!toObj)   toObj   = fromObj;
-
-		float fromVals[8] = {0};
-		float toVals[8]   = {0};
-		int fromCount = 0, toCount = 0;
-
-		if ([fromObj isKindOfClass:NSArray.class]){
-			fromCount = (int)MIN((NSUInteger)8, [(NSArray *)fromObj count]);
-			for (int i = 0; i < fromCount; i++)
-				fromVals[i] = (float)[fromObj[i] doubleValue];
-		} else if ([fromObj isKindOfClass:NSNumber.class]){
-			fromVals[0] = (float)[fromObj doubleValue];
-			fromCount = 1;
-		}
-
-		if ([toObj isKindOfClass:NSArray.class]){
-			toCount = (int)MIN((NSUInteger)8, [(NSArray *)toObj count]);
-			for (int i = 0; i < toCount; i++)
-				toVals[i] = (float)[toObj[i] doubleValue];
-		} else if ([toObj isKindOfClass:NSNumber.class]){
-			toVals[0] = (float)[toObj doubleValue];
-			toCount = 1;
-		}
-
-		int count = MAX(fromCount, toCount);
-		if (!count)
-			return 0;
-		count = MIN(count, maxVals);
-
-		double t0 = [before[@"t"] doubleValue];
-		double t1 = [after[@"t"] doubleValue];
-		double p = (t1 > t0) ? (frame - t0) / (t1 - t0) : 0.0;
-		if (p < 0.0) p = 0.0;
-		if (p > 1.0) p = 1.0;
-		float pf = (float)p;
-
-		for (int i = 0; i < count; i++){
-			float a = (i < fromCount) ? fromVals[i] : (i < toCount ? toVals[i] : 0.0f);
-			float b = (i < toCount) ? toVals[i] : a;
-			outVals[i] = a + (b - a) * pf;
-		}
-		return count;
-	}
-	return 0;
+	return lp->evaluate(frame, outVals, maxVals);
 }
 
 static inline float TGScalarAtFast(NSDictionary *prop, double frame, float fallback) {
@@ -572,6 +656,7 @@ static CGImageRef TGRasterizeLottieFrame(TGLottieModel *model, double frame, CGS
 @interface TGLottieView ()
 @property (nonatomic, copy) NSString *loadedPath;
 @property (nonatomic, strong) TGLottieModel *model;
+@property (nonatomic, strong) TGWebMStreamPlayer *webMPlayer;
 @property (nonatomic, assign) NSUInteger currentFrameIndex;
 @property (nonatomic, assign) double currentFrame;
 @property (nonatomic, strong) NSTimer *timer;
@@ -592,6 +677,8 @@ static CGImageRef TGRasterizeLottieFrame(TGLottieModel *model, double frame, CGS
 }
 
 - (void)dealloc {
+	[_webMPlayer stop];
+	_webMPlayer = nil;
 	[_timer invalidate];
 }
 
@@ -612,10 +699,15 @@ static CGImageRef TGRasterizeLottieFrame(TGLottieModel *model, double frame, CGS
 - (void)didMoveToWindow {
 	[super didMoveToWindow];
 	if (self.window) {
-		if (self.isPlaying && self.loaded && !self.timer) {
+		if (self.isPlaying && self.webMPlayer) {
+			[self.webMPlayer play];
+		} else if (self.isPlaying && self.loaded && !self.timer) {
 			[self startTimer];
 		}
 	} else {
+		if (self.webMPlayer) {
+			[self.webMPlayer pause];
+		}
 		[self.timer invalidate];
 		self.timer = nil;
 	}
@@ -628,10 +720,16 @@ static CGImageRef TGRasterizeLottieFrame(TGLottieModel *model, double frame, CGS
 - (BOOL)loadStickerFile:(NSString *)path {
 	if (!path.length) return NO;
 	if ([self.loadedPath isEqualToString:path] && self.loaded) {
-		if (self.isPlaying && !self.timer) {
-			[self startTimer];
+		if (self.isPlaying) {
+			if (self.webMPlayer) [self.webMPlayer play];
+			else if (!self.timer) [self startTimer];
 		}
 		return YES;
+	}
+
+	if (self.webMPlayer) {
+		[self.webMPlayer stop];
+		self.webMPlayer = nil;
 	}
 
 	static NSCache *sStickerCache = nil;
@@ -650,15 +748,12 @@ static CGImageRef TGRasterizeLottieFrame(TGLottieModel *model, double frame, CGS
 		model.isWebM = isWebM;
 
 		if (isWebM) {
-			double fps = 30.0;
-			NSTimeInterval dur = 0;
-			NSArray *frames = [TGWebMDecoder decodeFramesFromFile:path fps:&fps duration:&dur];
-			if (!frames.count) {
-				NSLog(@"TGLottieView: WebM decode returned 0 frames for %@", path.lastPathComponent);
+			UIImage *firstFrame = [TGWebMDecoder firstFrameFromFile:path];
+			if (!firstFrame) {
+				NSLog(@"TGLottieView: WebM first frame decode failed for %@", path.lastPathComponent);
 				return NO;
 			}
-			model.cachedFrames = frames;
-			model.frameRate = fps;
+			model.frameRate = 30.0;
 			model.canvas = CGSizeMake(256, 256);
 			[sStickerCache setObject:model forKey:path];
 		} else {
@@ -712,11 +807,18 @@ static CGImageRef TGRasterizeLottieFrame(TGLottieModel *model, double frame, CGS
 	CGFloat pxH = MIN(256.0f, viewSize.height * screenScale);
 	CGSize targetPxSize = CGSizeMake(pxW, pxH);
 
-	if (model.cachedFrames.count > 0) {
+	if (model.isWebM) {
+		self.webMPlayer = [[TGWebMStreamPlayer alloc] initWithPath:path];
+		self.webMPlayer.targetLayer = self.layer;
+		UIImage *first = [TGWebMDecoder firstFrameFromFile:path];
+		if (first) {
+			self.layer.contents = (__bridge id)first.CGImage;
+		}
+	} else if (model.cachedFrames.count > 0) {
 		// Instantly show frame 0 with hardware layer
 		CGImageRef first = (__bridge CGImageRef)model.cachedFrames[0];
 		self.layer.contents = (__bridge id)first;
-	} else if (!model.isWebM) {
+	} else {
 		// Rasterize frame 0 synchronously so the user sees the sticker immediately
 		CGImageRef f0 = TGRasterizeLottieFrame(model, model.inPoint, targetPxSize);
 		if (f0) {
@@ -760,8 +862,9 @@ static CGImageRef TGRasterizeLottieFrame(TGLottieModel *model, double frame, CGS
 		}
 	}
 
-	if (self.isPlaying && !self.timer) {
-		[self startTimer];
+	if (self.isPlaying) {
+		if (self.webMPlayer) [self.webMPlayer play];
+		else if (!self.timer) [self startTimer];
 	}
 
 	return self.loaded;
@@ -769,13 +872,18 @@ static CGImageRef TGRasterizeLottieFrame(TGLottieModel *model, double frame, CGS
 
 - (void)play {
 	self.isPlaying = YES;
-	if (self.loaded && !self.timer) {
+	if (self.webMPlayer) {
+		[self.webMPlayer play];
+	} else if (self.loaded && !self.timer) {
 		[self startTimer];
 	}
 }
 
 - (void)stop {
 	self.isPlaying = NO;
+	if (self.webMPlayer) {
+		[self.webMPlayer stop];
+	}
 	[self.timer invalidate];
 	self.timer = nil;
 }

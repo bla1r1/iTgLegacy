@@ -20,6 +20,8 @@
 #import "TGClientAccountTests.m"
 #import "TGClientComposeTests.m"
 #import "TGMessageStreamStoreTests.m"
+#import "TGThemeFileTests.m"
+#import "TGP0MigrationTests.mm"
 
 int main(int argc, char *argv[]) {
 	@autoreleasepool {

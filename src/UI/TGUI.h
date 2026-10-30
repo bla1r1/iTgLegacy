@@ -14,6 +14,11 @@
 #import "TGAvatarView.h"
 #import "TGSearchBar.h"
 
+// Lists & Navigation
+#import "TGTableViewCell.h"
+#import "TGBarButtonItem.h"
+#import "TGMediaThumbnailView.h"
+
 // Contextual Menus & Reactions
 #import "TGReactionPicker.h"
 #import "TGPopupMenu.h"

@@ -13,6 +13,7 @@
 #define TGSizeGlyph    22.0f
 #define TGSizeGlyphSm  18.0f
 #define TGSizePlate    10.0f
+#define TGSizeSwitchTag 9.0f
 #define TGSizeEmoji    28.0f
 #define TGSizeEmojiSm  20.0f
 #define TGSizeEmojiLg  36.0f
@@ -39,6 +40,7 @@ UIFont *TGFontListTitle(void)     { return TGFontMediumAtSize(TGSizeRow); }
 UIFont *TGFontGlyph(void)         { return [UIFont systemFontOfSize:TGSizeGlyph]; }
 UIFont *TGFontGlyphSmall(void)    { return [UIFont systemFontOfSize:TGSizeGlyphSm]; }
 UIFont *TGFontPlate(void)         { return [UIFont boldSystemFontOfSize:TGSizePlate]; }
+UIFont *TGFontSwitchTag(void)     { return [UIFont boldSystemFontOfSize:TGSizeSwitchTag]; }
 UIFont *TGFontEmoji(void)         { return [UIFont systemFontOfSize:TGSizeEmoji]; }
 UIFont *TGFontEmojiSmall(void)    { return [UIFont systemFontOfSize:TGSizeEmojiSm]; }
 UIFont *TGFontEmojiMeta(void)     {

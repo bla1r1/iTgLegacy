@@ -1,496 +1,26 @@
+//
+// TGTheme+Drawing - the procedural skeuomorphism engine.
+//
+// Assembles the physical materials - satin bars, glossy buttons, linen
+// patterns, recessed wells, metallic thumbs - out of gradient stops and
+// hairlines at rasterization time, cached as images, with no GPU blur. It
+// consumes the flat roles (TGTheme+Colours.m), the multi-stop sets
+// (TGTheme+Gradients.m) and the depth materials (TGTheme+Effects.m).
+// See docs/theme_system.md for the full map.
+//
 #import "TGThemeInternal.h"
 #import "TGStyle.h"
 
 #define rgb TGThemeRGB
 
-// Light Skeuomorphic Palette (Classic iOS 6)
-#define TG_BLUE_DARK4     rgb(0x51, 0x7D, 0xA2)   // classic header blue
-#define TG_BLUE_LIGHT4    rgb(0x4C, 0xB3, 0xF5)   // links, dark accent
-#define TG_BLUE_MEDIUM8   rgb(0x3D, 0x95, 0xD4)   // unread badge
-#define TG_GREEN_LIGHT1   rgb(0xEF, 0xFE, 0xDD)   // outgoing bubble
-#define TG_GREEN_BRIGHT1  rgb(0x5A, 0xCD, 0x30)   // online dot
-#define TG_GRAY_LIGHT3    rgb(0xF7, 0xF7, 0xF7)   // input strip
-#define TG_STEEL_LIGHT1   rgb(0xED, 0xEE, 0xF0)   // light gray surface
-#define TG_STEEL_LIGHT3   rgb(0xE1, 0xE4, 0xE9)   // separators
-#define TG_TEXT_PRIMARY   rgb(0x22, 0x22, 0x22)   // primary text
-#define TG_TEXT_SECONDARY rgb(0x8D, 0x8E, 0x90)   // secondary text
-#define TG_TEXT_TIME      rgb(0x95, 0x99, 0x9A)   // timestamp
-#define TG_BLUE_SEMI8     rgb(0x51, 0xAE, 0xE7)   // settings value
-#define TG_GRAY_SECTION   rgb(0x69, 0x6A, 0x6F)   // section caption
-#define TG_BLUE_DARK3     rgb(0x5A, 0x8E, 0xBD)   // profile picture header
-#define TG_BLUE_BLURPLE3  rgb(0x70, 0xAA, 0xEA)   // typing indicator
-#define TG_STEEL_LIGHT6   rgb(0xC5, 0xC9, 0xCC)   // muted badge
-#define TG_STEEL_LIGHT13  rgb(0xA1, 0xAA, 0xB3)   // file size
-#define TG_FILE_TILE      rgb(0xEB, 0xF0, 0xF4)   // file glyph background
-#define TG_MEDIA_CIRCLE   rgb(0x72, 0xB5, 0xE9)   // media circle
-#define TG_FILE_NAME      rgb(0x4E, 0x9A, 0xD4)
-
-// Dark Skeuomorphic Palette (Night iOS 6)
-#define TG_GRAY_DARK16    rgb(0x20, 0x20, 0x20)   // bars
-#define TG_GRAY_DARK15    rgb(0x21, 0x21, 0x21)   // lists, cards
-#define TG_GRAY_DARK14    rgb(0x23, 0x23, 0x23)   // chat background
-#define TG_GRAY_DARK13    rgb(0x33, 0x33, 0x33)   // incoming bubble, separators
-#define TG_GRAY_DARK6     rgb(0x99, 0x99, 0x99)   // secondary text
-#define TG_STEEL_DARK13   rgb(0x7D, 0x84, 0x8A)   // timestamp
-#define TG_BLUE_DARK6     rgb(0x1B, 0x5A, 0x7D)   // outgoing bubble
-
-@implementation TGTheme (Palette)
-
-- (UIColor *)barColour {
-	UIColor *imported = [self importedColour:@"bar"];
-	if (imported) return imported;
-	return self.isDarkStyle ? TG_GRAY_DARK16 : TG_BLUE_DARK4;
-}
-
-- (UIColor *)barTitleColour {
-	UIColor *imported = [self importedColour:@"barTitle"];
-	if (imported) return imported;
-	return [UIColor whiteColor];
-}
-
-- (UIColor *)barSubtitleColour {
-	UIColor *imported = [self importedColour:@"barSubtitle"];
-	if (imported) return imported;
-	return self.isDarkStyle ? TG_GRAY_DARK6 : [UIColor colorWithWhite:1.0f alpha:0.75f];
-}
-
-- (UIColor *)barButtonColour {
-	UIColor *imported = [self importedColour:@"barButton"];
-	if (imported) return imported;
-	return self.isDarkStyle ? [self accentColour] : [UIColor whiteColor];
-}
-
-- (UIColor *)accentColour {
-	UIColor *imported = [self importedColour:@"accent"];
-	if (imported) return imported;
-	return self.isDarkStyle ? TG_BLUE_LIGHT4 : TG_BLUE_DARK4;
-}
-
-- (UIColor *)onAccentColour {
-	return [UIColor whiteColor];
-}
-
-- (UIColor *)destructiveColour {
-	UIColor *imported = [self importedColour:@"destructive"];
-	if (imported) return imported;
-	return rgb(0xE5, 0x39, 0x35);
-}
-
-- (UIColor *)hudBackgroundColour {
-	return [UIColor colorWithWhite:0.0f alpha:0.75f];
-}
-
-- (UIColor *)hudTextColour {
-	return [UIColor whiteColor];
-}
-
-- (UIColor *)snackbarBackgroundColour {
-	if (self.isDarkStyle)
-		return [UIColor colorWithRed:0.18f green:0.22f blue:0.26f alpha:0.98f];
-	return [UIColor colorWithRed:0.24f green:0.28f blue:0.33f alpha:0.97f];
-}
-
-- (UIColor *)snackbarTextColour {
-	return [UIColor whiteColor];
-}
-
-- (UIColor *)chatBackgroundColour {
-	UIColor *imported = [self importedColour:@"chatBackground"];
-	if (imported) return imported;
-	return self.isDarkStyle ? TG_GRAY_DARK14 : rgb(217, 222, 212);
-}
-
-- (UIColor *)bubbleMineColour {
-	UIColor *imported = [self importedColour:@"bubbleMine"];
-	if (imported) return imported;
-	return self.isDarkStyle ? TG_BLUE_DARK6 : TG_GREEN_LIGHT1;
-}
-
-- (UIColor *)bubbleTheirsColour {
-	UIColor *imported = [self importedColour:@"bubbleTheirs"];
-	if (imported) return imported;
-	return self.isDarkStyle ? TG_GRAY_DARK13 : [UIColor whiteColor];
-}
-
-- (UIColor *)bubbleBorderColour {
-	if (self.isDarkStyle)
-		return [UIColor colorWithWhite:1.0f alpha:0.08f];
-	return [UIColor colorWithWhite:0.0f alpha:0.12f];
-}
-
-- (UIColor *)listBackgroundColour {
-	UIColor *imported = [self importedColour:@"listBackground"];
-	if (imported) return imported;
-	return self.isDarkStyle ? TG_GRAY_DARK15 : [UIColor whiteColor];
-}
-
-- (UIColor *)groupedBackgroundColour {
-	UIColor *imported = [self importedColour:@"chatBackground"];
-	if (imported) return imported;
-	if (self.isDarkStyle) return rgb(0x0E, 0x0E, 0x0E);
-	return [UIColor colorWithPatternImage:[TGTheme skeuomorphicPinstripePattern]];
-}
-
-- (UIColor *)cardBackgroundColour {
-	UIColor *imported = [self importedColour:@"cardBackground"];
-	if (imported) return imported;
-	return self.isDarkStyle ? TG_GRAY_DARK15 : [UIColor whiteColor];
-}
-
-- (UIColor *)placeholderColour {
-	if (self.isDark)
-		return [UIColor colorWithWhite:1.0f alpha:0.40f];
-	return [UIColor colorWithWhite:0.0f alpha:0.35f];
-}
-
-- (UIColor *)primaryTextColour {
-	UIColor *imported = [self importedColour:@"primaryText"];
-	if (imported) return imported;
-	return self.isDarkStyle ? [UIColor whiteColor] : TG_TEXT_PRIMARY;
-}
-
-- (UIColor *)secondaryTextColour {
-	UIColor *imported = [self importedColour:@"secondaryText"];
-	if (imported) return imported;
-	return self.isDarkStyle ? TG_GRAY_DARK6 : TG_TEXT_SECONDARY;
-}
-
-// Time text color
-- (UIColor *)timeColour {
-	UIColor *imported = [self importedColour:@"secondaryText"];
-	if (imported) return imported;
-	return self.isDarkStyle ? TG_STEEL_DARK13 : TG_TEXT_TIME;
-}
-
-- (UIColor *)timeMineColour {
-	UIColor *imported = [self importedColour:@"secondaryText"];
-	if (imported) return imported;
-	return [self timeColour];
-}
-
-- (UIColor *)listDateColour {
-	return [self timeColour];
-}
-
-- (UIColor *)cellDetailColour {
-	UIColor *imported = [self importedColour:@"accent"];
-	if (imported) return imported;
-	return self.isDarkStyle ? TG_BLUE_LIGHT4 : TG_BLUE_SEMI8;
-}
-
-- (UIColor *)sectionHeaderColour {
-	UIColor *imported = [self importedColour:@"secondaryText"];
-	if (imported) return imported;
-	return self.isDarkStyle ? TG_GRAY_DARK6 : TG_GRAY_SECTION;
-}
-
-- (UIColor *)profileHeaderColour {
-	UIColor *imported = [self importedColour:@"bar"];
-	if (imported) return imported;
-	return self.isDarkStyle ? TG_GRAY_DARK16 : TG_BLUE_DARK3;
-}
-
-- (UIColor *)actionTileBackgroundColour {
-	UIColor *imported = [self importedColour:@"actionTile"];
-	if (imported) return imported;
-	return self.isDark ? [UIColor colorWithWhite:1.0f alpha:0.08f]
-					   : [UIColor colorWithWhite:0.0f alpha:0.05f];
-}
-
-- (UIColor *)inputBarColour {
-	if ([self hasCustomPalette])
-		return [self barColour];
-	return self.isDarkStyle ? TG_GRAY_DARK16 : TG_GRAY_LIGHT3;
-}
-
-- (UIColor *)searchBarBackgroundColour {
-	UIColor *imported = [self importedColour:@"searchBarBackground"];
-	if (imported) return imported;
-	return self.isDarkStyle ? rgb(0x2E, 0x2E, 0x2E) : rgb(0xCD, 0xD3, 0xDC);
-}
-
-#pragma mark - media and file blocks
-
-// File tile background color
-- (UIColor *)fileTileColour {
-	return self.isDarkStyle ? TG_GRAY_DARK13 : TG_FILE_TILE;
-}
-
-- (UIColor *)mediaCircleColour {
-	return TG_MEDIA_CIRCLE;
-}
-
-- (UIColor *)fileNameColour {
-	UIColor *imported = [self importedColour:@"accent"];
-	return imported ?: TG_FILE_NAME;
-}
-
-- (UIColor *)fileMetaColour {
-	return self.isDarkStyle ? TG_GRAY_DARK6 : TG_STEEL_LIGHT13;
-}
-
-// Timestamp badge plate over media
-- (UIColor *)mediaStampColour {
-	return [UIColor colorWithWhite:0.0f alpha:0.35f];
-}
-
-- (UIColor *)mediaOverlayColour {
-	return [UIColor colorWithWhite:0.0f alpha:0.50f];
-}
-
-- (UIColor *)mediaViewerBackdropColour {
-	return [UIColor blackColor];
-}
-
-- (UIColor *)scrimColour {
-	return [UIColor colorWithWhite:0.0f alpha:0.40f];
-}
-
-- (UIColor *)menuWashColour {
-	return [UIColor colorWithWhite:0.0f alpha:0.12f];
-}
-
-- (UIColor *)calloutBackgroundColour {
-	if (self.isDarkStyle) {
-		return rgb(0x22, 0x24, 0x28);
-	}
-	// Light / White theme: luminous white/pearl skeuomorphic card
-	return [UIColor colorWithRed:0.96f green:0.97f blue:0.98f alpha:0.98f];
-}
-
-- (UIColor *)calloutTrayColour {
-	if (self.isDarkStyle) {
-		return [UIColor colorWithWhite:0.0f alpha:0.35f];
-	}
-	return [UIColor colorWithWhite:0.0f alpha:0.06f];
-}
-
-- (UIColor *)calloutBorderColour {
-	if (self.isDarkStyle) {
-		return [UIColor colorWithWhite:1.0f alpha:0.25f];
-	}
-	return [UIColor colorWithRed:0.72f green:0.75f blue:0.78f alpha:0.90f];
-}
-
-- (UIColor *)calloutDividerDarkColour {
-	if (self.isDarkStyle) {
-		return [UIColor colorWithWhite:0.0f alpha:0.45f];
-	}
-	return [UIColor colorWithWhite:0.0f alpha:0.12f];
-}
-
-- (UIColor *)calloutDividerLightColour {
-	if (self.isDarkStyle) {
-		return [UIColor colorWithWhite:1.0f alpha:0.08f];
-	}
-	return [UIColor colorWithWhite:1.0f alpha:0.85f];
-}
-
-- (UIColor *)calloutGlossTopColour {
-	UIColor *imported = [self importedColour:@"calloutGlossTop"];
-	if (imported) return imported;
-	if (self.isDarkStyle) {
-		return [UIColor colorWithWhite:1.0f alpha:0.18f];
-	}
-	return [UIColor colorWithWhite:1.0f alpha:0.65f];
-}
-
-- (UIColor *)calloutGlossBottomColour {
-	UIColor *imported = [self importedColour:@"calloutGlossBottom"];
-	if (imported) return imported;
-	if (self.isDarkStyle) {
-		return [UIColor colorWithWhite:1.0f alpha:0.04f];
-	}
-	return [UIColor colorWithWhite:1.0f alpha:0.10f];
-}
-
-#pragma mark - chat list
-
-- (UIColor *)badgeColour {
-	UIColor *imported = [self importedColour:@"accent"];
-	if (imported) return imported;
-	return self.isDarkStyle ? TG_BLUE_LIGHT4 : TG_BLUE_MEDIUM8;
-}
-
-- (UIColor *)badgeTextColour {
-	return [UIColor whiteColor];
-}
-
-- (UIColor *)mutedBadgeColour {
-	return self.isDarkStyle ? rgb(0x55, 0x55, 0x55) : TG_STEEL_LIGHT6;
-}
-
-- (UIColor *)typingColour {
-	UIColor *imported = [self importedColour:@"accent"];
-	if (imported) return imported;
-	return self.isDarkStyle ? TG_BLUE_LIGHT4 : TG_BLUE_BLURPLE3;
-}
-
-- (UIColor *)onlineColour {
-	return TG_GREEN_BRIGHT1;
-}
-
-- (UIColor *)ticksColour {
-	UIColor *imported = [self importedColour:@"ticks"];
-	if (imported) return imported;
-	return self.isDarkStyle ? rgb(0x4C, 0xB3, 0xF5) : rgb(0x51, 0x7D, 0xA2);
-}
-
-- (UIColor *)separatorColour {
-	if ([self hasCustomPalette])
-		return [self bubbleBorderColour];
-	return self.isDarkStyle ? TG_GRAY_DARK13 : TG_STEEL_LIGHT3;
-}
-
-#pragma mark - service messages
-
-// Date plate wash over wallpaper
-- (UIColor *)serviceBubbleColour {
-	return self.isDarkStyle ? [UIColor colorWithWhite:1.0f alpha:0.12f]
-							: [UIColor colorWithWhite:0.0f alpha:0.30f];
-}
-
-- (UIColor *)unreadSeparatorColour {
-	return [[self inputBarColour] colorWithAlphaComponent:0.92f];
-}
-
-- (UIColor *)serviceTextColour {
-	return self.isDarkStyle ? [UIColor colorWithWhite:1.0f alpha:0.85f]
-							: [UIColor whiteColor];
-}
-
-#pragma mark - map preview
-
-- (UIColor *)mapPaperColour {
-	return [UIColor colorWithRed:0.90f green:0.91f blue:0.87f alpha:1.0f];
-}
-
-- (UIColor *)mapRoadColour {
-	return [UIColor whiteColor];
-}
-
-- (UIColor *)mapGreeneryColour {
-	return [UIColor colorWithRed:0.78f green:0.86f blue:0.74f alpha:1.0f];
-}
-
-- (UIColor *)mapPinColour {
-	return [UIColor colorWithRed:0.85f green:0.15f blue:0.15f alpha:1.0f];
-}
-
-- (UIColor *)mapPinShadowColour {
-	return [UIColor colorWithWhite:0.0f alpha:0.25f];
-}
-
-#pragma mark - swipe actions
-
-- (UIColor *)archiveActionColour {
-	return rgb(0xA8, 0xB0, 0xBA);
-}
-
-- (UIColor *)muteActionColour {
-	return rgb(0xFF, 0x94, 0x00);
-}
-
-- (UIColor *)recordLockColour {
-	return [UIColor colorWithRed:0x1F / 255.0f green:0x24 / 255.0f
-							blue:0x2E / 255.0f alpha:0.92f];
-}
-
-#pragma mark - the call screen
-
-// The call screen is its own skin - it is not a list on a theme surface - but
-// its colours belong here with the rest of them rather than inside the
-// controller, where nothing else could see or override them.
-- (NSArray *)callGradientColours {
-	return @[rgb(0x6E, 0x61, 0xDE), rgb(0x59, 0x99, 0xF2)];
-}
-
-- (NSArray *)callGradientColoursConnected {
-	return @[rgb(0x45, 0xB0, 0x8C), rgb(0x73, 0xC4, 0x6E)];
-}
-
-- (NSArray *)callGradientColoursFailed {
-	return @[rgb(0x73, 0x29, 0x29), rgb(0x4D, 0x1A, 0x1F)];
-}
-
-- (UIColor *)callEndColour {
-	return rgb(0xE5, 0x33, 0x33);
-}
-
-- (UIColor *)callAcceptColour {
-	return rgb(0x33, 0xCC, 0x4D);
-}
-
-- (UIColor *)callControlColour {
-	return [UIColor colorWithWhite:1.0f alpha:0.20f];
-}
-
-- (UIColor *)callControlActiveColour {
-	return [UIColor colorWithWhite:1.0f alpha:0.40f];
-}
-
-#pragma mark - charts
-
-- (NSArray *)chartPalette {
-	return @[rgb(0xF5, 0xA6, 0x24),   // orange
-			 rgb(0x33, 0x70, 0xED),   // blue
-			 rgb(0x59, 0xC7, 0xFA),   // light blue
-			 rgb(0x6B, 0x59, 0xD9),   // violet
-			 rgb(0x4A, 0xCC, 0x70),   // green
-			 rgb(0xD9, 0x59, 0x59)];  // red
-}
-
-- (UIColor *)giftStarColour {
-	return rgb(0xFF, 0xB3, 0x00);
-}
-
-- (UIColor *)skeuoShineColour {
-	return [UIColor colorWithWhite:1.0f alpha:0.18f];
-}
-
-- (NSArray *)skeuoShineGradientColours {
-	return @[
-		(id)[UIColor colorWithWhite:1.0f alpha:0.45f].CGColor,
-		(id)[UIColor colorWithWhite:1.0f alpha:0.04f].CGColor
-	];
-}
-
-- (UIColor *)etchedTextShadowColour {
-	return [UIColor colorWithWhite:1.0f alpha:0.7f];
-}
-
-- (UIColor *)navBarTextShadowColour {
-	return [UIColor colorWithWhite:0.0f alpha:0.4f];
-}
-
-- (UIColor *)buttonHighlightColour {
-	return [[self accentColour] colorWithAlphaComponent:0.4f];
-}
-
-- (UIColor *)callSubtitleColour {
-	return [[UIColor whiteColor] colorWithAlphaComponent:0.75f];
-}
-
-- (CGFloat)bubbleCornerRadius {
-	return TGMetricCornerBubbleSkeuo;
-}
-
-- (CGFloat)bubbleJoinedCornerRadius {
-	return TGMetricCornerBubbleJoined;
-}
-
-- (CGFloat)bubbleBorderWidth {
-	return TGMetricBorderWidth;
-}
-
-@end
-
-#pragma mark - TGTheme (Skeuomorphism)
 
 static const CGFloat kSkeuoCapInset    = TGMetricPadTiny;
 static const CGFloat kSkeuoRimInset    = 0.75f;
 static const CGFloat kSkeuoThumbPad    = TGMetricPadTiny;
 static const CGFloat kSkeuoThumbLift   = 1.5f;
+static const CGFloat kSwitchTextOnX    = 6.5f;
+static const CGFloat kSwitchTextOffX   = 31.0f;
+static const CGFloat kSwitchTextY      = 10.0f;
 
 @implementation TGTheme (Skeuomorphism)
 
@@ -516,7 +46,7 @@ static const CGFloat kSkeuoThumbLift   = 1.5f;
 	if (topY > 0.0f) {
 		CGFloat statusComps[] = {
 			r * 0.85f, g * 0.85f, b * 0.85f, a,
-			MIN(1.0f, r * 1.35f), MIN(1.0f, g * 1.35f), MIN(1.0f, b * 1.35f), a
+			MIN(1.0f, r * 1.42f), MIN(1.0f, g * 1.42f), MIN(1.0f, b * 1.42f), a
 		};
 		CGFloat statusLocs[] = { 0.0f, 1.0f };
 		CGGradientRef statusGrad = CGGradientCreateWithColorComponents(cs, statusComps, statusLocs, 2);
@@ -536,13 +66,6 @@ static const CGFloat kSkeuoThumbLift   = 1.5f;
 	CGGradientRelease(barGrad);
 
 	CGColorSpaceRelease(cs);
-
-	// Top specular highlight line
-	CGContextSetRGBStrokeColor(ctx, 1.0f, 1.0f, 1.0f, 0.45f);
-	CGContextSetLineWidth(ctx, 1.0f);
-	CGContextMoveToPoint(ctx, 0, topY + 0.5f);
-	CGContextAddLineToPoint(ctx, width, topY + 0.5f);
-	CGContextStrokePath(ctx);
 
 	// Bottom dark hairline
 	CGContextSetRGBStrokeColor(ctx, 0.11f, 0.11f, 0.11f, 0.95f);
@@ -1063,11 +586,15 @@ static const CGFloat kSkeuoThumbLift   = 1.5f;
 		CGContextAddPath(ctx, innerPath.CGPath);
 		CGContextStrokePath(ctx);
 
+		NSShadow *shadow = [[NSShadow alloc] init];
+		shadow.shadowOffset = CGSizeMake(0, -1.0f);
+		shadow.shadowColor = [UIColor colorWithWhite:0.0f alpha:0.35f];
 		NSDictionary *attrs = @{
-			NSFontAttributeName: TGFontMicroStrong(),
-			NSForegroundColorAttributeName: [UIColor whiteColor]
+			NSFontAttributeName: TGFontSwitchTag(),
+			NSForegroundColorAttributeName: [UIColor whiteColor],
+			NSShadowAttributeName: shadow
 		};
-		[@"ON" drawAtPoint:CGPointMake(9.0f, 8.5f) withAttributes:attrs];
+		[@"ON" drawAtPoint:CGPointMake(kSwitchTextOnX, kSwitchTextY) withAttributes:attrs];
 	} else {
 		CGFloat comps[] = {
 			0.82f, 0.84f, 0.87f, 1.0f,
@@ -1086,11 +613,15 @@ static const CGFloat kSkeuoThumbLift   = 1.5f;
 		CGContextAddPath(ctx, innerPath.CGPath);
 		CGContextStrokePath(ctx);
 
+		NSShadow *shadow = [[NSShadow alloc] init];
+		shadow.shadowOffset = CGSizeMake(0, 1.0f);
+		shadow.shadowColor = [UIColor colorWithWhite:1.0f alpha:0.75f];
 		NSDictionary *attrs = @{
-			NSFontAttributeName: TGFontMicroStrong(),
-			NSForegroundColorAttributeName: [UIColor colorWithWhite:0.48f alpha:1.0f]
+			NSFontAttributeName: TGFontSwitchTag(),
+			NSForegroundColorAttributeName: [UIColor colorWithWhite:0.48f alpha:1.0f],
+			NSShadowAttributeName: shadow
 		};
-		[@"OFF" drawAtPoint:CGPointMake(24.0f, 8.5f) withAttributes:attrs];
+		[@"OFF" drawAtPoint:CGPointMake(kSwitchTextOffX, kSwitchTextY) withAttributes:attrs];
 	}
 	CGColorSpaceRelease(cs);
 
@@ -1375,40 +906,7 @@ static const CGFloat kSkeuoThumbLift   = 1.5f;
 	cell.selectedBackgroundView = [[UIImageView alloc] initWithImage:high];
 }
 
-- (NSArray *)skeuoBubbleMineGradientColours {
-	return @[
-		(id)rgb(0x8C, 0xEB, 0x58).CGColor,
-		(id)rgb(0x5E, 0xD3, 0x3D).CGColor,
-		(id)rgb(0x36, 0xB2, 0x24).CGColor,
-		(id)rgb(0x2B, 0xA0, 0x1B).CGColor
-	];
-}
-
-- (NSArray *)skeuoBubbleTheirsGradientColours {
-	if (self.isDarkStyle) {
-		return @[
-			(id)rgb(0x2C, 0x2E, 0x33).CGColor,
-			(id)rgb(0x24, 0x26, 0x2A).CGColor,
-			(id)rgb(0x1B, 0x1C, 0x1F).CGColor
-		];
-	}
-	return @[
-		(id)rgb(0xFF, 0xFF, 0xFF).CGColor,
-		(id)rgb(0xF2, 0xF2, 0xF5).CGColor,
-		(id)rgb(0xDC, 0xDC, 0xE0).CGColor,
-		(id)rgb(0xD0, 0xD0, 0xD6).CGColor
-	];
-}
-
-- (UIColor *)skeuoBubbleMineBorderColour {
-	return rgb(0x25, 0x7B, 0x15);
-}
-
-- (UIColor *)skeuoBubbleTheirsBorderColour {
-	if (self.isDarkStyle) {
-		return [UIColor colorWithWhite:1.0f alpha:0.12f];
-	}
-	return rgb(0xB0, 0xB0, 0xB6);
-}
 
 @end
+
+// vim:ft=objc

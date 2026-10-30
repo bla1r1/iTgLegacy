@@ -55,7 +55,7 @@ compiles the real `src/` files against the stubs in `tests/`.
 
 ## 2a · One size, one place
 
-Colour comes from `TGTheme+Palette`; type and metrics come from
+Colour comes from `TGTheme+Colours`; type and metrics come from
 `src/Core/TGStyle.h`. A screen asks for the role — `TGFontRow()`,
 `TGFontCaption()`, `TGMetricListAvatar` — and never writes the number. That is
 why the app drifted in the first place: the palette existed and the type scale

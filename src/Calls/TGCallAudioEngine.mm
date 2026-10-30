@@ -1,4 +1,5 @@
 #import "TGCallAudioEngine.h"
+#import "TGLocklessRingBuffer.hpp"
 #import <AudioToolbox/AudioToolbox.h>
 #import <AVFoundation/AVFoundation.h>
 #include <opus/opus.h>
@@ -30,8 +31,7 @@ static int TGFrameLevel(const int16_t *pcm, int count) {
 	BOOL _running;
 
 	NSMutableData *_inputPCMBuffer;
-	NSMutableData *_incomingPCMQueue;
-	NSLock *_audioLock;
+	TGLocklessRingBuffer<int16_t, 8192> _playbackRingBuffer;
 
 	uint64_t _outSamples;
 	float _tonePhase;
@@ -72,8 +72,6 @@ static OSStatus TGRecordCallback(void *inRefCon,
 - (instancetype)init {
 	if ((self = [super init])) {
 		_inputPCMBuffer = [NSMutableData data];
-		_incomingPCMQueue = [NSMutableData data];
-		_audioLock = [[NSLock alloc] init];
 	}
 	return self;
 }
@@ -88,15 +86,11 @@ static OSStatus TGRecordCallback(void *inRefCon,
         return noErr;
     }
 
-    UInt32 bytesNeeded = numFrames * sizeof(int16_t);
-    [_audioLock lock];
-    if (_incomingPCMQueue.length >= bytesNeeded) {
-        memcpy(ioData->mBuffers[0].mData, _incomingPCMQueue.bytes, bytesNeeded);
-        [_incomingPCMQueue replaceBytesInRange:NSMakeRange(0, bytesNeeded) withBytes:NULL length:0];
-    } else {
-        memset(ioData->mBuffers[0].mData, 0, ioData->mBuffers[0].mDataByteSize);
+    int16_t *outPCM = (int16_t *)ioData->mBuffers[0].mData;
+    size_t readCount = _playbackRingBuffer.read(outPCM, numFrames);
+    if (readCount < numFrames) {
+        memset(outPCM + readCount, 0, (numFrames - readCount) * sizeof(int16_t));
     }
-    [_audioLock unlock];
     return noErr;
 }
 
@@ -223,14 +217,7 @@ static OSStatus TGRecordCallback(void *inRefCon,
 		_inFrames = _inLevelSum = 0;
 	}
 
-	NSUInteger bytesSize = decodedSamples * sizeof(int16_t);
-	[_audioLock lock];
-	[_incomingPCMQueue appendBytes:pcmBuffer length:bytesSize];
-	if (_incomingPCMQueue.length > kPCMBufferSize * 10) {
-		NSUInteger excess = _incomingPCMQueue.length - kPCMBufferSize * 10;
-		[_incomingPCMQueue replaceBytesInRange:NSMakeRange(0, excess) withBytes:NULL length:0];
-	}
-	[_audioLock unlock];
+	_playbackRingBuffer.write(pcmBuffer, (size_t)decodedSamples);
 }
 
 - (void)processCapturedPCM:(const int16_t *)pcm length:(UInt32)bytesLength {
@@ -308,7 +295,7 @@ static OSStatus TGRecordCallback(void *inRefCon,
 	}
 
 	[_inputPCMBuffer setLength:0];
-	[_incomingPCMQueue setLength:0];
+	_playbackRingBuffer.clear();
 	NSLog(@"TGCallAudioEngine: stopped");
 }
 

@@ -2,6 +2,7 @@
 #define TGLOGINVIEWCONTROLLERINTERNAL_H
 
 #import "TGLoginViewController.h"
+#import "TGUI.h"
 #import "TGTheme.h"
 #import <QuartzCore/QuartzCore.h>
 #import <CoreImage/CoreImage.h>

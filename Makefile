@@ -108,6 +108,7 @@ FRAMEWORKS := -framework UIKit -framework Foundation -framework QuickLook \
               -framework CoreLocation -framework MapKit \
               -framework CoreTelephony -framework CoreImage \
               -framework CoreText -framework AssetsLibrary \
+              -framework ImageIO
 
 
 # TDLib is loaded at runtime from libtdjson.dylib, never linked.
@@ -195,12 +196,18 @@ APP_SRC_M := \
 	src/Core/TGDevice.m \
 	src/Core/TGCapabilities.m \
 	src/Core/TGTheme.m \
-	src/Core/TGTheme+Palette.m \
+	src/Core/TGTheme+Colours.m \
+	src/Core/TGTheme+Gradients.m \
+	src/Core/TGTheme+Effects.m \
+	src/Core/TGTheme+Drawing.m \
 	src/Core/TGStyle.m \
 	src/Core/TGThemeFile.m \
 	src/Views/TGIcons.m \
 	src/Views/TGIcons+Menu.m \
 	src/Views/TGIcons+Avatars.m \
+	src/Views/TGIcons+Illustrations.m \
+	src/Views/TGIcons+Media.m \
+	src/Views/TGIcons+Chat.m \
 	src/Views/TGPopupMenu.m \
 	src/Views/TGSheet.m \
 	src/Views/TGAlertSheet.m \
@@ -219,6 +226,9 @@ APP_SRC_M := \
 	src/UI/TGReactionPicker.m \
 	src/UI/TGAvatarView.m \
 	src/UI/TGSearchBar.m \
+	src/UI/TGTableViewCell.m \
+	src/UI/TGBarButtonItem.m \
+	src/UI/TGMediaThumbnailView.m \
 	src/UI/TGGalleryViewController.m \
 	src/Controllers/TGSearchViewController.m \
 	src/Controllers/TGPlaceholderViewController.m \
@@ -242,6 +252,9 @@ APP_SRC_M := \
 	src/Controllers/TGChatViewController+Actions.m \
 	src/Controllers/TGChatViewController+Layout.m \
 	src/Controllers/TGChatViewController+Cells.m \
+	src/Controllers/TGChatViewController+ServiceCells.m \
+	src/Controllers/TGChatViewController+AudioCells.m \
+	src/Controllers/TGChatViewController+MediaCells.m \
 	src/Controllers/TGChatViewController+Input.m \
 	src/Controllers/TGChatViewController+Media.m \
 	src/Controllers/TGChatViewController+Chrome.m \
@@ -261,6 +274,9 @@ APP_SRC_M := \
 	src/Controllers/TGProfilePhotosViewController.m \
 	src/Controllers/TGSettingsViewController.m \
 	src/Controllers/TGSettingsViewController+Pages.m \
+	src/Controllers/TGSettingsViewController+AppearancePages.m \
+	src/Controllers/TGSettingsViewController+PrivacyPages.m \
+	src/Controllers/TGSettingsViewController+NetworkPages.m \
 	src/Controllers/TGSettingsViewController+Actions.m \
 	src/Audio/TGVoiceDecoder.m \
 	src/Audio/TGStreamingVoicePlayer.m \
@@ -268,18 +284,19 @@ APP_SRC_M := \
 	src/Calls/TGCallStun.m \
 	src/Calls/TGCallMessages.m \
 	src/Calls/TGCallReflector.m \
-	src/Audio/TGVoiceRecorder.m \
 	third_party/opusenc/opusenc.m \
 	src/Views/UIImage+WebP.m \
 	src/Views/TGWebMDecoder.m \
 	src/Views/TGMediaViewer.m \
-	src/Audio/TGMusicPlayer.m \
-	src/Calls/TGCallAudioEngine.m
-
+	src/Audio/TGMusicPlayer.m
 
 APP_SRC_MM := \
+	src/Audio/TGVoiceRecorder.mm \
+	src/Calls/TGCallAudioEngine.mm \
+	src/Core/TGImageLruCache.mm \
 	src/Core/TGClient+Chats.mm \
 	src/Core/TGMessageStreamStore.mm \
+	src/Core/TGUpdateBatcher.mm \
 	src/Views/TGMessageLayout.mm \
 	src/Views/TGLottieView.mm
 

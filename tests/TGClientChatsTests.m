@@ -600,5 +600,54 @@ static int64_t orderOf(NSArray *chats, int64_t id_) {
 	XCTAssertEqual((NSInteger)c.outbox.count, 0, @"no TDLib request must be queued in outbox");
 }
 
+- (void)testUpdateBatcher_CoalescingAndFlush {
+	TGUpdateCoalescer *coalescer = [[TGUpdateCoalescer alloc] initWithIntervalMs:100];
+	XCTAssertEqual(coalescer.pendingCount, (NSUInteger)0);
+
+	__block NSSet *flushedChats = nil;
+	__block NSSet *flushedUsers = nil;
+	__block BOOL flushedOrder = NO;
+	__block NSUInteger flushCount = 0;
+
+	[coalescer setFlushHandler:^(NSSet *dirtyChatIds, NSSet *dirtyUserIds, BOOL orderChanged) {
+		flushedChats = dirtyChatIds;
+		flushedUsers = dirtyUserIds;
+		flushedOrder = orderChanged;
+		flushCount++;
+	}];
+
+	// Mark duplicate dirty events
+	[coalescer markChatDirty:100];
+	[coalescer markChatDirty:100];
+	[coalescer markChatDirty:200];
+	[coalescer markUserDirty:55];
+	[coalescer markUserDirty:55];
+	[coalescer markOrderDirty];
+
+	XCTAssertEqual(coalescer.pendingCount, (NSUInteger)4); // 2 unique chats + 1 unique user + 1 order
+
+	// Manual flush triggers immediately
+	[coalescer flushNow];
+
+	XCTAssertEqual(flushCount, (NSUInteger)1);
+	XCTAssertEqual(flushedChats.count, (NSUInteger)2);
+	XCTAssertTrue([flushedChats containsObject:@100]);
+	XCTAssertTrue([flushedChats containsObject:@200]);
+	XCTAssertEqual(flushedUsers.count, (NSUInteger)1);
+	XCTAssertTrue([flushedUsers containsObject:@55]);
+	XCTAssertTrue(flushedOrder);
+	XCTAssertEqual(coalescer.pendingCount, (NSUInteger)0);
+
+	// Second flush without updates is a no-op
+	[coalescer flushNow];
+	XCTAssertEqual(flushCount, (NSUInteger)1);
+
+	// Reset clears without flushing
+	[coalescer markChatDirty:300];
+	XCTAssertEqual(coalescer.pendingCount, (NSUInteger)1);
+	[coalescer reset];
+	XCTAssertEqual(coalescer.pendingCount, (NSUInteger)0);
+}
+
 @end
 
