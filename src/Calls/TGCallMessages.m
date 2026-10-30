@@ -32,98 +32,116 @@ static void TGAppendString(NSMutableData *data, NSString *string) {
 	[data appendData:utf8];
 }
 
+NSUInteger TGCallParsePacketSlices(const uint8_t *bytes, NSUInteger length, uint32_t packetSeq,
+                                    TGVoipPacketSlice *out, NSUInteger maxSlices) {
+    NSUInteger at = 0, count = 0;
+    uint32_t currentSeq = packetSeq;
+    while (at < length && count < maxSlices) {
+        uint8_t type = bytes[at];
+        if (type == 0xFE || type == 0xFF) {
+            at += 1;
+        } else {
+            out[count].type    = type;
+            out[count].seq     = currentSeq;
+            out[count].bodyPtr = bytes + at + 1;
+            out[count].bodyLen = length - at - 1;
+            count++;
+            return count;
+        }
+        if (at + 4 > length) break;
+        currentSeq = TGReadU32(bytes + at);
+        at += 4;
+    }
+    return count;
+}
+
+NSUInteger TGCallParseMediaPacketSlices(const uint8_t *bytes, NSUInteger length, uint32_t packetSeq,
+                                         TGVoipPacketSlice *out, NSUInteger maxSlices) {
+    NSUInteger at = 0, count = 0;
+    uint32_t currentSeq = packetSeq;
+    while (at < length && count < maxSlices) {
+        uint8_t type = bytes[at++];
+        NSUInteger bodySize = 0;
+        switch (type) {
+            case 0xFE: case 0xFF: bodySize = 0; break;
+            case 4: case 9:  bodySize = 1; break;
+            case 10:         bodySize = 2; break;
+            case 8:          bodySize = 4; break;
+            case 5: case 6: case 7: {
+                BOOL single = (currentSeq & ((uint32_t)1 << 31)) != 0;
+                if (single) {
+                    bodySize = length - at;
+                } else {
+                    if (at + 2 > length) return count;
+                    bodySize = ((NSUInteger)bytes[at] << 8) | bytes[at + 1];
+                    at += 2;
+                }
+                break;
+            }
+            default: return count;
+        }
+        if (at + bodySize > length) return count;
+        if (type != 0xFE) {
+            out[count].type    = type;
+            out[count].seq     = currentSeq;
+            out[count].bodyPtr = bytes + at;
+            out[count].bodyLen = bodySize;
+            count++;
+        }
+        at += bodySize;
+        if (at + 4 > length) break;
+        currentSeq = TGReadU32(bytes + at);
+        at += 4;
+    }
+    return count;
+}
+
 @implementation TGCallMessages
 
 + (NSArray *)parsePacket:(NSData *)plaintext seq:(uint32_t)packetSeq {
-	const uint8_t *bytes = (const uint8_t *)plaintext.bytes;
-	NSUInteger length = plaintext.length;
-	NSUInteger at = 0;
-	NSMutableArray *messages = [NSMutableArray array];
-	uint32_t currentSeq = packetSeq;
+	// Fast-path: use the zero-copy C function, then convert slices to NSDictionary
+	// only for the (at most one) result — preserving backward compatibility.
+	TGVoipPacketSlice slices[1];
+	NSUInteger count = TGCallParsePacketSlices(
+		(const uint8_t *)plaintext.bytes, plaintext.length,
+		packetSeq, slices, 1);
 
-	while (at < length){
-		uint8_t type = bytes[at];
+	if (count == 0)
+		return @[];
 
-		if (type == kEmptyId || type == kAckId){
-			at += 1;
-		} else {
-			// A message body runs to the end of the packet unless another
-			// sequence number follows, which only the message itself knows how
-			// to find - so the tail is handed over whole and the caller reads
-			// what it understands.
-			[messages addObject:@{
-				@"type" : @(type),
-				@"seq"  : @(currentSeq),
-				@"body" : [plaintext subdataWithRange:
-						NSMakeRange(at + 1, length - at - 1)],
-			}];
-			return messages;
-		}
-
-		// Between messages comes the next sequence number.
-		if (at + 4 > length)
-			break;
-		currentSeq = TGReadU32(bytes + at);
-		at += 4;
-	}
-	return messages;
+	// Re-wrap the body as an NSData view into the original buffer (no copy).
+	NSData *body = [NSData dataWithBytesNoCopy:(void *)slices[0].bodyPtr
+	                                    length:slices[0].bodyLen
+	                              freeWhenDone:NO];
+	return @[@{
+		@"type" : @(slices[0].type),
+		@"seq"  : @(slices[0].seq),
+		@"body" : body,
+	}];
 }
 
 // Parse media messages from decrypted packet
 + (NSArray *)parseMediaPacket:(NSData *)plaintext seq:(uint32_t)packetSeq {
-	const uint8_t *bytes = (const uint8_t *)plaintext.bytes;
-	NSUInteger length = plaintext.length;
-	NSUInteger at = 0;
-	uint32_t currentSeq = packetSeq;
-	NSMutableArray *messages = [NSMutableArray array];
+	// Fast-path: use the zero-copy C function, then convert slices to NSDictionary.
+	TGVoipPacketSlice slices[16];
+	NSUInteger count = TGCallParseMediaPacketSlices(
+		(const uint8_t *)plaintext.bytes, plaintext.length,
+		packetSeq, slices, 16);
 
-	while (at < length){
-		uint8_t type = bytes[at++];
-		NSUInteger bodySize = 0;
+	if (count == 0)
+		return @[];
 
-		switch (type){
-			case kEmptyId:                    // nothing but a sequence number
-			case kAckId:      bodySize = 0; break;
-			case 4:                            // remote media state
-			case 9:           bodySize = 1; break;   // remote battery is low
-			case 10:          bodySize = 2; break;   // remote network status
-			case 8:           bodySize = 4; break;   // video parameters
-			case 5:                            // audio data
-			case 6:                            // video data
-			case 7: {                          // unstructured data
-				if ([self seqIsSingleMessage:currentSeq]){
-					bodySize = length - at;
-				} else {
-					if (at + 2 > length)
-						return messages;
-					bodySize = ((NSUInteger)bytes[at] << 8) | bytes[at + 1];
-					at += 2;
-				}
-				break;
-			}
-			// An unknown type has an unknown length, so the rest of the packet
-			// cannot be walked. What was already read still stands.
-			default: return messages;
-		}
-
-		if (at + bodySize > length)
-			return messages;
-
-		// An acknowledgement is worth reporting: the sequence number in front of
-		// it is the one being confirmed, and that is how we learn our own
-		// messages arrived.
-		if (type != kEmptyId)
-			[messages addObject:@{
-				@"type" : @(type),
-				@"seq"  : @(currentSeq),
-				@"body" : [plaintext subdataWithRange:NSMakeRange(at, bodySize)],
-			}];
-		at += bodySize;
-
-		if (at + 4 > length)
-			break;
-		currentSeq = TGReadU32(bytes + at);
-		at += 4;
+	NSMutableArray *messages = [NSMutableArray arrayWithCapacity:count];
+	for (NSUInteger i = 0; i < count; i++) {
+		// Re-wrap each body slice into NSData without copying bytes.
+		NSData *body = [NSData dataWithBytesNoCopy:(void *)slices[i].bodyPtr
+		                                    length:slices[i].bodyLen
+		                              freeWhenDone:NO];
+		[messages addObject:@{
+			@"type" : @(slices[i].type),
+			@"seq"  : @(slices[i].seq),
+			@"body" : body,
+		}];
 	}
 	return messages;
 }

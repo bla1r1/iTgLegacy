@@ -189,11 +189,11 @@
 				self.observedTag = sender;
 		}
 
-		dispatch_async(dispatch_get_main_queue(), ^{
-			NSLog(@"TGCallReflector: %ld bytes in", (long)got);
-			if (self.onPacket)
-				self.onPacket(packet);
-		});
+		// onPacket is called directly on the reader thread to avoid stalling the
+		// main runloop at 50-100 Hz. Callers in TGCall.mm handle thread safety.
+		NSLog(@"TGCallReflector: %ld bytes in", (long)got);
+		if (self.onPacket)
+			self.onPacket(packet);
 	}
 }
 

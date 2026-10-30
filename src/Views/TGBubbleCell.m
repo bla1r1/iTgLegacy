@@ -6,6 +6,7 @@
 #import "TGIcons.h"
 #import <AVFoundation/AVFoundation.h>
 #import "TGStyle.h"
+#import <CoreText/CoreText.h>
 
 @interface TGBubbleCell ()
 @property (nonatomic, strong) AVPlayer *loopPlayer;

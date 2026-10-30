@@ -53,3 +53,24 @@ extern const uint8_t TGCallMessageAck;          // 0xFF, confirms the seq before
 
 @end
 
+// ---------------------------------------------------------------------------
+// Non-owning packet slice — zero-copy view into a raw UDP buffer.
+// Use TGCallParsePacketSlices / TGCallParseMediaPacketSlices on the background
+// reader thread instead of the ObjC methods to avoid per-packet heap traffic.
+// ---------------------------------------------------------------------------
+typedef struct {
+    uint8_t    type;
+    uint32_t   seq;
+    const uint8_t *bodyPtr;   // points into the original NSData buffer — zero copy
+    NSUInteger     bodyLen;
+} TGVoipPacketSlice;
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+NSUInteger TGCallParsePacketSlices(const uint8_t *bytes, NSUInteger length, uint32_t packetSeq, TGVoipPacketSlice *out, NSUInteger maxSlices);
+NSUInteger TGCallParseMediaPacketSlices(const uint8_t *bytes, NSUInteger length, uint32_t packetSeq, TGVoipPacketSlice *out, NSUInteger maxSlices);
+#ifdef __cplusplus
+}
+#endif
+
