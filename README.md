@@ -2,79 +2,66 @@
 
 Read this in other languages: [Русский](README_RU.md)
 
-Telegram client tailored for legacy iOS devices running iOS 6.0 through iOS 12.5.7.
+Telegram client for iOS 6.0–12.5.7 on old hardware. Dual-engine: `libtg` (lightweight C MTProto) for 32-bit devices, `tdlib` for everything modern.
 
-It uses a dual-engine architecture combining a lightweight C MTProto engine (`libtg`) for legacy 32-bit devices and the official Telegram Database Library (`tdlib`) for modern features.
+## Supported devices
 
-## Supported Devices and Architectures
+| Build | Size | Target |
+|---|---|---|
+| armv7 | ~8.8 MB | iOS 6.0+ — iPhone 3GS/4/4S/5, iPad 2/3/4, iPod Touch 4/5 |
+| arm64 | ~8.8 MB | iOS 7.0–12.5.7 — iPhone 5s–X, iPad Air/Pro |
+| Universal | ~16 MB | Fat binary, both slices |
 
-The project produces lightweight single-architecture IPA packages as well as a universal fat binary:
+## Setup
 
-- **armv7 (32-bit, ~8.8 MB)**: Targeted at iOS 6.0+ (iPhone 3GS, iPhone 4, iPhone 4S, iPhone 5, iPad 2/3/4, iPod Touch 4/5).
-- **arm64 (64-bit, ~8.8 MB)**: Targeted at iOS 7.0 - 12.5.7 (iPhone 5s through iPhone X, iPad Air/Pro).
-- **Universal (~16 MB)**: Fat binary package containing both architecture slices.
+Before building, configure your API credentials:
 
-## Telegram API Credentials
+```bash
+cp include/tg_config.h.example include/tg_config.h
+```
 
-Before building for real use, configure your Telegram API credentials:
-
-1. Copy [`include/tg_config.h.example`](include/tg_config.h.example) to `include/tg_config.h`:
-   ```bash
-   cp include/tg_config.h.example include/tg_config.h
-   ```
-2. Register your client at https://my.telegram.org (under *API development tools*).
-3. Update `TG_API_ID` and `TG_API_HASH` in `include/tg_config.h`:
+Register at https://my.telegram.org → API development tools, then fill in `include/tg_config.h`:
 
 ```c
 #define TG_API_ID   YOUR_API_ID
 #define TG_API_HASH "YOUR_API_HASH"
 ```
 
-> Note: `include/tg_config.h` is git-ignored to prevent committing private API credentials.
+`include/tg_config.h` is git-ignored.
 
-## Repository Layout
+## Repository layout
 
 ```
 LegacyTG/
-├── Makefile       # Master build file
-├── README.md      # Documentation (English)
-├── README_RU.md   # Documentation (Russian)
-├── LICENSE        # GPLv3 License
-├── src/           # iOS Objective-C application source files
-│   ├── Core/      # Core logic, client & device definitions
-│   ├── Controllers/ # UI ViewControllers
-│   ├── Views/     # Custom UI components, cells, icons
-│   ├── Calls/     # VoIP & E2EE call implementation
-│   └── Audio/     # Voice note recording & playback
-├── resources/     # App bundle resources (Info.plist, fonts, entitlements)
-├── images/        # Application assets and icons
-├── third_party/   # Vendored libraries (libtgvoip, opus, ogg, etc.)
-├── tdlib/         # Telegram Database Library (git submodule)
-├── libs/          # Universal prebuilt libraries & WebP.framework
-├── include/       # Third-party C header files and tg_config.h.example
-├── compat/        # OS compatibility polyfills (dyld TLV, iOS 7 shims)
-├── tools/         # Host and device utilities & tweaks
-├── scripts/       # Build automation and deployment scripts
-├── tests/         # Unit and integration test suite
-└── build/         # Build outputs (git-ignored)
-    ├── LegacyTG-armv7.ipa # 32-bit IPA for iOS 6.0+ (8.8 MB)
-    ├── LegacyTG-arm64.ipa # 64-bit IPA for iOS 7.0-12.5.7 (8.8 MB)
-    └── LegacyTG.ipa       # Universal Fat IPA package (16 MB)
+├── Makefile
+├── src/
+│   ├── Core/        # client, device logic
+│   ├── Controllers/ # ViewControllers
+│   ├── Views/       # UI components, cells
+│   ├── Calls/       # VoIP & E2EE calls
+│   └── Audio/       # voice notes
+├── resources/       # Info.plist, fonts, entitlements
+├── images/          # icons and assets
+├── third_party/     # libtgvoip, opus, ogg, …
+├── tdlib/           # TDLib (git submodule)
+├── libs/            # prebuilt libs & WebP.framework
+├── include/         # C headers, tg_config.h.example
+├── compat/          # polyfills (dyld TLV, iOS 7 shims)
+├── tools/           # host/device utilities
+├── scripts/         # build & deploy scripts
+├── tests/           # unit and integration tests
+└── build/           # output (git-ignored)
 ```
-
-## Prerequisites
-
-To build LegacyTG on macOS:
-
-1. Xcode installed with iOS SDK support.
-2. Build dependencies:
-   ```bash
-   brew install cmake gperf openssl@1.1 ccache
-   ```
 
 ## Building
 
-Clone the repository with submodules and run `make`:
+Requirements: Xcode with iOS SDK, then:
+
+```bash
+brew install cmake gperf openssl@1.1 ccache
+```
+
+Clone and build:
 
 ```bash
 git clone --recursive https://github.com/bla1r1/iTgLegacy.git
@@ -82,30 +69,23 @@ cd iTgLegacy
 make
 ```
 
-Or run the wrapper script:
+### Make targets
 
-```bash
-./scripts/build_ipa.sh
-```
+| Target | What it does |
+|---|---|
+| `make ipa` | All three packages (armv7, arm64, universal) |
+| `make ipa-armv7` | 32-bit IPA for iOS 6.0+ |
+| `make ipa-arm64` | 64-bit IPA for iOS 7.0–12.5.7 |
+| `make app` | `.app` bundle only |
+| `make deps` | Extract static libs into `build/libs` |
+| `make tdlib` | Compile TDLib for iOS |
+| `make clean` | Remove `build/` |
 
-### Build Targets
+## Author & license
 
-- `make ipa` - Build all packages (`LegacyTG-armv7.ipa`, `LegacyTG-arm64.ipa`, and universal `LegacyTG.ipa`).
-- `make ipa-armv7` - Build lightweight 32-bit `.ipa` (8.8 MB for iOS 6.0+).
-- `make ipa-arm64` - Build lightweight 64-bit `.ipa` (8.8 MB for iOS 7.0 - 12.5.7).
-- `make app` - Build the `.app` bundle.
-- `make deps` - Extract static third-party libraries into `build/libs`.
-- `make tdlib` - Compile TDLib for iOS.
-- `make clean` - Remove all intermediate build artifacts from `build/`.
+- **[bla1r1](https://github.com/bla1r1)** — author and maintainer
+- **GPLv3** — see [LICENSE](LICENSE)
 
-## Author, History & License
+The project started from an early prototype by [@igkuzm](https://github.com/igkuzm) and was later rewritten from scratch — new engine (TDLib instead of `libtg`), new UIKit architecture, multimedia pipeline, E2EE calls.
 
-- **Author & Maintainer**: [bla1r1](https://github.com/bla1r1)
-- **License**: GNU General Public License v3.0 ([LICENSE](LICENSE))
-
-### Project History & Acknowledgements
-The project originally started based on an early prototype by Igor V. Sementsov ([@igkuzm](https://github.com/igkuzm)). During active development, that initial codebase was soon completely rewritten from scratch due to being technically obsolete (replacing the legacy unmaintained `libtg` engine with official `tdlib`, introducing an entirely new UIKit architecture, multimedia pipeline, and E2EE voice calls under GPLv3).
-
-## Disclaimer
-
-This software is provided for legacy hardware preservation and educational purposes. Use at your own risk.
+> This software is for legacy hardware preservation and educational use. Use at your own risk.

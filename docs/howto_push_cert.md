@@ -1,37 +1,27 @@
-# APNs Push Certificate Guide
+# APNs Push Certificate
 
-### 1. Generate private key
 ```bash
+# 1. Private key
 openssl genrsa -out app.key 2048
-```
 
-### 2. Create Apple Certificate Signing Request (CSR)
-```bash
+# 2. CSR
 openssl req -new -key app.key -out Certificate.csr
 ```
 
-### 3. Generate Certificate on Apple Developer Portal
-* Go to [developer.apple.com](https://developer.apple.com) -> **Certificates, Identifiers & Profiles**.
-* Create and download the Apple Push Notification service SSL certificate (`aps.cer` / `aps_development.cer`) and provisioning profile.
+Go to [developer.apple.com](https://developer.apple.com) → Certificates, Identifiers & Profiles → create and download `aps.cer` / `aps_development.cer` and a provisioning profile.
 
-### 4. Convert downloaded Apple Certificate to PEM
 ```bash
+# 3. Convert .cer → PEM
 openssl x509 -in aps.cer -inform DER -out aps.pem -outform PEM
 openssl x509 -in aps_development.cer -inform DER -out aps_development.pem -outform PEM
-```
 
-### 5. Export PKCS#12 (.p12)
-```bash
+# 4. Export PKCS#12
 openssl pkcs12 -export -out aps.p12 -inkey app.key -in aps.pem
 openssl pkcs12 -export -out aps_development.p12 -inkey app.key -in aps_development.pem
-```
 
-### 6. Convert .p12 to unencrypted PEM
-```bash
+# 5. Unencrypted PEM (for upload)
 openssl pkcs12 -in aps.p12 -out apns.pem -nodes -clcerts
 openssl pkcs12 -in aps_development.p12 -out apns_development.pem -nodes -clcerts
 ```
 
-### 7. Upload to Telegram
-Upload the generated certificates to the [Telegram Apps Portal](https://my.telegram.org/apps).
-
+Upload the resulting `.pem` files to the [Telegram Apps Portal](https://my.telegram.org/apps).
