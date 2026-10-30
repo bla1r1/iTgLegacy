@@ -221,8 +221,11 @@ static uint64_t TGReflectorRead64BE(const uint8_t *bytes) {
                                                                   port:serverPort
                                                                peerTag:peerTag];
 
+    // The packet is a view over the reader thread's buffer, valid only inside
+    // the call - which is the point of it - so a test that compares it
+    // afterwards has to take its own copy.
     __block NSData *received = nil;
-    reflector.onPacket = ^(NSData *packet){ received = packet; };
+    reflector.onPacket = ^(NSData *packet){ received = [packet copy]; };
 
     XCTAssertTrue([reflector start]);
 

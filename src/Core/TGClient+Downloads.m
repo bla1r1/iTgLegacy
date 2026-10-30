@@ -20,8 +20,7 @@
 	}];
 	// The waiter records in +Files outlive the request otherwise, and every
 	// caller of downloadFile: would sit there until the watchdog fired.
-	[self.fileWaiters removeObjectForKey:@(fileId)];
-	[self.fileWaiterPriorities removeObjectForKey:@(fileId)];
+	[self releaseFileWaiters:fileId];
 }
 
 /// Deletes the local copy. The file stays on Telegram and can be fetched

@@ -50,10 +50,11 @@
 /// emoji - iOS 7 has no colour glyph for it on every device.
 + (UIImage *)lockOfSide:(CGFloat)side colour:(UIColor *)colour;
 
-/// The bars of a voice message, drawn from TDLib's five-bits-per-sample
-/// waveform. `played` is how much of it has been listened to, 0 to 1.
-+ (UIImage *)waveform:(NSData *)waveform size:(CGSize)size
-               played:(CGFloat)played colour:(UIColor *)colour;
+/// The bars of a voice message as one path, drawn from TDLib's
+/// five-bits-per-sample waveform. The played fraction is not baked in: the
+/// cell fills this path twice and clips the second one, so following
+/// playback never rasterizes anything (see TGBubbleCell -setWavePlayed:).
++ (UIBezierPath *)waveformPath:(NSData *)waveform size:(CGSize)size;
 
 /// The tail Telegram hangs off the bottom corner of the last bubble in a run,
 /// kTailWidth x kTailHeight; it sits flush against the bubble's edge.

@@ -37,9 +37,17 @@
 /// a track is not a photo message, and the two are laid out differently.
 @property (nonatomic, strong) UIImageView *artwork;
 @property (nonatomic, strong) UIImageView *wave;
+
+/// Lays the voice-note bars out as two filled paths - the whole waveform dim,
+/// the listened part solid and clipped - inside -wave. Cheap to call again
+/// with the same waveform and box: the path is only rebuilt when one changes.
+- (void)setWaveform:(NSData *)waveform size:(CGSize)size colour:(UIColor *)colour;
+
+/// Moves the boundary between the two, 0 to 1. One frame assignment: nothing
+/// is drawn, allocated or rasterized, which is what lets playback tick.
+- (void)setWavePlayed:(CGFloat)played;
 @property (nonatomic, strong) UILabel *mediaStamp;
 @property (nonatomic, assign) int64_t voiceMessageId;
-@property (nonatomic, strong) NSData *waveformData;
 @property (nonatomic, assign) int64_t pollMessageId;
 @property (nonatomic, strong) UILabel *forwardLabel;
 

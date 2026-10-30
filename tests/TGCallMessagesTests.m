@@ -343,4 +343,48 @@ static NSData *makeSingleMessagePacket(uint8_t type, NSData *body,
     XCTAssertEqual(body.length, 2u);
 }
 
+#pragma mark - zero-copy slices (the path a live call uses)
+
+/// The zero-copy media parser the call path now uses instead of building an
+/// NSDictionary per message. A single-message audio packet: 0x05, the RTP
+/// header, then the Opus frame, under a sequence number with bit 31 set.
+- (void)testPacketSlices_SingleAudioMessagePointsIntoTheOriginalBuffer {
+	uint8_t packet[1 + 12 + 4];
+	memset(packet, 0, sizeof(packet));
+	packet[0] = 5;                      // TGCallMessageAudioData
+	packet[1] = 0x80;                    // RTP V=2
+	packet[2] = 111;
+	packet[13] = 0xDE; packet[14] = 0xAD; packet[15] = 0xBE; packet[16] = 0xEF;
+
+	TGVoipPacketSlice slices[16];
+	uint32_t seq = 0x80000001;           // single-message
+	NSUInteger count = TGCallParseMediaPacketSlices(packet, sizeof(packet),
+													seq, slices, 16);
+	XCTAssertEqual((int)count, 1);
+	XCTAssertEqual((int)slices[0].type, 5);
+	XCTAssertEqual(slices[0].seq, seq);
+	XCTAssertEqual((int)slices[0].bodyLen, 16);
+	XCTAssertTrue(slices[0].bodyPtr == packet + 1,
+		@"the body must be a pointer into the packet, not a copy");
+}
+
+- (void)testPacketSlices_RefuseMoreThanTheBufferHolds {
+	// A media-state message (type 4, one byte of body) repeated: each is
+	// followed by the next message's four-byte sequence number.
+	uint8_t packet[64];
+	memset(packet, 0, sizeof(packet));
+	NSUInteger at = 0;
+	for (int i = 0; i < 8; i++){
+		packet[at++] = 4;
+		packet[at++] = 1;
+		packet[at++] = 0; packet[at++] = 0; packet[at++] = 0;
+		packet[at++] = (uint8_t)(i + 1);
+	}
+
+	TGVoipPacketSlice slices[2];
+	NSUInteger count = TGCallParseMediaPacketSlices(packet, at, 7, slices, 2);
+	XCTAssertLessThanOrEqual((int)count, 2,
+		@"the parser must never write past the caller's array");
+}
+
 @end

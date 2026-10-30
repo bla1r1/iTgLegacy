@@ -131,29 +131,18 @@ static const CGFloat kTailHeight = 13.0f;
 	return image;
 }
 
-+ (UIImage *)waveform:(NSData *)waveform size:(CGSize)size
-               played:(CGFloat)played colour:(UIColor *)colour {
++ (UIBezierPath *)waveformPath:(NSData *)waveform size:(CGSize)size {
 	if (!waveform.length || size.width <= 0 || size.height <= 0)
 		return nil;
-
-	int playedBucket = (int)(played * 20.0f);
-	NSString *key = [NSString stringWithFormat:@"wave_%lu_%.0f_%d_%lu",
-			(unsigned long)waveform.hash, size.width, playedBucket, (unsigned long)[colour hash]];
-	UIImage *cached = TGIconsGetCached(key);
-	if (cached) return cached;
-
-	UIGraphicsBeginImageContextWithOptions(size, NO, 0);
-	CGContextRef ctx = UIGraphicsGetCurrentContext();
 
 	const uint8_t *bytes = (const uint8_t *)waveform.bytes;
 	NSUInteger bits = waveform.length * 8 / 5;
 	CGFloat barW = 2, gap = 1;
 	NSUInteger bars = (NSUInteger)(size.width / (barW + gap));
-	if (bars == 0){
-		UIGraphicsEndImageContext();
+	if (bars == 0)
 		return nil;
-	}
 
+	UIBezierPath *path = [UIBezierPath bezierPath];
 	for (NSUInteger i = 0; i < bars; i++){
 		CGFloat value = 0.35f;
 		if (bits > 0){
@@ -169,17 +158,9 @@ static const CGFloat kTailHeight = 13.0f;
 		CGFloat height = MAX(2.0f, value * size.height);
 		CGFloat x = i * (barW + gap);
 		CGRect bar = CGRectMake(x, TGCenteredOrigin(size.height, height), barW, height);
-
-		CGFloat alpha = (i < bars * played) ? TGAlphaOpaque : 0.32f;
-		[[colour colorWithAlphaComponent:alpha] set];
-		UIBezierPath *rounded = [UIBezierPath bezierPathWithRoundedRect:bar cornerRadius:1];
-		[rounded fill];
+		[path appendPath:[UIBezierPath bezierPathWithRoundedRect:bar cornerRadius:1]];
 	}
-
-	UIImage *image = UIGraphicsGetImageFromCurrentImageContext();
-	UIGraphicsEndImageContext();
-	TGIconsSetCached(key, image);
-	return image;
+	return path;
 }
 
 + (UIImage *)bubbleTailForColour:(UIColor *)colour outgoing:(BOOL)outgoing {

@@ -179,6 +179,10 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V8";
 
 @implementation TGCall {
 	uint32_t _mediaPacketsIn;
+	uint32_t _mediaPacketsParsed;
+	// One scratch buffer for decryption, reused for every packet. The reader
+	// socket reads into 2048 bytes, so nothing larger can arrive.
+	uint8_t  _decryptScratch[2048];
 	uint32_t _stunRequestsIn;
 	uint32_t _stunResponsesIn;
 	uint32_t _unreadablePacketsIn;
@@ -819,15 +823,40 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V8";
 }
 
 - (void)handleIncomingMediaPacket:(NSData *)decryptedData seq:(uint32_t)seq {
-	const uint8_t *b = (const uint8_t *)decryptedData.bytes;
-	NSLog(@"TGCall: decrypted media packet seq %08x, len %lu, first byte %02x", seq, (unsigned long)decryptedData.length, b ? b[0] : 0);
+	[self handleIncomingMediaBytes:(const uint8_t *)decryptedData.bytes
+						   length:decryptedData.length
+							  seq:seq];
+}
+
+/// The incoming media path, fifty to a hundred times a second for the whole
+/// length of a call. Everything here is a view into the decrypted buffer: the
+/// messages inside the packet come back as TGVoipPacketSlice - a type, a
+/// sequence number and a pointer - so a packet costs no NSArray, no
+/// NSDictionary per message, no NSNumber per field and no subdata copy of the
+/// payload. It also does not log per packet: syslog drops lines when it is
+/// flooded at this rate, which costs exactly the lines worth reading.
+- (void)handleIncomingMediaBytes:(const uint8_t *)bytes
+						  length:(NSUInteger)length
+							 seq:(uint32_t)seq {
+	if (!bytes || !length)
+		return;
+
+	// Sixteen is what a media packet can hold; anything beyond it is a frame
+	// the peer should not have bundled.
+	TGVoipPacketSlice slices[16];
+	NSUInteger count = TGCallParseMediaPacketSlices(bytes, length, seq, slices, 16);
+
+	if (++_mediaPacketsParsed == 1 || _mediaPacketsParsed % 250 == 0)
+		NSLog(@"TGCall: %u media packets parsed, last seq %08x, %lu bytes, "
+			   "%lu messages", _mediaPacketsParsed, seq,
+			   (unsigned long)length, (unsigned long)count);
 
 	// Each message inside carries its own sequence number, and it is that one
 	// the peer waits to hear back - acknowledging the packet's number instead
 	// left it resending its opening pair once a second and never starting audio.
-	for (NSDictionary *message in [TGCallMessages parseMediaPacket:decryptedData seq:seq]){
-		uint8_t type = [message[@"type"] unsignedCharValue];
-		uint32_t messageSeq = [message[@"seq"] unsignedIntValue];
+	for (NSUInteger i = 0; i < count; i++){
+		uint8_t type = slices[i].type;
+		uint32_t messageSeq = slices[i].seq;
 
 		if ([TGCallMessages seqRequiresAck:messageSeq])
 			[self sendAckForSeq:messageSeq signaling:NO];
@@ -848,15 +877,15 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V8";
 		}
 
 		if (type == TGCallMessageAudioData){
-			[self handleIncomingRTP:message[@"body"]];
+			[self handleIncomingRTPBytes:slices[i].bodyPtr length:slices[i].bodyLen];
 		} else {
 			// Log ALL non-audio types (they are rare enough)
 			NSLog(@"TGCall: peer media msg type %d seq %08x, %lu bytes", type,
-					messageSeq, (unsigned long)[message[@"body"] length]);
-			if (type == TGCallMessageMediaState) {
-				const uint8_t *b = (const uint8_t *)[(NSData *)message[@"body"] bytes];
+					messageSeq, (unsigned long)slices[i].bodyLen);
+			if (type == TGCallMessageMediaState && slices[i].bodyLen >= 1){
+				uint8_t state = slices[i].bodyPtr[0];
 				NSLog(@"TGCall: peer MediaState byte: %02x (audio=%d video=%d)",
-						b[0], b[0] & 1, (b[0] >> 1) & 1);
+						state, state & 1, (state >> 1) & 1);
 			}
 		}
 	}
@@ -864,11 +893,8 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V8";
 
 /// An RTP packet as WebRTC wrote it: fixed header, optional CSRCs and one
 /// optional extension block, then the Opus frame.
-- (void)handleIncomingRTP:(NSData *)packet {
-	const uint8_t *rtp = (const uint8_t *)packet.bytes;
-	size_t rtpLen = packet.length;
-
-	if (rtpLen < 12)
+- (void)handleIncomingRTPBytes:(const uint8_t *)rtp length:(size_t)rtpLen {
+	if (!rtp || rtpLen < 12)
 		return;
 
 	uint16_t rtpSeq = ((uint16_t)rtp[2] << 8) | rtp[3];
@@ -887,15 +913,50 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V8";
 	if (rtpLen <= headerLen)
 		return;
 
-	NSData *opusFrame = [NSData dataWithBytes:rtp + headerLen length:rtpLen - headerLen];
+	size_t frameLen = rtpLen - headerLen;
 	if (++_audioFramesIn == 1 || _audioFramesIn % 50 == 0)
 		NSLog(@"TGCall: %u audio frames in, last %lu bytes", _audioFramesIn,
-				(unsigned long)opusFrame.length);
-	
-	[self.audioEngine handleIncomingOpusFrame:opusFrame];
+				(unsigned long)frameLen);
+
+	// Straight from the decrypted buffer into opus_decode. The engine only
+	// reads these bytes, and only inside this call.
+	[self.audioEngine handleIncomingOpusBytes:rtp + headerLen length:frameLen];
 }
 
 
+
+/// The first two bits of a STUN message are zero and the magic cookie sits at
+/// bytes 4..7 - the same test TGCallStun makes, read straight off the
+/// datagram. The media fast path below checks this first: holding a
+/// connectivity check against the call key can succeed by accident, and when
+/// it does the peer's verified media tag is replaced by whichever port sent
+/// the check.
+///
+/// The caller has already established that at least 20 bytes follow `bytes`.
+static inline BOOL TGLooksLikeStun(const uint8_t *bytes) {
+	if ((bytes[0] & 0xC0) != 0)
+		return NO;
+	uint32_t cookie = ((uint32_t)bytes[4] << 24) | ((uint32_t)bytes[5] << 16) |
+					  ((uint32_t)bytes[6] << 8)  |  (uint32_t)bytes[7];
+	return cookie == 0x2112A442u;
+}
+
+/// A packet that opened under the call key proves the tag it came from is the
+/// peer's media port, which is the one to answer on.
+- (void)noteVerifiedMediaFromTag:(uint32_t)senderTag {
+	if (!senderTag || senderTag == self.reflector.localTag)
+		return;
+	if (self.verifiedMediaTag != senderTag){
+		NSLog(@"TGCall: verified media arriving on tag %u (reflector %u), locking verifiedMediaTag",
+				senderTag, (self.currentReflector ?: self.reflector).serverId);
+		self.verifiedMediaTag = senderTag;
+	}
+	self.nominatedSenderTag = senderTag;
+	self.currentSenderTag = senderTag;
+	self.verifiedReflector = self.currentReflector ?: self.reflector;
+	if (self.mediaStateTimer)
+		[self sendMediaStateMessage];
+}
 
 /// Anything that arrives gets held against the call key both ways round: if it
 /// decrypts, the crypto port is right and the packet is real call traffic.
@@ -931,6 +992,39 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V8";
 	// away - which is most of them, and all the interesting ones.
 	size_t declared = ((size_t)bytes[20] << 24) | ((size_t)bytes[21] << 16) |
 					  ((size_t)bytes[22] << 8)  |  (size_t)bytes[23];
+
+	// Media is what arrives fifty to a hundred times a second, and it always
+	// arrives at offset 24. Try it there first, straight off the datagram:
+	// the loop below has to cut an NSData per offset it tries before it can
+	// hand anything to CallStun or the decryptor, and for a call that is four
+	// copies and an NSMutableData of plaintext per packet, every packet, for
+	// the length of the call.
+	if (self.callKey.length && packet.length > 44 && !TGLooksLikeStun(bytes + 24)){
+		size_t available = packet.length - 24;
+		if (declared > 0 && declared <= available)
+			available = declared;
+		if (available <= sizeof(_decryptScratch)){
+			uint32_t mediaSeq = 0;
+			int decSize = TGCallDecryptPacket((const uint8_t *)self.callKey.bytes,
+											  self.outgoing, 0 /* media */,
+											  bytes + 24, available,
+											  _decryptScratch, &mediaSeq);
+			if (decSize > 0){
+				[self noteVerifiedMediaFromTag:senderTag];
+				if (++_mediaPacketsIn == 1 || _mediaPacketsIn % 50 == 0)
+					NSLog(@"TGCall: %u incoming media packets, last %d bytes (seq %08x, offset 24)",
+							_mediaPacketsIn, decSize, mediaSeq);
+				if ([TGCallMessages seqRequiresAck:mediaSeq])
+					[self sendAckForSeq:mediaSeq signaling:NO];
+				if (!self.audioEngine)
+					[self startAudioEngine];
+				[self handleIncomingMediaBytes:_decryptScratch
+										length:(NSUInteger)decSize
+										   seq:mediaSeq];
+				return;
+			}
+		}
+	}
 
 	static const size_t offsets[] = { 24, 16, 20, 0 };
 	for (unsigned i = 0; i < sizeof(offsets) / sizeof(offsets[0]); i++) {
@@ -999,19 +1093,7 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V8";
 											  (uint8_t *)decrypted.mutableBytes, &mediaSeq);
 			if (decSize > 0) {
 				decrypted.length = decSize;
-				if (senderTag && senderTag != self.reflector.localTag) {
-					if (self.verifiedMediaTag != senderTag) {
-						NSLog(@"TGCall: verified media arriving on tag %u (reflector %u), locking verifiedMediaTag",
-								senderTag, (self.currentReflector ?: self.reflector).serverId);
-						self.verifiedMediaTag = senderTag;
-					}
-					self.nominatedSenderTag = senderTag;
-					self.currentSenderTag = senderTag;
-					self.verifiedReflector = self.currentReflector ?: self.reflector;
-					if (self.mediaStateTimer) {
-						[self sendMediaStateMessage];
-					}
-				}
+				[self noteVerifiedMediaFromTag:senderTag];
 				if (++_mediaPacketsIn == 1 || _mediaPacketsIn % 50 == 0)
 					NSLog(@"TGCall: %u incoming media packets, last %d bytes (seq %08x, offset %zu)",
 							_mediaPacketsIn, decSize, mediaSeq, offset);
@@ -1261,6 +1343,7 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V8";
 	self.mediaSeqOut = 0;
 	self.signallingSeq = 0;
 	_mediaPacketsIn = 0;
+	_mediaPacketsParsed = 0;
 	self.establishedAt = nil;
 	self.callId = 0;
 	self.emojis = nil;

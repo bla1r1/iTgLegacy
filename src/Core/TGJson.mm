@@ -1,7 +1,14 @@
 //
-// TGJson.m - High-performance JSON parser & serializer powered by yyjson.
+// TGJson.mm - JSON in through yyjson, out through TGJsonWriter.
+//
+// Reading stays on yyjson: it is the fast part, and the app genuinely needs
+// the NSDictionary tree TDLib's answers become. Writing does not - an
+// outgoing request is built once and sent once, so the yyjson_mut_doc that
+// used to sit between the dictionary and the text was a second tree of
+// allocations for nothing. TGJsonWriter formats straight into one buffer.
 //
 #import "TGJson.h"
+#import "TGJsonWriter.hpp"
 #include "yyjson/yyjson.h"
 
 static id TGConvertVal(yyjson_val *val) {
@@ -98,97 +105,85 @@ id TGJsonParseData(NSData *data, NSError **error) {
 	return TGJsonParse((const char *)data.bytes, data.length, error);
 }
 
-static yyjson_mut_val *TGBuildMutVal(yyjson_mut_doc *doc, id obj) {
-	if (!obj || [obj isKindOfClass:NSNull.class])
-		return yyjson_mut_null(doc);
+/// Writes one Foundation object as JSON. Recursion depth is TDLib's own
+/// nesting - three or four levels - so this needs no guard.
+static void TGWriteValue(TGJsonWriter &w, id obj) {
+	if (!obj || [obj isKindOfClass:NSNull.class]){
+		w.null_value();
+		return;
+	}
 
 	if ([obj isKindOfClass:NSString.class]){
 		NSString *s = (NSString *)obj;
-		return yyjson_mut_strn(doc, s.UTF8String, [s lengthOfBytesUsingEncoding:NSUTF8StringEncoding]);
+		const char *utf8 = s.UTF8String;
+		w.str(utf8, utf8 ? std::strlen(utf8) : 0);
+		return;
 	}
 
 	if ([obj isKindOfClass:NSNumber.class]){
 		NSNumber *n = (NSNumber *)obj;
 		if (CFGetTypeID((__bridge CFTypeRef)n) == CFBooleanGetTypeID()){
-			return yyjson_mut_bool(doc, n.boolValue);
+			w.boolean(n.boolValue);
+			return;
 		}
 		const char *type = n.objCType;
-		if (type[0] == 'f' || type[0] == 'd'){
-			return yyjson_mut_real(doc, n.doubleValue);
-		}
-		return yyjson_mut_sint(doc, n.longLongValue);
+		if (type[0] == 'f' || type[0] == 'd')
+			w.real(n.doubleValue);
+		else
+			w.num((int64_t)n.longLongValue);
+		return;
 	}
 
 	if ([obj isKindOfClass:NSDictionary.class]){
 		NSDictionary *d = (NSDictionary *)obj;
-		yyjson_mut_val *m = yyjson_mut_obj(doc);
+		w.begin_object();
 		for (id k in d){
-			if ([k isKindOfClass:NSString.class]){
-				NSString *ks = (NSString *)k;
-				yyjson_mut_val *kVal = yyjson_mut_strn(doc, ks.UTF8String,
-						[ks lengthOfBytesUsingEncoding:NSUTF8StringEncoding]);
-				yyjson_mut_val *vVal = TGBuildMutVal(doc, d[k]);
-				yyjson_mut_obj_add(m, kVal, vVal);
-			}
+			if (![k isKindOfClass:NSString.class])
+				continue;
+			const char *ks = [(NSString *)k UTF8String];
+			w.key(ks ?: "");
+			TGWriteValue(w, d[k]);
 		}
-		return m;
+		w.end_object();
+		return;
 	}
 
 	if ([obj isKindOfClass:NSArray.class]){
-		NSArray *a = (NSArray *)obj;
-		yyjson_mut_val *arr = yyjson_mut_arr(doc);
-		for (id item in a){
-			yyjson_mut_arr_append(arr, TGBuildMutVal(doc, item));
-		}
-		return arr;
+		w.begin_array();
+		for (id item in (NSArray *)obj)
+			TGWriteValue(w, item);
+		w.end_array();
+		return;
 	}
 
-	return yyjson_mut_null(doc);
+	w.null_value();
 }
 
 NSData *TGJsonSerialize(id obj, NSError **error) {
 	if (!obj)
 		return nil;
 
-	yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
-	yyjson_mut_val *root = TGBuildMutVal(doc, obj);
-	yyjson_mut_doc_set_root(doc, root);
-
-	size_t len = 0;
-	char *json = yyjson_mut_write(doc, 0, &len);
-	yyjson_mut_doc_free(doc);
-
-	if (!json){
+	TGJsonWriter w;
+	TGWriteValue(w, obj);
+	if (!w.size()){
 		if (error)
 			*error = [NSError errorWithDomain:@"TGJsonErrorDomain" code:-3
 									 userInfo:@{NSLocalizedDescriptionKey : @"Serialization failed"}];
 		return nil;
 	}
-
-	NSData *data = [NSData dataWithBytes:json length:len];
-	free(json);
-	return data;
+	return [NSData dataWithBytes:w.c_str() length:w.size()];
 }
 
 NSMutableData *TGJsonSerializeForSend(id obj) {
 	if (!obj)
 		return nil;
 
-	yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
-	yyjson_mut_val *root = TGBuildMutVal(doc, obj);
-	yyjson_mut_doc_set_root(doc, root);
-
-	size_t len = 0;
-	char *json = yyjson_mut_write(doc, 0, &len);
-	yyjson_mut_doc_free(doc);
-
-	if (!json)
+	TGJsonWriter w;
+	TGWriteValue(w, obj);
+	if (!w.size())
 		return nil;
 
-	// Includes the trailing '\0' byte in length for direct td_json_client_send compatibility
-	NSMutableData *data = [NSMutableData dataWithCapacity:len + 1];
-	[data appendBytes:json length:len];
-	[data appendBytes:"\0" length:1];
-	free(json);
-	return data;
+	// The trailing '\0' is part of the length: td_json_client_send takes a C
+	// string, and the outbox hands it these bytes as they are.
+	return [NSMutableData dataWithBytes:w.c_str() length:w.size() + 1];
 }

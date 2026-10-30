@@ -35,6 +35,13 @@ static NSMutableArray<NSData *> *TGIncomingFrames(void) {
 		[TGIncomingFrames() addObject:opusFrame];
 }
 
+- (void)handleIncomingOpusBytes:(const uint8_t *)bytes length:(size_t)length {
+	// The call path uses this one; copy here so a test can still compare the
+	// frame after the packet buffer is gone.
+	if (bytes && length)
+		[TGIncomingFrames() addObject:[NSData dataWithBytes:bytes length:length]];
+}
+
 @end
 
 @implementation TGCallAudioEngine (Testing)

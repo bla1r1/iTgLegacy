@@ -8,7 +8,19 @@
 #import "TGStyle.h"
 #import <CoreText/CoreText.h>
 
-@interface TGBubbleCell ()
+/// How visible the part of a voice note nobody has heard yet is.
+static const CGFloat kWaveUnplayedAlpha = 0.32f;
+
+@interface TGBubbleCell () {
+	CTFrameRef _textFrame;          // the laid-out body text, for hit-testing
+	CGSize     _textFrameSize;      // the box it was laid out in
+	CGSize     _waveSize;           // the box the bars were laid out in
+}
+@property (nonatomic, strong) NSAttributedString *textFrameString;
+@property (nonatomic, strong) CAShapeLayer *waveUnplayedLayer;
+@property (nonatomic, strong) CALayer *wavePlayedClip;
+@property (nonatomic, strong) CAShapeLayer *wavePlayedLayer;
+@property (nonatomic, strong) NSData *waveformPathData;
 @property (nonatomic, strong) AVPlayer *loopPlayer;
 @property (nonatomic, strong) AVPlayerLayer *loopLayer;
 @property (nonatomic, copy) NSString *loopingPath;
@@ -252,25 +264,86 @@
 	return self;
 }
 
-- (NSUInteger)characterIndexAtPoint:(CGPoint)point inLabel:(UILabel *)label {
+/// The frame CoreText laid the label's text out in, kept until the text or
+/// the box changes. A tap used to stand up an NSTextStorage, an
+/// NSLayoutManager and an NSTextContainer - the whole TextKit stack - only to
+/// ask which character was under a finger, and then throw all three away
+/// again; on a 4S that is milliseconds of work per touch, and two touches
+/// inside the same bubble did it twice.
+- (CTFrameRef)layoutFrameForLabel:(UILabel *)label {
 	NSAttributedString *attr = label.attributedText;
-	if (!attr.length) return NSNotFound;
+	CGSize box = label.bounds.size;
+	if (_textFrame && _textFrameString == attr &&
+			CGSizeEqualToSize(_textFrameSize, box))
+		return _textFrame;
 
-	NSTextStorage *storage = [[NSTextStorage alloc] initWithAttributedString:attr];
-	NSLayoutManager *layout = [[NSLayoutManager alloc] init];
-	[storage addLayoutManager:layout];
-	NSTextContainer *container = [[NSTextContainer alloc] initWithSize:label.bounds.size];
-	container.lineFragmentPadding = TGMetricZero;
-	container.lineBreakMode = label.lineBreakMode;
-	container.maximumNumberOfLines = label.numberOfLines;
-	[layout addTextContainer:container];
+	if (_textFrame){
+		CFRelease(_textFrame);
+		_textFrame = NULL;
+	}
+	_textFrameString = nil;
+	_textFrameSize = CGSizeZero;
+	if (!attr.length || box.width <= 0 || box.height <= 0)
+		return NULL;
 
-	NSUInteger glyph = [layout glyphIndexForPoint:point inTextContainer:container];
-	CGRect glyphRect = [layout boundingRectForGlyphRange:NSMakeRange(glyph, 1) inTextContainer:container];
-	if (!CGRectContainsPoint(glyphRect, point))
+	CTFramesetterRef setter = CTFramesetterCreateWithAttributedString(
+			(CFAttributedStringRef)attr);
+	if (!setter)
+		return NULL;
+	CGMutablePathRef path = CGPathCreateMutable();
+	CGPathAddRect(path, NULL, CGRectMake(0, 0, box.width, box.height));
+	_textFrame = CTFramesetterCreateFrame(setter, CFRangeMake(0, 0), path, NULL);
+	CGPathRelease(path);
+	CFRelease(setter);
+
+	if (_textFrame){
+		_textFrameString = attr;
+		_textFrameSize = box;
+	}
+	return _textFrame;
+}
+
+/// Which character sits under `point`, or NSNotFound when the point is past
+/// the end of its line. CoreText answers this directly from the line it
+/// already measured: no objects, no allocation, sub-microsecond.
+- (NSUInteger)characterIndexAtPoint:(CGPoint)point inLabel:(UILabel *)label {
+	CTFrameRef frame = [self layoutFrameForLabel:label];
+	if (!frame)
 		return NSNotFound;
 
-	return [layout characterIndexForGlyphAtIndex:glyph];
+	CFArrayRef lines = CTFrameGetLines(frame);
+	CFIndex count = lines ? CFArrayGetCount(lines) : 0;
+	if (count <= 0)
+		return NSNotFound;
+
+	// CoreText measures from the bottom left of the box it was given; UIKit
+	// hands the touch down from the top left.
+	CGFloat height = label.bounds.size.height;
+	CGPoint flipped = CGPointMake(point.x, height - point.y);
+
+	CGPoint origins[count];
+	CTFrameGetLineOrigins(frame, CFRangeMake(0, count), origins);
+
+	for (CFIndex i = 0; i < count; i++){
+		CTLineRef line = (CTLineRef)CFArrayGetValueAtIndex(lines, i);
+		CGFloat ascent = 0, descent = 0, leading = 0;
+		double width = CTLineGetTypographicBounds(line, &ascent, &descent, &leading);
+		CGFloat top = origins[i].y + ascent;
+		CGFloat bottom = origins[i].y - descent;
+		if (flipped.y > top || flipped.y < bottom)
+			continue;
+		// Past the last glyph of the line is not on any character: tapping
+		// the empty run-off after a link must not open it.
+		if (flipped.x < origins[i].x || flipped.x > origins[i].x + width)
+			return NSNotFound;
+
+		CFIndex index = CTLineGetStringIndexForPosition(line,
+				CGPointMake(flipped.x - origins[i].x, 0));
+		if (index == kCFNotFound || index < 0)
+			return NSNotFound;
+		return (NSUInteger)index;
+	}
+	return NSNotFound;
 }
 
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldReceiveTouch:(UITouch *)touch {
@@ -310,6 +383,56 @@
 - (void)quoteTapped:(UITapGestureRecognizer *)tap {
 	if (tap.state != UIGestureRecognizerStateEnded) return;
 	if (self.onQuoteTapped) self.onQuoteTapped();
+}
+
+#pragma mark - voice waveform
+
+- (void)setWaveform:(NSData *)waveform size:(CGSize)size colour:(UIColor *)colour {
+	if (!self.waveUnplayedLayer){
+		// Two fills of one path. The dim one is the whole waveform; the solid
+		// one is the same path inside a layer that clips, and moving that
+		// layer's edge is the whole of following playback. Before this the
+		// cell asked TGIcons for a fresh bitmap - and built an NSString key
+		// for it - five times a second, which is twenty offscreen contexts
+		// over a ten-second voice note.
+		self.waveUnplayedLayer = [CAShapeLayer layer];
+		self.wavePlayedLayer = [CAShapeLayer layer];
+		self.wavePlayedClip = [CALayer layer];
+		self.wavePlayedClip.masksToBounds = YES;
+		// Without this the clip's edge animates itself over a quarter of a
+		// second every tick, which reads as the bars smearing.
+		self.wavePlayedClip.actions = @{@"bounds"   : [NSNull null],
+										@"position" : [NSNull null]};
+		[self.wavePlayedClip addSublayer:self.wavePlayedLayer];
+		[self.wave.layer addSublayer:self.waveUnplayedLayer];
+		[self.wave.layer addSublayer:self.wavePlayedClip];
+	}
+
+	BOOL sameBars = (self.waveformPathData == waveform ||
+					 [self.waveformPathData isEqualToData:waveform]) &&
+					CGSizeEqualToSize(_waveSize, size);
+	if (!sameBars){
+		UIBezierPath *path = [TGIcons waveformPath:waveform size:size];
+		self.waveUnplayedLayer.path = path.CGPath;
+		self.wavePlayedLayer.path = path.CGPath;
+		self.waveformPathData = waveform;
+		_waveSize = size;
+		self.waveUnplayedLayer.frame = CGRectMake(0, 0, size.width, size.height);
+		self.wavePlayedLayer.frame = self.waveUnplayedLayer.frame;
+	}
+
+	self.waveUnplayedLayer.fillColor =
+			[colour colorWithAlphaComponent:kWaveUnplayedAlpha].CGColor;
+	self.wavePlayedLayer.fillColor = colour.CGColor;
+}
+
+- (void)setWavePlayed:(CGFloat)played {
+	if (!self.wavePlayedClip)
+		return;
+	if (played < 0) played = 0;
+	if (played > 1) played = 1;
+	self.wavePlayedClip.frame = CGRectMake(0, 0, _waveSize.width * played,
+										   _waveSize.height);
 }
 
 #pragma mark - looping GIF
@@ -371,6 +494,8 @@
 
 - (void)dealloc {
 	[self stopLoopingVideo];
+	if (_textFrame)
+		CFRelease(_textFrame);
 }
 
 - (void)resetForReuse {

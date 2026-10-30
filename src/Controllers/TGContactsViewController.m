@@ -9,12 +9,18 @@
 #import "TGAlertSheet.h"
 #import "TGEmptyView.h"
 #import "TGDevShowcase.h"
+#import "TGImageLruCache.h"
+
+/// Avatars kept decoded while the list is open.
+static const NSUInteger kPhotoCacheCap = 50;
 
 
 @interface TGContactsViewController ()
 @property (nonatomic, strong) TGEmptyView *emptyView;
 @property (nonatomic, strong) NSArray *users;
-@property (nonatomic, strong) NSMutableDictionary *photos;   // fileId -> UIImage
+/// Bounded: a long contact list scrolled end to end used to hold every
+/// avatar it had ever decoded, and fifty is more than a screen holds.
+@property (nonatomic, strong) TGImageLruCache *photos;   // fileId -> UIImage
 @property (nonatomic, strong) NSMutableSet *photosRequested;
 /// Who is ticked, while this screen is picking rather than opening.
 @property (nonatomic, strong) NSMutableSet *picked;
@@ -46,7 +52,7 @@
 	}
 	[[TGTheme shared] styleNavigationBar:self.navigationController.navigationBar];
 	self.users = @[];
-	self.photos = [NSMutableDictionary dictionary];
+	self.photos = [[TGImageLruCache alloc] initWithCapacity:kPhotoCacheCap];
 	self.photosRequested = [NSMutableSet set];
 	self.tableView.rowHeight = TGMetricPersonRow;
 	self.tableView.backgroundColor = [[TGTheme shared] listBackgroundColour];

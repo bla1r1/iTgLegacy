@@ -298,69 +298,170 @@ static void TGApplyTransform(NSDictionary *ks, double frame, CGContextRef ctx) {
 		CGContextSetAlpha(ctx, opacity / 100.0f);
 }
 
-static void TGAppendBezier(NSDictionary *ks, double frame, CGMutablePathRef path) {
-	NSArray *value = nil;
+// ── bezier shapes, flattened once at load ───────────────────────────────────
+// A shape's outline is three parallel NSArrays of two-element NSArrays of
+// NSNumbers - vertices, in-tangents, out-tangents. Reading one point meant
+// four objc_msgSends and two NSNumber unboxings, and the render loop did that
+// for every point of every shape of every layer, sixty times a second, off a
+// CADisplayLink. The geometry does not change between frames; only which
+// keyframe is current does. So it is parsed once into flat vectors and cached
+// on the property dictionary, exactly as the scalar properties already are.
+
+struct LottieBezierPath {
+	std::vector<CGPoint> v;
+	std::vector<CGPoint> in;
+	std::vector<CGPoint> out;
+	bool closed = false;
+};
+
+struct LottieBezierFrame {
+	double t = 0.0;
+	std::vector<LottieBezierPath> shapes;
+};
+
+struct LottieBezierSet {
+	/// One entry for a static shape, otherwise one per keyframe in order.
+	std::vector<LottieBezierFrame> frames;
+	bool keyframed = false;
+};
+
+static CGPoint ParseLottiePoint(id raw) {
+	if (![raw isKindOfClass:NSArray.class])
+		return CGPointZero;
+	NSArray *pair = (NSArray *)raw;
+	if (pair.count < 2)
+		return CGPointZero;
+	return CGPointMake([pair[0] doubleValue], [pair[1] doubleValue]);
+}
+
+/// One `{v, i, o, c}` outline into flat vectors. Shapes with fewer than two
+/// vertices draw nothing and are dropped here rather than per frame.
+static bool ParseLottieBezierPath(NSDictionary *shape, LottieBezierPath &out) {
+	if (![shape isKindOfClass:NSDictionary.class])
+		return false;
+	NSArray *v   = shape[@"v"];
+	NSArray *in  = shape[@"i"];
+	NSArray *tan = shape[@"o"];
+	NSUInteger count = [v isKindOfClass:NSArray.class] ? v.count : 0;
+	if (count < 2)
+		return false;
+
+	out.v.resize(count, CGPointZero);
+	out.in.resize(count, CGPointZero);
+	out.out.resize(count, CGPointZero);
+	for (NSUInteger i = 0; i < count; i++){
+		out.v[i] = ParseLottiePoint(v[i]);
+		if ([in isKindOfClass:NSArray.class] && i < in.count)
+			out.in[i] = ParseLottiePoint(in[i]);
+		if ([tan isKindOfClass:NSArray.class] && i < tan.count)
+			out.out[i] = ParseLottiePoint(tan[i]);
+	}
+	out.closed = [shape[@"c"] boolValue];
+	return true;
+}
+
+static void ParseLottieShapeList(id value, std::vector<LottieBezierPath> &out) {
+	if ([value isKindOfClass:NSDictionary.class]){
+		LottieBezierPath path;
+		if (ParseLottieBezierPath((NSDictionary *)value, path))
+			out.push_back(std::move(path));
+		return;
+	}
+	if (![value isKindOfClass:NSArray.class])
+		return;
+	for (id shape in (NSArray *)value){
+		LottieBezierPath path;
+		if (ParseLottieBezierPath(shape, path))
+			out.push_back(std::move(path));
+	}
+}
+
+static LottieBezierSet ParseLottieBezierSet(NSDictionary *ks) {
+	LottieBezierSet set;
 	id k = ks[@"k"];
 
-	if ([k isKindOfClass:NSDictionary.class]){
-		value = @[k];
-	} else if ([k isKindOfClass:NSArray.class] &&
-			   [[k firstObject] isKindOfClass:NSDictionary.class] &&
-			   [[k firstObject] objectForKey:@"t"]){
-		NSDictionary *chosen = [k firstObject];
-		for (NSDictionary *kf in k)
-			if ([kf[@"t"] doubleValue] <= frame)
-				chosen = kf;
-		id s = chosen[@"s"];
-		value = [s isKindOfClass:NSArray.class] ? s : (s ? @[s] : nil);
-	} else if ([k isKindOfClass:NSArray.class]){
-		value = k;
+	BOOL isKeyframeList = [k isKindOfClass:NSArray.class] &&
+			[[k firstObject] isKindOfClass:NSDictionary.class] &&
+			[[k firstObject] objectForKey:@"t"];
+
+	if (isKeyframeList){
+		set.keyframed = true;
+		for (NSDictionary *kf in (NSArray *)k){
+			if (![kf isKindOfClass:NSDictionary.class])
+				continue;
+			LottieBezierFrame entry;
+			entry.t = [kf[@"t"] doubleValue];
+			ParseLottieShapeList(kf[@"s"], entry.shapes);
+			set.frames.push_back(std::move(entry));
+		}
+		if (set.frames.empty())
+			set.frames.push_back(LottieBezierFrame());
+		return set;
 	}
 
-	for (NSDictionary *shape in value){
-		if (![shape isKindOfClass:NSDictionary.class])
-			continue;
+	// A dictionary is one static shape; a plain array is a static list.
+	LottieBezierFrame entry;
+	ParseLottieShapeList(k, entry.shapes);
+	set.frames.push_back(std::move(entry));
+	return set;
+}
 
-		NSArray *v   = shape[@"v"];
-		NSArray *in  = shape[@"i"];
-		NSArray *out = shape[@"o"];
-		size_t count = v.count;
+@interface TGLottieBezierBox : NSObject
+@property (nonatomic, assign) std::shared_ptr<LottieBezierSet> set;
+@end
+@implementation TGLottieBezierBox
+@end
+
+static const char kLottieBezierKey = 0;
+
+static const LottieBezierSet *GetOrParseLottieBezier(NSDictionary *ks) {
+	if (!ks) return nullptr;
+	TGLottieBezierBox *box = objc_getAssociatedObject(ks, &kLottieBezierKey);
+	if (!box){
+		box = [[TGLottieBezierBox alloc] init];
+		box.set = std::make_shared<LottieBezierSet>(ParseLottieBezierSet(ks));
+		objc_setAssociatedObject(ks, &kLottieBezierKey, box,
+				OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+	}
+	return box.set.get();
+}
+
+static void TGAppendBezier(NSDictionary *ks, double frame, CGMutablePathRef path) {
+	const LottieBezierSet *set = GetOrParseLottieBezier(ks);
+	if (!set || set->frames.empty())
+		return;
+
+	// The keyframe in force is the last one that has started. Outlines are
+	// not interpolated here, which is what the dictionary walk did too.
+	const LottieBezierFrame *chosen = &set->frames.front();
+	if (set->keyframed){
+		for (const LottieBezierFrame &candidate : set->frames){
+			if (candidate.t <= frame)
+				chosen = &candidate;
+		}
+	}
+
+	for (const LottieBezierPath &shape : chosen->shapes){
+		size_t count = shape.v.size();
 		if (count < 2)
 			continue;
 
-		std::vector<CGPoint> vPts(count), inPts(count), outPts(count);
-		for (size_t i = 0; i < count; i++){
-			NSArray *vp = v[i];
-			if ([vp isKindOfClass:NSArray.class] && vp.count >= 2){
-				vPts[i] = CGPointMake([vp[0] doubleValue], [vp[1] doubleValue]);
-			}
-			if (i < in.count){
-				NSArray *inp = in[i];
-				if ([inp isKindOfClass:NSArray.class] && inp.count >= 2)
-					inPts[i] = CGPointMake([inp[0] doubleValue], [inp[1] doubleValue]);
-			}
-			if (i < out.count){
-				NSArray *outp = out[i];
-				if ([outp isKindOfClass:NSArray.class] && outp.count >= 2)
-					outPts[i] = CGPointMake([outp[0] doubleValue], [outp[1] doubleValue]);
-			}
-		}
-
-		CGPathMoveToPoint(path, NULL, vPts[0].x, vPts[0].y);
+		CGPathMoveToPoint(path, NULL, shape.v[0].x, shape.v[0].y);
 		for (size_t i = 1; i < count; i++){
 			size_t p = i - 1;
 			CGPathAddCurveToPoint(path, NULL,
-				vPts[p].x + outPts[p].x, vPts[p].y + outPts[p].y,
-				vPts[i].x + inPts[i].x,  vPts[i].y + inPts[i].y,
-				vPts[i].x, vPts[i].y);
+				shape.v[p].x + shape.out[p].x, shape.v[p].y + shape.out[p].y,
+				shape.v[i].x + shape.in[i].x,  shape.v[i].y + shape.in[i].y,
+				shape.v[i].x, shape.v[i].y);
 		}
 
-		if ([shape[@"c"] boolValue]){
+		if (shape.closed){
 			size_t last = count - 1;
 			CGPathAddCurveToPoint(path, NULL,
-				vPts[last].x + outPts[last].x, vPts[last].y + outPts[last].y,
-				vPts[0].x + inPts[0].x,        vPts[0].y + inPts[0].y,
-				vPts[0].x, vPts[0].y);
+				shape.v[last].x + shape.out[last].x,
+				shape.v[last].y + shape.out[last].y,
+				shape.v[0].x + shape.in[0].x, shape.v[0].y + shape.in[0].y,
+				shape.v[0].x, shape.v[0].y);
 			CGPathCloseSubpath(path);
 		}
 	}

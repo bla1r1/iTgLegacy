@@ -692,8 +692,9 @@ static NSString *TGClockText(NSTimeInterval position, NSTimeInterval duration) {
 	self.table.scrollIndicatorInsets = insets;
 }
 
-/// Five ticks a second is enough for the eye and cheap enough for a 4S: the
-/// waveform is redrawn each tick, and redrawing it sixty times would not be.
+/// Five ticks a second is enough for the eye, and a tick now costs one layer
+/// frame per playing row - the waveform itself is not redrawn (TGBubbleCell
+/// -setWavePlayed:).
 - (void)startPlaybackTimer {
 	[self.playbackTimer invalidate];
 	self.playbackTimer = [NSTimer scheduledTimerWithTimeInterval:0.2
@@ -747,10 +748,7 @@ static NSString *TGClockText(NSTimeInterval position, NSTimeInterval duration) {
 		TGBubbleCell *bubble = (TGBubbleCell *)cell;
 		if (bubble.voiceMessageId != self.playingMessageId || bubble.wave.hidden)
 			continue;
-		bubble.wave.image = [TGIcons waveform:bubble.waveformData
-										 size:bubble.wave.bounds.size
-									   played:played
-									   colour:[[TGTheme shared] accentColour]];
+		[bubble setWavePlayed:played];
 	}
 }
 

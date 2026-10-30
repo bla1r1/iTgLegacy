@@ -3,6 +3,7 @@
 // for the emoji / sticker / GIF panel.
 //
 #import "TGClientInternal.h"
+#import "TGStickerPack.h"
 
 /// One sticker as the panel wants it: what to send, and what to draw in the
 /// grid. The thumbnail is drawn only when it is a still picture; a .tgs or
@@ -34,16 +35,11 @@ NSDictionary *TGStickerInfo(NSDictionary *sticker) {
 	};
 }
 
+/// The panel's sticker rows, held as one flat POD buffer rather than a
+/// dictionary per sticker - TGStickerPack is itself an NSArray, so nothing
+/// downstream changes. See TGStickerPack.h for what that costs and saves.
 static NSArray *TGStickerList(NSArray *stickers) {
-	NSMutableArray *out = [NSMutableArray array];
-	if (![stickers isKindOfClass:NSArray.class])
-		return out;
-	for (NSDictionary *sticker in stickers){
-		NSDictionary *info = TGStickerInfo(sticker);
-		if (info)
-			[out addObject:info];
-	}
-	return out;
+	return [TGStickerPack packWithTDLibStickers:stickers];
 }
 
 /// One GIF as the panel wants it. "minithumbnail" is a tiny JPEG carried

@@ -11,8 +11,7 @@ static TGClient *F(void) {
 	TGClient *c = TGClient.shared;
 	// Only the waiters and the outbox matter here; the chat tables belong
 	// to the dialogs suite and a wipe here would be their loss.
-	[c.fileWaiters removeAllObjects];
-	[c.fileWaiterPriorities removeAllObjects];
+	[c removeAllFileWaiters];
 	return c;
 }
 
@@ -106,27 +105,38 @@ static NSDictionary *requestMentioning(TGClient *c, NSString *fragment){
 - (void)testSweep_KeepsARecordWithLiveWaiters {
 	TGClient *c = F();
 	const NSInteger id = 875;
-	[c.fileWaiters setObject:[NSMutableArray
-			arrayWithArray:@[ @{ @"cb" : [NSNull null], @"expired" : @NO } ]]
-					 forKey:@(id)];
+	[c downloadFile:id completion:^(NSString *path){ (void)path; }];
 	[c sweepFileWaiters:id];
-	@synchronized(c.fileWaiters){
-		XCTAssertNotNil(c.fileWaiters[@(id)],
-			@"a live waiter keeps the record - late updateFile is still owed");
-	}
+	XCTAssertTrue([c hasFileWaiterRecord:id],
+		@"a live waiter keeps the record - late updateFile is still owed");
 }
 
 - (void)testSweep_RetiresFullyExpiredRecords {
 	TGClient *c = F();
 	const NSInteger id = 876;
-	[c.fileWaiters setObject:[NSMutableArray
-			arrayWithArray:@[ @{ @"cb" : [NSNull null], @"expired" : @YES } ]]
-					 forKey:@(id)];
+	[c downloadFile:id completion:^(NSString *path){ (void)path; }];
+	[c expireFileWaiters:id];
 	[c sweepFileWaiters:id];
-	@synchronized(c.fileWaiters){
-		XCTAssertNil(c.fileWaiters[@(id)],
-			@"a record whose waiters have all been told nil gets retired");
-	}
+	XCTAssertFalse([c hasFileWaiterRecord:id],
+		@"a record whose waiters have all been told nil gets retired");
+}
+
+/// The table itself: one record per file, one waiter appended per caller,
+/// and the standing priority raised rather than replaced.
+- (void)testWaiterTable_CountsWaitersAndKeepsTheHighestPriority {
+	TGClient *c = F();
+	const NSInteger id = 877;
+	[c downloadFile:id priority:1 completion:^(NSString *path){ (void)path; }];
+	[c downloadFile:id priority:9 completion:^(NSString *path){ (void)path; }];
+	[c downloadFile:id priority:4 completion:^(NSString *path){ (void)path; }];
+	XCTAssertEqual([c fileWaiterCount:id], (NSUInteger)3,
+		@"each caller is its own waiter on the one record");
+	XCTAssertEqual([c fileWaiterPriority:id], (NSInteger)9,
+		@"a lower rank afterwards must not demote the request");
+
+	[c releaseFileWaiters:id];
+	XCTAssertFalse([c hasFileWaiterRecord:id]);
+	XCTAssertEqual([c fileWaiterCount:id], (NSUInteger)0);
 }
 
 @end

@@ -1,5 +1,9 @@
 #import "TGClientInternal.h"
 
+#include <mutex>
+#include <unordered_map>
+#include <vector>
+
 // Note: this file is shared with the host test suite (tests/Makefile compiles
 // it into TGClientTests); nothing device-only lives here.
 
@@ -21,28 +25,46 @@ static const NSTimeInterval TGFileWaiterSweepOffset = 15.0 * 60.0;
 /// notified nobody, ever).
 typedef void (^TGFileWaiterBlock)(NSString *);
 
-static NSMutableDictionary *TGWaiter(TGFileWaiterBlock cb){
-	return [NSMutableDictionary dictionaryWithDictionary:
-			@{ @"cb" : (cb ? (id)cb : (id)[NSNull null]), @"expired" : @NO }];
-}
+namespace {
+
+struct TGFileWaiter {
+	TGFileWaiterBlock callback;
+	bool expired;
+};
+
+// Every record used to be an NSNumber key onto an NSMutableArray of
+// NSMutableDictionaries holding a block and a boxed BOOL - five objects per
+// waiter - under @synchronized on the dictionary itself, which is a global
+// recursive lock keyed by object identity. A download reaches this from the
+// TDLib receive thread, the watchdog from the main queue, and avatars arrive
+// in bursts of dozens. Flat vectors behind one mutex of our own: no boxing,
+// no object identity lookup, and the lock is visible in the code that holds
+// it.
+//
+// ponytail: one mutex for the whole table, not one per file. A few hundred
+// file ids and three threads never contend; per-id locking if that changes.
+std::mutex gWaitersMutex;
+std::unordered_map<int32_t, std::vector<TGFileWaiter>> gWaiters;
+std::unordered_map<int32_t, int32_t> gPriorities;
+
+}  // namespace
 
 /// Delivers a path (or a fatal nil - an error answer) to every waiter of the
 /// file and retires the record.
 - (void)notifyFileWaiters:(NSInteger)fileId path:(NSString *)path {
 	NSMutableArray *callbacks = nil;
-	@synchronized(self.fileWaiters){
-		NSNumber *fid = @(fileId);
-		NSArray *waiters = self.fileWaiters[fid];
-		if (!waiters)
+	{
+		std::lock_guard<std::mutex> lock(gWaitersMutex);
+		auto it = gWaiters.find((int32_t)fileId);
+		if (it == gWaiters.end())
 			return;
-		callbacks = [NSMutableArray array];
-		for (NSDictionary *waiter in waiters){
-			id cb = waiter[@"cb"];
-			if (cb != [NSNull null] && cb)
-				[callbacks addObject:cb];
+		callbacks = [NSMutableArray arrayWithCapacity:it->second.size()];
+		for (const TGFileWaiter &waiter : it->second){
+			if (waiter.callback)
+				[callbacks addObject:waiter.callback];
 		}
-		[self.fileWaiters removeObjectForKey:fid];
-		[self.fileWaiterPriorities removeObjectForKey:fid];
+		gWaiters.erase(it);
+		gPriorities.erase((int32_t)fileId);
 	}
 	if (!callbacks.count)
 		return;
@@ -61,17 +83,17 @@ static NSMutableDictionary *TGWaiter(TGFileWaiterBlock cb){
 /// download itself keeps going: its late updateFile still calls callbacks.
 - (void)expireFileWaiters:(NSInteger)fileId {
 	NSMutableArray *callbacks = [NSMutableArray array];
-	@synchronized(self.fileWaiters){
-		NSArray *waiters = self.fileWaiters[@(fileId)];
-		if (!waiters)
+	{
+		std::lock_guard<std::mutex> lock(gWaitersMutex);
+		auto it = gWaiters.find((int32_t)fileId);
+		if (it == gWaiters.end())
 			return;
-		for (NSMutableDictionary *waiter in waiters){
-			if ([waiter[@"expired"] boolValue])
+		for (TGFileWaiter &waiter : it->second){
+			if (waiter.expired)
 				continue;
-			waiter[@"expired"] = @YES;
-			id cb = waiter[@"cb"];
-			if (cb != [NSNull null] && cb)
-				[callbacks addObject:cb];
+			waiter.expired = true;
+			if (waiter.callback)
+				[callbacks addObject:waiter.callback];
 		}
 	}
 	if (!callbacks.count)
@@ -88,18 +110,47 @@ static NSMutableDictionary *TGWaiter(TGFileWaiterBlock cb){
 /// have long since been served nil. A fresh (unexpired) waiter keeps the
 /// record - its own watchdog will expire it and schedule another sweep.
 - (void)sweepFileWaiters:(NSInteger)fileId {
-	@synchronized(self.fileWaiters){
-		NSNumber *fid = @(fileId);
-		NSArray *waiters = self.fileWaiters[fid];
-		if (!waiters)
-			return;
-		for (NSDictionary *waiter in waiters){
-			if (![waiter[@"expired"] boolValue])
-				return;   // a live waiter; its sweep comes later
-		}
-		[self.fileWaiters removeObjectForKey:fid];
-		[self.fileWaiterPriorities removeObjectForKey:fid];
+	std::lock_guard<std::mutex> lock(gWaitersMutex);
+	auto it = gWaiters.find((int32_t)fileId);
+	if (it == gWaiters.end())
+		return;
+	for (const TGFileWaiter &waiter : it->second){
+		if (!waiter.expired)
+			return;   // a live waiter; its sweep comes later
 	}
+	gWaiters.erase(it);
+	gPriorities.erase((int32_t)fileId);
+}
+
+/// Drops the record outright - what a cancelled download leaves behind.
+- (void)releaseFileWaiters:(NSInteger)fileId {
+	std::lock_guard<std::mutex> lock(gWaitersMutex);
+	gWaiters.erase((int32_t)fileId);
+	gPriorities.erase((int32_t)fileId);
+}
+
+- (void)removeAllFileWaiters {
+	std::lock_guard<std::mutex> lock(gWaitersMutex);
+	gWaiters.clear();
+	gPriorities.clear();
+}
+
+/// How many waiters a file still has. Zero means no record at all.
+- (NSUInteger)fileWaiterCount:(NSInteger)fileId {
+	std::lock_guard<std::mutex> lock(gWaitersMutex);
+	auto it = gWaiters.find((int32_t)fileId);
+	return (it == gWaiters.end()) ? 0 : it->second.size();
+}
+
+- (BOOL)hasFileWaiterRecord:(NSInteger)fileId {
+	std::lock_guard<std::mutex> lock(gWaitersMutex);
+	return gWaiters.find((int32_t)fileId) != gWaiters.end();
+}
+
+- (NSInteger)fileWaiterPriority:(NSInteger)fileId {
+	std::lock_guard<std::mutex> lock(gWaitersMutex);
+	auto it = gPriorities.find((int32_t)fileId);
+	return (it == gPriorities.end()) ? 0 : it->second;
 }
 
 - (void)downloadFile:(NSInteger)fileId
@@ -114,20 +165,22 @@ static NSMutableDictionary *TGWaiter(TGFileWaiterBlock cb){
 	BOOL sendRequest = NO;
 	BOOL armWatchdog = NO;
 	NSInteger storedPriority = 0;
-	@synchronized(self.fileWaiters){
-		NSMutableArray *waiters = self.fileWaiters[fid];
-		if (!waiters){
-			waiters = [NSMutableArray array];
-			self.fileWaiters[fid] = waiters;
+	{
+		std::lock_guard<std::mutex> lock(gWaitersMutex);
+		int32_t key = (int32_t)fileId;
+		auto it = gWaiters.find(key);
+		if (it == gWaiters.end()){
+			it = gWaiters.emplace(key, std::vector<TGFileWaiter>()).first;
 			sendRequest = YES;
 			armWatchdog = YES;
 			storedPriority = priority;
-			self.fileWaiterPriorities[fid] = @(priority);
+			gPriorities[key] = (int32_t)priority;
 		} else {
-			storedPriority = [self.fileWaiterPriorities[fid] integerValue];
+			auto stored = gPriorities.find(key);
+			storedPriority = (stored == gPriorities.end()) ? 0 : stored->second;
 			BOOL allExpired = YES;
-			for (NSDictionary *waiter in waiters){
-				if (![waiter[@"expired"] boolValue]){
+			for (const TGFileWaiter &waiter : it->second){
+				if (!waiter.expired){
 					allExpired = NO;
 					break;
 				}
@@ -137,19 +190,23 @@ static NSMutableDictionary *TGWaiter(TGFileWaiterBlock cb){
 			// avatar overtakes a grid of photos (B2).
 			if (priority > storedPriority){
 				storedPriority = priority;
-				self.fileWaiterPriorities[fid] = @(priority);
+				gPriorities[key] = (int32_t)priority;
 				sendRequest = YES;
 			}
 			// A retry after every waiter expired re-arms the watchdog - the
 			// original timer already fired and cannot expire the newcomer.
 			armWatchdog = allExpired;
 		}
-		if (completion)
-			[waiters addObject:TGWaiter(completion)];
+		if (completion){
+			TGFileWaiter waiter;
+			waiter.callback = completion;
+			waiter.expired = false;
+			it->second.push_back(waiter);
+		}
 	}
 
 	if (sendRequest){
-		__weak typeof(self) weakSelf = self;
+		__weak __typeof__(self) weakSelf = self;
 		[self request:@{
 			@"@type"       : @"downloadFile",
 			@"file_id"     : fid,
@@ -176,7 +233,7 @@ static NSMutableDictionary *TGWaiter(TGFileWaiterBlock cb){
 	// a fresh waiter lands on a record whose waiters had all expired: the
 	// original timer already fired and cannot expire the newcomer.
 	if (armWatchdog){
-		__weak typeof(self) weakSelf = self;
+		__weak __typeof__(self) weakSelf = self;
 		dispatch_after(dispatch_time(DISPATCH_TIME_NOW,
 				(int64_t)(TGFileWaiterTimeoutSeconds * NSEC_PER_SEC)),
 				dispatch_get_main_queue(), ^{

@@ -25,6 +25,11 @@
 /// Pass an incoming Opus audio frame to be decoded and played through the speaker/earpiece.
 - (void)handleIncomingOpusFrame:(NSData *)opusFrame;
 
+/// The same, straight off the decrypted packet buffer. The call path reaches
+/// this 50 times a second and an NSData per frame is an allocation it does
+/// not need: the bytes are only read, and only here.
+- (void)handleIncomingOpusBytes:(const uint8_t *)bytes length:(size_t)length;
+
 @end
 
 #endif

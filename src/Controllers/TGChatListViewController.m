@@ -3,6 +3,7 @@
 #import "TGStyle.h"
 #import "TGAlertSheet.h"
 #import "TGDevShowcase.h"
+#import "TGFastDate.h"
 
 // Height of the folder pill strip above the chat list (official-style tabs).
 static const CGFloat kFolderTabRow = TGMetricFolderTabRow;
@@ -706,22 +707,12 @@ static const CGFloat kRowGlyph     = 28.0f;
 
 /// Today shows the time, this week the weekday, older the date - as clients do.
 static NSString *TGChatDate(NSTimeInterval unix) {
-	if (unix <= 0)
+	char buf[TGFastDateBufferSize];
+	size_t len = TGFastChatDate((time_t)unix, time(NULL), buf, sizeof(buf));
+	if (!len)
 		return @"";
-
-	NSDate *date = [NSDate dateWithTimeIntervalSince1970:unix];
-	NSTimeInterval age = -[date timeIntervalSinceNow];
-
-	static NSDateFormatter *time = nil, *weekday = nil, *full = nil;
-	if (!time){
-		time = [[NSDateFormatter alloc] init];    [time setDateFormat:@"HH:mm"];
-		weekday = [[NSDateFormatter alloc] init]; [weekday setDateFormat:@"EEE"];
-		full = [[NSDateFormatter alloc] init];    [full setDateFormat:@"dd.MM.yy"];
-	}
-
-	if (age < 24 * 3600)     return [time stringFromDate:date];
-	if (age < 7 * 24 * 3600) return [weekday stringFromDate:date];
-	return [full stringFromDate:date];
+	return [[NSString alloc] initWithBytes:buf length:len
+								  encoding:NSASCIIStringEncoding];
 }
 
 /// Saved Messages has a row of its own above the list, so leaving it among the

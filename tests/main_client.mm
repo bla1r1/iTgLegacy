@@ -22,6 +22,7 @@
 #import "TGMessageStreamStoreTests.m"
 #import "TGThemeFileTests.m"
 #import "TGP0MigrationTests.mm"
+#import "TGP1MigrationTests.mm"
 
 int main(int argc, char *argv[]) {
 	@autoreleasepool {

@@ -40,7 +40,7 @@ NSString *const TGChatActionBarChangedNotification = @"TGChatActionBarChangedNot
 		s = [[TGClient alloc] init];
 		s.chatsById = [NSMutableDictionary dictionary];
 		s.usersById = [NSMutableDictionary dictionary];
-		s.rawUsersById = [NSMutableDictionary dictionary];
+		s.rawUsersById = [[TGObjectLruCache alloc] initWithCapacity:TGRawUserCacheCap];
 		s.userPhotosById = [NSMutableDictionary dictionary];
 		s.forumSupergroups = [NSMutableDictionary dictionary];
 		s.archivedChats = @[];
@@ -48,8 +48,6 @@ NSString *const TGChatActionBarChangedNotification = @"TGChatActionBarChangedNot
 		s.chats = @[];
 		s.outbox = [NSMutableArray array];
 		s.pendingRequests = [NSMutableDictionary dictionary];
-		s.fileWaiters = [NSMutableDictionary dictionary];
-		s.fileWaiterPriorities = [NSMutableDictionary dictionary];
 		s.outboxLock = [[NSLock alloc] init];
 		s.updateCoalescer = [[TGUpdateCoalescer alloc] initWithIntervalMs:100];
 		__weak TGClient *weakClient = s;
@@ -318,7 +316,7 @@ NSDictionary *TGFormattedText(NSString *text) {
 		NSDictionary *u = obj[@"user"];
 		if (u[@"id"]){
 			if (!self.rawUsersById)
-				self.rawUsersById = [NSMutableDictionary dictionary];
+				self.rawUsersById = [[TGObjectLruCache alloc] initWithCapacity:TGRawUserCacheCap];
 			self.rawUsersById[u[@"id"]] = u;
 		}
 		NSString *name = [[NSString stringWithFormat:@"%@ %@",

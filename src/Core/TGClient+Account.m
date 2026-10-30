@@ -325,7 +325,7 @@ static NSArray *TGPacksFrom(NSDictionary *target) {
 	[self request:@{@"@type" : @"getUser", @"user_id" : @(userId)}
 	   completion:^(NSDictionary *user){
 		if ([user[@"@type"] isEqualToString:@"user"]){
-			if (!self.rawUsersById) self.rawUsersById = [NSMutableDictionary dictionary];
+			if (!self.rawUsersById) self.rawUsersById = [[TGObjectLruCache alloc] initWithCapacity:TGRawUserCacheCap];
 			self.rawUsersById[@(userId)] = user;
 		}
 		// The phrase table now lives in TGStatusText alongside the network
@@ -886,7 +886,7 @@ static NSArray *TGPacksFrom(NSDictionary *target) {
 	[self request:@{@"@type" : @"getUser", @"user_id" : @(userId)}
 	   completion:^(NSDictionary *u){
 		if ([u[@"@type"] isEqualToString:@"user"]){
-			if (!self.rawUsersById) self.rawUsersById = [NSMutableDictionary dictionary];
+			if (!self.rawUsersById) self.rawUsersById = [[TGObjectLruCache alloc] initWithCapacity:TGRawUserCacheCap];
 			self.rawUsersById[@(userId)] = u;
 		}
 		if (completion) completion([u[@"@type"] isEqualToString:@"user"] ? u : nil);

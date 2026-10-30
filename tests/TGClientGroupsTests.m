@@ -16,8 +16,7 @@ static TGClient *G(void) {
 	TGClient *c = TGClient.shared;
 	[c.outbox removeAllObjects];
 	[c.pendingRequests removeAllObjects];
-	[c.fileWaiters removeAllObjects];
-	[c.fileWaiterPriorities removeAllObjects];
+	[c removeAllFileWaiters];
 	c.me = @{@"id" : @(1001)};
 	return c;
 }
@@ -428,14 +427,14 @@ static void answerG(TGClient *c, NSDictionary *answer) {
 	TGClient *c = G();
 	__block BOOL served = NO;
 	[c downloadFile:42 completion:^(NSString *path){ served = YES; }];
-	XCTAssertNotNil(c.fileWaiters[@(42)], @"the waiter must exist to be released");
+	XCTAssertTrue([c hasFileWaiterRecord:42], @"the waiter must exist to be released");
 
 	[c cancelDownloadOfFile:42 onlyIfPending:NO];
 	NSDictionary *r = lastG(c, @"cancelDownloadFile");
 	XCTAssertEqual([r[@"file_id"] integerValue], (NSInteger)42);
 	XCTAssertFalse([r[@"only_if_pending"] boolValue]);
-	XCTAssertNil(c.fileWaiters[@(42)]);
-	XCTAssertNil(c.fileWaiterPriorities[@(42)]);
+	XCTAssertFalse([c hasFileWaiterRecord:42]);
+	XCTAssertEqual([c fileWaiterPriority:42], (NSInteger)0);
 	(void)served;
 }
 

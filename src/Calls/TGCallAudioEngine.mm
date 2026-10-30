@@ -201,12 +201,17 @@ static OSStatus TGRecordCallback(void *inRefCon,
 }
 
 - (void)handleIncomingOpusFrame:(NSData *)opusFrame {
-	if (!_running || !_decoder || opusFrame.length == 0)
+	[self handleIncomingOpusBytes:(const uint8_t *)opusFrame.bytes
+						   length:opusFrame.length];
+}
+
+- (void)handleIncomingOpusBytes:(const uint8_t *)bytes length:(size_t)length {
+	if (!_running || !_decoder || !bytes || length == 0)
 		return;
 
 	int16_t pcmBuffer[5760];
-	int decodedSamples = opus_decode(_decoder, (const unsigned char *)opusFrame.bytes,
-									 (opus_int32)opusFrame.length, pcmBuffer,
+	int decodedSamples = opus_decode(_decoder, (const unsigned char *)bytes,
+									 (opus_int32)length, pcmBuffer,
 									 5760, 0);
 	if (decodedSamples <= 0)
 		return;

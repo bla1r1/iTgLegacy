@@ -20,7 +20,9 @@
 @property (nonatomic, readonly) uint16_t port;
 @property (nonatomic, assign) uint32_t serverId;
 
-/// Main queue, for every datagram that arrives.
+/// Called on the reflector's own reader thread, for every datagram that
+/// arrives. The NSData is a view over the reader's buffer and is valid only
+/// for the length of the call: copy it if you need to keep it.
 @property (nonatomic, copy) void (^onPacket)(NSData *payload);
 
 - (BOOL)start;

@@ -172,14 +172,23 @@
 		   (struct sockaddr *)&_server, sizeof(_server));
 }
 
+/// The reader thread. Its own thread rather than the main queue, for the whole
+/// life of the socket: a call delivers fifty to a hundred datagrams a second,
+/// each of which has to be parsed, decrypted and decoded, and doing any of
+/// that between runloop turns is what froze the interface during a call.
+/// Everything downstream of onPacket - TGCall's slice parsing, the Opus
+/// decode, the ring buffer the audio unit reads - runs here too, so the main
+/// thread does no per-packet work at all.
 - (void)readLoop {
+	// One buffer for the life of the thread. The packet handed to onPacket is
+	// a view over it and is only read inside the call, so nothing is copied.
 	uint8_t buffer[2048];
+	uint32_t received = 0;
 	while (self.socketHandle >= 0){
 		ssize_t got = recv(self.socketHandle, buffer, sizeof(buffer), 0);
 		if (got <= 0)
 			break;
 
-		NSData *packet = [NSData dataWithBytes:buffer length:got];
 		// A relayed packet carries the sender's four bytes right after the
 		// sixteen-byte tag; that is the address to answer.
 		if (got > 20){
@@ -189,11 +198,18 @@
 				self.observedTag = sender;
 		}
 
-		// onPacket is called directly on the reader thread to avoid stalling the
-		// main runloop at 50-100 Hz. Callers in TGCall.mm handle thread safety.
-		NSLog(@"TGCallReflector: %ld bytes in", (long)got);
-		if (self.onPacket)
+		// A line per packet floods syslog at this rate, and syslog answers by
+		// dropping lines - which costs exactly the ones worth reading.
+		if (++received == 1 || received % 250 == 0)
+			NSLog(@"TGCallReflector: %u packets in, last %ld bytes",
+					received, (long)got);
+
+		if (self.onPacket){
+			NSData *packet = [NSData dataWithBytesNoCopy:buffer
+												  length:got
+											freeWhenDone:NO];
 			self.onPacket(packet);
+		}
 	}
 }
 

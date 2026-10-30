@@ -14,6 +14,126 @@
 #define rgb TGThemeRGB
 
 
+// ── direct-blit texture tiles ────────────────────────────────────────────────
+// A material tile is a per-pixel formula, and the four of them used to express
+// that as 256 to 4096 separate CGContextFillRect calls on a scaled context.
+// Each of those is a state read, a path, a clip test and a blend set up by
+// CoreGraphics for one or four pixels, and a theme change ran all four: on a
+// 4S that is a visible freeze at the moment the colours swap. The formula
+// writes straight into a pixel buffer instead, and one CGImageCreate hands it
+// over.
+//
+// 0xAARRGGBB in memory under kCGBitmapByteOrder32Little, alpha skipped: the
+// tiles are opaque, so the top byte is never read.
+typedef struct {
+	uint32_t *pixels;
+	int       w, h;      // in pixels, not points
+	CGFloat   scale;
+} TGTileCanvas;
+
+static TGTileCanvas TGTileBegin(CGFloat width, CGFloat height, CGFloat scale) {
+	TGTileCanvas canvas;
+	canvas.scale  = scale > 0 ? scale : 1.0f;
+	canvas.w      = (int)lrintf((float)(width  * canvas.scale));
+	canvas.h      = (int)lrintf((float)(height * canvas.scale));
+	if (canvas.w < 1) canvas.w = 1;
+	if (canvas.h < 1) canvas.h = 1;
+	canvas.pixels = (uint32_t *)malloc((size_t)canvas.w * canvas.h * sizeof(uint32_t));
+	return canvas;
+}
+
+static inline uint32_t TGTilePack(CGFloat r, CGFloat g, CGFloat b) {
+	uint32_t ri = (uint32_t)lrintf((float)(r * 255.0f));
+	uint32_t gi = (uint32_t)lrintf((float)(g * 255.0f));
+	uint32_t bi = (uint32_t)lrintf((float)(b * 255.0f));
+	if (ri > 255) ri = 255;
+	if (gi > 255) gi = 255;
+	if (bi > 255) bi = 255;
+	return 0xFF000000u | (ri << 16) | (gi << 8) | bi;
+}
+
+static void TGTileFillAll(TGTileCanvas *canvas, CGFloat r, CGFloat g, CGFloat b) {
+	if (!canvas->pixels) return;
+	uint32_t packed = TGTilePack(r, g, b);
+	size_t count = (size_t)canvas->w * canvas->h;
+	for (size_t i = 0; i < count; i++)
+		canvas->pixels[i] = packed;
+}
+
+/// Source-over blend of one colour into the point-space rect (x, y, w, h) -
+/// the same thing CGContextFillRect did over an opaque backing.
+static void TGTileBlend(TGTileCanvas *canvas, CGFloat x, CGFloat y,
+						CGFloat w, CGFloat h,
+						CGFloat r, CGFloat g, CGFloat b, CGFloat a) {
+	if (!canvas->pixels || a <= 0.0f || w <= 0.0f || h <= 0.0f)
+		return;
+	int x0 = (int)lrintf((float)(x * canvas->scale));
+	int y0 = (int)lrintf((float)(y * canvas->scale));
+	int x1 = (int)lrintf((float)((x + w) * canvas->scale));
+	int y1 = (int)lrintf((float)((y + h) * canvas->scale));
+	if (x0 < 0) x0 = 0;
+	if (y0 < 0) y0 = 0;
+	if (x1 > canvas->w) x1 = canvas->w;
+	if (y1 > canvas->h) y1 = canvas->h;
+
+	if (a >= 1.0f){
+		uint32_t packed = TGTilePack(r, g, b);
+		for (int py = y0; py < y1; py++){
+			uint32_t *row = canvas->pixels + (size_t)py * canvas->w;
+			for (int px = x0; px < x1; px++)
+				row[px] = packed;
+		}
+		return;
+	}
+
+	uint32_t sr = (uint32_t)lrintf((float)(r * 255.0f));
+	uint32_t sg = (uint32_t)lrintf((float)(g * 255.0f));
+	uint32_t sb = (uint32_t)lrintf((float)(b * 255.0f));
+	uint32_t alpha = (uint32_t)lrintf((float)(a * 255.0f));
+	uint32_t inverse = 255 - alpha;
+	for (int py = y0; py < y1; py++){
+		uint32_t *row = canvas->pixels + (size_t)py * canvas->w;
+		for (int px = x0; px < x1; px++){
+			uint32_t dst = row[px];
+			uint32_t dr = (dst >> 16) & 0xFF;
+			uint32_t dg = (dst >> 8)  & 0xFF;
+			uint32_t db =  dst        & 0xFF;
+			row[px] = 0xFF000000u
+					| ((((sr * alpha + dr * inverse) / 255) & 0xFF) << 16)
+					| ((((sg * alpha + dg * inverse) / 255) & 0xFF) << 8)
+					|  (((sb * alpha + db * inverse) / 255) & 0xFF);
+		}
+	}
+}
+
+static void TGTileReleasePixels(void *info, const void *data, size_t size) {
+	free((void *)data);
+}
+
+/// Hands the buffer to CoreGraphics, which frees it when the image goes.
+static UIImage *TGTileEnd(TGTileCanvas *canvas) {
+	if (!canvas->pixels)
+		return nil;
+	CGDataProviderRef provider = CGDataProviderCreateWithData(NULL, canvas->pixels,
+			(size_t)canvas->w * canvas->h * sizeof(uint32_t), TGTileReleasePixels);
+	CGColorSpaceRef space = CGColorSpaceCreateDeviceRGB();
+	CGImageRef cgImage = CGImageCreate(canvas->w, canvas->h, 8, 32,
+			(size_t)canvas->w * sizeof(uint32_t), space,
+			kCGBitmapByteOrder32Little | kCGImageAlphaNoneSkipFirst,
+			provider, NULL, false, kCGRenderingIntentDefault);
+	CGColorSpaceRelease(space);
+	CGDataProviderRelease(provider);
+	canvas->pixels = NULL;
+	if (!cgImage)
+		return nil;
+
+	UIImage *image = [UIImage imageWithCGImage:cgImage scale:canvas->scale
+								   orientation:UIImageOrientationUp];
+	CGImageRelease(cgImage);
+	return image;
+}
+
+
 static const CGFloat kSkeuoCapInset    = TGMetricPadTiny;
 static const CGFloat kSkeuoRimInset    = 0.75f;
 static const CGFloat kSkeuoThumbPad    = TGMetricPadTiny;
@@ -204,59 +324,44 @@ static const CGFloat kSwitchTextY      = 10.0f;
 
 + (UIImage *)skeuomorphicPaperGrainPattern {
 	CGFloat width = 16.0f, height = 16.0f;
-	CGFloat scale = [UIScreen mainScreen].scale;
-	UIGraphicsBeginImageContextWithOptions(CGSizeMake(width, height), YES, scale);
-	CGContextRef ctx = UIGraphicsGetCurrentContext();
+	TGTileCanvas canvas = TGTileBegin(width, height, [UIScreen mainScreen].scale);
 
-	TGTheme *theme = [TGTheme shared];
-	if (theme.isDarkStyle) {
-		CGContextSetRGBFillColor(ctx, 0.11f, 0.12f, 0.14f, 1.0f);
-	} else {
-		CGContextSetRGBFillColor(ctx, 0.92f, 0.93f, 0.94f, 1.0f);
-	}
-	CGContextFillRect(ctx, CGRectMake(0, 0, width, height));
+	BOOL dark = [TGTheme shared].isDarkStyle;
+	if (dark)
+		TGTileFillAll(&canvas, 0.11f, 0.12f, 0.14f);
+	else
+		TGTileFillAll(&canvas, 0.92f, 0.93f, 0.94f);
 
 	// Fine deterministic micro-grain
 	for (int y = 0; y < (int)height; y++) {
 		for (int x = 0; x < (int)width; x++) {
 			int h = ((x * 47 + y * 31 + (x ^ y)) % 17);
 			if (h == 0) {
-				if (theme.isDarkStyle) {
-					CGContextSetRGBFillColor(ctx, 0.15f, 0.16f, 0.18f, 0.40f);
-				} else {
-					CGContextSetRGBFillColor(ctx, 0.85f, 0.87f, 0.89f, 0.45f);
-				}
-				CGContextFillRect(ctx, CGRectMake(x, y, 1.0f, 1.0f));
+				if (dark)
+					TGTileBlend(&canvas, x, y, 1.0f, 1.0f, 0.15f, 0.16f, 0.18f, 0.40f);
+				else
+					TGTileBlend(&canvas, x, y, 1.0f, 1.0f, 0.85f, 0.87f, 0.89f, 0.45f);
 			} else if (h == 1) {
-				if (theme.isDarkStyle) {
-					CGContextSetRGBFillColor(ctx, 0.08f, 0.09f, 0.10f, 0.35f);
-				} else {
-					CGContextSetRGBFillColor(ctx, 0.98f, 0.98f, 1.00f, 0.35f);
-				}
-				CGContextFillRect(ctx, CGRectMake(x, y, 1.0f, 1.0f));
+				if (dark)
+					TGTileBlend(&canvas, x, y, 1.0f, 1.0f, 0.08f, 0.09f, 0.10f, 0.35f);
+				else
+					TGTileBlend(&canvas, x, y, 1.0f, 1.0f, 0.98f, 0.98f, 1.00f, 0.35f);
 			}
 		}
 	}
 
-	UIImage *img = UIGraphicsGetImageFromCurrentImageContext();
-	UIGraphicsEndImageContext();
-	return img;
+	return TGTileEnd(&canvas);
 }
 
 + (UIImage *)skeuomorphicLinenPattern {
 	CGFloat width = 16.0f, height = 16.0f;
-	CGFloat scale = [UIScreen mainScreen].scale;
-	UIGraphicsBeginImageContextWithOptions(CGSizeMake(width, height), YES, scale);
-	CGContextRef ctx = UIGraphicsGetCurrentContext();
+	TGTileCanvas canvas = TGTileBegin(width, height, [UIScreen mainScreen].scale);
 
-	TGTheme *theme = [TGTheme shared];
 	// Base tone: authentic Apple charcoal linen or slate
-	if (theme.isDarkStyle) {
-		CGContextSetRGBFillColor(ctx, 0.14f, 0.15f, 0.17f, 1.0f);
-	} else {
-		CGContextSetRGBFillColor(ctx, 0.22f, 0.23f, 0.26f, 1.0f);
-	}
-	CGContextFillRect(ctx, CGRectMake(0, 0, width, height));
+	if ([TGTheme shared].isDarkStyle)
+		TGTileFillAll(&canvas, 0.14f, 0.15f, 0.17f);
+	else
+		TGTileFillAll(&canvas, 0.22f, 0.23f, 0.26f);
 
 	// Cross-hatch threads with highlights and depth shadows
 	for (int y = 0; y < (int)height; y++) {
@@ -269,51 +374,39 @@ static const CGFloat kSwitchTextY      = 10.0f;
 
 			if (vertRib && horizRib) {
 				// Interlaced thread crest: subtle highlight
-				CGContextSetRGBFillColor(ctx, 1.0f, 1.0f, 1.0f, 0.12f);
-				CGContextFillRect(ctx, CGRectMake(x, y, 1.0f, 1.0f));
+				TGTileBlend(&canvas, x, y, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.12f);
 			} else if (vertShadow || horizShadow) {
 				// Thread recess: depth shadow
-				CGContextSetRGBFillColor(ctx, 0.0f, 0.0f, 0.0f, 0.22f);
-				CGContextFillRect(ctx, CGRectMake(x, y, 1.0f, 1.0f));
+				TGTileBlend(&canvas, x, y, 1.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.22f);
 			} else if (noise == 0) {
-				CGContextSetRGBFillColor(ctx, 1.0f, 1.0f, 1.0f, 0.06f);
-				CGContextFillRect(ctx, CGRectMake(x, y, 1.0f, 1.0f));
+				TGTileBlend(&canvas, x, y, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.06f);
 			} else if (noise == 1) {
-				CGContextSetRGBFillColor(ctx, 0.0f, 0.0f, 0.0f, 0.10f);
-				CGContextFillRect(ctx, CGRectMake(x, y, 1.0f, 1.0f));
+				TGTileBlend(&canvas, x, y, 1.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.10f);
 			}
 		}
 	}
 
-	UIImage *img = UIGraphicsGetImageFromCurrentImageContext();
-	UIGraphicsEndImageContext();
-	return img;
+	return TGTileEnd(&canvas);
 }
 
 + (UIImage *)skeuomorphicParchmentPattern {
 	CGFloat width = 32.0f, height = 32.0f;
-	CGFloat scale = [UIScreen mainScreen].scale;
-	UIGraphicsBeginImageContextWithOptions(CGSizeMake(width, height), YES, scale);
-	CGContextRef ctx = UIGraphicsGetCurrentContext();
+	TGTileCanvas canvas = TGTileBegin(width, height, [UIScreen mainScreen].scale);
 
-	TGTheme *theme = [TGTheme shared];
-	if (theme.isDarkStyle) {
+	BOOL dark = [TGTheme shared].isDarkStyle;
+	if (dark)
 		// Vintage aged dark parchment
-		CGContextSetRGBFillColor(ctx, 0.18f, 0.16f, 0.13f, 1.0f);
-	} else {
+		TGTileFillAll(&canvas, 0.18f, 0.16f, 0.13f);
+	else
 		// Classic Notes app warm cream parchment
-		CGContextSetRGBFillColor(ctx, 0.96f, 0.94f, 0.88f, 1.0f);
-	}
-	CGContextFillRect(ctx, CGRectMake(0, 0, width, height));
+		TGTileFillAll(&canvas, 0.96f, 0.94f, 0.88f);
 
 	// Laid paper horizontal watermark line (spaced every 16pt)
 	for (int y = 0; y < (int)height; y += 16) {
-		if (theme.isDarkStyle) {
-			CGContextSetRGBFillColor(ctx, 0.13f, 0.11f, 0.09f, 0.40f);
-		} else {
-			CGContextSetRGBFillColor(ctx, 0.88f, 0.84f, 0.74f, 0.35f);
-		}
-		CGContextFillRect(ctx, CGRectMake(0, y, width, 1.0f));
+		if (dark)
+			TGTileBlend(&canvas, 0, y, width, 1.0f, 0.13f, 0.11f, 0.09f, 0.40f);
+		else
+			TGTileBlend(&canvas, 0, y, width, 1.0f, 0.88f, 0.84f, 0.74f, 0.35f);
 	}
 
 	// Natural organic paper fibers and warm flecks
@@ -322,44 +415,34 @@ static const CGFloat kSwitchTextY      = 10.0f;
 			int h = ((x * 53 + y * 29 + (x ^ (y * 3))) % 19);
 			if (h == 0) {
 				// Fiber fleck
-				if (theme.isDarkStyle) {
-					CGContextSetRGBFillColor(ctx, 0.24f, 0.20f, 0.16f, 0.45f);
-				} else {
-					CGContextSetRGBFillColor(ctx, 0.85f, 0.79f, 0.65f, 0.40f);
-				}
-				CGContextFillRect(ctx, CGRectMake(x, y, 1.5f, 1.0f));
+				if (dark)
+					TGTileBlend(&canvas, x, y, 1.5f, 1.0f, 0.24f, 0.20f, 0.16f, 0.45f);
+				else
+					TGTileBlend(&canvas, x, y, 1.5f, 1.0f, 0.85f, 0.79f, 0.65f, 0.40f);
 			} else if (h == 1) {
 				// Fine light tooth
-				if (theme.isDarkStyle) {
-					CGContextSetRGBFillColor(ctx, 0.22f, 0.19f, 0.15f, 0.30f);
-				} else {
-					CGContextSetRGBFillColor(ctx, 0.99f, 0.98f, 0.94f, 0.30f);
-				}
-				CGContextFillRect(ctx, CGRectMake(x, y, 1.0f, 1.0f));
+				if (dark)
+					TGTileBlend(&canvas, x, y, 1.0f, 1.0f, 0.22f, 0.19f, 0.15f, 0.30f);
+				else
+					TGTileBlend(&canvas, x, y, 1.0f, 1.0f, 0.99f, 0.98f, 0.94f, 0.30f);
 			}
 		}
 	}
 
-	UIImage *img = UIGraphicsGetImageFromCurrentImageContext();
-	UIGraphicsEndImageContext();
-	return img;
+	return TGTileEnd(&canvas);
 }
 
 + (UIImage *)skeuomorphicFeltPattern {
 	CGFloat width = 24.0f, height = 24.0f;
-	CGFloat scale = [UIScreen mainScreen].scale;
-	UIGraphicsBeginImageContextWithOptions(CGSizeMake(width, height), YES, scale);
-	CGContextRef ctx = UIGraphicsGetCurrentContext();
+	TGTileCanvas canvas = TGTileBegin(width, height, [UIScreen mainScreen].scale);
 
-	TGTheme *theme = [TGTheme shared];
-	if (theme.isDarkStyle) {
+	BOOL dark = [TGTheme shared].isDarkStyle;
+	if (dark)
 		// Deep pine casino felt
-		CGContextSetRGBFillColor(ctx, 0.08f, 0.18f, 0.11f, 1.0f);
-	} else {
+		TGTileFillAll(&canvas, 0.08f, 0.18f, 0.11f);
+	else
 		// Authentic Apple Game Center billiard felt
-		CGContextSetRGBFillColor(ctx, 0.11f, 0.31f, 0.16f, 1.0f);
-	}
-	CGContextFillRect(ctx, CGRectMake(0, 0, width, height));
+		TGTileFillAll(&canvas, 0.11f, 0.31f, 0.16f);
 
 	// Soft stippled wool fibers
 	for (int y = 0; y < (int)height; y++) {
@@ -367,27 +450,21 @@ static const CGFloat kSwitchTextY      = 10.0f;
 			int h = ((x * 41 + y * 23 + (x ^ (y * 5))) % 13);
 			if (h == 0) {
 				// Light fiber highlight
-				if (theme.isDarkStyle) {
-					CGContextSetRGBFillColor(ctx, 0.13f, 0.28f, 0.17f, 0.50f);
-				} else {
-					CGContextSetRGBFillColor(ctx, 0.17f, 0.44f, 0.23f, 0.45f);
-				}
-				CGContextFillRect(ctx, CGRectMake(x, y, 1.0f, 1.0f));
+				if (dark)
+					TGTileBlend(&canvas, x, y, 1.0f, 1.0f, 0.13f, 0.28f, 0.17f, 0.50f);
+				else
+					TGTileBlend(&canvas, x, y, 1.0f, 1.0f, 0.17f, 0.44f, 0.23f, 0.45f);
 			} else if (h == 1) {
 				// Shadow fiber depth
-				if (theme.isDarkStyle) {
-					CGContextSetRGBFillColor(ctx, 0.04f, 0.10f, 0.06f, 0.55f);
-				} else {
-					CGContextSetRGBFillColor(ctx, 0.06f, 0.18f, 0.09f, 0.50f);
-				}
-				CGContextFillRect(ctx, CGRectMake(x, y, 1.0f, 1.0f));
+				if (dark)
+					TGTileBlend(&canvas, x, y, 1.0f, 1.0f, 0.04f, 0.10f, 0.06f, 0.55f);
+				else
+					TGTileBlend(&canvas, x, y, 1.0f, 1.0f, 0.06f, 0.18f, 0.09f, 0.50f);
 			}
 		}
 	}
 
-	UIImage *img = UIGraphicsGetImageFromCurrentImageContext();
-	UIGraphicsEndImageContext();
-	return img;
+	return TGTileEnd(&canvas);
 }
 
 + (UIImage *)textureImageForType:(TGWallpaperType)type {

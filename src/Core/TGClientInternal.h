@@ -1,5 +1,11 @@
 #import "TGClient.h"
 #import "TGUpdateBatcher.hpp"
+#import "TGImageLruCache.h"
+
+/// Raw TDLib user records held in memory. 1000 is far more than any screen
+/// shows and still a hard ceiling - see the 16 MB cache budget in
+/// C_CPP_MIGRATION_PLAN.md.
+#define TGRawUserCacheCap 1000
 #import <UIKit/UIKit.h>
 
 typedef void *(*td_create_fn)(void);
@@ -36,7 +42,9 @@ NSDictionary *TGStickerInfo(NSDictionary *sticker);
 @property (nonatomic, copy)   NSString *pendingPhoneNumber;
 @property (nonatomic, strong) NSMutableDictionary *chatsById;   // id -> mutable info
 @property (nonatomic, strong) NSMutableDictionary *usersById;   // id -> display name
-@property (nonatomic, strong) NSMutableDictionary *rawUsersById; // id -> raw user dict
+/// Bounded at TGRawUserCacheCap: every user the session has ever seen used
+/// to stay here, and a busy account meets tens of thousands of them.
+@property (nonatomic, strong) TGObjectLruCache *rawUsersById; // id -> raw user dict
 @property (nonatomic, strong) NSMutableDictionary *userPhotosById; // id -> photo file id
 @property (nonatomic, strong) NSMutableDictionary *forumSupergroups;
 @property (nonatomic, strong) NSArray *archivedChats;
@@ -55,8 +63,6 @@ NSDictionary *TGStickerInfo(NSDictionary *sticker);
 @property (nonatomic, assign) TGConnectionState connectionState;
 @property (nonatomic, strong) NSMutableDictionary *pendingRequests;  // @extra -> completion
 @property (nonatomic, assign) NSUInteger requestSeq;
-@property (nonatomic, strong) NSMutableDictionary *fileWaiters;      // fileId -> waiters {cb, expired}
-@property (nonatomic, strong) NSMutableDictionary *fileWaiterPriorities;  // fileId -> standing priority
 @property (nonatomic, strong) NSDictionary *codeInfo;
 @property (nonatomic, copy)   NSString *qrCodeLink;
 
@@ -68,9 +74,16 @@ NSDictionary *TGStickerInfo(NSDictionary *sticker);
 - (void)handleAuthState:(NSDictionary *)state;
 - (void)sendTdlibParameters;
 - (void)flushPendingPhoneNumber;
+// The download waiter table lives in C++ behind its own mutex (see
+// TGClient+Files.mm); these are the only ways in.
 - (void)notifyFileWaiters:(NSInteger)fileId path:(NSString *)path;
 - (void)expireFileWaiters:(NSInteger)fileId;
 - (void)sweepFileWaiters:(NSInteger)fileId;
+- (void)releaseFileWaiters:(NSInteger)fileId;
+- (void)removeAllFileWaiters;
+- (NSUInteger)fileWaiterCount:(NSInteger)fileId;
+- (BOOL)hasFileWaiterRecord:(NSInteger)fileId;
+- (NSInteger)fileWaiterPriority:(NSInteger)fileId;
 
 // The download watchdog timeout, 45 s in production; the host tests shrink
 // it so the timer fires inside a test runtime.

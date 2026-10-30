@@ -180,11 +180,9 @@ APP_SRC_M := \
 	src/Core/AppDelegate+URL.m \
 	src/Controllers/RootViewController.m \
 	src/main.m \
-	src/Core/TGJson.m \
 	src/Core/TGClient.m \
 	src/Core/TGClient+Auth.m \
 	src/Core/TGClient+Messages.m \
-	src/Core/TGClient+Files.m \
 	src/Core/TGStatusText.m \
 	src/Controllers/TGNavController.m \
 	src/Core/TGClient+Account.m \
@@ -295,6 +293,9 @@ APP_SRC_MM := \
 	src/Calls/TGCallAudioEngine.mm \
 	src/Core/TGImageLruCache.mm \
 	src/Core/TGClient+Chats.mm \
+	src/Core/TGClient+Files.mm \
+	src/Core/TGStickerPack.mm \
+	src/Core/TGJson.mm \
 	src/Core/TGMessageStreamStore.mm \
 	src/Core/TGUpdateBatcher.mm \
 	src/Views/TGMessageLayout.mm \

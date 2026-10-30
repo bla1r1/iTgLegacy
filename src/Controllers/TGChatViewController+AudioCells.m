@@ -129,7 +129,6 @@
 		BOOL isPlaying = (self.playingMessageId == [m[@"id"] longLongValue] && self.voicePlayer && self.voicePlayer.playing);
 
 		cell.voiceMessageId = [m[@"id"] longLongValue];
-		cell.waveformData = m[@"waveform"];
 
 		CGFloat fwd = layout.fwdHeight;
 
@@ -146,11 +145,10 @@
 
 		cell.wave.hidden = NO;
 		CGSize waveSize = CGSizeMake(layout.bubbleFrame.size.width - left - kPadH, kVoiceWaveHeight);
-		cell.wave.image = [TGIcons waveform:m[@"waveform"]
-									   size:waveSize
-									 played:(isPlaying ? [self playedFraction]
-													  : (unplayed ? 1.0f : 0))
-									 colour:[voiceTheme accentColour]];
+		[cell setWaveform:m[@"waveform"] size:waveSize
+				   colour:[voiceTheme accentColour]];
+		[cell setWavePlayed:(isPlaying ? [self playedFraction]
+									   : (unplayed ? 1.0f : 0))];
 		cell.wave.frame = CGRectMake(left, fwd + kVoiceWaveTop, waveSize.width, waveSize.height);
 		cell.wave.userInteractionEnabled = YES;
 		if (!cell.wave.gestureRecognizers.count) {
