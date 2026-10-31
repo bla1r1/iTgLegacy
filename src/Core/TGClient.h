@@ -210,6 +210,14 @@ typedef NS_ENUM(NSInteger, TGConnectionState) {
 /// Safe to call more than once. Returns NO if TDLib is unavailable.
 - (BOOL)start;
 
+/// iOS kills a suspended app holding a file lock outside its container
+/// (0xdead10cc), and installed in /Applications td.binlog is outside one.
+/// So TDLib closes on the way to the background - `done` runs once it has,
+/// on the main queue - and starts again on the way back. The screens keep
+/// their state across it; no auth state reaches them.
+- (void)pauseForBackground:(void (^)(void))done;
+- (void)resumeFromBackground;
+
 /// Request with a reply. `completion` runs on the main queue with the raw
 /// TDLib object, or an object of @type "error".
 - (void)request:(NSDictionary *)request completion:(void (^)(NSDictionary *result))completion;

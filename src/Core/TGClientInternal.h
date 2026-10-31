@@ -39,6 +39,12 @@ NSDictionary *TGStickerInfo(NSDictionary *sticker);
 @property (nonatomic, assign) TGAuthState authState;
 @property (nonatomic, assign) BOOL available;
 @property (nonatomic, assign) BOOL running;
+/// The background close: asked for, finished, and a return that came first.
+@property (nonatomic, assign) BOOL pausing;
+@property (nonatomic, assign) BOOL paused;
+@property (nonatomic, assign) BOOL resumeWanted;
+@property (nonatomic, copy)   void (^pauseDone)(void);
+- (void)clientClosed;
 @property (nonatomic, copy)   NSString *pendingPhoneNumber;
 @property (nonatomic, strong) NSMutableDictionary *chatsById;   // id -> mutable info
 @property (nonatomic, strong) NSMutableDictionary *usersById;   // id -> display name

@@ -176,6 +176,59 @@ NSString *const TGChatActionBarChangedNotification = @"TGChatActionBarChangedNot
 			}
 		}
 	}
+
+	// Out of the loop means TDLib said it closed. Freeing the client here, on
+	// the thread that used it, is what lets the next start make a new one.
+	void (*destroy)(void *) = dlsym(self.handle ?: RTLD_DEFAULT, "td_json_client_destroy");
+	if (destroy && self.client)
+		destroy(self.client);
+	self.client = NULL;
+	dispatch_async(dispatch_get_main_queue(), ^{ [self clientClosed]; });
+}
+
+#pragma mark - background
+
+- (void)pauseForBackground:(void (^)(void))done {
+	if (!self.running || self.pausing){
+		if (done)
+			done();
+		return;
+	}
+	self.pausing = YES;
+	self.resumeWanted = NO;
+	self.pauseDone = done;
+	[self send:@{@"@type" : @"close"}];
+}
+
+- (void)resumeFromBackground {
+	if (self.pausing){
+		self.resumeWanted = YES;      // back before the close finished
+		return;
+	}
+	if (!self.paused)
+		return;
+	self.paused = NO;
+	// A new TDLib instance sends chat positions only for lists asked for again.
+	self.chatListComplete = NO;
+	self.loadChatsAttempts = 0;
+	dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+		[self start];
+	});
+}
+
+- (void)clientClosed {
+	if (!self.pausing)
+		return;
+	self.pausing = NO;
+	self.paused = YES;
+	void (^done)(void) = self.pauseDone;
+	self.pauseDone = nil;
+	if (self.resumeWanted){
+		self.resumeWanted = NO;
+		[self resumeFromBackground];
+	}
+	if (done)
+		done();
 }
 
 - (void)handleUpdateBatch:(NSArray *)batch {
@@ -842,8 +895,10 @@ NSDictionary *TGFormattedText(NSString *text) {
 	} else if ([type isEqualToString:@"authorizationStateLoggingOut"]){
 		s = TGAuthStateLoggingOut;
 	} else if ([type isEqualToString:@"authorizationStateClosed"]){
-		s = TGAuthStateClosed;
 		self.running = NO;
+		if (self.pausing)
+			return;                   // our own close for the background
+		s = TGAuthStateClosed;
 	} else {
 		return;                       // encryption-key states etc.
 	}

@@ -90,6 +90,23 @@ static void TGDevCommandNotifyCallback(CFNotificationCenterRef center, void *obs
 
 #pragma mark - TDLib
 
+- (void)applicationDidEnterBackground:(UIApplication *)application {
+	// B13: the close has to finish before iOS suspends us.
+	__block UIBackgroundTaskIdentifier task = UIBackgroundTaskInvalid;
+	void (^finish)(void) = ^{
+		if (task == UIBackgroundTaskInvalid)
+			return;
+		[application endBackgroundTask:task];
+		task = UIBackgroundTaskInvalid;
+	};
+	task = [application beginBackgroundTaskWithExpirationHandler:finish];
+	[[TGClient shared] pauseForBackground:finish];
+}
+
+- (void)applicationWillEnterForeground:(UIApplication *)application {
+	[[TGClient shared] resumeFromBackground];
+}
+
 - (void)startTDLib {
 	TGClient *tg = [TGClient shared];
 	__weak typeof(self) weakSelf = self;

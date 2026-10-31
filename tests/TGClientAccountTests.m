@@ -636,6 +636,47 @@ static void answerA(TGClient *c, NSDictionary *answer) {
 	XCTAssertNotNil(lastA(c, @"reportAuthenticationCodeMissing"));
 }
 
+#pragma mark - background (B13)
+
+/// The iPod killed the app on every trip to the home screen: TDLib held the
+/// binlog lock while suspended. The close for the background must go out,
+/// and the Closed it brings back must not reach the screens as a sign-out.
+- (void)testBackground_ClosesTDLibWithoutSigningOutTheScreens {
+	TGClient *c = A();
+	void (^saved)(TGAuthState) = c.onAuthState;
+	__block NSInteger reported = 0;
+	c.onAuthState = ^(TGAuthState s){ reported++; };
+	c.running = YES;
+	c.authState = TGAuthStateReady;
+
+	__block BOOL done = NO;
+	[c pauseForBackground:^{ done = YES; }];
+	XCTAssertEqual(countA(c, @"close"), (NSUInteger)1);
+
+	[c handleUpdate:@{@"@type" : @"updateAuthorizationState",
+					  @"authorization_state" : @{@"@type" : @"authorizationStateClosed"}}];
+	XCTAssertFalse(c.running);
+	XCTAssertEqual(c.authState, TGAuthStateReady);
+	XCTAssertEqual(reported, (NSInteger)0);
+
+	[c clientClosed];
+	XCTAssertTrue(done);
+	XCTAssertTrue(c.paused);
+
+	c.paused = NO;
+	c.onAuthState = saved;
+}
+
+/// Not running (TDLib missing, or already closed): nothing to wait for.
+- (void)testBackground_PauseWhenNotRunningFinishesAtOnce {
+	TGClient *c = A();
+	c.running = NO;
+	__block BOOL done = NO;
+	[c pauseForBackground:^{ done = YES; }];
+	XCTAssertTrue(done);
+	XCTAssertEqual(countA(c, @"close"), (NSUInteger)0);
+}
+
 @end
 
 // vim:ft=objc
