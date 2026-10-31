@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key><string>en</string>
+	<key>CFBundleDisplayName</key><string>LegacyTG</string>
+	<key>CFBundleExecutable</key><string>LegacyTG</string>
+	<key>CFBundleIdentifier</key><string>org.legacy.itg.catalyst</string>
+	<key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+	<key>CFBundleName</key><string>LegacyTG</string>
+	<key>CFBundlePackageType</key><string>APPL</string>
+	<key>CFBundleShortVersionString</key><string>0.1</string>
+	<key>CFBundleVersion</key><string>1</string>
+	<key>LSMinimumSystemVersion</key><string>11.0</string>
+	<key>LSApplicationCategoryType</key><string>public.app-category.social-networking</string>
+	<key>UIAppFonts</key><array><string>OpenMoji.ttf</string></array>
+	<key>NSHighResolutionCapable</key><true/>
+	<key>UIApplicationSceneManifest</key>
+	<dict>
+		<key>UIApplicationSupportsMultipleScenes</key><false/>
+		<key>UISceneConfigurations</key>
+		<dict>
+			<key>UIWindowSceneSessionRoleApplication</key>
+			<array><dict>
+				<key>UISceneConfigurationName</key><string>Default</string>
+				<key>UISceneDelegateClassName</key><string>TGCatalystScene</string>
+			</dict></array>
+		</dict>
+	</dict>
+</dict>
+</plist>
