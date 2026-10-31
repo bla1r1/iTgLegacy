@@ -1,3 +1,4 @@
+#import "TGTextDraw.h"
 #import "TGAlertSheet.h"
 #import "TGTheme.h"
 #import "TGStyle.h"
@@ -66,20 +67,7 @@ static const CGFloat kFieldTop = TGMetricAlertFieldTop;
 
 /// Text height, through whichever measuring call this OS has.
 + (CGSize)sizeOfText:(NSString *)text font:(UIFont *)font width:(CGFloat)width {
-	CGSize bound = CGSizeMake(width, TGMetricTextMeasureHeight);
-	if ([text respondsToSelector:@selector(boundingRectWithSize:options:attributes:context:)]){
-		CGRect rect = [text boundingRectWithSize:bound
-										 options:NSStringDrawingUsesLineFragmentOrigin
-									  attributes:@{NSFontAttributeName : font}
-										 context:nil];
-		return CGSizeMake(width, ceilf(rect.size.height));
-	}
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-	CGSize size = [text sizeWithFont:font constrainedToSize:bound
-					   lineBreakMode:NSLineBreakByWordWrapping];
-#pragma clang diagnostic pop
-	return CGSizeMake(width, ceilf(size.height));
+	return CGSizeMake(width, TGTextHeight(text, font, width));
 }
 
 /// One button row, with the hairline above it that separates it from whatever

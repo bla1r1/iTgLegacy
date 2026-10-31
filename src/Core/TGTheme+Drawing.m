@@ -8,6 +8,7 @@
 // (TGTheme+Gradients.m) and the depth materials (TGTheme+Effects.m).
 // See docs/theme_system.md for the full map.
 //
+#import "TGTextDraw.h"
 #import "TGThemeInternal.h"
 #import "TGStyle.h"
 
@@ -141,6 +142,10 @@ static const CGFloat kSkeuoThumbLift   = 1.5f;
 static const CGFloat kSwitchTextOnX    = 6.5f;
 static const CGFloat kSwitchTextOffX   = 31.0f;
 static const CGFloat kSwitchTextY      = 10.0f;
+// drawAtPoint has no box; TGDrawText needs one, and the tag is one short word
+// left-aligned, so the box only has to be wide enough not to clip it.
+static const CGFloat kSwitchTagWidth   = 24.0f;
+static const CGFloat kSwitchTagHeight  = 12.0f;
 
 @implementation TGTheme (Skeuomorphism)
 
@@ -666,12 +671,9 @@ static const CGFloat kSwitchTextY      = 10.0f;
 		NSShadow *shadow = [[NSShadow alloc] init];
 		shadow.shadowOffset = CGSizeMake(0, -1.0f);
 		shadow.shadowColor = [UIColor colorWithWhite:0.0f alpha:0.35f];
-		NSDictionary *attrs = @{
-			NSFontAttributeName: TGFontSwitchTag(),
-			NSForegroundColorAttributeName: [UIColor whiteColor],
-			NSShadowAttributeName: shadow
-		};
-		[@"ON" drawAtPoint:CGPointMake(kSwitchTextOnX, kSwitchTextY) withAttributes:attrs];
+		TGDrawText(@"ON", CGRectMake(kSwitchTextOnX, kSwitchTextY,
+						kSwitchTagWidth, kSwitchTagHeight), TGFontSwitchTag(),
+				[UIColor whiteColor], NSTextAlignmentLeft, shadow);
 	} else {
 		CGFloat comps[] = {
 			0.82f, 0.84f, 0.87f, 1.0f,
@@ -693,12 +695,9 @@ static const CGFloat kSwitchTextY      = 10.0f;
 		NSShadow *shadow = [[NSShadow alloc] init];
 		shadow.shadowOffset = CGSizeMake(0, 1.0f);
 		shadow.shadowColor = [UIColor colorWithWhite:1.0f alpha:0.75f];
-		NSDictionary *attrs = @{
-			NSFontAttributeName: TGFontSwitchTag(),
-			NSForegroundColorAttributeName: [UIColor colorWithWhite:0.48f alpha:1.0f],
-			NSShadowAttributeName: shadow
-		};
-		[@"OFF" drawAtPoint:CGPointMake(kSwitchTextOffX, kSwitchTextY) withAttributes:attrs];
+		TGDrawText(@"OFF", CGRectMake(kSwitchTextOffX, kSwitchTextY,
+						kSwitchTagWidth, kSwitchTagHeight), TGFontSwitchTag(),
+				[UIColor colorWithWhite:0.48f alpha:1.0f], NSTextAlignmentLeft, shadow);
 	}
 	CGColorSpaceRelease(cs);
 

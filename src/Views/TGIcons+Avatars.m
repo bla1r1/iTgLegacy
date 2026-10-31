@@ -1,3 +1,4 @@
+#import "TGTextDraw.h"
 #import "TGIconsInternal.h"
 #import "TGStyle.h"
 #import <ImageIO/ImageIO.h>
@@ -879,22 +880,10 @@ static UIImage *TGGlyphAvatar(CGFloat side, void (^draw)(CGContextRef ctx, CGFlo
 	NSString *artist = @"M 8 3";
 	NSString *trackTitle = @"MIDNIGHT CITY";
 
-	NSMutableParagraphStyle *style = [[NSMutableParagraphStyle alloc] init];
-	style.alignment = NSTextAlignmentCenter;
-
-	NSDictionary *artistAttrs = @{
-		NSFontAttributeName: artistFont,
-		NSForegroundColorAttributeName: [UIColor whiteColor],
-		NSParagraphStyleAttributeName: style
-	};
-	NSDictionary *titleAttrs = @{
-		NSFontAttributeName: titleFont,
-		NSForegroundColorAttributeName: [UIColor whiteColor],
-		NSParagraphStyleAttributeName: style
-	};
-
-	[artist drawInRect:CGRectMake(0.0f, 14.0f, side, 22.0f) withAttributes:artistAttrs];
-	[trackTitle drawInRect:CGRectMake(0.0f, 36.0f, side, 16.0f) withAttributes:titleAttrs];
+	TGDrawText(artist, CGRectMake(0.0f, 14.0f, side, 22.0f), artistFont,
+			[UIColor whiteColor], NSTextAlignmentCenter, nil);
+	TGDrawText(trackTitle, CGRectMake(0.0f, 36.0f, side, 16.0f), titleFont,
+			[UIColor whiteColor], NSTextAlignmentCenter, nil);
 
 	UIBezierPath *gloss = [UIBezierPath bezierPath];
 	[gloss moveToPoint:CGPointMake(0.0f, 0.0f)];

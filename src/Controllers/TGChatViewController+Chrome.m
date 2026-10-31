@@ -3,6 +3,7 @@
 // in them: day and unread separators, the floating date, the jump-down
 // button, swipe to reply, and the animated "typing".
 //
+#import "TGTextDraw.h"
 #import "TGChatViewControllerInternal.h"
 #import <QuartzCore/QuartzCore.h>
 #import "TGAlertSheet.h"
@@ -259,10 +260,10 @@ static const CGFloat kActionBarCloseSide = 44.0f;
 		}
 		button.hidden = NO;
 		[button setTitle:title forState:UIControlStateNormal];
-		CGFloat textWidth = button.titleLabel.text.length
-			? [button.titleLabel.text sizeWithAttributes:
-				@{NSFontAttributeName: button.titleLabel.font ?: TGFontCaptionStrong()}].width
-			: TGMetricRow;
+		CGFloat textWidth = TGLineTextSize(button.titleLabel.text,
+				button.titleLabel.font ?: TGFontCaptionStrong()).width;
+		if (textWidth <= 0.0f)
+			textWidth = TGMetricRow;
 		CGFloat side = MAX(TGMetricRow, textWidth) + TGMetricPadWide;   // TGMetricPad on either side
 		button.frame = CGRectMake(x - side, 0, side, height);
 		x -= side;

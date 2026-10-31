@@ -199,6 +199,7 @@ APP_SRC_M := \
 	src/Core/TGTheme+Effects.m \
 	src/Core/TGTheme+Drawing.m \
 	src/Core/TGStyle.m \
+	src/Core/TGTextDraw.m \
 	src/Core/TGThemeFile.m \
 	src/Views/TGIcons.m \
 	src/Views/TGIcons+Menu.m \

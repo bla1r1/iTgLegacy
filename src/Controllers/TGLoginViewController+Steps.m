@@ -1,3 +1,4 @@
+#import "TGTextDraw.h"
 #import "TGLoginViewControllerInternal.h"
 #import "TGClient.h"
 #import "TGStyle.h"
@@ -376,14 +377,10 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
     // The terms can run long, so the field sits under whatever they took.
     CGSize room = CGSizeMake(width - TGDoubled(TGMetricPadWide),
                              TGMetricTextMeasureHeight);
-    CGFloat subtitleH = 40;
-    if ([self.subtitleLabel.text respondsToSelector:
-            @selector(boundingRectWithSize:options:attributes:context:)]){
-        subtitleH = ceilf([self.subtitleLabel.text boundingRectWithSize:room
-                options:NSStringDrawingUsesLineFragmentOrigin
-             attributes:@{NSFontAttributeName : self.subtitleLabel.font}
-                context:nil].size.height);
-    }
+    CGFloat subtitleH = TGTextHeight(self.subtitleLabel.text,
+            self.subtitleLabel.font, room.width);
+    if (subtitleH <= 0.0f)
+        subtitleH = 40;
     self.subtitleLabel.frame = CGRectMake(TGMetricPadWide, TGMetricPad,
             width - TGDoubled(TGMetricPadWide), subtitleH);
 

@@ -11,6 +11,7 @@ Status: **open** · *confirmed* (reproduced on another device) · *fix in progre
 | B3 | Folders crash the app | `TGClient.m` `updateChatFolders` parser hands a `formattedText` dict as the title; `addButtonWithTitle:` calls `-length` on it → `-[__NSCFDictionary length]` | **fixed** (25c97cf parser, b3dcc8d popup UI) — verify on device |
 | B4 | Network status shows "long time ago" instead of real state | `src/Core/TGClient+Account.m:287` has no "yesterday" case; header never reads `connectionState` | **fixed** (e940635) — verify on device |
 | B5 | Gifts not drawn as media/stories, no icons | `src/Controllers/TGProfileViewController.m:407`, `:461` — text-only rows, no `downloadFile`, no glyph | **fixed** (c4fbf05 `TGFlattenGift` + `TGGiftGlyph`) — verify on device |
+| B7 | Crash while scrolling the showcase chat on iOS 6.1.6 (iPod touch 4) | NSString's attribute-taking drawing and measuring (`drawInRect:withAttributes:`, `sizeWithAttributes:`, `boundingRectWithSize:options:attributes:context:`) answer `respondsToSelector:` with YES on 6.1.6 and then die inside `objc_msgSend` resolving the selector (EXC_BAD_ACCESS at 0x7761726c — the fault address is the selector slot, not the string) | **fixed** (`src/Core/TGTextDraw.m`, gated on `NSFoundationVersionNumber`) — device log says `text drawing: pre-7 (Foundation 993.00)`, scrolling to the audio cell still to confirm |
 | B6 | Opening a chat from contacts: no avatar, title misaligned | `src/Controllers/TGContactsViewController.m:173` passes only `chatId`/`chatTitle`; avatar waits for photo from chat cache | **fixed** (082cc56 — `privateChatWithUser` feeds returned chat into `mergeChat`) — verify on device |
 
 ---
@@ -28,6 +29,25 @@ Status: **open** · *confirmed* (reproduced on another device) · *fix in progre
 **B5.** `giftsForUser` (`src/Core/TGClient+Account.m:160–177`) keeps only `star_count` and a title that doesn't exist in TDLib's gift schema. Render branches never set `imageView.image`, never download the sticker file; `gift` glyph is a placeholder in `src/Views/TGIcons+Menu.m:421–424`.
 
 **B6.** `privateChatWithUser` returns a chat with no `chat_photo` yet; controller opens with bare `chatId`/`chatTitle` while `buildAvatarButton` expects a photo from the chat cache.
+
+**B7.** Seven call sites used the iOS 7 attribute-taking NSString APIs. Three
+had no gate at all (`TGIcons+Avatars.m` — the crash, every audio cell with
+artwork; `TGTheme+Drawing.m` — the ON/OFF tag on every skeuomorphic switch,
+so Settings was next; `TGChatViewController+Chrome.m`). The other four
+(`TGGiftViewer.m`, `TGChatCell.m`, `TGAlertSheet.m`,
+`TGLoginViewController+Steps.m`) gated on `respondsToSelector:` — and that
+gate is worthless here: on 6.1.6 NSString answers YES and the send then
+faults inside `objc_msgSend` while resolving the selector. The fault address
+(0x7761726c) is the selector slot, not the receiver: the receiver answers
+`length` two instructions earlier in the same frame. So the method is
+declared in that UIKit without being usable, there is no exception to catch,
+and the crash report names the call site and nothing else.
+
+All seven now go through `TGLineTextSize` / `TGTextHeight` / `TGDrawText` in
+`src/Core/TGTextDraw.m`, which ask `NSFoundationVersionNumber` once and log
+which path they took. `TGMessageLayout.mm:388` stays as it is: that is
+NSAttributedString's `boundingRectWithSize:options:context:`, which is iOS
+6.0 and demonstrably works on the device.
 
 ## Shared root causes
 

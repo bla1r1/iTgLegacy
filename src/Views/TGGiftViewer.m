@@ -1,6 +1,7 @@
 //
 // TGGiftViewer.m - the gift detail sheet.
 //
+#import "TGTextDraw.h"
 #import "TGGiftViewer.h"
 #import "TGTheme.h"
 #import "TGIcons.h"
@@ -28,33 +29,14 @@ static const CGFloat kTitleLine  = 24.0f;
 static const CGFloat kNotePadH   = TGMetricPadMedium + TGMetricPadTiny;
 static const CGFloat kNotePadV   = TGMetricPadMedium;
 
-/// sizeWithFont: is gone from iOS 7 on, and sizeWithAttributes: does not
-/// exist before it - TGChatCell picks between them the same way.
+// Both of these used to pick with respondsToSelector:, which lies on 6.1.6 -
+// see TGTextDraw.h.
 static CGSize TGGiftTextSize(NSString *text, UIFont *font) {
-	if (!text.length)
-		return CGSizeZero;
-	if ([text respondsToSelector:@selector(sizeWithAttributes:)])
-		return [text sizeWithAttributes:@{NSFontAttributeName: font}];
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-	return [text sizeWithFont:font];
-#pragma clang diagnostic pop
+	return TGLineTextSize(text, font);
 }
 
 static CGFloat TGGiftTextHeight(NSString *text, UIFont *font, CGFloat width) {
-	if (!text.length)
-		return 0;
-	if ([text respondsToSelector:@selector(boundingRectWithSize:options:attributes:context:)])
-		return ceilf([text boundingRectWithSize:CGSizeMake(width, TGMetricTextMeasureHeight)
-									   options:NSStringDrawingUsesLineFragmentOrigin
-									attributes:@{NSFontAttributeName: font}
-									   context:nil].size.height);
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-	return ceilf([text sizeWithFont:font
-				 constrainedToSize:CGSizeMake(width, TGMetricTextMeasureHeight)
-					 lineBreakMode:NSLineBreakByWordWrapping].height);
-#pragma clang diagnostic pop
+	return TGTextHeight(text, font, width);
 }
 
 static UIImage *TGGiftArtworkGlyph(NSString *emoji, CGFloat side) {

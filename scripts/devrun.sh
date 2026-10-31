@@ -11,6 +11,8 @@
 # Launching an app remotely needs ONE of these on the device:
 #   A) debugserver, via a mounted Developer Disk Image for iOS 7.1
 #   B) OpenSSH (jailbreak) plus an `open`/`uiopen` binary
+# SSH also installs: where mobile_installation is broken (the iPod touch 4 on
+# 6.1.6 is), the bundle goes to /Applications and uicache shows it.
 # The script tries A, then B, and tells you exactly what is missing if neither
 # is available. Everything else (build, install, syslog, crash reports) works
 # regardless.
@@ -104,7 +106,34 @@ build() {
 install_ipa() {
 	say "installing"
 	[ -f "$IPA" ] || { echo "no IPA at $IPA" >&2; return 1; }
-	ideviceinstaller install "$IPA" 2>&1 | tail -3
+	if ideviceinstaller install "$IPA" 2>&1 | tail -3 | grep -q "Complete"; then
+		return 0
+	fi
+	echo "ideviceinstaller did not finish - trying SSH" >&2
+	install_over_ssh
+}
+
+# The iPod touch 4 on 6.1.6 has a mobile_installation that answers nothing:
+# every lookup comes back "Connection blew up while waiting for messages" and
+# ideviceinstaller reports APIInternalError for install AND for a plain list.
+# A jailbroken device does not need it - an app under /Applications is a
+# system app, which SpringBoard picks up from uicache. ldid gives the binary
+# the fake signature amfid wants; the bundle has none of its own.
+install_over_ssh() {
+	ssh_ready || { echo "no ideviceinstaller and no ssh - cannot install" >&2; return 1; }
+	local app="$ROOT/build/armv7/app/LegacyTG.app"
+	[ -d "$app" ] || { echo "no app bundle at $app" >&2; return 1; }
+	say "installing over SSH into /Applications"
+	# tar over the pipe: the device has tar and gzip but no rsync, and scp of a
+	# whole bundle costs one connection per file.
+	tar -czf - -C "$(dirname "$app")" "$(basename "$app")" \
+		| ssh $SSH_OPTS "$SSH_HOST" "rm -rf /Applications/LegacyTG.app && \
+			tar -xzf - -C /Applications && \
+			ldid -S /Applications/LegacyTG.app/LegacyTG && \
+			chmod 755 /Applications/LegacyTG.app/LegacyTG && \
+			chown -R root:wheel /Applications/LegacyTG.app && \
+			uicache 2>/dev/null; true" || return 1
+	echo "installed into /Applications"
 }
 
 # ------------------------------------------------- launch method A: DDI -----

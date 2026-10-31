@@ -1,3 +1,4 @@
+#import "TGTextDraw.h"
 #import "TGChatCell.h"
 #import "TGTheme.h"
 #import <QuartzCore/QuartzCore.h>
@@ -16,14 +17,7 @@ static const CGFloat kPinGlyph      = 16.0f;
 static const CGFloat kBadgePad      = TGMetricPadMedium + TGMetricPadTiny;
 
 static CGSize TGChatCellTextSize(NSString *text, UIFont *font) {
-	if (!text.length || !font) return CGSizeZero;
-	if ([text respondsToSelector:@selector(sizeWithAttributes:)]) {
-		return [text sizeWithAttributes:@{NSFontAttributeName: font}];
-	}
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-	return [text sizeWithFont:font];
-#pragma clang diagnostic pop
+	return TGLineTextSize(text, font);
 }
 
 /// Their titles are a medium weight, not bold; Helvetica Neue has carried one
