@@ -490,6 +490,7 @@ static const NSInteger kBannerSubtitleTag = 72;
 
 	if ([self.input isFirstResponder])
 		[self.input resignFirstResponder];
+	[self hideBotKeyboard];
 
 	self.stickerPanel.frame = CGRectMake(0, b.size.height, b.size.width, height);
 	self.stickerPanel.hidden = NO;
@@ -570,6 +571,7 @@ static const NSInteger kBannerSubtitleTag = 72;
 - (void)keyboardWillShow:(NSNotification *)note {
 	if ([self stickerPanelShown])
 		[self hideStickerPanel];
+	[self hideBotKeyboard];
 	CGRect kb = [[note.userInfo objectForKey:UIKeyboardFrameEndUserInfoKey] CGRectValue];
 	[self shiftForKeyboardHeight:kb.size.height];
 }

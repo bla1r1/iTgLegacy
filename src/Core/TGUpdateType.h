@@ -76,7 +76,8 @@
 	X(TGUpdateUserStatus,             "updateUserStatus") \
 	X(TGUpdateChatActionBar,          "updateChatActionBar") \
 	X(TGUpdateChatFolders,            "updateChatFolders") \
-	X(TGUpdateUnreadChatCount,        "updateUnreadChatCount")
+	X(TGUpdateUnreadChatCount,        "updateUnreadChatCount") \
+	X(TGUpdateChatReplyMarkup,        "updateChatReplyMarkup")
 
 typedef enum {
 	TGUpdateUnknown = 0,

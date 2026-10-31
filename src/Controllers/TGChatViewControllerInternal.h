@@ -189,7 +189,7 @@ static const CGFloat kBannerCloseGlyph = 16.0f;
 
 @class TGMessageStreamStore;
 
-@interface TGChatViewController () <UISearchBarDelegate, TGSearchBarDelegate, CLLocationManagerDelegate, TGEmojiPanelDelegate,
+@interface TGChatViewController () <UISearchBarDelegate, CLLocationManagerDelegate, TGEmojiPanelDelegate,
 		UIScrollViewDelegate, AVAudioPlayerDelegate, TGStreamingVoicePlayerDelegate,
 		ABPeoplePickerNavigationControllerDelegate>
 
@@ -219,7 +219,7 @@ static const CGFloat kBannerCloseGlyph = 16.0f;
 /// Following a reply: the quote header is the button; this is where it lands.
 - (void)jumpToReplyById:(int64_t)replyId;
 - (void)refreshActionBar;
-@property (nonatomic, strong) TGSearchBar *chatSearchBar;
+@property (nonatomic, strong) UISearchBar *chatSearchBar;
 @property (nonatomic, strong) NSArray *messagesBeforeSearch;
 @property (nonatomic, strong) NSTimer *recordTimer;
 @property (nonatomic, strong) UIView *recordPanel;      // shown while holding
@@ -293,6 +293,19 @@ static const CGFloat kBannerCloseGlyph = 16.0f;
 /// The message the chat has pinned, so the menu offers Unpin on that one and
 /// Pin on every other. Zero when nothing is pinned.
 @property (nonatomic, assign) int64_t pinnedMessageId;
+/// Scroll to a message, fetching history around it when it is not loaded.
+- (void)showMessageId:(int64_t)messageId gone:(NSString *)gone;
+- (void)showJumpToDateSheet;
+- (void)openCommentsForMessage:(NSDictionary *)m;
+
+// Bots (TGChatViewController+Bots.m)
+@property (nonatomic, strong) NSDictionary *replyKeyboard;
+@property (nonatomic, strong) UIScrollView *botKeyboardPanel;
+@property (nonatomic, strong) UIButton *botKeyboardToggle;
+- (void)botButtonTapped:(UIButton *)key;
+- (void)refreshReplyKeyboard;
+- (void)replyMarkupChanged:(NSNotification *)note;
+- (void)hideBotKeyboard;
 @property (nonatomic, strong) UIView *pinnedBannerView;
 @property (nonatomic, strong) UIView *pinnedBannerHair;
 @property (nonatomic, assign) BOOL isEditingMessages;
@@ -453,6 +466,7 @@ static const CGFloat kBannerCloseGlyph = 16.0f;
 - (BOOL)stampSitsOnPictureFor:(NSDictionary *)m;
 - (CGSize)bodySizeFor:(NSDictionary *)m;
 - (UIImage *)imageFor:(NSDictionary *)m;
+- (void)fetchImageForMessage:(NSDictionary *)m;
 - (CGSize)imageSizeFor:(NSDictionary *)m;
 - (TGMessageLayout *)layoutForMessage:(NSDictionary *)m atRow:(NSInteger)row;
 /// Runs: neighbouring bubbles from one sender a few minutes apart.

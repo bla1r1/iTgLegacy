@@ -205,7 +205,34 @@
 		@"reaction" : @"🔥",
 	}];
 
+	// Buttons under a bot's question, one of each kind the chat draws.
+	[list addObject:@{
+		@"id"       : @4,
+		@"chatId"   : @(kDevBotChatId),
+		@"senderId" : @(senderBot),
+		@"outgoing" : @NO,
+		@"date"     : @(baseTime + 180),
+		@"text"     : @"Which theme should the bench use?",
+		@"kind"     : @"messageText",
+		@"inlineRows" : @[
+			@[@{@"text" : @"Classic", @"kind" : @"callback", @"data" : @"Y2xhc3NpYw=="},
+			  @{@"text" : @"Night", @"kind" : @"callback", @"data" : @"bmlnaHQ="}],
+			@[@{@"text" : @"Open telegram.org", @"kind" : @"url", @"url" : @"https://telegram.org"}],
+			@[@{@"text" : @"Copy code", @"kind" : @"copy", @"copy" : @"LEGACY-6"},
+			  @{@"text" : @"Web app", @"kind" : @"unsupported"}],
+		],
+	}];
+
 	return list;
+}
+
+/// The keyboard Dev Bot leaves on its chat, so the composer's key has
+/// something to open without a real bot.
++ (NSDictionary *)replyKeyboardForChatId:(int64_t)chatId {
+	if (chatId != kDevBotChatId)
+		return nil;
+	return @{@"rows" : @[@[@"/showcase", @"/ping"], @[@"/theme", @"/poll"], @[@"Help"]],
+			 @"oneTime" : @NO, @"placeholder" : @"Ask Dev Bot"};
 }
 
 + (NSString *)devStickerPath {
@@ -319,6 +346,9 @@ static NSData *TGShowcaseWaveform(void) {
 		@"text"       : @"Major update: full support for legacy iOS vector and video stickers has landed!",
 		@"kind"       : @"messageText",
 		@"forward"    : @"Pavel Durov",
+		// Drawn as a channel post with comments, so the bar has a place here.
+		@"canComment" : @YES,
+		@"replyCount" : @12,
 	}];
 
 	// 6. Sticker: Static WebP

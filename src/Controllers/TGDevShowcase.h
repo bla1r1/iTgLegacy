@@ -18,6 +18,8 @@
 + (NSArray *)allShowcaseMessages;
 + (NSArray *)pavelDurovMessages;
 + (NSArray *)devBotMessages;
+/// Dev Bot's reply keyboard; nil for any other chat.
++ (NSDictionary *)replyKeyboardForChatId:(int64_t)chatId;
 + (NSString *)devStickerPath;
 + (NSString *)devWebMPath;
 + (UIImage *)imageForPhotoId:(int64_t)photoId;

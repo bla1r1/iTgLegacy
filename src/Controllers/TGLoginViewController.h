@@ -21,5 +21,9 @@
 - (void)showPasswordStep;
 /// A number Telegram has never seen stops here until an account is made.
 - (void)showRegisterStep;
+/// Telegram wants an email on the account before it sends a code.
+- (void)showEmailStep;
+/// The code Telegram mailed to that address.
+- (void)showEmailCodeStep;
 
 @end

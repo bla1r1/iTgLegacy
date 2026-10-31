@@ -8,6 +8,7 @@
 #import "TGProfileViewController.h"
 #import "TGThemeFile.h"
 #import "TGCapabilities.h"
+#import "TGDevice.h"
 #import <AddressBookUI/AddressBookUI.h>
 #import <CoreLocation/CoreLocation.h>
 #import <AssetsLibrary/AssetsLibrary.h>
@@ -61,8 +62,15 @@
 	self.gifsRequested = [NSMutableSet set];
 	self.senderAvatars = [[TGImageLruCache alloc] initWithCapacity:50];
 	self.senderAvatarsRequested = [NSMutableSet set];
-	self.images = [[TGImageLruCache alloc] initWithCapacity:40];
+	// About 1.1 MB a photo (a 400 px decode plus its rounded copy): forty of
+	// them were 45 MB, past where jetsam kills the app on a 256 MB phone. Rows
+	// fetch an evicted photo again, so a small window is enough.
+	TGDeviceTier tier = [TGDevice tier];
+	self.images = [[TGImageLruCache alloc] initWithCapacity:
+			tier == TGDeviceTierVintage ? 12 : tier == TGDeviceTierLegacy ? 24 : 40];
 	self.imagesRequested = [NSMutableSet set];
+	[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(memoryWarning:)
+			name:UIApplicationDidReceiveMemoryWarningNotification object:nil];
 	self.lottiePaths = [NSMutableDictionary dictionary];
 	self.maps = [[TGImageLruCache alloc] initWithCapacity:20];
 	self.mapsRequested = [NSMutableSet set];
@@ -115,6 +123,9 @@
 	[self buildInputBar:b];
 	TGPerfReport("chat vc", "input bar", vcStart, 100.0);
 	[self buildChrome];
+	[self refreshReplyKeyboard];
+	[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(replyMarkupChanged:)
+			name:TGChatReplyMarkupChangedNotification object:nil];
 	TGPerfReport("chat vc", "chrome", vcStart, 50.0);
 	[self installSwipeToReply];
 	TGPerfReport("chat vc", "swipe + load", vcStart, 100.0);
@@ -384,6 +395,34 @@
 	}
 }
 
+/// Keeps only the photos on screen. Nothing used to answer a memory warning,
+/// so the next step after one was jetsam; an evicted photo comes back when its
+/// row is drawn again (fetchImageForMessage:).
+- (void)memoryWarning:(NSNotification *)note {
+	NSMutableArray *keepIds = [NSMutableArray array];
+	NSMutableArray *keepImages = [NSMutableArray array];
+	for (NSIndexPath *path in self.table.indexPathsForVisibleRows) {
+		if (path.row >= (NSInteger)self.messages.count)
+			continue;
+		NSDictionary *m = self.messages[path.row];
+		NSArray *parts = [m[@"albumMessages"] isKindOfClass:NSArray.class] ? m[@"albumMessages"] : @[m];
+		for (NSDictionary *part in parts) {
+			NSNumber *fileId = part[@"photoId"];
+			UIImage *img = [fileId isKindOfClass:NSNumber.class] ? self.images[fileId] : nil;
+			if (img) {
+				[keepIds addObject:fileId];
+				[keepImages addObject:img];
+			}
+		}
+	}
+	[self.images removeAllObjects];
+	for (NSUInteger i = 0; i < keepIds.count; i++)
+		self.images[keepIds[i]] = keepImages[i];
+	[self.senderAvatars removeAllObjects];
+	[self.senderAvatarsRequested removeAllObjects];
+	NSLog(@"memory warning: chat kept %lu photos", (unsigned long)keepIds.count);
+}
+
 - (void)dealloc {
 	[NSObject cancelPreviousPerformRequestsWithTarget:self.table];
 	[NSObject cancelPreviousPerformRequestsWithTarget:self];
@@ -563,8 +602,9 @@
 	CGFloat side = 37;
 	UIButton *button = [UIButton buttonWithType:UIButtonTypeCustom];
 	button.frame = CGRectMake(0, 0, side, side);
-	button.layer.cornerRadius = TGHalf(side);
-	button.clipsToBounds = YES;
+	// No clip: the nav bar is recomposited on every frame of a scroll, and a
+	// rounded clip there is an offscreen pass each time. The images below are
+	// round already.
 	[button addTarget:self action:@selector(openProfile)
 	 forControlEvents:UIControlEventTouchUpInside];
 
@@ -595,6 +635,8 @@
 									   fittingSize:CGSizeMake(side, side)
 											  fill:YES scale:screenScale];
 			if (!photo) return;
+			photo = [TGIcons roundedImage:photo size:CGSizeMake(side, side) radius:TGHalf(side)
+								  corners:UIRectCornerAllCorners];
 			dispatch_async(dispatch_get_main_queue(), ^{
 				[button setImage:photo forState:UIControlStateNormal];
 			});
@@ -612,6 +654,10 @@
 	profile.onSearchTapped = ^{
 		[weakSelf.navigationController popViewControllerAnimated:YES];
 		[weakSelf toggleChatSearch];
+	};
+	profile.onJumpToDateTapped = ^{
+		[weakSelf.navigationController popViewControllerAnimated:YES];
+		[weakSelf showJumpToDateSheet];
 	};
 	[self.navigationController pushViewController:profile animated:YES];
 }
@@ -669,34 +715,122 @@
 }
 
 /// The pinned message, which may be far above whatever the chat has loaded.
-/// Scrolling there is the first try; when it is outside the window the
-/// history is fetched around it and the scroll is tried again.
 - (void)pinnedBannerTapped {
-	int64_t pinned = self.pinnedMessageId;
-	if (!pinned)
-		return;
-	if ([self scrollToMessageId:pinned])
-		return;
+	if (self.pinnedMessageId)
+		[self showMessageId:self.pinnedMessageId gone:@"The pinned message is gone"];
+}
 
+/// Scrolls to a message; when it is outside the loaded window the history is
+/// fetched around it, replacing what was on screen the way following a reply
+/// upwards does, and the scroll is tried again. `gone` is said if even that
+/// does not find it.
+- (void)showMessageId:(int64_t)messageId gone:(NSString *)gone {
+	if ([self scrollToMessageId:messageId])
+		return;
 	__weak typeof(self) weakSelf = self;
 	[[TGClient shared] historyForChat:self.chatId
-						 fromMessageId:pinned
+						 fromMessageId:messageId
 								 limit:(NSInteger)TGMetricHistoryPageAroundPinned
 							completion:^(NSArray *messages){
 		TGChatViewController *me = weakSelf;
 		if (!me || !messages.count)
 			return;
-		// The fetched window replaces what was on screen, the way following a
-		// reply upwards does.
 		[me.streamStore resetWithMessages:messages];
 		me.rawMessages = [me.streamStore messages];
 		me.messages = [me groupedMessagesFromMessages:me.rawMessages];
 		me.atChatEnd = NO;
 		me.atChatStart = NO;
 		[me.table reloadData];
-		if (![me scrollToMessageId:pinned])
-			[TGSnackbar showInView:me.view text:@"The pinned message is gone"
-						   seconds:2 onCommit:nil];
+		if (![me scrollToMessageId:messageId])
+			[TGSnackbar showInView:me.view text:gone seconds:2 onCommit:nil];
+	}];
+}
+
+/// Holding the strip offers the one thing a tap cannot: taking every pinned
+/// message down at once.
+- (void)pinnedBannerHeld:(UILongPressGestureRecognizer *)hold {
+	if (hold.state != UIGestureRecognizerStateBegan)
+		return;
+	int64_t chatId = self.chatId, threadId = self.threadId;
+	__weak typeof(self) weakSelf = self;
+	[TGAlertSheet showConfirm:@"Every pinned message in this chat is unpinned."
+						title:@"Unpin All Messages"
+					   action:@"Unpin All"
+				  destructive:YES
+					   inView:self.view
+					onConfirm:^{
+		[[TGClient shared] unpinAllMessagesInChat:chatId thread:threadId];
+		weakSelf.pinnedMessageId = 0;
+		[weakSelf hidePinnedBanner];
+	}];
+}
+
+/// A day to go to: the last message sent on or before the end of it.
+- (void)showJumpToDateSheet {
+	TGSheet *sheet = [TGSheet sheetForView:self.view.window ?: self.view];
+	UIView *card = [sheet addCardOfHeight:TGMetricRow + TGMetricPickerHeight edgeToEdge:YES];
+	UIDatePicker *picker = [[UIDatePicker alloc] initWithFrame:
+			CGRectMake(0, TGMetricRow, card.bounds.size.width, TGMetricPickerHeight)];
+	picker.datePickerMode = UIDatePickerModeDate;
+	picker.maximumDate = [NSDate date];
+	[card addSubview:picker];
+	UIToolbar *bar = [[UIToolbar alloc] initWithFrame:CGRectMake(0, 0, card.bounds.size.width, TGMetricRow)];
+	bar.items = @[
+		[[UIBarButtonItem alloc] initWithTitle:@"Cancel" style:UIBarButtonItemStylePlain
+				target:sheet action:@selector(dismiss)],
+		[[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace
+				target:nil action:nil],
+		[[UIBarButtonItem alloc] initWithTitle:@"Go" style:UIBarButtonItemStyleDone
+				target:self action:@selector(jumpToDateCommit:)],
+	];
+	[card addSubview:bar];
+	self.pickPicker = picker;
+	self.pickSheet = sheet;
+	[sheet present];
+}
+
+- (void)jumpToDateCommit:(UIBarButtonItem *)sender {
+	NSDate *day = self.pickPicker.date;
+	[self.pickSheet dismiss];
+	self.pickSheet = nil;
+	self.pickPicker = nil;
+	// End of the chosen day in local time: "the 3rd" includes its evening.
+	NSCalendar *calendar = [NSCalendar currentCalendar];
+	NSDateComponents *c = [calendar components:NSYearCalendarUnit | NSMonthCalendarUnit | NSDayCalendarUnit
+									  fromDate:day];
+	c.hour = 23; c.minute = 59; c.second = 59;
+	NSTimeInterval end = [[calendar dateFromComponents:c] timeIntervalSince1970];
+	__weak typeof(self) weakSelf = self;
+	[[TGClient shared] messageAtDate:end inChat:self.chatId completion:^(NSDictionary *m){
+		TGChatViewController *me = weakSelf;
+		if (!m) {
+			[TGSnackbar showInView:me.view text:@"Nothing that old in this chat" seconds:2 onCommit:nil];
+			return;
+		}
+		[me showMessageId:[m[@"id"] longLongValue] gone:@"That message is gone"];
+	}];
+}
+
+/// A channel post's comments: a thread in the discussion group, opened as a
+/// chat of its own the way forum topics are.
+- (void)openCommentsForMessage:(NSDictionary *)m {
+	__weak typeof(self) weakSelf = self;
+	[[TGClient shared] commentThreadForChat:self.chatId messageId:[m[@"id"] longLongValue]
+								 completion:^(int64_t discussionChatId, int64_t threadId, NSString *error){
+		TGChatViewController *me = weakSelf;
+		if (!me)
+			return;
+		if (error) {
+			[TGAlertSheet showMessage:error title:@"Comments" inView:me.view];
+			return;
+		}
+		TGChatViewController *thread = [[TGChatViewController alloc] init];
+		thread.chatId = discussionChatId;
+		thread.threadId = threadId;
+		thread.chatTitle = @"Comments";
+		thread.isGroup = YES;
+		thread.hidesBottomBarWhenPushed = YES;
+		[me.navigationController pushViewController:thread animated:YES];
 	}];
 }
 
@@ -866,6 +1000,8 @@
 	banner.userInteractionEnabled = YES;
 	[banner addGestureRecognizer:[[UITapGestureRecognizer alloc]
 			initWithTarget:self action:@selector(pinnedBannerTapped)]];
+	[banner addGestureRecognizer:[[UILongPressGestureRecognizer alloc]
+			initWithTarget:self action:@selector(pinnedBannerHeld:)]];
 
 	self.pinnedBannerView = banner;
 	self.pinnedBannerHair = hair;

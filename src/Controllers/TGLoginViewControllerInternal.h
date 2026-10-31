@@ -13,7 +13,11 @@ typedef NS_ENUM(NSInteger, TGLoginStep) {
     TGLoginStepPassword,
     /// A phone number Telegram has never seen: the account is made here, and
     /// before this step existed the code screen simply never moved on.
-    TGLoginStepRegister
+    TGLoginStepRegister,
+    TGLoginStepEmail,
+    TGLoginStepEmailCode,
+    /// The code mailed to the recovery address after "Forgot password?".
+    TGLoginStepRecoveryCode
 };
 
 @interface TGLoginViewController ()
@@ -38,6 +42,8 @@ typedef NS_ENUM(NSInteger, TGLoginStep) {
 @property (nonatomic, copy) NSString *savedPhoneNumber;
 @property (nonatomic, strong) NSTimer *resendTimer;
 @property (nonatomic, assign) NSInteger resendCountdown;
+/// The ghost links under a step's button that only that step has.
+@property (nonatomic, strong) NSMutableArray *stepLinks;
 
 @property (nonatomic, strong) UILabel *themeSectionLabel;
 @property (nonatomic, strong) UISegmentedControl *themeSegmentedControl;
@@ -66,6 +72,11 @@ typedef NS_ENUM(NSInteger, TGLoginStep) {
 - (void)resendButtonTapped;
 - (void)resetSessionTapped;
 - (UIImage *)generateQRCodeForString:(NSString *)string size:(CGFloat)size;
+- (void)clearStepLinks;
+- (void)showRecoveryCodeStep;
+- (void)forgotPasswordTapped;
+- (void)codeMissingTapped;
+- (void)resetEmailTapped;
 
 @end
 

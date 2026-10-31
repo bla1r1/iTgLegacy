@@ -59,6 +59,68 @@
 	}];
 }
 
+- (void)sendEmailAddress:(NSString *)email {
+	[self send:@{@"@type" : @"setAuthenticationEmailAddress",
+				 @"email_address" : email ?: @""}];
+}
+
+- (void)sendEmailCode:(NSString *)code {
+	[self send:@{@"@type" : @"checkAuthenticationEmailCode",
+				 @"code" : @{@"@type" : @"emailAddressAuthenticationCode",
+							 @"code" : code ?: @""}}];
+}
+
+- (void)resetAuthenticationEmailAddress {
+	[self send:@{@"@type" : @"resetAuthenticationEmailAddress"}];
+}
+
+- (void)reportAuthenticationCodeMissing {
+	// The mobile network code is optional and this app cannot read one.
+	[self send:@{@"@type" : @"reportAuthenticationCodeMissing",
+				 @"mobile_network_code" : @""}];
+}
+
+static NSString *TGAuthError(NSDictionary *result) {
+	if ([result[@"@type"] isEqualToString:@"ok"])
+		return nil;
+	NSString *message = result[@"message"];
+	return message.length ? message : @"Telegram refused that.";
+}
+
+- (void)requestPasswordRecoveryWithCompletion:(void (^)(NSString *))completion {
+	[self request:@{@"@type" : @"requestAuthenticationPasswordRecovery"}
+	   completion:^(NSDictionary *result){
+		if (completion)
+			completion(TGAuthError(result));
+	}];
+}
+
+- (void)recoverPasswordWithCode:(NSString *)code
+					 completion:(void (^)(NSString *))completion {
+	NSString *trimmed = code ?: @"";
+	// Checked first so a mistyped code says so, instead of the recovery
+	// itself failing with a less useful message.
+	[self request:@{@"@type" : @"checkAuthenticationPasswordRecoveryCode",
+					@"recovery_code" : trimmed}
+	   completion:^(NSDictionary *checked){
+		NSString *error = TGAuthError(checked);
+		if (error) {
+			if (completion) completion(error);
+			return;
+		}
+		// An empty new password is how TDLib spells "no password": recovery
+		// signs in and removes it, as the official client does.
+		[self request:@{@"@type" : @"recoverAuthenticationPassword",
+						@"recovery_code" : trimmed,
+						@"new_password" : @"",
+						@"new_hint" : @""}
+		   completion:^(NSDictionary *result){
+			if (completion)
+				completion(TGAuthError(result));
+		}];
+	}];
+}
+
 /// passwordState has no "recovery_email_address_pattern": it carries a flag
 /// for whether there is an address, and a pattern only while a code sent to
 /// a new one is outstanding. Reading the absent key meant the Two-Step screen

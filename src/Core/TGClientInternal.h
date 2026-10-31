@@ -64,6 +64,8 @@ NSDictionary *TGStickerInfo(NSDictionary *sticker);
 @property (nonatomic, strong) NSMutableDictionary *pendingRequests;  // @extra -> completion
 @property (nonatomic, assign) NSUInteger requestSeq;
 @property (nonatomic, strong) NSDictionary *codeInfo;
+@property (nonatomic, strong) NSDictionary *loginPasswordInfo;
+@property (nonatomic, strong) NSDictionary *emailCodeInfo;
 @property (nonatomic, copy)   NSString *qrCodeLink;
 
 // Internal methods shared across categories
@@ -107,6 +109,7 @@ extern "C" {
 
 // Common helpers shared between TGClient and categories
 NSDictionary *TGFlattenMessage(NSDictionary *m);
+NSDictionary *TGFlattenReplyMarkup(NSDictionary *markup);
 NSString *TGMessagePreview(NSDictionary *message);
 NSString *TGKnownMessagePreview(NSDictionary *message);
 NSString *TGPhraseFromTypeName(NSString *ctype);

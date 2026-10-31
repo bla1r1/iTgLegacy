@@ -29,6 +29,7 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
 @implementation TGLoginViewController (Steps)
 
 - (void)showPhoneStep {
+    [self clearStepLinks];
     [self.resendTimer invalidate];
     self.resendTimer = nil;
     [self setBusy:NO];
@@ -48,7 +49,7 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
 
     CGFloat width = self.view.bounds.size.width;
     self.inputContainer.hidden = NO;
-    CGFloat y = TGMetricStackTop + TGMetricLoginSubtitleHeight + TGMetricStackStep;
+    CGFloat y = [self placeSubtitle] + TGMetricStackGroup;
     y = TGStackPlace(self.inputContainer, y, TGMetricRow, width, TGMetricGutter);
     self.actionButton.hidden = NO;
     y = TGStackPlace(self.actionButton, y, TGMetricRow, width, TGMetricGutter);
@@ -73,6 +74,7 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
     self.inputField.returnKeyType = UIReturnKeyGo;
     [self.actionButton setTitle:@"Next" forState:UIControlStateNormal];
     self.nextItem.title = @"Next";
+    self.navigationItem.rightBarButtonItem = self.nextItem;
 
     if (self.resendButton) {
         [self.resendButton removeFromSuperview];
@@ -112,7 +114,9 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
             width - TGDoubled(TGMetricGutter) - TGDoubled(TGMetricPadMedium),
             TGMetricRow);
     self.inputField.textAlignment = NSTextAlignmentCenter;
-    self.inputField.font = TGFontTitle();
+    // The phone field's size. 22 pt bold was larger than the bar's own title
+    // and filled the row from edge to edge.
+    self.inputField.font = TGFontInput();
     self.inputField.text = @"";
     self.inputField.returnKeyType = UIReturnKeyGo;
 }
@@ -125,6 +129,7 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
 }
 
 - (void)showQRCodeStepWithLink:(NSString *)link {
+    [self clearStepLinks];
     [self setBusy:NO];
     self.title = @"Scan QR Code";
     self.subtitleLabel.text = @"Open Telegram on another device:\nSettings > Devices > Link Desktop Device";
@@ -152,6 +157,8 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
         style:UIBarButtonItemStylePlain
         target:self
         action:@selector(showPhoneStep)];
+    // Nothing to submit here: the other device does the work.
+    self.navigationItem.rightBarButtonItem = nil;
 
     CGFloat width = self.view.bounds.size.width;
     CGFloat qrSize = MIN(width - 80, TGMetricLoginQRSize);
@@ -190,8 +197,15 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
     if (!string.length) return nil;
     NSData *stringData = [string dataUsingEncoding:NSUTF8StringEncoding];
     CIFilter *qrFilter = [CIFilter filterWithName:@"CIQRCodeGenerator"];
+    // iOS 6 ships this filter unannounced and without a correction-level
+    // input: setting the key raised NSUnknownKeyException and the QR login
+    // took the app down. Only keys the filter lists are set.
+    NSArray *keys = qrFilter.inputKeys;
+    if (![keys containsObject:@"inputMessage"])
+        return nil;
     [qrFilter setValue:stringData forKey:@"inputMessage"];
-    [qrFilter setValue:@"M" forKey:@"inputCorrectionLevel"];
+    if ([keys containsObject:@"inputCorrectionLevel"])
+        [qrFilter setValue:@"M" forKey:@"inputCorrectionLevel"];
 
     CIImage *ciImage = qrFilter.outputImage;
     if (!ciImage) return nil;
@@ -217,6 +231,7 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
 }
 
 - (void)showCodeStepWithPhoneNumber:(NSString *)phoneNumber {
+    [self clearStepLinks];
     [self setBusy:NO];
     self.currentStep = TGLoginStepCode;
     self.title = @"Enter Code";
@@ -237,16 +252,17 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
 
     CGFloat width = self.view.bounds.size.width;
     [self useSingleFieldLayout];
-    CGFloat codeY = TGMetricStackTop + TGMetricLoginSubtitleHeight +
-                    TGMetricStackGroup;
+    CGFloat codeY = [self placeSubtitle] + TGMetricStackGroup;
     codeY = TGStackPlace(self.inputContainer, codeY, TGMetricRow,
                          width, TGMetricGutter);
+    [self.inputField resignFirstResponder];   // or the number pad never shows
     self.inputField.placeholder = @"Code";
     self.inputField.keyboardType = UIKeyboardTypeNumberPad;
     codeY = TGStackPlace(self.actionButton, codeY, TGMetricRow,
                          width, TGMetricGutter);
     [self.actionButton setTitle:@"Submit Code" forState:UIControlStateNormal];
     self.nextItem.title = @"Done";
+    self.navigationItem.rightBarButtonItem = self.nextItem;
 
     self.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc]
         initWithTitle:@"Edit"
@@ -280,6 +296,8 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
 
     // Past the two links, whichever of them is showing.
     codeY += TGDoubled(TGMetricLoginLinkHeight) + TGMetricPadSmall;
+    codeY = [self addStepLink:@"Didn't get the code?" action:@selector(codeMissingTapped)
+                          atY:codeY + TGMetricPadSmall];
     codeY = TGStackPlaceGroup(self.themeSectionLabel, codeY,
                               TGMetricPadLarge, width, TGMetricPadWide);
     codeY = TGStackPlace(self.themeSegmentedControl,
@@ -345,6 +363,7 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
 /// does not require one, so the single field this screen has asks for the
 /// first and the rest is left for Edit Profile.
 - (void)showRegisterStep {
+    [self clearStepLinks];
     [self setBusy:NO];
     self.currentStep = TGLoginStepRegister;
     self.title = @"Your Name";
@@ -353,7 +372,6 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
     self.subtitleLabel.text = terms.length
             ? [NSString stringWithFormat:@"This number is new to Telegram.\n\n%@", terms]
             : @"This number is new to Telegram.\nEnter your name to finish.";
-    self.subtitleLabel.numberOfLines = 0;
 
     self.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc]
         initWithTitle:@"Cancel"
@@ -375,16 +393,7 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
     CGFloat width = self.view.bounds.size.width;
     [self useSingleFieldLayout];
     // The terms can run long, so the field sits under whatever they took.
-    CGSize room = CGSizeMake(width - TGDoubled(TGMetricPadWide),
-                             TGMetricTextMeasureHeight);
-    CGFloat subtitleH = TGTextHeight(self.subtitleLabel.text,
-            self.subtitleLabel.font, room.width);
-    if (subtitleH <= 0.0f)
-        subtitleH = 40;
-    self.subtitleLabel.frame = CGRectMake(TGMetricPadWide, TGMetricPad,
-            width - TGDoubled(TGMetricPadWide), subtitleH);
-
-    CGFloat y = 16 + subtitleH;
+    CGFloat y = [self placeSubtitle] + TGMetricStackGroup;
     y = TGStackPlace(self.inputContainer, y, TGMetricRow, width, TGMetricGutter);
     self.inputField.placeholder = @"First name";
     self.inputField.secureTextEntry = NO;
@@ -393,6 +402,7 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
     y = TGStackPlace(self.actionButton, y, TGMetricRow, width, TGMetricGutter);
     [self.actionButton setTitle:@"Create Account" forState:UIControlStateNormal];
     self.nextItem.title = @"Done";
+    self.navigationItem.rightBarButtonItem = self.nextItem;
 
     self.themeSectionLabel.hidden = YES;
     self.themeSegmentedControl.hidden = YES;
@@ -404,10 +414,122 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
 }
 
 - (void)showPasswordStep {
+    NSDictionary *info = [TGClient shared].loginPasswordInfo;
+    NSString *hint = info[@"password_hint"];
+    NSString *subtitle = hint.length
+            ? [NSString stringWithFormat:@"Your account is protected with a password.\nHint: %@", hint]
+            : @"Your account is protected with a password.\nEnter your password below.";
+    [self showFieldStep:TGLoginStepPassword title:@"Password" subtitle:subtitle
+            placeholder:@"Password" secure:YES keyboard:UIKeyboardTypeDefault
+                 button:@"Submit Password"];
+    [self addStepLink:@"Forgot password?" action:@selector(forgotPasswordTapped)
+                  atY:CGRectGetMaxY(self.actionButton.frame) + TGMetricPadSmall];
+}
+
+/// Asks Telegram to mail a recovery code. An account without a recovery
+/// address gets Telegram's refusal, said plainly: there is nothing else this
+/// app can offer it.
+- (void)forgotPasswordTapped {
+    [self setBusy:YES];
+    __weak typeof(self) weakSelf = self;
+    [[TGClient shared] requestPasswordRecoveryWithCompletion:^(NSString *error){
+        TGLoginViewController *me = weakSelf;
+        [me setBusy:NO];
+        if (error) {
+            [TGAlertSheet showMessage:[NSString stringWithFormat:
+                    @"%@\n\nWithout a recovery email the password cannot be reset from here.", error]
+                                title:@"Forgot Password" inView:me.view];
+            return;
+        }
+        [me showRecoveryCodeStep];
+    }];
+}
+
+- (void)showRecoveryCodeStep {
+    NSString *pattern = [TGClient shared].loginPasswordInfo[@"recovery_email_address_pattern"];
+    NSString *subtitle = pattern.length
+            ? [NSString stringWithFormat:@"We've emailed a recovery code to\n%@\nEntering it removes the password.", pattern]
+            : @"We've emailed a recovery code to your recovery address.\nEntering it removes the password.";
+    [self showFieldStep:TGLoginStepRecoveryCode title:@"Recovery Code" subtitle:subtitle
+            placeholder:@"Code" secure:NO keyboard:UIKeyboardTypeNumberPad
+                 button:@"Submit Code"];
+}
+
+- (void)showEmailStep {
+    [self showFieldStep:TGLoginStepEmail title:@"Your Email"
+               subtitle:@"Telegram needs an email address for this account\nbefore it sends a login code."
+            placeholder:@"Email address" secure:NO keyboard:UIKeyboardTypeEmailAddress
+                 button:@"Continue"];
+}
+
+- (void)showEmailCodeStep {
+    NSDictionary *info = [TGClient shared].emailCodeInfo;
+    NSString *pattern = info[@"code_info"][@"email_address_pattern"];
+    NSString *subtitle = pattern.length
+            ? [NSString stringWithFormat:@"We've sent a code to\n%@", pattern]
+            : @"We've sent a code to your email.";
+    [self showFieldStep:TGLoginStepEmailCode title:@"Check Your Email" subtitle:subtitle
+            placeholder:@"Code" secure:NO keyboard:UIKeyboardTypeNumberPad
+                 button:@"Submit Code"];
+    if ([info[@"can_reset_email_address"] boolValue])
+        [self addStepLink:@"Can't access this email?" action:@selector(resetEmailTapped)
+                      atY:CGRectGetMaxY(self.actionButton.frame) + TGMetricPadSmall];
+}
+
+- (void)resetEmailTapped {
+    [self setBusy:YES];
+    [[TGClient shared] resetAuthenticationEmailAddress];
+}
+
+- (void)codeMissingTapped {
+    [[TGClient shared] reportAuthenticationCodeMissing];
+    [TGAlertSheet showMessage:@"Telegram has been told the code did not arrive.\n\nTry \"Send code via SMS\" once the timer runs out, or log in with a QR code from another device."
+                        title:@"No Code" inView:self.view];
+}
+
+/// Sizes the subtitle to its text and returns where it ends. It was two
+/// lines high whatever it said, so "...via SMS to" lost the phone number on
+/// the code step, the one line that says where the code went.
+- (CGFloat)placeSubtitle {
+    CGFloat width = self.view.bounds.size.width - TGDoubled(TGMetricPadWide);
+    self.subtitleLabel.numberOfLines = 0;
+    CGFloat height = MAX(TGTextHeight(self.subtitleLabel.text, self.subtitleLabel.font, width),
+                         TGMetricLoginSubtitleHeight);
+    self.subtitleLabel.frame = CGRectMake(TGMetricPadWide, TGMetricStackTop, width, height);
+    return TGMetricStackTop + height;
+}
+
+- (void)clearStepLinks {
+    for (UIView *link in self.stepLinks)
+        [link removeFromSuperview];
+    [self.stepLinks removeAllObjects];
+}
+
+/// One ghost link at `y`; returns where the next one goes.
+- (CGFloat)addStepLink:(NSString *)title action:(SEL)action atY:(CGFloat)y {
+    if (!self.stepLinks)
+        self.stepLinks = [NSMutableArray array];
+    CGFloat width = self.view.bounds.size.width;
+    TGButton *link = [TGButton buttonWithTitle:title variant:TGButtonVariantGhost size:TGButtonSizeSmall];
+    link.frame = CGRectMake(TGMetricGutter, y, width - TGDoubled(TGMetricGutter), TGMetricLoginLinkHeight);
+    [link addTarget:self action:action forControlEvents:UIControlEventTouchUpInside];
+    [self.scrollView addSubview:link];
+    [self.stepLinks addObject:link];
+    CGFloat next = y + TGMetricLoginLinkHeight + TGMetricPadSmall;
+    self.scrollView.contentSize = CGSizeMake(width, MAX(self.scrollView.contentSize.height, next + TGMetricPadLarge));
+    return next;
+}
+
+/// The steps that are one field and one button: the password and the
+/// email ones. Links are added by the caller under the button.
+- (void)showFieldStep:(TGLoginStep)step title:(NSString *)title subtitle:(NSString *)subtitle
+          placeholder:(NSString *)placeholder secure:(BOOL)secure
+             keyboard:(UIKeyboardType)keyboard button:(NSString *)button {
     [self setBusy:NO];
-    self.currentStep = TGLoginStepPassword;
-    self.title = @"Password";
-    self.subtitleLabel.text = @"Your account is protected with a password.\nEnter your password below.";
+    [self clearStepLinks];
+    self.currentStep = step;
+    self.title = title;
+    self.subtitleLabel.text = subtitle;
 
     self.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc]
         initWithTitle:@"Cancel"
@@ -428,28 +550,25 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
 
     CGFloat width = self.view.bounds.size.width;
     [self useSingleFieldLayout];
-    CGFloat passY = TGMetricStackTop + TGMetricLoginSubtitleHeight +
-                    TGMetricStackStep;
-    passY = TGStackPlace(self.inputContainer, passY, TGMetricRow,
-                         width, TGMetricGutter);
-    self.inputField.placeholder = @"Password";
-    self.inputField.secureTextEntry = YES;
-    self.inputField.keyboardType = UIKeyboardTypeDefault;
-    passY = TGStackPlace(self.actionButton, passY, TGMetricRow,
-                         width, TGMetricGutter);
-    [self.actionButton setTitle:@"Submit Password" forState:UIControlStateNormal];
+    CGFloat y = [self placeSubtitle] + TGMetricStackGroup;
+    y = TGStackPlace(self.inputContainer, y, TGMetricRow, width, TGMetricGutter);
+    // A keyboard type set on a field that already has focus is ignored until
+    // it loses it: the code steps used to open on letters.
+    [self.inputField resignFirstResponder];
+    self.inputField.text = @"";
+    self.inputField.placeholder = placeholder;
+    self.inputField.secureTextEntry = secure;
+    self.inputField.keyboardType = keyboard;
+    self.inputField.autocapitalizationType = UITextAutocapitalizationTypeNone;
+    self.inputField.autocorrectionType = UITextAutocorrectionTypeNo;
+    y = TGStackPlace(self.actionButton, y, TGMetricRow, width, TGMetricGutter);
+    [self.actionButton setTitle:button forState:UIControlStateNormal];
     self.nextItem.title = @"Done";
+    self.navigationItem.rightBarButtonItem = self.nextItem;
 
-    passY = TGStackPlaceGroup(self.themeSectionLabel, passY,
-                              TGMetricPadLarge, width, TGMetricPadWide);
-    passY = TGStackPlace(self.themeSegmentedControl,
-                         passY - TGMetricStackStep + TGMetricPadSmall,
-                         TGMetricLoginLinkHeight, width, TGMetricGutter);
-    self.themeSectionLabel.hidden = NO;
-    self.themeSegmentedControl.hidden = NO;
-
-    self.scrollView.contentSize = CGSizeMake(width,
-            passY - TGMetricStackStep + TGMetricPadLarge);
+    self.themeSectionLabel.hidden = YES;
+    self.themeSegmentedControl.hidden = YES;
+    self.scrollView.contentSize = CGSizeMake(width, y - TGMetricStackStep + TGMetricPadLarge);
 
     [self applyTheme];
     [self.inputField becomeFirstResponder];

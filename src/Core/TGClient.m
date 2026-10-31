@@ -25,6 +25,7 @@ static NSString *TGFolderTitle(NSDictionary *f){
 }
 
 NSString *const TGChatReadOutboxChangedNotification = @"TGChatReadOutboxChangedNotification";
+NSString *const TGChatReplyMarkupChangedNotification = @"TGChatReplyMarkupChangedNotification";
 NSString *const TGConnectionStateChangedNotification = @"TGConnectionStateChangedNotification";
 NSString *const TGUserStatusChangedNotification = @"TGUserStatusChangedNotification";
 NSString *const TGDownloadsChangedNotification = @"TGDownloadsChangedNotification";
@@ -395,6 +396,24 @@ NSDictionary *TGFormattedText(NSString *text) {
 	}
 	case TGUpdateNewChat: {
 		[self mergeChat:obj[@"chat"]];
+		return;
+	}
+	case TGUpdateChatReplyMarkup: {
+		// A bot's keyboard arrived on a chat or was taken off it. The message
+		// rides along whole, so the keyboard is read from it here.
+		NSNumber *chatId = obj[@"chat_id"];
+		NSMutableDictionary *chat = chatId ? self.chatsById[chatId] : nil;
+		NSDictionary *message = [obj[@"reply_markup_message"] isKindOfClass:NSDictionary.class]
+				? obj[@"reply_markup_message"] : nil;
+		if (chat) {
+			chat[@"replyMarkupMessageId"] = message[@"id"] ?: @0;
+			chat[@"replyKeyboard"] = TGFlattenReplyMarkup(message[@"reply_markup"])[@"replyKeyboard"]
+					?: [NSNull null];
+		}
+		if (chatId)
+			[[NSNotificationCenter defaultCenter]
+					postNotificationName:TGChatReplyMarkupChangedNotification
+								  object:nil userInfo:@{@"chatId" : chatId}];
 		return;
 	}
 	case TGUpdateChatLastMessage:
@@ -802,6 +821,14 @@ NSDictionary *TGFormattedText(NSString *text) {
 		self.codeInfo = state[@"code_info"];
 	} else if ([type isEqualToString:@"authorizationStateWaitPassword"]){
 		s = TGAuthStateWaitPassword;
+		self.loginPasswordInfo = state;
+	} else if ([type isEqualToString:@"authorizationStateWaitEmailAddress"]){
+		// These two fell through to "not a user-visible state": a number
+		// Telegram wants an email for sat on the phone step for good.
+		s = TGAuthStateWaitEmailAddress;
+	} else if ([type isEqualToString:@"authorizationStateWaitEmailCode"]){
+		s = TGAuthStateWaitEmailCode;
+		self.emailCodeInfo = state;
 	} else if ([type isEqualToString:@"authorizationStateWaitRegistration"]){
 		s = TGAuthStateWaitRegistration;
 		// The terms come with the state and nowhere else; a screen that has

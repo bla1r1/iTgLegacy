@@ -558,6 +558,84 @@ static void answerA(TGClient *c, NSDictionary *answer) {
 	XCTAssertEqual(countA(c, @"getPushReceiverId"), (NSUInteger)0);
 }
 
+#pragma mark - signing in without the phone code or the password
+
+/// Both email states fell through to "not a user-visible state", so a number
+/// Telegram wanted an email for sat on the phone step for good.
+- (void)testAuth_EmailStatesReachTheScreen {
+	TGClient *c = A();
+	[c handleUpdate:@{@"@type" : @"updateAuthorizationState",
+					  @"authorization_state" : @{@"@type" : @"authorizationStateWaitEmailAddress",
+												 @"allow_apple_id" : @NO, @"allow_google_id" : @NO}}];
+	XCTAssertEqual(c.authState, TGAuthStateWaitEmailAddress);
+	[c handleUpdate:@{@"@type" : @"updateAuthorizationState",
+					  @"authorization_state" : @{@"@type" : @"authorizationStateWaitEmailCode",
+							@"can_reset_email_address" : @YES,
+							@"code_info" : @{@"email_address_pattern" : @"a***@mail.com", @"length" : @6}}}];
+	XCTAssertEqual(c.authState, TGAuthStateWaitEmailCode);
+	XCTAssertEqualObjects(c.emailCodeInfo[@"code_info"][@"email_address_pattern"], @"a***@mail.com");
+}
+
+- (void)testAuth_EmailCodeIsSentAsAnEmailAuthenticationCode {
+	TGClient *c = A();
+	[c sendEmailCode:@"123456"];
+	NSDictionary *sent = lastA(c, @"checkAuthenticationEmailCode");
+	XCTAssertEqualObjects(sent[@"code"][@"@type"], @"emailAddressAuthenticationCode");
+	XCTAssertEqualObjects(sent[@"code"][@"code"], @"123456");
+}
+
+- (void)testAuth_PasswordHintIsKeptForTheScreen {
+	TGClient *c = A();
+	[c handleUpdate:@{@"@type" : @"updateAuthorizationState",
+					  @"authorization_state" : @{@"@type" : @"authorizationStateWaitPassword",
+							@"password_hint" : @"the usual",
+							@"has_recovery_email_address" : @YES,
+							@"recovery_email_address_pattern" : @"b***@mail.com"}}];
+	XCTAssertEqual(c.authState, TGAuthStateWaitPassword);
+	XCTAssertEqualObjects(c.loginPasswordInfo[@"password_hint"], @"the usual");
+}
+
+/// A mistyped code must stop at the check: recovery itself removes the
+/// password, and must only run on a code Telegram accepted.
+- (void)testAuth_RecoveryChecksTheCodeBeforeRecovering {
+	TGClient *c = A();
+	__block NSString *error = nil;
+	__block BOOL done = NO;
+	[c recoverPasswordWithCode:@"999" completion:^(NSString *e){ error = e; done = YES; }];
+	XCTAssertEqualObjects(lastA(c, @"checkAuthenticationPasswordRecoveryCode")[@"recovery_code"], @"999");
+	answerA(c, @{@"@type" : @"error", @"code" : @400, @"message" : @"PASSWORD_RECOVERY_CODE_INVALID"});
+	XCTAssertTrue(done);
+	XCTAssertEqualObjects(error, @"PASSWORD_RECOVERY_CODE_INVALID");
+	XCTAssertEqual(countA(c, @"recoverAuthenticationPassword"), 0u);
+}
+
+- (void)testAuth_AcceptedRecoveryCodeSignsInWithoutAPassword {
+	TGClient *c = A();
+	__block NSString *error = @"unset";
+	[c recoverPasswordWithCode:@"424242" completion:^(NSString *e){ error = e; }];
+	answerA(c, @{@"@type" : @"ok"});
+	NSDictionary *recover = lastA(c, @"recoverAuthenticationPassword");
+	XCTAssertEqualObjects(recover[@"recovery_code"], @"424242");
+	XCTAssertEqualObjects(recover[@"new_password"], @"");
+	answerA(c, @{@"@type" : @"ok"});
+	XCTAssertNil(error);
+}
+
+- (void)testAuth_RecoveryRefusalIsPassedOn {
+	TGClient *c = A();
+	__block NSString *error = nil;
+	[c requestPasswordRecoveryWithCompletion:^(NSString *e){ error = e; }];
+	XCTAssertNotNil(lastA(c, @"requestAuthenticationPasswordRecovery"));
+	answerA(c, @{@"@type" : @"error", @"code" : @400, @"message" : @"PASSWORD_RECOVERY_NA"});
+	XCTAssertEqualObjects(error, @"PASSWORD_RECOVERY_NA");
+}
+
+- (void)testAuth_MissingCodeIsReported {
+	TGClient *c = A();
+	[c reportAuthenticationCodeMissing];
+	XCTAssertNotNil(lastA(c, @"reportAuthenticationCodeMissing"));
+}
+
 @end
 
 // vim:ft=objc

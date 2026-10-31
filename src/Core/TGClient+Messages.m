@@ -34,6 +34,77 @@ NSString *TGMyReactionEmoji(NSDictionary *m) {
 	return nil;
 }
 
+/// One button as the chat needs it: "text", a "kind" (callback, url, login,
+/// switch, copy, user, or unsupported for what this client cannot do -
+/// web apps, payments, games, password callbacks) and what that kind needs.
+static NSDictionary *TGFlattenInlineButton(NSDictionary *button) {
+	NSDictionary *type = button[@"type"];
+	NSString *t = type[@"@type"] ?: @"";
+	NSMutableDictionary *out = [@{@"text" : button[@"text"] ?: @"", @"kind" : @"unsupported"} mutableCopy];
+	if ([t isEqualToString:@"inlineKeyboardButtonTypeCallback"]) {
+		out[@"kind"] = @"callback";
+		out[@"data"] = type[@"data"] ?: @"";      // base64, as TDLib's JSON spells bytes
+	} else if ([t isEqualToString:@"inlineKeyboardButtonTypeUrl"]) {
+		out[@"kind"] = @"url";
+		out[@"url"] = type[@"url"] ?: @"";
+	} else if ([t isEqualToString:@"inlineKeyboardButtonTypeLoginUrl"]) {
+		out[@"kind"] = @"login";
+		out[@"url"] = type[@"url"] ?: @"";
+		out[@"buttonId"] = type[@"id"] ?: @0;
+	} else if ([t isEqualToString:@"inlineKeyboardButtonTypeSwitchInline"]) {
+		out[@"kind"] = @"switch";
+		out[@"query"] = type[@"query"] ?: @"";
+	} else if ([t isEqualToString:@"inlineKeyboardButtonTypeCopyText"]) {
+		out[@"kind"] = @"copy";
+		out[@"copy"] = type[@"text"] ?: @"";
+	} else if ([t isEqualToString:@"inlineKeyboardButtonTypeUser"]) {
+		out[@"kind"] = @"user";
+		out[@"userId"] = type[@"user_id"] ?: @0;
+	}
+	return out;
+}
+
+/// A message's reply_markup as the chat draws it: "inlineRows" (rows of
+/// flattened buttons under the bubble), "replyKeyboard" ("rows" of plain
+/// button texts, "oneTime", "placeholder") or "removeKeyboard". Nil for none.
+NSDictionary *TGFlattenReplyMarkup(NSDictionary *markup) {
+	NSString *t = markup[@"@type"];
+	if ([t isEqualToString:@"replyMarkupInlineKeyboard"]) {
+		NSMutableArray *rows = [NSMutableArray array];
+		for (NSArray *row in markup[@"rows"]) {
+			if (![row isKindOfClass:NSArray.class] || !row.count)
+				continue;
+			NSMutableArray *buttons = [NSMutableArray arrayWithCapacity:row.count];
+			for (NSDictionary *b in row)
+				[buttons addObject:TGFlattenInlineButton(b)];
+			[rows addObject:buttons];
+		}
+		return rows.count ? @{@"inlineRows" : rows} : nil;
+	}
+	if ([t isEqualToString:@"replyMarkupShowKeyboard"]) {
+		NSMutableArray *rows = [NSMutableArray array];
+		for (NSArray *row in markup[@"rows"]) {
+			NSMutableArray *texts = [NSMutableArray array];
+			for (NSDictionary *b in row)
+				// Phone, location, poll and peer requests need flows this
+				// client has not got; their label still sends as text, which
+				// is what the bot sees from a client that cannot do them.
+				if ([b[@"text"] length])
+					[texts addObject:b[@"text"]];
+			if (texts.count)
+				[rows addObject:texts];
+		}
+		if (!rows.count)
+			return nil;
+		return @{@"replyKeyboard" : @{@"rows" : rows,
+									  @"oneTime" : markup[@"one_time"] ?: @NO,
+									  @"placeholder" : markup[@"input_field_placeholder"] ?: @""}};
+	}
+	if ([t isEqualToString:@"replyMarkupRemoveKeyboard"])
+		return @{@"removeKeyboard" : @YES};
+	return nil;
+}
+
 /// Converts camelCase message type name to readable phrase, the first letter
 /// capitalized ("messageVideoChatStarted" -> "Video chat started",
 /// "somethingElse" -> "Something else").
@@ -487,6 +558,15 @@ NSDictionary *TGFlattenMessage(NSDictionary *m) {
 		@"reactions" : TGReactionSummary(m) ?: @"",
 		// Your own reaction, so the menu can offer to take it off.
 		@"myReaction" : TGMyReactionEmoji(m) ?: @"",
+		// Buttons a bot put under its message, and the keyboard it asked for.
+		@"inlineRows" : TGFlattenReplyMarkup(m[@"reply_markup"])[@"inlineRows"] ?: @[],
+		// A channel post with a discussion group under it: reply_info is set
+		// there (count 0 included) and the post can open its comments.
+		// Messages inside the discussion group carry reply_info too, and are
+		// not posts, so is_channel_post decides.
+		@"canComment" : @([m[@"is_channel_post"] boolValue]
+				&& [m[@"interaction_info"][@"reply_info"] isKindOfClass:NSDictionary.class]),
+		@"replyCount" : m[@"interaction_info"][@"reply_info"][@"reply_count"] ?: @0,
 		@"reactionReport" : reactionReport ?: [NSNull null],
 		// A message TDLib could not get out. It stays in the history with a
 		// sending state that says so, and it is the only kind worth resending.
@@ -561,6 +641,120 @@ NSDictionary *TGFlattenMessage(NSDictionary *m) {
 		for (NSDictionary *m in [[msgs reverseObjectEnumerator] allObjects])
 			[out addObject:TGFlattenMessage(m)];
 		if (completion) completion(out);
+	}];
+}
+
+/// Presses a callback button. The bot answers with a line to show
+/// ("text", as an alert when "alert"), a link to open ("url"), or nothing.
+- (void)pressCallbackButton:(NSDictionary *)button
+					 inChat:(int64_t)chatId
+				  messageId:(int64_t)messageId
+				 completion:(void (^)(NSString *text, BOOL alert, NSString *url,
+									  NSString *error))completion {
+	[self request:@{@"@type" : @"getCallbackQueryAnswer",
+					@"chat_id" : @(chatId),
+					@"message_id" : @(messageId),
+					@"payload" : @{@"@type" : @"callbackQueryPayloadData",
+								   @"data" : button[@"data"] ?: @""}}
+	   completion:^(NSDictionary *answer){
+		if (!completion)
+			return;
+		if (![answer[@"@type"] isEqualToString:@"callbackQueryAnswer"]) {
+			NSString *message = answer[@"message"];
+			completion(nil, NO, nil, message.length ? message : @"The bot did not answer.");
+			return;
+		}
+		completion(answer[@"text"], [answer[@"show_alert"] boolValue], answer[@"url"], nil);
+	}];
+}
+
+/// A login button signs the user into the bot's site. Telegram either hands
+/// the link back at once ("url") or wants the user to agree first
+/// ("confirmDomain"), after which confirmLoginButton: fetches the link.
+- (void)loginURLForButton:(NSDictionary *)button
+				   inChat:(int64_t)chatId
+				messageId:(int64_t)messageId
+			   completion:(void (^)(NSString *url, NSString *confirmDomain,
+									NSString *error))completion {
+	[self request:@{@"@type" : @"getLoginUrlInfo",
+					@"chat_id" : @(chatId),
+					@"message_id" : @(messageId),
+					@"button_id" : button[@"buttonId"] ?: @0}
+	   completion:^(NSDictionary *info){
+		if (!completion)
+			return;
+		NSString *t = info[@"@type"];
+		if ([t isEqualToString:@"loginUrlInfoOpen"])
+			completion(info[@"url"], nil, nil);
+		else if ([t isEqualToString:@"loginUrlInfoRequestConfirmation"])
+			completion(nil, info[@"domain"] ?: info[@"url"], nil);
+		else
+			// No login on offer: the button's plain address still opens.
+			completion(button[@"url"], nil, nil);
+	}];
+}
+
+- (void)confirmLoginButton:(NSDictionary *)button
+					inChat:(int64_t)chatId
+				 messageId:(int64_t)messageId
+				completion:(void (^)(NSString *url, NSString *error))completion {
+	[self request:@{@"@type" : @"getLoginUrl",
+					@"chat_id" : @(chatId),
+					@"message_id" : @(messageId),
+					@"button_id" : button[@"buttonId"] ?: @0,
+					@"allow_write_access" : @NO}
+	   completion:^(NSDictionary *result){
+		if (!completion)
+			return;
+		NSString *url = result[@"url"];
+		completion(url.length ? url : nil, url.length ? nil : (result[@"message"] ?: @"Telegram refused that."));
+	}];
+}
+
+/// The keyboard a bot left on this chat, or nil. The chat names the message
+/// that carries it; it is fetched once and kept on the chat record.
+- (void)replyKeyboardForChat:(int64_t)chatId completion:(void (^)(NSDictionary *keyboard))completion {
+	NSMutableDictionary *chat = self.chatsById[@(chatId)];
+	id kept = chat[@"replyKeyboard"];
+	if (kept) {
+		if (completion) completion([kept isKindOfClass:NSDictionary.class] ? kept : nil);
+		return;
+	}
+	int64_t messageId = [chat[@"replyMarkupMessageId"] longLongValue];
+	if (!messageId) {
+		if (completion) completion(nil);
+		return;
+	}
+	[self request:@{@"@type" : @"getMessage", @"chat_id" : @(chatId), @"message_id" : @(messageId)}
+	   completion:^(NSDictionary *m){
+		NSDictionary *keyboard = TGFlattenReplyMarkup(m[@"reply_markup"])[@"replyKeyboard"];
+		self.chatsById[@(chatId)][@"replyKeyboard"] = keyboard ?: [NSNull null];
+		if (completion) completion(keyboard);
+	}];
+}
+
+/// The comments under a channel post live in its discussion group, as a
+/// thread there. TDLib answers with that group's chat id and the thread id,
+/// which is what a chat screen opens with; `error` is set instead when the
+/// post has no comments to open.
+- (void)commentThreadForChat:(int64_t)chatId
+				   messageId:(int64_t)messageId
+				  completion:(void (^)(int64_t discussionChatId, int64_t threadId,
+									   NSString *error))completion {
+	[self request:@{@"@type" : @"getMessageThread",
+					@"chat_id" : @(chatId),
+					@"message_id" : @(messageId)}
+	   completion:^(NSDictionary *result){
+		if (!completion)
+			return;
+		int64_t discussion = [result[@"chat_id"] longLongValue];
+		int64_t thread = [result[@"message_thread_id"] longLongValue];
+		if (![result[@"@type"] isEqualToString:@"messageThreadInfo"] || !discussion || !thread) {
+			NSString *message = result[@"message"];
+			completion(0, 0, message.length ? message : @"These comments cannot be opened.");
+			return;
+		}
+		completion(discussion, thread, nil);
 	}];
 }
 
@@ -1232,6 +1426,28 @@ NSDictionary *TGFlattenMessage(NSDictionary *m) {
 		@"@type"      : @"unpinChatMessage",
 		@"chat_id"    : @(chatId),
 		@"message_id" : @(messageId),
+	}];
+}
+
+/// Every pinned message down at once - in a forum topic, only that topic's.
+- (void)unpinAllMessagesInChat:(int64_t)chatId thread:(int64_t)threadId {
+	if (threadId)
+		[self send:@{@"@type" : @"unpinAllForumTopicMessages",
+					 @"chat_id" : @(chatId), @"forum_topic_id" : @(threadId)}];
+	else
+		[self send:@{@"@type" : @"unpinAllChatMessages", @"chat_id" : @(chatId)}];
+}
+
+/// The last message sent on or before `date` (unix seconds), for jumping to
+/// a day; nil when the chat has nothing that old.
+- (void)messageAtDate:(NSTimeInterval)date inChat:(int64_t)chatId
+		   completion:(void (^)(NSDictionary *message))completion {
+	[self request:@{@"@type" : @"getChatMessageByDate",
+					@"chat_id" : @(chatId),
+					@"date" : @((int32_t)date)}
+	   completion:^(NSDictionary *m){
+		if (completion)
+			completion([m[@"@type"] isEqualToString:@"message"] ? TGFlattenMessage(m) : nil);
 	}];
 }
 

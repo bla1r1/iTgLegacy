@@ -8,6 +8,8 @@
 /// Search lives here rather than in the navigation bar, where the avatar is -
 /// the same place Telegram keeps it.
 @property (nonatomic, copy) void (^onSearchTapped)(void);
+/// "Jump to Date" in the More menu; the chat behind opens its date picker.
+@property (nonatomic, copy) void (^onJumpToDateTapped)(void);
 
 - (instancetype)initWithChatId:(int64_t)chatId
                       userId:(int64_t)userId

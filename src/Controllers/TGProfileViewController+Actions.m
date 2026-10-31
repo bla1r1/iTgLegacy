@@ -124,7 +124,7 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 				CGRectMake(TGCenteredOrigin(tileW, kTileGlyph), TGMetricPad, kTileGlyph, kTileGlyph)];
 		glyph.image = [TGIcons menuGlyphNamed:tiles[i][0]];
 		glyph.contentMode = UIViewContentModeScaleAspectFit;
-		glyph.tintColor = [theme accentColour];
+		[TGIcons tintImageView:glyph colour:[theme accentColour]];
 		[tile addSubview:glyph];
 
 		UILabel *label = [[UILabel alloc] initWithFrame:
@@ -322,10 +322,19 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 		[items addObject:@{@"title" : @"Join Requests", @"icon" : @"select"}];
 		[items addObject:@{@"title" : @"View with Topics", @"icon" : @"folder"}];
 	}
+	if (self.onJumpToDateTapped)
+		[items addObject:@{@"title" : @"Jump to Date", @"icon" : @"folder"}];
 	[items addObject:@{@"title" : @"Auto-delete messages", @"icon" : @"delete"}];
 	[items addObject:@{@"title" : @"Clear history", @"icon" : @"delete"}];
 	[items addObject:@{@"title" : @"Report", @"icon" : @"privacy",
 					   @"destructive" : @YES}];
+	BOOL isMe = self.userId == [[TGClient shared].me[@"id"] longLongValue];
+	if (self.userId && !isMe)
+		[items addObject:@{@"title" : @"Delete Contact", @"icon" : @"delete", @"destructive" : @YES}];
+	// Owners only; Telegram says so to anyone else, and the menu does not
+	// know the role without asking.
+	if (!self.userId)
+		[items addObject:@{@"title" : @"Delete for Everyone", @"icon" : @"delete", @"destructive" : @YES}];
 	if (self.userId)
 		[items addObject:@{@"title" : (self.blocked ? @"Unblock" : @"Block"),
 						   @"icon" : @"privacy", @"destructive" : @YES}];
@@ -827,6 +836,50 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 
 	if ([title isEqualToString:@"Report"]){
 		[self reportThisChatWithOption:nil];
+		return;
+	}
+
+	if ([title isEqualToString:@"Jump to Date"]){
+		if (self.onJumpToDateTapped)
+			self.onJumpToDateTapped();
+		return;
+	}
+
+	if ([title isEqualToString:@"Delete Contact"]){
+		int64_t userId = self.userId;
+		__weak typeof(self) weakSelf = self;
+		[TGAlertSheet showConfirm:@"They leave your contacts. The chat with them stays."
+							title:@"Delete Contact"
+						   action:@"Delete"
+					  destructive:YES
+						   inView:self.view
+						onConfirm:^{
+			[[TGClient shared] removeContactWithUserId:userId completion:^(BOOL ok){
+				[TGAlertSheet showMessage:(ok ? @"Removed from your contacts." : @"Telegram refused that.")
+									title:@"Delete Contact" inView:weakSelf.view];
+			}];
+		}];
+		return;
+	}
+
+	if ([title isEqualToString:@"Delete for Everyone"]){
+		int64_t chatId = self.chatId;
+		__weak typeof(self) weakSelf = self;
+		[TGAlertSheet showConfirm:@"The group and every message in it are deleted for all members. This cannot be undone."
+							title:@"Delete for Everyone"
+						   action:@"Delete"
+					  destructive:YES
+						   inView:self.view
+						onConfirm:^{
+			[[TGClient shared] deleteChatForEveryone:chatId completion:^(NSString *error){
+				TGProfileViewController *me = weakSelf;
+				if (error) {
+					[TGAlertSheet showMessage:error title:@"Delete for Everyone" inView:me.view];
+					return;
+				}
+				[me.navigationController popToRootViewControllerAnimated:YES];
+			}];
+		}];
 		return;
 	}
 

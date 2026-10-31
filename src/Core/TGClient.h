@@ -13,7 +13,11 @@ typedef NS_ENUM(NSInteger, TGAuthState) {
     TGAuthStateWaitOtherDeviceConfirmation,
     TGAuthStateReady,
     TGAuthStateLoggingOut,
-    TGAuthStateClosed
+    TGAuthStateClosed,
+    /// Telegram wants an email address on the account before it sends a code.
+    TGAuthStateWaitEmailAddress,
+    /// A code went to that address (`emailCodeInfo` says where).
+    TGAuthStateWaitEmailCode
 };
 
 /// Posted on the main queue when the other side reads your messages in a
@@ -52,6 +56,8 @@ extern NSString *const TGForumTopicsChangedNotification;
 // Fired when updateChatActionBar arrives: the bar over a chat nobody knows
 // - report spam, add to contacts - follows the update, not only the fetch.
 extern NSString *const TGChatActionBarChangedNotification;
+/// A bot's keyboard on a chat changed; userInfo carries "chatId".
+extern NSString *const TGChatReplyMarkupChangedNotification;
 
 @interface TGClient : NSObject
 
@@ -281,6 +287,16 @@ typedef NS_ENUM(NSInteger, TGDownloadPriority) {
 /// posts the "pinned a message" service message the way their clients do.
 - (void)pinMessage:(int64_t)messageId inChat:(int64_t)chatId notify:(BOOL)notify;
 - (void)unpinMessage:(int64_t)messageId inChat:(int64_t)chatId;
+/// Every pinned message down at once; `threadId` limits it to a forum topic.
+- (void)unpinAllMessagesInChat:(int64_t)chatId thread:(int64_t)threadId;
+/// The last message on or before `date` (unix seconds), or nil.
+- (void)messageAtDate:(NSTimeInterval)date inChat:(int64_t)chatId
+		   completion:(void (^)(NSDictionary *message))completion;
+/// Deletes a group or channel for every member. Owner only; `error` says
+/// why not otherwise.
+- (void)deleteChatForEveryone:(int64_t)chatId completion:(void (^)(NSString *error))completion;
+/// The pinned chats in this order, top first; one left out is unpinned.
+- (void)setPinnedChatIds:(NSArray *)chatIds;
 
 /// Everything a profile shows that the plain user record does not carry:
 /// "bio", "commonGroups" (NSNumber), "birthday" (NSString, empty when unset),
@@ -824,6 +840,9 @@ typedef NS_ENUM(NSInteger, TGDownloadPriority) {
 					   phone:(NSString *)phone
 				  completion:(void (^)(BOOL ok))completion;
 
+/// Takes someone out of your contacts; the chat with them stays.
+- (void)removeContactWithUserId:(int64_t)userId completion:(void (^)(BOOL ok))completion;
+
 #pragma mark - storage
 
 /// Cache size on disk, in bytes, and the file count. TDLib's fast variant:
@@ -1151,6 +1170,30 @@ typedef NS_ENUM(NSInteger, TGDownloadPriority) {
 /// Drop TDLib's local database. The session stays.
 - (void)clearLocalDatabase;
 
+/// Bot buttons. See TGFlattenReplyMarkup for the button dictionaries.
+- (void)pressCallbackButton:(NSDictionary *)button
+					 inChat:(int64_t)chatId
+				  messageId:(int64_t)messageId
+				 completion:(void (^)(NSString *text, BOOL alert, NSString *url,
+									  NSString *error))completion;
+- (void)loginURLForButton:(NSDictionary *)button
+				   inChat:(int64_t)chatId
+				messageId:(int64_t)messageId
+			   completion:(void (^)(NSString *url, NSString *confirmDomain,
+									NSString *error))completion;
+- (void)confirmLoginButton:(NSDictionary *)button
+					inChat:(int64_t)chatId
+				 messageId:(int64_t)messageId
+				completion:(void (^)(NSString *url, NSString *error))completion;
+/// The reply keyboard a bot left on the chat, or nil.
+- (void)replyKeyboardForChat:(int64_t)chatId completion:(void (^)(NSDictionary *keyboard))completion;
+
+/// A channel post's comments: its discussion group and the thread in it.
+- (void)commentThreadForChat:(int64_t)chatId
+				   messageId:(int64_t)messageId
+				  completion:(void (^)(int64_t discussionChatId, int64_t threadId,
+									   NSString *error))completion;
+
 - (void)sendPhoneNumber:(NSString *)phoneNumber;
 - (void)sendCode:(NSString *)code;
 - (void)sendPassword:(NSString *)password;
@@ -1195,6 +1238,33 @@ typedef NS_ENUM(NSInteger, TGDownloadPriority) {
 
 @property (nonatomic, readonly) NSDictionary *codeInfo;
 @property (nonatomic, readonly) NSString *qrCodeLink;
+
+/// From authorizationStateWaitPassword: "password_hint",
+/// "has_recovery_email_address", "recovery_email_address_pattern".
+@property (nonatomic, readonly) NSDictionary *loginPasswordInfo;
+/// From authorizationStateWaitEmailCode: "code_info" (with
+/// "email_address_pattern" and "length") and "can_reset_email_address".
+@property (nonatomic, readonly) NSDictionary *emailCodeInfo;
+
+/// The email address Telegram asked for in TGAuthStateWaitEmailAddress.
+- (void)sendEmailAddress:(NSString *)email;
+/// The code from that email, in TGAuthStateWaitEmailCode.
+- (void)sendEmailCode:(NSString *)code;
+/// The address is lost: sends a fresh SMS code instead, when Telegram allows
+/// it ("can_reset_email_address").
+- (void)resetAuthenticationEmailAddress;
+/// The phone number gets no code. Telegram logs it, which is the whole
+/// official "didn't get the code?" path.
+- (void)reportAuthenticationCodeMissing;
+
+/// Forgot the cloud password at sign-in: mails a code to the recovery
+/// address. `error` is nil on success; an account without a recovery address
+/// gets Telegram's refusal.
+- (void)requestPasswordRecoveryWithCompletion:(void (^)(NSString *error))completion;
+/// Checks that code, then signs in with it - which removes the password, the
+/// only thing recovery can do. `error` is nil on success.
+- (void)recoverPasswordWithCode:(NSString *)code
+					 completion:(void (^)(NSString *error))completion;
 
 /// Fire-and-forget request. `request` is a JSON object; @extra is not tracked.
 - (void)send:(NSDictionary *)request;

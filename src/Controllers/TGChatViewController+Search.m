@@ -13,19 +13,20 @@
 	}
 
 	CGRect b = self.view.bounds;
-	self.chatSearchBar = [[TGSearchBar alloc] initWithFrame:CGRectMake(0, 0, b.size.width, TGMetricRow)];
+	self.chatSearchBar = [[UISearchBar alloc] initWithFrame:CGRectMake(0, 0, b.size.width, TGMetricRow)];
+	[[TGTheme shared] styleSearchBar:self.chatSearchBar];
 	self.chatSearchBar.delegate = self;
 	self.chatSearchBar.placeholder = @"Search in chat";
 	self.chatSearchBar.autoresizingMask = UIViewAutoresizingFlexibleWidth;
 	[self.view addSubview:self.chatSearchBar];
-	[self.chatSearchBar setEditing:YES animated:NO];
-	[self.chatSearchBar.textField becomeFirstResponder];
+	[self.chatSearchBar setShowsCancelButton:YES animated:NO];
+	[self.chatSearchBar becomeFirstResponder];
 
 	self.messagesBeforeSearch = self.messages;
 }
 
 - (void)endChatSearch {
-	[self.chatSearchBar.textField resignFirstResponder];
+	[self.chatSearchBar resignFirstResponder];
 	[self.chatSearchBar removeFromSuperview];
 	self.chatSearchBar = nil;
 

@@ -128,6 +128,18 @@
 		@{@"title" : (isGroup ? @"Delete and Leave" : @"Delete Chat"),
 		  @"icon"  : @"delete", @"destructive" : @YES},
 	];
+	// Pinned chats keep the order they are given; these two are how it is
+	// given on a device with no drag-to-reorder list.
+	NSArray *pinnedIds = [self pinnedChatIds];
+	NSUInteger at = [pinnedIds indexOfObject:self.actionChat[@"id"]];
+	if (pinned && !self.showsArchive && at != NSNotFound) {
+		NSMutableArray *more = [items mutableCopy];
+		if (at > 0)
+			[more insertObject:@{@"title" : @"Move Up", @"icon" : @"pin"} atIndex:1];
+		if (at + 1 < pinnedIds.count)
+			[more insertObject:@{@"title" : @"Move Down", @"icon" : @"pin"} atIndex:(at > 0 ? 2 : 1)];
+		items = more;
+	}
 
 	CGRect rect = [self.tableView rectForRowAtIndexPath:
 			[NSIndexPath indexPathForRow:row inSection:0]];
@@ -141,6 +153,15 @@
 	}];
 }
 
+/// The pinned chats of the main list, top first, as their ids.
+- (NSArray *)pinnedChatIds {
+	NSMutableArray *ids = [NSMutableArray array];
+	for (NSDictionary *chat in [TGClient shared].chats)
+		if ([chat[@"isPinned"] boolValue] && chat[@"id"])
+			[ids addObject:chat[@"id"]];
+	return ids;
+}
+
 /// Keyed by what the row said rather than by its position: the menu and the
 /// swipe offer different subsets in a different order, and an index that
 /// means Archive in one of them meant Delete in the other.
@@ -151,13 +172,25 @@
 		return;
 	}
 
-	if ([action hasSuffix:@"Pin"])
+	// Case-blind: "Unpin", "Unmute" and "Unarchive" end in a lower-case
+	// "pin", "mute", "archive", missed every branch below and fell through to
+	// the last one - deleting the chat.
+	NSString *verb = action.lowercaseString;
+	if ([action hasPrefix:@"Move "]) {
+		NSMutableArray *ids = [[self pinnedChatIds] mutableCopy];
+		NSUInteger at = [ids indexOfObject:@(chatId)];
+		NSUInteger to = [action isEqualToString:@"Move Up"] ? at - 1 : at + 1;
+		if (at != NSNotFound && to < ids.count) {
+			[ids exchangeObjectAtIndex:at withObjectAtIndex:to];
+			[[TGClient shared] setPinnedChatIds:ids];
+		}
+	} else if ([verb hasSuffix:@"pin"])
 		[[TGClient shared] setChat:chatId
 							pinned:![self.actionChat[@"isPinned"] boolValue]];
-	else if ([action hasSuffix:@"Mute"])
+	else if ([verb hasSuffix:@"mute"])
 		[[TGClient shared] setChat:chatId
 							 muted:![self.actionChat[@"isMuted"] boolValue]];
-	else if ([action hasSuffix:@"Archive"])
+	else if ([verb hasSuffix:@"archive"])
 		[[TGClient shared] setChat:chatId archived:!self.showsArchive];
 	else if ([action isEqualToString:@"Mark as Unread"])
 		[[TGClient shared] setChat:chatId markedUnread:YES];

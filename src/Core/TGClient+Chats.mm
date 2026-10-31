@@ -224,6 +224,29 @@ int64_t TGArchiveOrder(NSArray *positions) {
 	}];
 }
 
+/// Not leaving: the group or channel itself goes, for every member. TDLib
+/// only allows it to the owner, and says so otherwise.
+- (void)deleteChatForEveryone:(int64_t)chatId completion:(void (^)(NSString *error))completion {
+	[self request:@{@"@type" : @"deleteChat", @"chat_id" : @(chatId)}
+	   completion:^(NSDictionary *result){
+		BOOL ok = [result[@"@type"] isEqualToString:@"ok"];
+		if (ok) {
+			[self.chatsById removeObjectForKey:@(chatId)];
+			[self rebuildChats];
+		}
+		if (completion)
+			completion(ok ? nil : (result[@"message"] ?: @"Telegram refused that."));
+	}];
+}
+
+/// The pinned chats in this order, top first. Telegram takes the whole list;
+/// a chat left out is unpinned.
+- (void)setPinnedChatIds:(NSArray *)chatIds {
+	[self send:@{@"@type" : @"setPinnedChats",
+				 @"chat_list" : @{@"@type" : @"chatListMain"},
+				 @"chat_ids" : chatIds ?: @[]}];
+}
+
 - (void)setChat:(int64_t)chatId joined:(BOOL)joined {
 	[self send:@{@"@type" : joined ? @"joinChat" : @"leaveChat", @"chat_id" : @(chatId)}];
 }
@@ -632,6 +655,15 @@ int64_t TGArchiveOrder(NSArray *positions) {
 	} completion:^(NSDictionary *result){
 		if (completion)
 			completion(![result[@"@type"] isEqualToString:@"error"]);
+	}];
+}
+
+/// Takes someone out of your contacts. The chat with them stays.
+- (void)removeContactWithUserId:(int64_t)userId completion:(void (^)(BOOL ok))completion {
+	[self request:@{@"@type" : @"removeContacts", @"user_ids" : @[@(userId)]}
+	   completion:^(NSDictionary *result){
+		if (completion)
+			completion([result[@"@type"] isEqualToString:@"ok"]);
 	}];
 }
 
@@ -1248,6 +1280,8 @@ static NSDictionary *TGFolderObject(NSString *name, NSString *icon,
 	}
 	if (chat[@"notification_settings"])
 		info[@"isMuted"] = @([chat[@"notification_settings"][@"mute_for"] integerValue] > 0);
+	if (chat[@"reply_markup_message_id"])
+		info[@"replyMarkupMessageId"] = chat[@"reply_markup_message_id"];
 
 	// Small avatar, if the chat has one. Downloaded lazily; the id is enough
 	// for the UI to ask for it later.

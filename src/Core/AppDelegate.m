@@ -16,6 +16,7 @@
 #import "TGStyle.h"
 #import "TGAlertSheet.h"
 #import "TGPerf.h"
+#import "TGTextDraw.h"
 #include <stdio.h>
 
 @implementation AppDelegate
@@ -80,6 +81,7 @@ static void TGDevCommandNotifyCallback(CFNotificationCenterRef center, void *obs
 	[self.window makeKeyAndVisible];
 
 	[self startTDLib];
+	TGWarmFonts([TGTheme shared].messageFontSize);
 	// One line if the launch itself misbehaves; silent when it is healthy.
 	TGPerfReport("launch", "didFinishLaunching", launchStart, 300.0);
 
@@ -134,6 +136,16 @@ static void TGDevCommandNotifyCallback(CFNotificationCenterRef center, void *obs
 				case TGAuthStateWaitPassword:
 					[[NSUserDefaults standardUserDefaults] setBool:NO forKey:@"hasAuthorizedSession"];
 					[me.loginVC showPasswordStep];
+					if (me.loginVC) [me showLoginUI]; else [me showMainUI];
+					break;
+				case TGAuthStateWaitEmailAddress:
+					[[NSUserDefaults standardUserDefaults] setBool:NO forKey:@"hasAuthorizedSession"];
+					[me.loginVC showEmailStep];
+					if (me.loginVC) [me showLoginUI]; else [me showMainUI];
+					break;
+				case TGAuthStateWaitEmailCode:
+					[[NSUserDefaults standardUserDefaults] setBool:NO forKey:@"hasAuthorizedSession"];
+					[me.loginVC showEmailCodeStep];
 					if (me.loginVC) [me showLoginUI]; else [me showMainUI];
 					break;
 				case TGAuthStateWaitRegistration:
@@ -236,7 +248,14 @@ static void TGDevCommandNotifyCallback(CFNotificationCenterRef center, void *obs
 		[[TGClient shared] resendAuthenticationCode];
 	};
 	loginVC.onRequestQRCode = ^{
-		[[TGClient shared] requestQrCodeAuthentication];
+		// Already waiting on a scan: TDLib refuses a second request with
+		// "unexpected", so the code it gave is shown again instead.
+		TGClient *tg = [TGClient shared];
+		if (tg.authState == TGAuthStateWaitOtherDeviceConfirmation && tg.qrCodeLink.length) {
+			[weakSelf.loginVC showQRCodeStepWithLink:tg.qrCodeLink];
+			return;
+		}
+		[tg requestQrCodeAuthentication];
 	};
 	loginVC.onResetSession = ^{
 		weakSelf.currentPhoneNumber = nil;

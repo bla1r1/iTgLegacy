@@ -113,6 +113,10 @@
             CGRectMake(fieldX, 0, inner - fieldX - TGMetricPadMedium, TGMetricRow)];
     self.inputField.placeholder = @"Phone number";
     self.inputField.font = TGFontInput();
+    // iOS 6 sets a field's text against its top edge unless told otherwise;
+    // in a 44 pt row the code and password sat a third of the way down.
+    self.inputField.contentVerticalAlignment = UIControlContentVerticalAlignmentCenter;
+    self.phonePrefixField.contentVerticalAlignment = UIControlContentVerticalAlignmentCenter;
     self.inputField.keyboardType = UIKeyboardTypePhonePad;
     self.inputField.returnKeyType = UIReturnKeyGo;
     self.inputField.clearButtonMode = UITextFieldViewModeWhileEditing;
@@ -154,6 +158,10 @@
     [self.scrollView addSubview:self.themeSectionLabel];
 
     self.themeSegmentedControl = [[UISegmentedControl alloc] initWithItems:@[@"Classic", @"Day", @"Night", @"Night Blue"]];
+    // Four segments on 290 pt: at the system 17 pt "Night Blue" lost its
+    // first letter.
+    [self.themeSegmentedControl setTitleTextAttributes:@{UITextAttributeFont : TGFontCaptionStrong()}
+                                              forState:UIControlStateNormal];
     y += TGMetricPadLarge + TGMetricPadSmall;
     self.themeSegmentedControl.frame = CGRectMake(TGMetricGutter, y, inner,
                                                   TGMetricLoginLinkHeight);
@@ -176,8 +184,11 @@
     if (self.navigationController) {
         [theme styleNavigationBar:self.navigationController.navigationBar];
     }
-    self.nextItem.tintColor = [theme barButtonColour];
-    if (self.navigationItem.leftBarButtonItem) {
+    // iOS 7 reads an item's tint as its text colour; iOS 6 as the colour of
+    // the button itself, so white there made white text on a white button.
+    // On 6 the items keep the bar's own tint.
+    if (NSFoundationVersionNumber > NSFoundationVersionNumber_iOS_6_1) {
+        self.nextItem.tintColor = [theme barButtonColour];
         self.navigationItem.leftBarButtonItem.tintColor = [theme barButtonColour];
     }
 
@@ -308,6 +319,18 @@
         if (self.onPasswordSubmitted) {
             self.onPasswordSubmitted(text);
         }
+    } else if (self.currentStep == TGLoginStepEmail) {
+        [[TGClient shared] sendEmailAddress:text];
+    } else if (self.currentStep == TGLoginStepEmailCode) {
+        [[TGClient shared] sendEmailCode:text];
+    } else if (self.currentStep == TGLoginStepRecoveryCode) {
+        __weak typeof(self) weakSelf = self;
+        [[TGClient shared] recoverPasswordWithCode:text completion:^(NSString *error){
+            TGLoginViewController *me = weakSelf;
+            [me setBusy:NO];
+            if (error)    // success moves on by the authorization state
+                [TGAlertSheet showMessage:error title:@"Recovery Code" inView:me.view];
+        }];
     } else if (self.currentStep == TGLoginStepRegister) {
         __weak typeof(self) weakSelf = self;
         [[TGClient shared] registerWithFirstName:text
