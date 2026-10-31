@@ -12,6 +12,9 @@ void TGIconsClearSettingsIconCache(void) {
 /// single weight so the set reads as one family, which is what their 27x27
 /// outline icons do.
 + (UIImage *)menuGlyphNamed:(NSString *)name {
+	UIImage *svg = [self pathIconNamed:name];
+	if (svg)
+		return svg;
 	static NSSet *known = nil;
 	if (!known)
 		known = [NSSet setWithObjects:@"reply", @"undo", @"forward", @"copy",

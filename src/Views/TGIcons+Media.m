@@ -331,9 +331,14 @@ static char kAwaitedKey;
 	UIGraphicsBeginImageContextWithOptions(CGSizeMake(side, side), NO, 0);
 	CGContextRef ctx = UIGraphicsGetCurrentContext();
 
+	// The disc is the icon itself (a circle with the glyph cut out), filled
+	// with the disc's gradient; the circle is 20 of its 24 units.
+	CGRect box = CGRectInset(CGRectMake(0, 0, side, side), -side / 10, -side / 10);
+	TGIconAddPath(ctx, playing ? "mediaDiscPause" : "mediaDiscPlay", box);
+	CGContextClip(ctx);
 	if (isFlat) {
 		CGContextSetRGBFillColor(ctx, 0.447f, 0.710f, 0.914f, 1.0f);
-		CGContextFillEllipseInRect(ctx, CGRectMake(0, 0, side, side));
+		CGContextFillRect(ctx, CGRectMake(0, 0, side, side));
 	} else {
 		CGFloat colors[8] = {
 			0.52f, 0.78f, 0.96f, 1.0f,
@@ -342,30 +347,9 @@ static char kAwaitedKey;
 		CGFloat locs[2] = {0.0f, 1.0f};
 		CGColorSpaceRef cs = CGColorSpaceCreateDeviceRGB();
 		CGGradientRef grad = CGGradientCreateWithColorComponents(cs, colors, locs, 2);
-		CGContextSaveGState(ctx);
-		CGContextAddEllipseInRect(ctx, CGRectMake(0, 0, side, side));
-		CGContextClip(ctx);
 		CGContextDrawLinearGradient(ctx, grad, CGPointMake(0, 0), CGPointMake(0, side), 0);
-		CGContextRestoreGState(ctx);
 		CGGradientRelease(grad);
 		CGColorSpaceRelease(cs);
-
-		CGContextSetRGBStrokeColor(ctx, 1.0f, 1.0f, 1.0f, 0.45f);
-		CGContextSetLineWidth(ctx, TGIconStrokeFine);
-		CGContextStrokeEllipseInRect(ctx, CGRectInset(CGRectMake(0, 0, side, side), 0.5f, 0.5f));
-	}
-
-	CGContextSetRGBFillColor(ctx, 1, 1, 1, 1);
-	if (playing){
-		CGFloat w = side * 0.10f, h = side * 0.30f, gap = side * 0.10f;
-		CGContextFillRect(ctx, CGRectMake(TGHalf(side) - TGHalf(gap) - w, TGHalf(side - h), w, h));
-		CGContextFillRect(ctx, CGRectMake(TGHalf(side) + TGHalf(gap),     TGHalf(side - h), w, h));
-	} else {
-		CGContextMoveToPoint(ctx, side * 0.40f, side * 0.32f);
-		CGContextAddLineToPoint(ctx, side * 0.68f, side * 0.50f);
-		CGContextAddLineToPoint(ctx, side * 0.40f, side * 0.68f);
-		CGContextClosePath(ctx);
-		CGContextFillPath(ctx);
 	}
 
 	UIImage *image = UIGraphicsGetImageFromCurrentImageContext();
@@ -408,26 +392,8 @@ static char kAwaitedKey;
 	}
 
 	CGContextSetRGBFillColor(ctx, 1, 1, 1, 1);
-	CGFloat l = side * 0.34f, r = side * 0.66f, t = side * 0.28f, b = side * 0.72f;
-	CGFloat fold = side * 0.12f;
-	CGContextMoveToPoint(ctx, l, t);
-	CGContextAddLineToPoint(ctx, r - fold, t);
-	CGContextAddLineToPoint(ctx, r, t + fold);
-	CGContextAddLineToPoint(ctx, r, b);
-	CGContextAddLineToPoint(ctx, l, b);
-	CGContextClosePath(ctx);
-	CGContextFillPath(ctx);
-
-	if (isFlat) {
-		CGContextSetRGBFillColor(ctx, 0.447f, 0.710f, 0.914f, 1.0f);
-	} else {
-		CGContextSetRGBFillColor(ctx, 0.36f, 0.42f, 0.50f, 1.0f);
-	}
-	CGContextMoveToPoint(ctx, r - fold, t);
-	CGContextAddLineToPoint(ctx, r, t + fold);
-	CGContextAddLineToPoint(ctx, r - fold, t + fold);
-	CGContextClosePath(ctx);
-	CGContextFillPath(ctx);
+	if (TGIconAddPath(ctx, "fileDisc", CGRectInset(CGRectMake(0, 0, side, side), side * 0.2f, side * 0.2f)))
+		CGContextFillPath(ctx);
 
 	UIImage *image = UIGraphicsGetImageFromCurrentImageContext();
 	UIGraphicsEndImageContext();

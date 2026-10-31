@@ -86,6 +86,8 @@ make
 - **[bla1r1](https://github.com/bla1r1)** — author and maintainer
 - **GPLv3** — see [LICENSE](LICENSE)
 
+Icons come from [Material Design Icons](https://pictogrammers.com/library/mdi/) (Apache 2.0) and [Font Awesome Free](https://fontawesome.com) 6.5.1 (CC BY 4.0), kept as SVG paths in `src/Views/TGIconPaths.m`. Which icon comes from which set is listed in `scripts/icon_picks.txt`; `scripts/gen_icon_paths.py <@mdi/js dir> <@fortawesome/fontawesome-free dir>` regenerates the file.
+
 The project started from an early prototype by [@igkuzm](https://github.com/igkuzm) and was later rewritten from scratch — new engine (TDLib instead of `libtg`), new UIKit architecture, multimedia pipeline, E2EE calls.
 
 > This software is for legacy hardware preservation and educational use. Use at your own risk.

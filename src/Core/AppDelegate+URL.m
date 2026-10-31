@@ -24,16 +24,6 @@ static const CGFloat kIconDumpSide = 52.0f;
 #import <QuartzCore/QuartzCore.h>
 #include <dlfcn.h>
 
-static NSString *TGBase64FromImage(UIImage *img) {
-	if (!img) return @"";
-	NSData *data = UIImagePNGRepresentation(img);
-	if (!data) return @"";
-	if ([data respondsToSelector:@selector(base64EncodedStringWithOptions:)]) {
-		return [data base64EncodedStringWithOptions:0] ?: @"";
-	}
-	return @"";
-}
-
 @implementation AppDelegate (URL)
 
 - (UITabBarController *)activeTabBarController {
@@ -626,13 +616,23 @@ static NSString *TGBase64FromImage(UIImage *img) {
 	if ([host isEqualToString:@"dump_icons"]){
 		dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
 			NSMutableArray *items = [NSMutableArray array];
+			// One PNG per icon beside the list: the base64 the list used to
+			// carry is an iOS 7 call, and on 6 it wrote empty strings.
+			NSString *dir = [[NSSearchPathForDirectoriesInDomains(NSCachesDirectory,
+					NSUserDomainMask, YES) objectAtIndex:0] stringByAppendingPathComponent:@"icons"];
+			[[NSFileManager defaultManager] createDirectoryAtPath:dir withIntermediateDirectories:YES
+													   attributes:nil error:nil];
 			void (^addIcon)(NSString *, NSString *, NSString *, UIImage *) = ^(NSString *name, NSString *cat, NSString *desc, UIImage *img){
 				if (!img) return;
+				NSString *file = [NSString stringWithFormat:@"%@-%@.png",
+						[[cat componentsSeparatedByString:@" "] objectAtIndex:0], name];
+				[UIImagePNGRepresentation(img) writeToFile:[dir stringByAppendingPathComponent:file]
+												atomically:YES];
 				[items addObject:@{
 					@"name" : name,
 					@"category" : cat,
 					@"description" : desc,
-					@"b64" : TGBase64FromImage(img),
+					@"file" : file,
 					@"width" : @(img.size.width),
 					@"height" : @(img.size.height)
 				}];
@@ -699,8 +699,8 @@ static NSString *TGBase64FromImage(UIImage *img) {
 			addIcon(@"mapPinBadge", @"Avatars & Badges", @"Location map pin marker badge", [TGIcons mapPinBadge]);
 
 			NSData *json = [NSJSONSerialization dataWithJSONObject:items options:NSJSONWritingPrettyPrinted error:nil];
-			[json writeToFile:@"/tmp/icons_dump.json" atomically:YES];
-			NSLog(@"[TGIcons] Dumped %lu icons to /tmp/icons_dump.json", (unsigned long)items.count);
+			[json writeToFile:[dir stringByAppendingPathComponent:@"icons.json"] atomically:YES];
+			NSLog(@"[TGIcons] Dumped %lu icons to %@", (unsigned long)items.count, dir);
 		});
 		return YES;
 	}

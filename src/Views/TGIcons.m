@@ -1,5 +1,7 @@
 #import "TGTextDraw.h"
 #import "TGIconsInternal.h"
+#import "TGIconPaths.h"
+#import "TGSVGPath.h"
 #import "TGMessageLayout.h"
 #import "TGStyle.h"
 
@@ -54,6 +56,36 @@ void TGIconsSetCached(NSString *key, UIImage *img) {
 + (void)flush {
 	[sCache removeAllObjects];
 	TGIconsClearSettingsIconCache();
+}
+
+BOOL TGIconAddPath(CGContextRef ctx, const char *name, CGRect box) {
+	const TGIconPath *icon = TGIconPathNamed(name);
+	if (!icon)
+		return NO;
+	CGFloat inset = box.size.width * icon->pad / 24.0f;
+	CGPathRef path = TGSVGPathCreate(icon->d, icon->viewW, icon->viewH, CGRectInset(box, inset, inset));
+	if (!path)
+		return NO;
+	CGContextAddPath(ctx, path);
+	CGPathRelease(path);
+	return YES;
+}
+
++ (UIImage *)pathIconNamed:(NSString *)name {
+	// MDI keeps 2 of 24 units empty; another tenth matches the size the
+	// hand-drawn set sat at in menus and buttons.
+	return [self pathIconNamed:name margin:0.1f];
+}
+
++ (UIImage *)pathIconNamed:(NSString *)name margin:(CGFloat)margin {
+	if (!TGIconPathNamed(name.UTF8String))
+		return nil;
+	NSString *key = [NSString stringWithFormat:@"svg-%@-%.2f", name, margin];
+	return [self iconNamed:key draw:^(CGContextRef ctx, CGFloat s){
+		CGFloat m = s * margin;
+		if (TGIconAddPath(ctx, name.UTF8String, CGRectMake(m, m, s - 2 * m, s - 2 * m)))
+			CGContextFillPath(ctx);
+	}];
 }
 
 + (UIImage *)iconNamed:(NSString *)name draw:(void (^)(CGContextRef ctx, CGFloat s))draw {
@@ -187,6 +219,9 @@ static void TGDrawTabPath(CGContextRef ctx, UIBezierPath *path, BOOL filled) {
 #pragma mark - tab bar
 
 + (UIImage *)chats {
+	UIImage *svg = [self pathIconNamed:@"chats" margin:0];
+	if (svg)
+		return svg;
 	return [self iconNamed:@"chats" draw:^(CGContextRef ctx, CGFloat s){
 		TGDrawTabPath(ctx, TGChatsTabPath(s), YES);
 	}];
@@ -205,6 +240,9 @@ static void TGDrawTabPath(CGContextRef ctx, UIBezierPath *path, BOOL filled) {
 }
 
 + (UIImage *)chatsOutline {
+	UIImage *svg = [self pathIconNamed:@"chats" margin:0];
+	if (svg)
+		return svg;
 	return [self iconNamed:@"chats-outline" draw:^(CGContextRef ctx, CGFloat s){
 		TGDrawTabPath(ctx, TGChatsTabPath(s), NO);
 	}];
@@ -225,6 +263,9 @@ static void TGDrawTabPath(CGContextRef ctx, UIBezierPath *path, BOOL filled) {
 #pragma mark - actions
 
 + (UIImage *)compose {
+	UIImage *svg = [self pathIconNamed:@"compose"];
+	if (svg)
+		return svg;
 	return [self iconNamed:@"compose" draw:^(CGContextRef ctx, CGFloat s){
 		CGContextSetLineWidth(ctx, TGIconStroke);
 		CGContextSetLineCap(ctx, kCGLineCapRound);
@@ -255,6 +296,9 @@ static void TGDrawTabPath(CGContextRef ctx, UIBezierPath *path, BOOL filled) {
 }
 
 + (UIImage *)send {
+	UIImage *svg = [self pathIconNamed:@"send"];
+	if (svg)
+		return svg;
 	return [self iconNamed:@"send" draw:^(CGContextRef ctx, CGFloat s){
 		// Official Telegram iOS / iMessage upward send arrow
 		CGFloat cx = s / 2.0f;
@@ -281,6 +325,9 @@ static void TGDrawTabPath(CGContextRef ctx, UIBezierPath *path, BOOL filled) {
 }
 
 + (UIImage *)attach {
+	UIImage *svg = [self pathIconNamed:@"attach"];
+	if (svg)
+		return svg;
 	return [self iconNamed:@"attach" draw:^(CGContextRef ctx, CGFloat s){
 		// Elegant 45-degree angled paperclip
 		CGContextSaveGState(ctx);
@@ -326,6 +373,9 @@ static void TGDrawTabPath(CGContextRef ctx, UIBezierPath *path, BOOL filled) {
 
 
 + (UIImage *)document {
+	UIImage *svg = [self pathIconNamed:@"document"];
+	if (svg)
+		return svg;
 	return [self iconNamed:@"document" draw:^(CGContextRef ctx, CGFloat s){
 		// sheet with a folded corner
 		CGContextMoveToPoint(ctx, 6, 3);
@@ -339,6 +389,9 @@ static void TGDrawTabPath(CGContextRef ctx, UIBezierPath *path, BOOL filled) {
 }
 
 + (UIImage *)pin {
+	UIImage *svg = [self pathIconNamed:@"pin"];
+	if (svg)
+		return svg;
 	return [self iconNamed:@"pin" draw:^(CGContextRef ctx, CGFloat s){
 		// Stationery pushpin angled at 45 degrees
 		CGContextSaveGState(ctx);
@@ -369,6 +422,9 @@ static void TGDrawTabPath(CGContextRef ctx, UIBezierPath *path, BOOL filled) {
 }
 
 + (UIImage *)microphone {
+	UIImage *svg = [self pathIconNamed:@"microphone"];
+	if (svg)
+		return svg;
 	return [self iconNamed:@"microphone" draw:^(CGContextRef ctx, CGFloat s){
 		// capsule head, stand, base
 		UIBezierPath *head = [UIBezierPath bezierPathWithRoundedRect:
@@ -428,6 +484,9 @@ static void TGDrawTabPath(CGContextRef ctx, UIBezierPath *path, BOOL filled) {
 /// A smiling face. U+1F642 would be the obvious glyph, but it arrived in
 /// Unicode 7.0 and iOS 7 draws it as an empty box.
 + (UIImage *)sticker {
+	UIImage *svg = [self pathIconNamed:@"sticker"];
+	if (svg)
+		return svg;
 	return [self iconNamed:@"sticker" draw:^(CGContextRef ctx, CGFloat s){
 		CGContextSetLineWidth(ctx, TGIconStroke);
 		CGContextStrokeEllipseInRect(ctx, CGRectMake(3, 3, s - 6, s - 6));
@@ -509,31 +568,14 @@ static void TGDrawTabPath(CGContextRef ctx, UIBezierPath *path, BOOL filled) {
 	if (cached) return cached;
 
 	CGFloat side = 22.0f;
-	CGFloat scale = [UIScreen mainScreen].scale;
-	UIGraphicsBeginImageContextWithOptions(CGSizeMake(side, side), NO, scale);
+	UIGraphicsBeginImageContextWithOptions(CGSizeMake(side, side), NO, 0);
 	CGContextRef ctx = UIGraphicsGetCurrentContext();
-
-	CGRect circleRect = CGRectMake(1.0f, 1.0f, 20.0f, 20.0f);
-	if (selected) {
-		UIColor *fill = [[TGTheme shared] accentColour];
-		CGContextSetFillColorWithColor(ctx, fill.CGColor);
-		CGContextFillEllipseInRect(ctx, circleRect);
-
-		CGContextSetStrokeColorWithColor(ctx, [UIColor whiteColor].CGColor);
-		CGContextSetLineWidth(ctx, TGIconStroke);
-		CGContextSetLineCap(ctx, kCGLineCapRound);
-		CGContextSetLineJoin(ctx, kCGLineJoinRound);
-
-		CGContextMoveToPoint(ctx, 6.0f, 11.0f);
-		CGContextAddLineToPoint(ctx, 9.5f, 14.5f);
-		CGContextAddLineToPoint(ctx, 15.5f, 7.5f);
-		CGContextStrokePath(ctx);
-	} else {
-		UIColor *border = [[TGTheme shared] separatorColour];
-		CGContextSetStrokeColorWithColor(ctx, border.CGColor);
-		CGContextSetLineWidth(ctx, TGIconStrokeFine);
-		CGContextStrokeEllipseInRect(ctx, circleRect);
-	}
+	UIColor *colour = selected ? [[TGTheme shared] accentColour] : [[TGTheme shared] separatorColour];
+	CGContextSetFillColorWithColor(ctx, colour.CGColor);
+	// The circle is 20 of the icon's 24 units; the box grows so it spans 22.
+	CGRect box = CGRectInset(CGRectMake(0, 0, side, side), -side / 10, -side / 10);
+	if (TGIconAddPath(ctx, selected ? "checkboxSelected" : "checkboxUnselected", box))
+		CGContextFillPath(ctx);
 
 	UIImage *img = UIGraphicsGetImageFromCurrentImageContext();
 	UIGraphicsEndImageContext();
@@ -606,6 +648,9 @@ static void TGDrawTabPath(CGContextRef ctx, UIBezierPath *path, BOOL filled) {
 }
 
 + (UIImage *)phoneCall {
+	UIImage *svg = [self pathIconNamed:@"phoneCall"];
+	if (svg)
+		return svg;
 	return [self iconNamed:@"phoneCall" draw:^(CGContextRef ctx, CGFloat s) {
 		CGContextSaveGState(ctx);
 		CGContextTranslateCTM(ctx, TGHalf(s), TGHalf(s));
@@ -638,42 +683,16 @@ static void TGDrawTabPath(CGContextRef ctx, UIBezierPath *path, BOOL filled) {
 
 + (UIImage *)telegramAirplaneOfSide:(CGFloat)size {
 	if (size <= 0) size = 28.0f;
-	CGFloat scale = [UIScreen mainScreen].scale;
-	NSString *key = [NSString stringWithFormat:@"tgAirplane-flat-%.1f", size];
+	NSString *key = [NSString stringWithFormat:@"tgAirplane-%.1f", size];
 	UIImage *cached = TGIconsGetCached(key);
 	if (cached) return cached;
 
-	UIGraphicsBeginImageContextWithOptions(CGSizeMake(size, size), NO, scale);
+	UIGraphicsBeginImageContextWithOptions(CGSizeMake(size, size), NO, 0);
 	CGContextRef ctx = UIGraphicsGetCurrentContext();
-	CGFloat s = size;
-
-	// Modern Telegram paper airplane pointing right
-	UIColor *c = [[TGTheme shared] accentColour];
-	CGContextSetFillColorWithColor(ctx, c.CGColor);
-
-	UIBezierPath *plane = [UIBezierPath bezierPath];
-	// Nose pointing forward/right
-	[plane moveToPoint:CGPointMake(s - 2.0f, s * 0.44f)];
-	// Top wingtip
-	[plane addLineToPoint:CGPointMake(2.0f, s * 0.18f)];
-	// Keel fold
-	[plane addLineToPoint:CGPointMake(s * 0.42f, s * 0.52f)];
-	// Bottom wingtip
-	[plane addLineToPoint:CGPointMake(2.0f, s * 0.82f)];
-	[plane closePath];
-
-	CGContextAddPath(ctx, plane.CGPath);
-	CGContextFillPath(ctx);
-
-	// Inner fold for depth
-	CGContextSetFillColorWithColor(ctx, [[TGTheme shared] skeuoShineColour].CGColor);
-	UIBezierPath *fold = [UIBezierPath bezierPath];
-	[fold moveToPoint:CGPointMake(s - 2.0f, s * 0.44f)];
-	[fold addLineToPoint:CGPointMake(2.0f, s * 0.18f)];
-	[fold addLineToPoint:CGPointMake(s * 0.42f, s * 0.52f)];
-	[fold closePath];
-	CGContextAddPath(ctx, fold.CGPath);
-	CGContextFillPath(ctx);
+	CGContextSetFillColorWithColor(ctx, [[TGTheme shared] accentColour].CGColor);
+	CGRect box = CGRectInset(CGRectMake(0, 0, size, size), -size / 10, -size / 10);
+	if (TGIconAddPath(ctx, "telegramAirplane", box))
+		CGContextFillPath(ctx);
 
 	UIImage *img = UIGraphicsGetImageFromCurrentImageContext();
 	UIGraphicsEndImageContext();
@@ -687,39 +706,11 @@ static void TGDrawTabPath(CGContextRef ctx, UIBezierPath *path, BOOL filled) {
 	if (cached) return cached;
 
 	CGFloat side = 16.0f;
-	CGFloat scale = [UIScreen mainScreen].scale;
-	UIGraphicsBeginImageContextWithOptions(CGSizeMake(side, side), NO, scale);
+	UIGraphicsBeginImageContextWithOptions(CGSizeMake(side, side), NO, 0);
 	CGContextRef ctx = UIGraphicsGetCurrentContext();
-
-	CGFloat cx = TGHalf(side);
-	CGFloat cy = TGHalf(side);
-	NSInteger points = 8;
-	CGFloat rOuter = side * 0.46f;
-	CGFloat rInner = side * 0.38f;
-
-	UIBezierPath *star = [UIBezierPath bezierPath];
-	for (NSInteger i = 0; i < points * 2; i++) {
-		CGFloat r = (i % 2 == 0) ? rOuter : rInner;
-		CGFloat angle = (CGFloat)i * (M_PI / (CGFloat)points) - M_PI_2;
-		CGPoint pt = CGPointMake(cx + r * cosf(angle), cy + r * sinf(angle));
-		if (i == 0) [star moveToPoint:pt];
-		else [star addLineToPoint:pt];
-	}
-	[star closePath];
-
 	CGContextSetFillColorWithColor(ctx, [[TGTheme shared] accentColour].CGColor);
-	CGContextAddPath(ctx, star.CGPath);
-	CGContextFillPath(ctx);
-
-	CGContextSetStrokeColorWithColor(ctx, [UIColor whiteColor].CGColor);
-	CGContextSetLineWidth(ctx, TGIconStroke);
-	CGContextSetLineCap(ctx, kCGLineCapRound);
-	CGContextSetLineJoin(ctx, kCGLineJoinRound);
-
-	CGContextMoveToPoint(ctx, 4.5f, 8.0f);
-	CGContextAddLineToPoint(ctx, 7.0f, 10.5f);
-	CGContextAddLineToPoint(ctx, 11.5f, 5.5f);
-	CGContextStrokePath(ctx);
+	if (TGIconAddPath(ctx, "verifiedBadge", CGRectInset(CGRectMake(0, 0, side, side), -1, -1)))
+		CGContextFillPath(ctx);
 
 	UIImage *img = UIGraphicsGetImageFromCurrentImageContext();
 	UIGraphicsEndImageContext();

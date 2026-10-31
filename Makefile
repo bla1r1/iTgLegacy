@@ -205,6 +205,7 @@ APP_SRC_M := \
 	src/Core/TGStickerBudget.m \
 	src/Core/TGThemeFile.m \
 	src/Views/TGIcons.m \
+	src/Views/TGIconPaths.m \
 	src/Views/TGIcons+Menu.m \
 	src/Views/TGIcons+Avatars.m \
 	src/Views/TGIcons+Illustrations.m \
@@ -307,6 +308,7 @@ APP_SRC_MM := \
 APP_SRC_C := \
 	third_party/yyjson/yyjson.c \
 	src/Core/TGUpdateType.c \
+	src/Core/TGSVGPath.c \
 	src/Core/TGSampler.c \
 	compat/tlv_polyfill.c \
 	src/Calls/TGCallCrypto.c \

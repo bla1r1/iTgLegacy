@@ -17,6 +17,15 @@ static const CGFloat TGIconStroke = TGMetricStrokeIcon;
 /// up its own corners. Only for glyphs under about sixteen points.
 static const CGFloat TGIconStrokeFine = TGMetricStrokeFine;
 
+/// Add a published icon's path (TGIconPaths) fitted into `box` to the
+/// current path. NO for a name that keeps its hand-drawn version.
+BOOL TGIconAddPath(CGContextRef ctx, const char *name, CGRect box);
+
 @interface TGIcons ()
+/// The published icon in the usual 28-point template box, or nil.
++ (UIImage *)pathIconNamed:(NSString *)name;
+/// The same with `margin` of the box left empty on each side; tab bar
+/// glyphs use 0 to stand as tall as their neighbours.
++ (UIImage *)pathIconNamed:(NSString *)name margin:(CGFloat)margin;
 + (UIImage *)iconNamed:(NSString *)name draw:(void (^)(CGContextRef ctx, CGFloat s))draw;
 @end

@@ -45,12 +45,8 @@ static UIImage *TGGlyphAvatar(CGFloat side, void (^draw)(CGContextRef ctx, CGFlo
 	if (cached) return cached;
 
 	UIImage *img = TGGlyphAvatar(side, ^(CGContextRef ctx, CGFloat s){
-		CGFloat w = s * 0.46f, x = TGHalf(s - w);
-		CGContextFillRect(ctx, CGRectMake(x, s * 0.32f, w, s * 0.10f));
-		CGContextFillRect(ctx, CGRectMake(x + s * 0.03f, s * 0.44f,
-										  w - s * 0.06f, s * 0.24f));
-		CGContextSetRGBFillColor(ctx, 0.427f, 0.588f, 0.706f, 1.0f);
-		CGContextFillRect(ctx, CGRectMake(s * 0.44f, s * 0.50f, s * 0.12f, s * 0.05f));
+		if (TGIconAddPath(ctx, "archiveAvatar", CGRectInset(CGRectMake(0, 0, s, s), s * 0.22f, s * 0.22f)))
+			CGContextFillPath(ctx);
 	});
 	TGIconsSetCached(key, img);
 	return img;
@@ -62,13 +58,8 @@ static UIImage *TGGlyphAvatar(CGFloat side, void (^draw)(CGContextRef ctx, CGFlo
 	if (cached) return cached;
 
 	UIImage *img = TGGlyphAvatar(side, ^(CGContextRef ctx, CGFloat s){
-		CGContextMoveToPoint(ctx, s * 0.36f, s * 0.30f);
-		CGContextAddLineToPoint(ctx, s * 0.64f, s * 0.30f);
-		CGContextAddLineToPoint(ctx, s * 0.64f, s * 0.70f);
-		CGContextAddLineToPoint(ctx, s * 0.50f, s * 0.58f);
-		CGContextAddLineToPoint(ctx, s * 0.36f, s * 0.70f);
-		CGContextClosePath(ctx);
-		CGContextFillPath(ctx);
+		if (TGIconAddPath(ctx, "savedMessagesAvatar", CGRectInset(CGRectMake(0, 0, s, s), s * 0.22f, s * 0.22f)))
+			CGContextFillPath(ctx);
 	});
 	TGIconsSetCached(key, img);
 	return img;
@@ -426,40 +417,12 @@ static UIImage *TGGlyphAvatar(CGFloat side, void (^draw)(CGContextRef ctx, CGFlo
 	UIImage *cached = TGIconsGetCached(key);
 	if (cached) return cached;
 	CGFloat w = 28.0f, h = 36.0f;
-	CGFloat scale = [UIScreen mainScreen].scale;
-	UIGraphicsBeginImageContextWithOptions(CGSizeMake(w, h), NO, scale);
+	UIGraphicsBeginImageContextWithOptions(CGSizeMake(w, h), NO, 0);
 	CGContextRef ctx = UIGraphicsGetCurrentContext();
-
-	CGFloat cx = TGHalf(w);
-	CGFloat cy = 12.0f;
-	CGFloat r = 10.0f;
-	CGFloat tipX = cx;
-	CGFloat tipY = 32.0f;
-	CGFloat d = tipY - cy;
-
-	CGFloat sinA = r / d;
-	CGFloat cosA = sqrtf(1.0f - sinA * sinA);
-	CGFloat ptR_x = cx + r * cosA;
-	CGFloat ptR_y = cy + r * sinA;
-
-	CGFloat angleR = asinf(sinA);
-	CGFloat angleL = (CGFloat)M_PI - angleR;
-
-	// Red teardrop pin body
 	CGContextSetRGBFillColor(ctx, 0.95f, 0.26f, 0.21f, 1.0f);
-	CGContextBeginPath(ctx);
-	// Start at right tangent, arc over the top to left tangent
-	CGContextAddArc(ctx, cx, cy, r, angleR, angleL, 1);
-	// Line to bottom tip
-	CGContextAddLineToPoint(ctx, tipX, tipY);
-	// Line back to right tangent
-	CGContextAddLineToPoint(ctx, ptR_x, ptR_y);
-	CGContextClosePath(ctx);
-	CGContextFillPath(ctx);
-
-	// Inner white dot
-	CGContextSetRGBFillColor(ctx, 1.0f, 1.0f, 1.0f, 1.0f);
-	CGContextFillEllipseInRect(ctx, CGRectMake(cx - 3.8f, cy - 3.8f, 7.6f, 7.6f));
+	// Fitted by height: the marker is only 14 of its 24 units wide.
+	if (TGIconAddPath(ctx, "mapPinBadge", CGRectMake((w - h) / 2, 0, h, h)))
+		CGContextFillPath(ctx);
 
 	UIImage *img = UIGraphicsGetImageFromCurrentImageContext();
 	UIGraphicsEndImageContext();

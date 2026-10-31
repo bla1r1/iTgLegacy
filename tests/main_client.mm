@@ -23,6 +23,7 @@
 #import "TGClientThreadsTests.m"
 #import "TGMessageStreamStoreTests.m"
 #import "TGThemeFileTests.m"
+#import "TGSVGPathTests.m"
 #import "TGUpdatesTests.mm"
 #import "TGP0MigrationTests.mm"
 #import "TGP1MigrationTests.mm"

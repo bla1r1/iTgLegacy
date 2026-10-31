@@ -17,32 +17,13 @@ static const CGFloat kTailHeight = 13.0f;
 	CGFloat s = 14;
 	UIGraphicsBeginImageContextWithOptions(CGSizeMake(s, s), NO, 0);
 	CGContextRef ctx = UIGraphicsGetCurrentContext();
-
 	if (missed)
-		CGContextSetRGBStrokeColor(ctx, 0.871f, 0.227f, 0.227f, 1.0f);
+		CGContextSetRGBFillColor(ctx, 0.871f, 0.227f, 0.227f, 1.0f);
 	else
-		CGContextSetRGBStrokeColor(ctx, 0.353f, 0.804f, 0.188f, 1.0f);
-	CGContextSetLineWidth(ctx, TGIconStroke);
-	CGContextSetLineCap(ctx, kCGLineCapRound);
-	CGContextSetLineJoin(ctx, kCGLineJoinRound);
-
-	CGFloat lo = 2.5f, hi = s - 2.5f;
-	if (outgoing){
-		CGContextMoveToPoint(ctx, lo, hi);
-		CGContextAddLineToPoint(ctx, hi, lo);
-		CGContextStrokePath(ctx);
-		CGContextMoveToPoint(ctx, hi - 5, lo);
-		CGContextAddLineToPoint(ctx, hi, lo);
-		CGContextAddLineToPoint(ctx, hi, lo + 5);
-	} else {
-		CGContextMoveToPoint(ctx, hi, lo);
-		CGContextAddLineToPoint(ctx, lo, hi);
-		CGContextStrokePath(ctx);
-		CGContextMoveToPoint(ctx, lo + 5, hi);
-		CGContextAddLineToPoint(ctx, lo, hi);
-		CGContextAddLineToPoint(ctx, lo, hi - 5);
-	}
-	CGContextStrokePath(ctx);
+		CGContextSetRGBFillColor(ctx, 0.353f, 0.804f, 0.188f, 1.0f);
+	const char *name = missed ? "callMissed" : (outgoing ? "callOutgoing" : "callIncoming");
+	if (TGIconAddPath(ctx, name, CGRectMake(0, 0, s, s)))
+		CGContextFillPath(ctx);
 
 	UIImage *image = UIGraphicsGetImageFromCurrentImageContext();
 	UIGraphicsEndImageContext();
@@ -57,25 +38,9 @@ static const CGFloat kTailHeight = 13.0f;
 
 	UIGraphicsBeginImageContextWithOptions(CGSizeMake(side, side), NO, 0);
 	CGContextRef ctx = UIGraphicsGetCurrentContext();
-	[colour set];
-
-	UIBezierPath *head = [UIBezierPath bezierPathWithRoundedRect:
-			CGRectMake(side * 0.40f, side * 0.18f, side * 0.20f, side * 0.38f)
-												   cornerRadius:side * 0.10f];
-	[head fill];
-
-	CGContextSetLineWidth(ctx, MAX(1.5f, side * 0.055f));
-	CGContextSetLineCap(ctx, kCGLineCapRound);
-	CGContextAddArc(ctx, TGHalf(side), side * 0.50f, side * 0.20f, 0, M_PI, 0);
-	CGContextStrokePath(ctx);
-
-	CGContextMoveToPoint(ctx, TGHalf(side), side * 0.70f);
-	CGContextAddLineToPoint(ctx, TGHalf(side), side * 0.80f);
-	CGContextStrokePath(ctx);
-
-	CGContextMoveToPoint(ctx, side * 0.38f, side * 0.80f);
-	CGContextAddLineToPoint(ctx, side * 0.62f, side * 0.80f);
-	CGContextStrokePath(ctx);
+	CGContextSetFillColorWithColor(ctx, colour.CGColor);
+	if (TGIconAddPath(ctx, "recordMicDisc", CGRectMake(0, 0, side, side)))
+		CGContextFillPath(ctx);
 
 	UIImage *image = UIGraphicsGetImageFromCurrentImageContext();
 	UIGraphicsEndImageContext();
@@ -233,23 +198,12 @@ static const CGFloat kTailHeight = 13.0f;
 	CGSize size = CGSizeMake(15, 9);
 	UIGraphicsBeginImageContextWithOptions(size, NO, 0);
 	CGContextRef ctx = UIGraphicsGetCurrentContext();
-
-	CGContextSetStrokeColorWithColor(ctx, c.CGColor);
-	CGContextSetLineWidth(ctx, TGIconStrokeFine);
-	CGContextSetLineCap(ctx, kCGLineCapRound);
-	CGContextSetLineJoin(ctx, kCGLineJoinRound);
-
-	if (read){
-		CGContextMoveToPoint(ctx, 0.5f, 5.0f);
-		CGContextAddLineToPoint(ctx, 3.0f, 7.6f);
-		CGContextAddLineToPoint(ctx, 8.4f, 1.4f);
-		CGContextStrokePath(ctx);
-	}
-
-	CGContextMoveToPoint(ctx, 6.0f, 5.0f);
-	CGContextAddLineToPoint(ctx, 8.5f, 7.6f);
-	CGContextAddLineToPoint(ctx, 14.0f, 1.4f);
-	CGContextStrokePath(ctx);
+	CGContextSetFillColorWithColor(ctx, c.CGColor);
+	// The ticks fill the icon's width and sit on its middle third, so a
+	// square box as wide as the image, centred on it, lands them in it.
+	CGRect box = CGRectMake(0, (size.height - size.width) / 2, size.width, size.width);
+	if (TGIconAddPath(ctx, read ? "ticksOutgoing" : "ticksSingle", box))
+		CGContextFillPath(ctx);
 
 	UIImage *image = UIGraphicsGetImageFromCurrentImageContext();
 	UIGraphicsEndImageContext();

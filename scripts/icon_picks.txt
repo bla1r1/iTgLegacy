@@ -1,0 +1,59 @@
+# row name source glyph   (ours = keep TGIcons drawing)
+1 chats mdi mdiChat
+2 contacts ours
+3 settings ours
+4 compose fa pen-to-square
+5 send fa paper-plane
+6 attach fa paperclip
+7 microphone fa microphone
+8 sticker mdi mdiStickerEmoji
+9 document mdi mdiFileDocumentOutline
+10 pin mdi mdiPin
+11 play ours
+12 pause ours
+13 phoneCall fa phone
+14 searchLens ours
+15 backChevron ours
+16 checkboxSelected mdi mdiCheckCircle
+17 checkboxUnselected mdi mdiCheckboxBlankCircleOutline
+18 reply fa reply
+19 forward fa share
+20 copy mdi mdiContentCopy
+21 edit mdi mdiPencil
+22 delete fa trash-can
+24 unpin mdi mdiPinOff
+25 mute mdi mdiBellOff
+26 unmute mdi mdiBell
+27 archive mdi mdiArchiveArrowDown
+28 unarchive mdi mdiArchiveArrowUp
+29 react mdi mdiEmoticonOutline
+30 select mdi mdiCheckCircleOutline
+31 undo mdi mdiUndo
+32 notifications mdi mdiBell
+33 privacy mdi mdiLock
+34 data mdi mdiDatabase
+35 chat mdi mdiMessageText
+36 folder mdi mdiFolder
+37 devices mdi mdiCellphoneLink
+38 language mdi mdiTranslate
+39 faq mdi mdiHelpCircle
+40 policy mdi mdiShieldCheck
+41 call mdi mdiPhone
+42 video mdi mdiVideo
+43 search mdi mdiMagnify
+44 more mdi mdiDotsHorizontal
+45 ticksOutgoing mdi mdiCheckAll
+46 ticksMedia mdi mdiCheckAll
+47 callIncoming mdi mdiPhoneIncoming
+48 callOutgoing mdi mdiPhoneOutgoing
+49 callMissed mdi mdiPhoneMissed
+50 telegramAirplane mdi mdiSendCircle
+51 verifiedBadge mdi mdiCheckDecagram
+52 mediaDiscPlay mdi mdiPlayCircle
+53 mediaDiscPause mdi mdiPauseCircle
+54 fileDisc mdi mdiFileDownload
+55 recordMicDisc mdi mdiMicrophoneOutline
+56 archiveAvatar mdi mdiArchive
+57 savedMessagesAvatar mdi mdiBookmark
+58 mapPinBadge mdi mdiMapMarker
+59 ticksSingle mdi mdiCheck
