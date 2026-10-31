@@ -73,27 +73,84 @@ static id TGConvertVal(yyjson_val *val) {
 	}
 }
 
-id TGJsonParse(const char *utf8, size_t len, NSError **error) {
+static yyjson_doc *TGReadDoc(const char *utf8, size_t len, NSError **error) {
 	if (!utf8 || len == 0){
 		if (error)
 			*error = [NSError errorWithDomain:@"TGJsonErrorDomain" code:-1
 									 userInfo:@{NSLocalizedDescriptionKey : @"Empty JSON payload"}];
-		return nil;
+		return NULL;
 	}
 
 	yyjson_read_err err;
 	yyjson_doc *doc = yyjson_read_opts((char *)utf8, len, YYJSON_READ_NOFLAG, NULL, &err);
-	if (!doc){
-		if (error){
-			NSString *msg = [NSString stringWithFormat:@"JSON parse error at pos %zu: %s",
-					err.pos, err.msg ? err.msg : "unknown"];
-			*error = [NSError errorWithDomain:@"TGJsonErrorDomain" code:-2
-									 userInfo:@{NSLocalizedDescriptionKey : msg}];
-		}
+	if (!doc && error){
+		NSString *msg = [NSString stringWithFormat:@"JSON parse error at pos %zu: %s",
+				err.pos, err.msg ? err.msg : "unknown"];
+		*error = [NSError errorWithDomain:@"TGJsonErrorDomain" code:-2
+								 userInfo:@{NSLocalizedDescriptionKey : msg}];
+	}
+	return doc;
+}
+
+id TGJsonParse(const char *utf8, size_t len, NSError **error) {
+	yyjson_doc *doc = TGReadDoc(utf8, len, error);
+	if (!doc)
+		return nil;
+
+	id result = TGConvertVal(yyjson_doc_get_root(doc));
+	yyjson_doc_free(doc);
+	return result;
+}
+
+/// One syslog line per update type thrown away, so a feature that looks dead
+/// says why. Deduplicated without touching Foundation: this runs on the
+/// receive thread for every dropped update, which is the allocation the
+/// filter exists to avoid in the first place.
+///
+/// ponytail: 64 names and a linear scan. td_api has about a hundred update
+/// types in all, so a full table would only trade memory for nothing; past
+/// the ceiling the log goes quiet and the drop still happens.
+static void TGLogDroppedUpdate(const char *name, size_t len) {
+	enum { kCap = 64, kNameMax = 63 };
+	static char seen[kCap][kNameMax + 1];
+	static size_t seenCount = 0;
+
+	if (len > kNameMax)
+		return;
+
+	for (size_t i = 0; i < seenCount; i++){
+		if (std::strncmp(seen[i], name, len) == 0 && seen[i][len] == 0)
+			return;
+	}
+	if (seenCount == kCap)
+		return;
+
+	std::memcpy(seen[seenCount], name, len);
+	seen[seenCount][len] = 0;
+	seenCount++;
+	NSLog(@"TGClient: dropped %s - nothing reads it", seen[seenCount - 1]);
+}
+
+id TGJsonParseUpdate(const char *utf8, size_t len, NSError **error) {
+	yyjson_doc *doc = TGReadDoc(utf8, len, error);
+	if (!doc)
+		return nil;
+
+	yyjson_val *root = yyjson_doc_get_root(doc);
+	yyjson_val *type = yyjson_is_obj(root) ? yyjson_obj_get(root, "@type") : NULL;
+	const char *name = yyjson_get_str(type);
+	size_t nameLen = name ? yyjson_get_len(type) : 0;
+
+	// An answer carrying @extra is owed to a waiting completion block whatever
+	// its type, so only unclaimed updates are candidates for the bin.
+	if (TGUpdateTypeIsUpdateName(name, nameLen) &&
+		TGUpdateTypeFor(name, nameLen) == TGUpdateUnknown &&
+		!yyjson_obj_get(root, "@extra")){
+		TGLogDroppedUpdate(name, nameLen);
+		yyjson_doc_free(doc);
 		return nil;
 	}
 
-	yyjson_val *root = yyjson_doc_get_root(doc);
 	id result = TGConvertVal(root);
 	yyjson_doc_free(doc);
 	return result;

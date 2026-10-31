@@ -73,6 +73,7 @@ OBJC_SRCS := \
 # binary links a test stub of TGClient instead, which the call tests need.
 CLIENT_OBJC_SRCS := \
     $(ROOT)/third_party/yyjson/yyjson.c \
+    $(SRC)/Core/TGUpdateType.c \
     $(SRC)/Core/TGJson.mm \
     $(SRC)/Core/TGClient.m \
     $(SRC)/Core/TGClient+Chats.mm \
@@ -124,6 +125,7 @@ TEST_SRCS := \
 
 CLIENT_TEST_SRCS := \
     $(TESTS)/TGJsonTests.m \
+    $(TESTS)/TGUpdateFilterTests.m \
     $(TESTS)/TGClientChatsTests.m \
     $(TESTS)/TGClientFilesTests.m \
     $(TESTS)/TGStatusTextTests.m \

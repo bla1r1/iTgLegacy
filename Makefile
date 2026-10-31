@@ -303,6 +303,7 @@ APP_SRC_MM := \
 
 APP_SRC_C := \
 	third_party/yyjson/yyjson.c \
+	src/Core/TGUpdateType.c \
 	compat/tlv_polyfill.c \
 	src/Calls/TGCallCrypto.c \
 	third_party/nestegg/nestegg.c \

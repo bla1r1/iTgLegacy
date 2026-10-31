@@ -10,6 +10,7 @@
 #import "TGTestRunner.h"
 
 #import "TGJsonTests.m"
+#import "TGUpdateFilterTests.m"
 #import "TGClientChatsTests.m"
 #import "TGClientFilesTests.m"
 #import "TGStatusTextTests.m"

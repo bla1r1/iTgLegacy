@@ -1,6 +1,7 @@
 #import "TGClientInternal.h"
 #import "TGCall.h"
 #import "TGJson.h"
+#include "TGUpdateType.h"
 #include <dlfcn.h>
 #include "api_id.h"
 
@@ -131,10 +132,10 @@ NSString *const TGChatActionBarChangedNotification = @"TGChatActionBarChangedNot
 
 			NSError *err = nil;
 			size_t resLen = strlen(res);
-			NSDictionary *obj = TGJsonParse(res, resLen, &err);
+			NSDictionary *obj = TGJsonParseUpdate(res, resLen, &err);
 			if ([obj isKindOfClass:NSDictionary.class]){
 				[batch addObject:obj];
-			} else {
+			} else if (err){
 				NSLog(@"TGClient: bad JSON: %@", err);
 			}
 
@@ -144,7 +145,7 @@ NSString *const TGChatActionBarChangedNotification = @"TGChatActionBarChangedNot
 				if (!next)
 					break;
 				size_t nextLen = strlen(next);
-				NSDictionary *nextObj = TGJsonParse(next, nextLen, nil);
+				NSDictionary *nextObj = TGJsonParseUpdate(next, nextLen, nil);
 				if ([nextObj isKindOfClass:NSDictionary.class]){
 					[batch addObject:nextObj];
 				}
@@ -282,6 +283,8 @@ NSDictionary *TGFormattedText(NSString *text) {
 		}
 	}
 	NSString *type = obj[@"@type"];
+	const char *typeName = type.UTF8String;
+	size_t typeLen = typeName ? strlen(typeName) : 0;
 
 	if ([type hasPrefix:@"updateAuthorization"] || [type hasPrefix:@"authorization"] || [type isEqualToString:@"error"] || [type isEqualToString:@"ok"]) {
 		NSLog(@"TGClient: <<< RECV: %@", obj);
@@ -296,10 +299,6 @@ NSDictionary *TGFormattedText(NSString *text) {
 		NSLog(@"TGClient: first %@", type);
 	}
 
-	if ([type isEqualToString:@"updateAuthorizationState"]){
-		[self handleAuthState:obj[@"authorization_state"]];
-		return;
-	}
 	// Answer to getMe. updateUser also carries our own record, but the direct
 	// reply is the one that always has the phone number.
 	if ([type isEqualToString:@"user"] && obj[@"phone_number"]){
@@ -312,7 +311,13 @@ NSDictionary *TGFormattedText(NSString *text) {
 		NSLog(@"TGClient: signed in as +%@", self.me[@"phone"]);
 		return;
 	}
-	if ([type isEqualToString:@"updateUser"]){
+
+	switch (TGUpdateTypeFor(typeName, typeLen)){
+	case TGUpdateAuthorizationState: {
+		[self handleAuthState:obj[@"authorization_state"]];
+		return;
+	}
+	case TGUpdateUser: {
 		NSDictionary *u = obj[@"user"];
 		if (u[@"id"]){
 			if (!self.rawUsersById)
@@ -334,19 +339,19 @@ NSDictionary *TGFormattedText(NSString *text) {
 	}
 
 	// Live message updates - without these a chat only refreshes when reopened.
-	if ([type isEqualToString:@"updateNewMessage"]){
+	case TGUpdateNewMessage: {
 		NSDictionary *m = obj[@"message"];
 		if (self.onMessage && m)
 			self.onMessage([m[@"chat_id"] longLongValue], TGFlattenMessage(m), 0);
 		return;
 	}
-	if ([type isEqualToString:@"updateMessageContent"]){
+	case TGUpdateMessageContent: {
 		// Content changed in place (a photo finished uploading, a text edited).
 		if (self.onMessage)
 			self.onMessage([obj[@"chat_id"] longLongValue], nil, 0);
 		return;
 	}
-	if ([type isEqualToString:@"updateDeleteMessages"]){
+	case TGUpdateDeleteMessages: {
 		if ([obj[@"is_permanent"] boolValue] && self.onMessage){
 			int64_t chatId = [obj[@"chat_id"] longLongValue];
 			for (NSNumber *mid in obj[@"message_ids"])
@@ -354,20 +359,20 @@ NSDictionary *TGFormattedText(NSString *text) {
 		}
 		return;
 	}
-	if ([type isEqualToString:@"updateNewChat"]){
+	case TGUpdateNewChat: {
 		[self mergeChat:obj[@"chat"]];
 		return;
 	}
-	if ([type isEqualToString:@"updateChatLastMessage"] ||
-		[type isEqualToString:@"updateChatPosition"] ||
-		[type isEqualToString:@"updateChatTitle"] ||
-		[type isEqualToString:@"updateChatReadInbox"] ||
-		[type isEqualToString:@"updateChatReadOutbox"] ||
-		[type isEqualToString:@"updateChatNotificationSettings"]){
+	case TGUpdateChatLastMessage:
+	case TGUpdateChatPosition:
+	case TGUpdateChatTitle:
+	case TGUpdateChatReadInbox:
+	case TGUpdateChatReadOutbox:
+	case TGUpdateChatNotificationSettings: {
 		[self applyChatUpdate:obj];
 		return;
 	}
-	if ([type isEqualToString:@"updateConnectionState"]){
+	case TGUpdateConnectionState: {
 		NSString *st = obj[@"state"][@"@type"];
 		NSLog(@"TGClient: connection %@", st);
 
@@ -396,7 +401,7 @@ NSDictionary *TGFormattedText(NSString *text) {
 	}
 	// The state of a secret chat - whether the other device has answered
 	// the exchange yet - is the one thing its header has to breathe.
-	if ([type isEqualToString:@"updateSecretChat"]){
+	case TGUpdateSecretChat: {
 		NSDictionary *sc = obj[@"secret_chat"];
 		NSString *st = sc[@"state"][@"@type"] ?: @"";
 		NSString *word = @"pending";
@@ -409,21 +414,21 @@ NSDictionary *TGFormattedText(NSString *text) {
 		return;
 	}
 
-	if ([type isEqualToString:@"updateNewCallSignalingData"]){
+	case TGUpdateNewCallSignalingData: {
 		NSData *data = [[NSData alloc] initWithBase64EncodedString:obj[@"data"] options:0];
 		NSLog(@"TGClient: <<< updateNewCallSignalingData call_id=%@ len=%lu", obj[@"call_id"], (unsigned long)data.length);
 		[[TGCall shared] handleSignalingData:data];
 		return;
 	}
 
-	if ([type isEqualToString:@"updateCall"]){
+	case TGUpdateCall: {
 		NSLog(@"TGClient: <<< updateCall: %@", obj[@"call"]);
 		// TDLib signals the call; TGCall owns the audio.
 		[[TGCall shared] handleUpdate:obj[@"call"]];
 		return;
 	}
 
-	if ([type isEqualToString:@"updateFile"]){
+	case TGUpdateFile: {
 		NSDictionary *file = obj[@"file"];
 		NSInteger fid = [file[@"id"] integerValue];
 		NSDictionary *local = file[@"local"];
@@ -441,7 +446,7 @@ NSDictionary *TGFormattedText(NSString *text) {
 		return;
 	}
 
-	if ([type isEqualToString:@"updateChatAction"]){
+	case TGUpdateChatAction: {
 		// TDLib names the action; the client turns it into the phrase every
 		// other client shows.
 		NSString *kind = obj[@"action"][@"@type"];
@@ -464,7 +469,7 @@ NSDictionary *TGFormattedText(NSString *text) {
 		NSMutableDictionary *acting = self.chatsById[@(actingChat)];
 		if (acting){
 			acting[@"action"] = phrase ?: @"";
-			[self rebuildChats];
+			[self markChatRowDirty:actingChat];
 		}
 		if (self.onChatAction)
 			self.onChatAction(actingChat, phrase);
@@ -474,7 +479,7 @@ NSDictionary *TGFormattedText(NSString *text) {
 	// Whether a supergroup is a forum is a property of the supergroup, not of
 	// the chat, and it arrives in an update of its own. Chats already built
 	// from that supergroup have to be told.
-	if ([type isEqualToString:@"updateSupergroup"]){
+	case TGUpdateSupergroup: {
 		NSDictionary *group = obj[@"supergroup"];
 		NSNumber *groupId = group[@"id"];
 		if (!groupId)
@@ -485,21 +490,18 @@ NSDictionary *TGFormattedText(NSString *text) {
 			return;
 		self.forumSupergroups[groupId] = @(isForum);
 
-		BOOL changed = NO;
 		for (NSMutableDictionary *chat in self.chatsById.allValues){
 			if (![chat[@"supergroupId"] isEqual:groupId])
 				continue;
 			chat[@"isForum"] = @(isForum);
-			changed = YES;
+			[self markChatRowDirty:[chat[@"id"] longLongValue]];
 		}
-		if (changed)
-			[self rebuildChats];
 		return;
 	}
 
 	// A private chat's id is the user's id, so presence lands straight on the
 	// chat the list is drawing.
-	if ([type isEqualToString:@"updateUserStatus"]){
+	case TGUpdateUserStatus: {
 		int64_t userId = [obj[@"user_id"] longLongValue];
 		if (self.rawUsersById[@(userId)] && [obj[@"status"] isKindOfClass:NSDictionary.class]){
 			NSMutableDictionary *cachedUser = [self.rawUsersById[@(userId)] mutableCopy];
@@ -519,18 +521,18 @@ NSDictionary *TGFormattedText(NSString *text) {
 		if ([chat[@"isOnline"] boolValue] == online)
 			return;
 		chat[@"isOnline"] = @(online);
-		[self rebuildChats];
+		[self markChatRowDirty:userId];
 		return;
 	}
 
-	if ([type isEqualToString:@"updateChatActionBar"]){
+	case TGUpdateChatActionBar: {
 		// The bar over a chat nobody knows follows the update, not only the
 		// fetch; whichever chat is open hears the notification and redraws.
 		int64_t chatId = [obj[@"chat_id"] longLongValue];
 		NSMutableDictionary *row = self.chatsById[@(chatId)];
 		if (row){
 			[self mergeActionBar:obj[@"action_bar"] intoChatRow:row];
-			[self rebuildChats];
+			[self markChatRowDirty:chatId];
 		}
 		[[NSNotificationCenter defaultCenter]
 				postNotificationName:TGChatActionBarChangedNotification
@@ -538,7 +540,7 @@ NSDictionary *TGFormattedText(NSString *text) {
 		return;
 	}
 
-	if ([type isEqualToString:@"updateChatFolders"]){
+	case TGUpdateChatFolders: {
 		NSMutableArray *out = [NSMutableArray array];
 		for (NSDictionary *f in obj[@"chat_folders"]){
 			NSString *title = TGFolderTitle(f);
@@ -558,11 +560,15 @@ NSDictionary *TGFormattedText(NSString *text) {
 			self.onChatsChanged();
 		return;
 	}
-	if ([type isEqualToString:@"updateUnreadChatCount"]){
+	case TGUpdateUnreadChatCount: {
 		NSLog(@"TGClient: %@ total=%@ list=%@", type, obj[@"total_count"],
 				obj[@"chat_list"][@"@type"]);
 		return;
 	}
+	default:
+		break;
+	}
+
 	if ([type isEqualToString:@"error"]){
 		NSString *msg = obj[@"message"] ?: @"unknown error";
 		NSLog(@"TGClient: <<< ERROR code=%@ msg=%@ details: %@", obj[@"code"], msg, obj);
@@ -577,6 +583,15 @@ NSDictionary *TGFormattedText(NSString *text) {
 			self.onError(msg);
 		return;
 	}
+}
+
+/// With no coalescer the rebuild stays immediate, so nothing silently waits
+/// on a main-queue timer that may never fire.
+- (void)markChatRowDirty:(int64_t)chatId {
+	if (self.updateCoalescer)
+		[self.updateCoalescer markChatDirty:chatId];
+	else
+		[self rebuildChats];
 }
 
 - (void)handleAuthState:(NSDictionary *)state {

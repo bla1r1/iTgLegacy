@@ -25,6 +25,8 @@ static TGClient *T(void) {
 	c.loadChatsAttempts = 0;
 	c.onChatsChanged = nil;
 	c.onArchiveChanged = nil;
+	// Dirty rows left by the previous test would flush into this one.
+	[c.updateCoalescer reset];
 	return c;
 }
 
@@ -649,5 +651,39 @@ static int64_t orderOf(NSArray *chats, int64_t id_) {
 	XCTAssertEqual(coalescer.pendingCount, (NSUInteger)0);
 }
 
-@end
 
+- (void)testFloodUpdates_RebuildTheListOnceThroughTheCoalescer {
+	TGClient *c = T();
+	for (int64_t id_ = 120; id_ < 125; id_++){
+		deliverNewChat(c, chatDict(id_, @"Chat", 1500 + id_));
+		giveLastChatMessage(c, id_, @"m", 2);
+	}
+
+	__block NSUInteger rebuilds = 0;
+	c.onChatsChanged = ^{ rebuilds++; };
+
+	// Five typing notifications, each in its own receive wake - which is how
+	// a presence or typing storm actually arrives, one update per batch. Each
+	// one used to walk every chat and reload the whole table.
+	for (int64_t id_ = 120; id_ < 125; id_++){
+		[c handleUpdate:@{@"@type" : @"updateChatAction",
+				@"chat_id" : @(id_),
+				@"action"  : @{@"@type" : @"chatActionTyping"}}];
+	}
+
+	XCTAssertEqual(rebuilds, (NSUInteger)0,
+			@"a typing notification must not rebuild the list on the spot");
+	// Deferred, not dropped. The exact count also carries the rows the
+	// fixture itself dirtied, so only "there is work waiting" is asserted.
+	XCTAssertGreaterThan(c.updateCoalescer.pendingCount, (NSUInteger)0);
+
+	// The phrase still lands on the row at once: the open chat header and the
+	// cell read it from there, they do not wait for the list.
+	XCTAssertEqualObjects(knownChat(c, 123)[@"action"], @"typing...");
+
+	[c.updateCoalescer flushNow];
+	XCTAssertEqual(rebuilds, (NSUInteger)1,
+			@"and all five collapse into one rebuild");
+}
+
+@end

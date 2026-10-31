@@ -92,6 +92,11 @@ extern double TGFileWaiterTimeoutSeconds;
 - (void)mergeChat:(NSDictionary *)chat;
 - (void)applyChatUpdate:(NSDictionary *)update;
 - (void)rebuildChats;
+/// One field on one chat row changed, so the list is stale but nothing is
+/// waiting on it this instant. Updates that arrive in floods - a typing
+/// storm, the presence burst at login, a forum flag landing on twenty chats
+/// at once - go through here instead of rebuilding per event.
+- (void)markChatRowDirty:(int64_t)chatId;
 - (NSString *)previewForLastMessage:(NSDictionary *)last inChat:(NSMutableDictionary *)info;
 
 @end
