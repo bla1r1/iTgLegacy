@@ -208,9 +208,33 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 	self.cells = [NSMutableDictionary dictionary];
 
 	self.pool = [NSMutableArray array];
+	// A set installed, a GIF saved or a sticker favourited on another client
+	// lands here; the tab is re-asked rather than latched until it is reopened.
+	[[NSNotificationCenter defaultCenter] addObserver:self
+			selector:@selector(stickerListsChanged)
+				name:TGStickerListsChangedNotification object:nil];
 	[self applyTheme];
 	[self selectTab:TGEmojiPanelTabEmoji];
 	return self;
+}
+
+- (void)dealloc {
+	[[NSNotificationCenter defaultCenter] removeObserver:self];
+	[NSObject cancelPreviousPerformRequestsWithTarget:self];
+}
+
+/// Installing a set fires one update per list it touches, so the re-read waits
+/// out the burst. The emoji tab reads none of these lists.
+- (void)stickerListsChanged {
+	if (self.tab == TGEmojiPanelTabEmoji)
+		return;
+	[NSObject cancelPreviousPerformRequestsWithTarget:self
+			selector:@selector(reselectCurrentTab) object:nil];
+	[self performSelector:@selector(reselectCurrentTab) withObject:nil afterDelay:0.3];
+}
+
+- (void)reselectCurrentTab {
+	[self selectTab:self.tab];
 }
 
 - (void)applyTheme {

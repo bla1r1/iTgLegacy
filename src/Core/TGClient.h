@@ -25,6 +25,30 @@ extern NSString *const TGConnectionStateChangedNotification;
 // Fired when updateUserStatus arrives: chat headers and profile status
 // labels re-render their line instead of freezing at the fetched one.
 extern NSString *const TGUserStatusChangedNotification;
+
+/// The download list changed: a file was added, finished, paused or removed.
+/// Carries no payload - the list is short and is re-read whole.
+extern NSString *const TGDownloadsChangedNotification;
+
+/// A sender's full record changed (bio, member count, admin rights). userInfo
+/// carries "kind" ("user", "basicGroup" or "supergroup") and "id".
+extern NSString *const TGFullInfoChangedNotification;
+
+/// An installed set, the recent or favourite stickers or the saved GIFs
+/// changed - here or on another client. The panel re-reads what it shows.
+extern NSString *const TGStickerListsChangedNotification;
+
+/// A chat's membership changed: a member joined, was promoted or removed, or
+/// a join request arrived. userInfo carries "chatId".
+extern NSString *const TGChatMembersChangedNotification;
+
+/// Notification settings changed for a scope, or a chat's default was
+/// flipped. No payload: the settings screen reads all three scopes at once.
+extern NSString *const TGNotificationSettingsChangedNotification;
+
+/// A forum topic was created, renamed, pinned, closed or read. userInfo
+/// carries "chatId" when the update names one.
+extern NSString *const TGForumTopicsChangedNotification;
 // Fired when updateChatActionBar arrives: the bar over a chat nobody knows
 // - report spam, add to contacts - follows the update, not only the fetch.
 extern NSString *const TGChatActionBarChangedNotification;

@@ -1344,6 +1344,50 @@ static NSDictionary *TGFolderObject(NSString *name, NSString *icon,
 		info[@"unread"] = update[@"unread_count"];
 	if (update[@"is_marked_as_unread"])
 		info[@"markedUnread"] = update[@"is_marked_as_unread"];
+	// The @ and the reaction badge are counted apart from unread_count: a
+	// mention in a muted group is the one thing that still has to shout.
+	if (update[@"unread_mention_count"])
+		info[@"unreadMentions"] = update[@"unread_mention_count"];
+	if (update[@"unread_reaction_count"])
+		info[@"unreadReactions"] = update[@"unread_reaction_count"];
+	// updateChatPhoto carries the whole chatPhotoInfo; a chat whose photo was
+	// removed sends a null, which has to clear the cached id rather than keep
+	// the old face.
+	if ([update[@"photo"] isKindOfClass:NSDictionary.class]){
+		NSNumber *small = update[@"photo"][@"small"][@"id"];
+		if (small)
+			info[@"photoFileId"] = small;
+	} else if ([update[@"@type"] isEqualToString:@"updateChatPhoto"]){
+		[info removeObjectForKey:@"photoFileId"];
+	}
+	// Group facts the profile reads: who may post, how long messages live,
+	// how many of the members are online right now.
+	if ([update[@"permissions"] isKindOfClass:NSDictionary.class])
+		info[@"permissions"] = update[@"permissions"];
+	if (update[@"message_auto_delete_time"])
+		info[@"autoDeleteTime"] = update[@"message_auto_delete_time"];
+	if (update[@"online_member_count"])
+		info[@"onlineMembers"] = update[@"online_member_count"];
+	if (update[@"unread_poll_vote_count"])
+		info[@"unreadPollVotes"] = update[@"unread_poll_vote_count"];
+	if (update[@"default_disable_notification"])
+		info[@"defaultSilent"] = update[@"default_disable_notification"];
+	// Removed from a list: the order for that list is gone, and without
+	// clearing it the row stays on the strip it was just taken off. A chat
+	// added to a list carries no order yet - its position follows.
+	if ([update[@"@type"] isEqualToString:@"updateChatRemovedFromList"]){
+		NSString *listType = update[@"chat_list"][@"@type"];
+		if ([listType isEqualToString:@"chatListArchive"])
+			info[@"archiveOrder"] = @0;
+		else if ([listType isEqualToString:@"chatListMain"])
+			info[@"order"] = @0;
+	}
+	// Typed on another device, or here and then left: the list shows it and
+	// the composer is filled from it on open.
+	if ([update[@"@type"] isEqualToString:@"updateChatDraftMessage"]){
+		NSString *draft = update[@"draft_message"][@"input_message_text"][@"text"][@"text"];
+		info[@"draft"] = draft ?: @"";
+	}
 	if (update[@"last_read_inbox_message_id"])
 		info[@"readInbox"] = update[@"last_read_inbox_message_id"];
 	if (update[@"last_read_outbox_message_id"]){

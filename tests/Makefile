@@ -74,6 +74,7 @@ OBJC_SRCS := \
 CLIENT_OBJC_SRCS := \
     $(ROOT)/third_party/yyjson/yyjson.c \
     $(SRC)/Core/TGUpdateType.c \
+    $(SRC)/Core/TGOptions.mm \
     $(SRC)/Core/TGJson.mm \
     $(SRC)/Core/TGClient.m \
     $(SRC)/Core/TGClient+Chats.mm \
@@ -136,6 +137,7 @@ CLIENT_TEST_SRCS := \
     $(TESTS)/TGClientAccountTests.m \
     $(TESTS)/TGClientComposeTests.m \
     $(TESTS)/TGThemeFileTests.m \
+    $(TESTS)/TGUpdatesTests.mm \
     $(TESTS)/TGP1MigrationTests.mm
 
 TEST_BINARY := $(BUILD)/TGCallTests

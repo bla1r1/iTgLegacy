@@ -15,11 +15,54 @@
 	X(TGUpdateUser,                   "updateUser") \
 	X(TGUpdateNewMessage,             "updateNewMessage") \
 	X(TGUpdateMessageContent,         "updateMessageContent") \
+	X(TGUpdateMessageSendSucceeded,   "updateMessageSendSucceeded") \
+	X(TGUpdateMessageSendFailed,      "updateMessageSendFailed") \
 	X(TGUpdateDeleteMessages,         "updateDeleteMessages") \
 	X(TGUpdateNewChat,                "updateNewChat") \
 	X(TGUpdateChatLastMessage,        "updateChatLastMessage") \
 	X(TGUpdateChatPosition,           "updateChatPosition") \
 	X(TGUpdateChatTitle,              "updateChatTitle") \
+	X(TGUpdateChatPhoto,              "updateChatPhoto") \
+	X(TGUpdateChatDraftMessage,       "updateChatDraftMessage") \
+	X(TGUpdateChatIsMarkedAsUnread,   "updateChatIsMarkedAsUnread") \
+	X(TGUpdateChatUnreadMentionCount, "updateChatUnreadMentionCount") \
+	X(TGUpdateChatUnreadReactionCount, "updateChatUnreadReactionCount") \
+	X(TGUpdateMessageMentionRead,     "updateMessageMentionRead") \
+	X(TGUpdateMessageUnreadReactions, "updateMessageUnreadReactions") \
+	X(TGUpdateMessageEdited,          "updateMessageEdited") \
+	X(TGUpdateMessageIsPinned,        "updateMessageIsPinned") \
+	X(TGUpdateMessageContentOpened,   "updateMessageContentOpened") \
+	X(TGUpdateOption,                 "updateOption") \
+	X(TGUpdateFileAddedToDownloads,   "updateFileAddedToDownloads") \
+	X(TGUpdateFileDownload,           "updateFileDownload") \
+	X(TGUpdateFileDownloads,          "updateFileDownloads") \
+	X(TGUpdateFileRemovedFromDownloads, "updateFileRemovedFromDownloads") \
+	X(TGUpdateUserFullInfo,           "updateUserFullInfo") \
+	X(TGUpdateBasicGroup,             "updateBasicGroup") \
+	X(TGUpdateBasicGroupFullInfo,     "updateBasicGroupFullInfo") \
+	X(TGUpdateSupergroupFullInfo,     "updateSupergroupFullInfo") \
+	X(TGUpdateMessageInteractionInfo, "updateMessageInteractionInfo") \
+	X(TGUpdateInstalledStickerSets,   "updateInstalledStickerSets") \
+	X(TGUpdateTrendingStickerSets,    "updateTrendingStickerSets") \
+	X(TGUpdateRecentStickers,         "updateRecentStickers") \
+	X(TGUpdateFavoriteStickers,       "updateFavoriteStickers") \
+	X(TGUpdateSavedAnimations,        "updateSavedAnimations") \
+	X(TGUpdateStickerSet,             "updateStickerSet") \
+	X(TGUpdateChatMember,             "updateChatMember") \
+	X(TGUpdateChatPendingJoinRequests, "updateChatPendingJoinRequests") \
+	X(TGUpdateNewChatJoinRequest,     "updateNewChatJoinRequest") \
+	X(TGUpdateChatPermissions,        "updateChatPermissions") \
+	X(TGUpdateChatMessageAutoDeleteTime, "updateChatMessageAutoDeleteTime") \
+	X(TGUpdateChatOnlineMemberCount,  "updateChatOnlineMemberCount") \
+	X(TGUpdateChatUnreadPollVoteCount, "updateChatUnreadPollVoteCount") \
+	X(TGUpdateMessageContainsUnreadPollVotes, "updateMessageContainsUnreadPollVotes") \
+	X(TGUpdateChatAddedToList,        "updateChatAddedToList") \
+	X(TGUpdateChatRemovedFromList,    "updateChatRemovedFromList") \
+	X(TGUpdateScopeNotificationSettings, "updateScopeNotificationSettings") \
+	X(TGUpdateChatDefaultDisableNotification, "updateChatDefaultDisableNotification") \
+	X(TGUpdateForumTopic,             "updateForumTopic") \
+	X(TGUpdateForumTopicInfo,         "updateForumTopicInfo") \
+	X(TGUpdateTopicMessageCount,      "updateTopicMessageCount") \
 	X(TGUpdateChatReadInbox,          "updateChatReadInbox") \
 	X(TGUpdateChatReadOutbox,         "updateChatReadOutbox") \
 	X(TGUpdateChatNotificationSettings, "updateChatNotificationSettings") \

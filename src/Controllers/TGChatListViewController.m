@@ -4,6 +4,7 @@
 #import "TGAlertSheet.h"
 #import "TGDevShowcase.h"
 #import "TGFastDate.h"
+#import "TGOptions.h"
 
 // Height of the folder pill strip above the chat list (official-style tabs).
 static const CGFloat kFolderTabRow = TGMetricFolderTabRow;
@@ -708,7 +709,9 @@ static const CGFloat kRowGlyph     = 28.0f;
 /// Today shows the time, this week the weekday, older the date - as clients do.
 static NSString *TGChatDate(NSTimeInterval unix) {
 	char buf[TGFastDateBufferSize];
-	size_t len = TGFastChatDate((time_t)unix, time(NULL), buf, sizeof(buf));
+	// The server's clock, not this device's: a 4S off by a year grades every
+	// date as "today" until the option arrives.
+	size_t len = TGFastChatDate((time_t)unix, (time_t)TGOptionNow(), buf, sizeof(buf));
 	if (!len)
 		return @"";
 	return [[NSString alloc] initWithBytes:buf length:len
@@ -830,12 +833,17 @@ static NSString *TGChatDate(NSTimeInterval unix) {
 											 side:kRowGlyph];
 
 	NSInteger unread = [c[@"unread"] integerValue];
-	cell.badge.hidden = (unread <= 0);
-	cell.pin.hidden = !([c[@"isPinned"] boolValue] && unread <= 0);
+	// A mention is its own badge and outranks the count: official clients show
+	// "@" on a chat whose only unread thing is a mention, muted or not.
+	NSInteger mentions = [c[@"unreadMentions"] integerValue];
+	BOOL anyBadge = unread > 0 || mentions > 0;
+	cell.badge.hidden = !anyBadge;
+	cell.pin.hidden = !([c[@"isPinned"] boolValue] && !anyBadge);
 	if (!cell.pin.hidden)
 		cell.pin.image = [TGIcons glyphNamed:@"pin" colour:[theme listDateColour]
 									  side:kRowGlyph];
-	cell.badge.text = unread > 0 ? [NSString stringWithFormat:@"%ld", (long)unread] : @"";
+	cell.badge.text = mentions > 0 ? @"@"
+			: (unread > 0 ? [NSString stringWithFormat:@"%ld", (long)unread] : @"");
 	// A muted chat still counts, it just stops shouting about it.
 	cell.badge.backgroundColor = [c[@"isMuted"] boolValue]
 			? [theme mutedBadgeColour] : [theme badgeColour];

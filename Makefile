@@ -296,6 +296,7 @@ APP_SRC_MM := \
 	src/Core/TGClient+Files.mm \
 	src/Core/TGStickerPack.mm \
 	src/Core/TGJson.mm \
+	src/Core/TGOptions.mm \
 	src/Core/TGMessageStreamStore.mm \
 	src/Core/TGUpdateBatcher.mm \
 	src/Views/TGMessageLayout.mm \

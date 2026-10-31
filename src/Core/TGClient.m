@@ -1,4 +1,5 @@
 #import "TGClientInternal.h"
+#import "TGOptions.h"
 #import "TGCall.h"
 #import "TGJson.h"
 #include "TGUpdateType.h"
@@ -26,6 +27,12 @@ static NSString *TGFolderTitle(NSDictionary *f){
 NSString *const TGChatReadOutboxChangedNotification = @"TGChatReadOutboxChangedNotification";
 NSString *const TGConnectionStateChangedNotification = @"TGConnectionStateChangedNotification";
 NSString *const TGUserStatusChangedNotification = @"TGUserStatusChangedNotification";
+NSString *const TGDownloadsChangedNotification = @"TGDownloadsChangedNotification";
+NSString *const TGFullInfoChangedNotification = @"TGFullInfoChangedNotification";
+NSString *const TGStickerListsChangedNotification = @"TGStickerListsChangedNotification";
+NSString *const TGChatMembersChangedNotification = @"TGChatMembersChangedNotification";
+NSString *const TGNotificationSettingsChangedNotification = @"TGNotificationSettingsChangedNotification";
+NSString *const TGForumTopicsChangedNotification = @"TGForumTopicsChangedNotification";
 NSString *const TGChatActionBarChangedNotification = @"TGChatActionBarChangedNotification";
 
 @implementation TGClient
@@ -58,6 +65,16 @@ NSString *const TGChatActionBarChangedNotification = @"TGChatActionBarChangedNot
 			if (orderChanged || dirtyChatIds.count > 0) {
 				[client rebuildChats];
 			}
+		}];
+		// Message-level churn - reaction and view counts - comes out of the
+		// same 100 ms window as one nudge per chat, however many messages in
+		// it moved. A crowd reacting to a channel post otherwise re-reads the
+		// history per reaction.
+		[s.updateCoalescer setMessagesHandler:^(NSDictionary *messageIdsByChat) {
+			TGClient *client = weakClient;
+			if (!client || !client.onMessage) return;
+			for (NSNumber *chatId in messageIdsByChat)
+				client.onMessage([chatId longLongValue], nil, 0);
 		}];
 	});
 	return s;
@@ -345,6 +362,23 @@ NSDictionary *TGFormattedText(NSString *text) {
 			self.onMessage([m[@"chat_id"] longLongValue], TGFlattenMessage(m), 0);
 		return;
 	}
+	case TGUpdateMessageSendSucceeded:
+	case TGUpdateMessageSendFailed: {
+		// The echo we showed carries a temporary id, larger than any real one,
+		// and a pending sending_state. The server's id arrives only here, so
+		// without this branch the bubble keeps its clock and every later
+		// request about it (reply, delete, read) names an id that is gone.
+		// A failed send keeps the old id and comes back with the failed flag.
+		NSDictionary *m = obj[@"message"];
+		if (!self.onMessage || !m)
+			return;
+		int64_t chatId = [m[@"chat_id"] longLongValue];
+		int64_t oldId  = [obj[@"old_message_id"] longLongValue];
+		if (oldId)
+			self.onMessage(chatId, nil, oldId);
+		self.onMessage(chatId, TGFlattenMessage(m), 0);
+		return;
+	}
 	case TGUpdateMessageContent: {
 		// Content changed in place (a photo finished uploading, a text edited).
 		if (self.onMessage)
@@ -366,10 +400,168 @@ NSDictionary *TGFormattedText(NSString *text) {
 	case TGUpdateChatLastMessage:
 	case TGUpdateChatPosition:
 	case TGUpdateChatTitle:
+	case TGUpdateChatPhoto:
+	case TGUpdateChatDraftMessage:
+	case TGUpdateChatIsMarkedAsUnread:
+	case TGUpdateChatUnreadMentionCount:
+	case TGUpdateChatUnreadReactionCount:
 	case TGUpdateChatReadInbox:
 	case TGUpdateChatReadOutbox:
+	case TGUpdateChatUnreadPollVoteCount:
+	case TGUpdateChatAddedToList:
+	case TGUpdateChatRemovedFromList:
 	case TGUpdateChatNotificationSettings: {
 		[self applyChatUpdate:obj];
+		return;
+	}
+	case TGUpdateChatPermissions:
+	case TGUpdateChatMessageAutoDeleteTime:
+	case TGUpdateChatOnlineMemberCount: {
+		// Group-level facts the profile shows. They are chat fields, not full
+		// info, so they are merged here and the screen is told the same way a
+		// full record tells it.
+		[self applyChatUpdate:obj];
+		NSNumber *chatId = obj[@"chat_id"];
+		if (chatId)
+			[[NSNotificationCenter defaultCenter]
+					postNotificationName:TGFullInfoChangedNotification object:self
+								userInfo:@{@"kind" : @"chat", @"id" : chatId}];
+		return;
+	}
+	case TGUpdateMessageContainsUnreadPollVotes: {
+		// The badge on a poll whose votes you have not looked at. Same storm
+		// risk as a reaction count, same window.
+		if (self.updateCoalescer)
+			[self.updateCoalescer markMessageDirty:[obj[@"message_id"] longLongValue]
+											inChat:[obj[@"chat_id"] longLongValue]];
+		return;
+	}
+	case TGUpdateScopeNotificationSettings:
+	case TGUpdateChatDefaultDisableNotification: {
+		[[NSNotificationCenter defaultCenter]
+				postNotificationName:TGNotificationSettingsChangedNotification object:self];
+		if ([type isEqualToString:@"updateChatDefaultDisableNotification"])
+			[self applyChatUpdate:obj];
+		return;
+	}
+	case TGUpdateForumTopic:
+	case TGUpdateForumTopicInfo:
+	case TGUpdateTopicMessageCount: {
+		// updateForumTopicInfo nests the chat one level down, in the info.
+		NSNumber *chatId = obj[@"chat_id"] ?: obj[@"info"][@"chat_id"];
+		[[NSNotificationCenter defaultCenter]
+				postNotificationName:TGForumTopicsChangedNotification object:self
+							userInfo:chatId ? @{@"chatId" : chatId} : nil];
+		return;
+	}
+	case TGUpdateMessageMentionRead:
+	case TGUpdateMessageUnreadReactions: {
+		// Both carry the chat's new counter and the message that caused it:
+		// the row's badge comes from the counter, the open chat has to drop
+		// the mark on that one message.
+		[self applyChatUpdate:obj];
+		if (self.onMessage)
+			self.onMessage([obj[@"chat_id"] longLongValue], nil, 0);
+		return;
+	}
+	case TGUpdateMessageEdited:
+	case TGUpdateMessageIsPinned:
+	case TGUpdateMessageContentOpened: {
+		// An edit date, a pin flag, a played voice note: the fields are on
+		// the message, so the open chat re-reads it the way a content change
+		// already does. Nothing to merge into the chat row.
+		if (self.onMessage)
+			self.onMessage([obj[@"chat_id"] longLongValue], nil, 0);
+		return;
+	}
+	case TGUpdateMessageInteractionInfo: {
+		// Reaction totals and a channel's view count live on the message and
+		// were frozen at whatever the history fetch said, while this client
+		// can already put a reaction on. Coalesced, not acted on per update.
+		if (self.updateCoalescer)
+			[self.updateCoalescer markMessageDirty:[obj[@"message_id"] longLongValue]
+											inChat:[obj[@"chat_id"] longLongValue]];
+		return;
+	}
+	case TGUpdateInstalledStickerSets:
+	case TGUpdateTrendingStickerSets:
+	case TGUpdateRecentStickers:
+	case TGUpdateFavoriteStickers:
+	case TGUpdateSavedAnimations:
+	case TGUpdateStickerSet: {
+		// Six lists, one notification: the panel asks for whichever tab it is
+		// showing, so there is nothing finer to tell it.
+		[[NSNotificationCenter defaultCenter]
+				postNotificationName:TGStickerListsChangedNotification object:self];
+		return;
+	}
+	case TGUpdateChatMember:
+	case TGUpdateChatPendingJoinRequests:
+	case TGUpdateNewChatJoinRequest: {
+		NSNumber *chatId = obj[@"chat_id"];
+		if (!chatId)
+			return;
+		[[NSNotificationCenter defaultCenter]
+				postNotificationName:TGChatMembersChangedNotification object:self
+							userInfo:@{@"chatId" : chatId}];
+		return;
+	}
+	case TGUpdateFileAddedToDownloads:
+	case TGUpdateFileDownload:
+	case TGUpdateFileDownloads:
+	case TGUpdateFileRemovedFromDownloads: {
+		// Settings > Downloads is the one screen built from a single
+		// searchFileDownloads answer, so it had no way of noticing a download
+		// that finished, paused or was removed from another device.
+		// updateFile carries the bytes; the list membership is only here.
+		[[NSNotificationCenter defaultCenter]
+				postNotificationName:TGDownloadsChangedNotification object:self];
+		return;
+	}
+	case TGUpdateUserFullInfo:
+	case TGUpdateBasicGroup:
+	case TGUpdateBasicGroupFullInfo:
+	case TGUpdateSupergroupFullInfo: {
+		// Bios, member counts and admin rights live in the full record, which
+		// is fetched per screen and never refreshed. updateSupergroup was
+		// handled, none of the full infos were - so a bio edited elsewhere
+		// needed the profile closed and reopened.
+		NSString *kind = @"user";
+		NSNumber *peerId = obj[@"user_id"];
+		if (!peerId){
+			peerId = obj[@"basic_group_id"] ?: obj[@"basic_group"][@"id"];
+			kind = @"basicGroup";
+		}
+		if (!peerId){
+			peerId = obj[@"supergroup_id"];
+			kind = @"supergroup";
+		}
+		if (!peerId)
+			return;
+		[[NSNotificationCenter defaultCenter]
+				postNotificationName:TGFullInfoChangedNotification object:self
+							userInfo:@{@"kind" : kind, @"id" : peerId}];
+		return;
+	}
+	case TGUpdateOption: {
+		// Limits, flags and the server clock. Kept in the C++ store rather
+		// than answered once by getOption and never corrected.
+		NSString *name = obj[@"name"];
+		NSDictionary *value = obj[@"value"];
+		if (!name.length || ![value isKindOfClass:NSDictionary.class])
+			return;
+		NSString *kind = value[@"@type"];
+		const char *key = name.UTF8String;
+		if ([kind isEqualToString:@"optionValueBoolean"]){
+			TGOptionSetBoolean(key, [value[@"value"] boolValue]);
+		} else if ([kind isEqualToString:@"optionValueInteger"]){
+			// int64 comes over JSON as a string; both shapes answer this.
+			TGOptionSetInteger(key, [value[@"value"] longLongValue]);
+		} else if ([kind isEqualToString:@"optionValueString"]){
+			TGOptionSetString(key, [value[@"value"] UTF8String]);
+		} else {
+			TGOptionClear(key);
+		}
 		return;
 	}
 	case TGUpdateConnectionState: {

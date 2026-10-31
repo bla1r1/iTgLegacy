@@ -48,6 +48,12 @@
 		NSLog(@"TDLIB TOPICS: %lu", (unsigned long)topics.count);
 	}];
 
+	// Created, renamed, pinned or read elsewhere: the list is one request and
+	// this screen used to show whatever it fetched when it opened.
+	[[NSNotificationCenter defaultCenter] addObserver:self
+			selector:@selector(topicsChanged:)
+				name:TGForumTopicsChangedNotification object:nil];
+
 	[[NSNotificationCenter defaultCenter] addObserverForName:TGThemeChangedNotification
 			object:nil queue:[NSOperationQueue mainQueue]
 		 usingBlock:^(NSNotification *note) {
@@ -58,6 +64,18 @@
 
 - (void)dealloc {
 	[[NSNotificationCenter defaultCenter] removeObserver:self];
+	[NSObject cancelPreviousPerformRequestsWithTarget:self];
+}
+
+/// One update per topic touched, so a reopened forum would otherwise fetch
+/// the list once per row. An update that names no chat is taken as ours.
+- (void)topicsChanged:(NSNotification *)note {
+	NSNumber *chatId = note.userInfo[@"chatId"];
+	if (chatId && [chatId longLongValue] != self.chatId)
+		return;
+	[NSObject cancelPreviousPerformRequestsWithTarget:self
+			selector:@selector(reloadTopics) object:nil];
+	[self performSelector:@selector(reloadTopics) withObject:nil afterDelay:0.3];
 }
 
 - (void)viewWillAppear:(BOOL)animated {

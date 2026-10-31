@@ -54,6 +54,7 @@
 
 - (void)dealloc {
 	[[NSNotificationCenter defaultCenter] removeObserver:self];
+	[NSObject cancelPreviousPerformRequestsWithTarget:self];
 }
 
 /// Restyle everything this screen owns and redraw it. The profile cell is held
@@ -222,6 +223,26 @@
 
 #pragma mark - loading
 
+/// Three scopes arrive as three updates when they are reset at once.
+- (void)notificationSettingsChanged {
+	if (self.page != TGSettingsPageNotifications)
+		return;
+	[NSObject cancelPreviousPerformRequestsWithTarget:self
+			selector:@selector(loadForPage) object:nil];
+	[self performSelector:@selector(loadForPage) withObject:nil afterDelay:0.3];
+}
+
+/// Four updates land on this screen - added, finished, paused, removed - and
+/// a sweep of the list fires one per file. One re-read a third of a second
+/// later covers the burst; the list is a single request.
+- (void)downloadsChanged {
+	if (self.page != TGSettingsPageDownloads)
+		return;
+	[NSObject cancelPreviousPerformRequestsWithTarget:self
+			selector:@selector(loadForPage) object:nil];
+	[self performSelector:@selector(loadForPage) withObject:nil afterDelay:0.3];
+}
+
 - (void)loadForPage {
 	__weak typeof(self) weakSelf = self;
 
@@ -240,6 +261,11 @@
 	}
 
 	if (self.page == TGSettingsPageDownloads){
+		[[NSNotificationCenter defaultCenter] removeObserver:self
+				name:TGDownloadsChangedNotification object:nil];
+		[[NSNotificationCenter defaultCenter] addObserver:self
+				selector:@selector(downloadsChanged)
+					name:TGDownloadsChangedNotification object:nil];
 		[[TGClient shared] fileDownloadsMatching:nil activeOnly:NO
 									  completion:^(NSArray *downloads, NSInteger active){
 			weakSelf.downloads = downloads;
@@ -258,6 +284,11 @@
 	}
 
 	if (self.page == TGSettingsPageNotifications){
+		[[NSNotificationCenter defaultCenter] removeObserver:self
+				name:TGNotificationSettingsChangedNotification object:nil];
+		[[NSNotificationCenter defaultCenter] addObserver:self
+				selector:@selector(notificationSettingsChanged)
+					name:TGNotificationSettingsChangedNotification object:nil];
 		for (NSString *scope in @[@"private", @"groups", @"channels"]){
 			[[TGClient shared] notificationsMutedForScope:scope
 											   completion:^(BOOL muted){

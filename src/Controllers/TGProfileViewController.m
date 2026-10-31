@@ -86,6 +86,14 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 			name:TGConnectionStateChangedNotification object:nil];
 	[nc addObserver:self selector:@selector(statusLabelOwnerChanged:)
 			name:TGUserStatusChangedNotification object:nil];
+	// A bio edited elsewhere, a member added to the group: the full record
+	// arrives as its own update and this screen used to need a reopen.
+	[nc addObserver:self selector:@selector(fullInfoChanged:)
+			name:TGFullInfoChangedNotification object:nil];
+	// Someone joined, was promoted or removed, or asked to join: the member
+	// rows and the request count are both read in loadDetails.
+	[nc addObserver:self selector:@selector(membersChanged:)
+			name:TGChatMembersChangedNotification object:nil];
 
 	[self buildHeader];
 	[self loadDetails];
@@ -212,6 +220,27 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 						 completion:^(NSString *path){
 		[TGIcons loadImageAtPath:path into:weakSelf.avatarView];
 	}];
+}
+
+/// Only this screen's own peer. A group profile has the chat id, not the
+/// supergroup id, so any group's full info re-reads a group profile - one
+/// request, and the alternative is caching the mapping for no gain.
+- (void)fullInfoChanged:(NSNotification *)note {
+	NSString *kind = note.userInfo[@"kind"];
+	BOOL mine;
+	if ([kind isEqualToString:@"user"])
+		mine = self.userId && [note.userInfo[@"id"] longLongValue] == self.userId;
+	else if ([kind isEqualToString:@"chat"])
+		mine = self.chatId && [note.userInfo[@"id"] longLongValue] == self.chatId;
+	else
+		mine = (self.userId == 0 && self.chatId != 0);
+	if (mine)
+		[self loadDetails];
+}
+
+- (void)membersChanged:(NSNotification *)note {
+	if (self.chatId && [note.userInfo[@"chatId"] longLongValue] == self.chatId)
+		[self loadDetails];
 }
 
 - (void)loadDetails {

@@ -728,6 +728,72 @@ static void answerTyped(TGClient *c, NSString *type, NSDictionary *answer) {
 	XCTAssertTrue([props[@"can_be_replied"] boolValue]);
 }
 
+
+// ─── send states ─────────────────────────────────────────────────────────────
+// updateNewMessage shows the message with a temporary id; the real id only
+// ever arrives in updateMessageSendSucceeded. Dropping that update left the
+// bubble pending forever and replies pointing at an id the server never had.
+
+static NSDictionary *sentMessage(int64_t mid, BOOL failed) {
+	NSMutableDictionary *m = [@{@"@type" : @"message",
+			@"id"          : @(mid),
+			@"chat_id"     : @(77),
+			@"date"        : @(1700000000),
+			@"is_outgoing" : @YES,
+			@"content"     : @{@"@type" : @"messageText",
+							   @"text"  : @{@"@type" : @"formattedText",
+											@"text"  : @"hi"}}} mutableCopy];
+	if (failed)
+		m[@"sending_state"] = @{@"@type" : @"messageSendingStateFailed"};
+	return m;
+}
+
+- (void)testSendSucceeded_SwapsTheTemporaryIdForTheRealOne {
+	TGClient *c = C();
+	NSMutableArray *events = [NSMutableArray array];
+	c.onMessage = ^(int64_t chatId, NSDictionary *message, int64_t deletedId){
+		[events addObject:@{@"chat"    : @(chatId),
+							@"id"      : message[@"id"] ?: @(0),
+							@"deleted" : @(deletedId)}];
+	};
+
+	[c handleUpdate:@{@"@type"          : @"updateMessageSendSucceeded",
+					  @"message"        : sentMessage(4000, NO),
+					  @"old_message_id" : @(1048576000)}];
+	c.onMessage = nil;
+
+	XCTAssertEqual(events.count, (NSUInteger)2);
+	// The temporary one goes first, so the real one is not taken for a second
+	// copy of the same message.
+	XCTAssertEqualObjects(events[0][@"deleted"], @(1048576000));
+	XCTAssertEqualObjects(events[0][@"id"], @(0));
+	XCTAssertEqualObjects(events[1][@"id"], @(4000));
+	XCTAssertEqualObjects(events[1][@"deleted"], @(0));
+	XCTAssertEqualObjects(events[1][@"chat"], @(77));
+}
+
+- (void)testSendFailed_ReplacesTheMessageWithTheFailedOne {
+	TGClient *c = C();
+	NSMutableArray *flat = [NSMutableArray array];
+	NSMutableArray *deleted = [NSMutableArray array];
+	c.onMessage = ^(int64_t chatId, NSDictionary *message, int64_t deletedId){
+		if (message) [flat addObject:message];
+		else [deleted addObject:@(deletedId)];
+	};
+
+	[c handleUpdate:@{@"@type"          : @"updateMessageSendFailed",
+					  @"message"        : sentMessage(1048576000, YES),
+					  @"old_message_id" : @(1048576000),
+					  @"error"          : @{@"@type" : @"error", @"code" : @(400),
+											@"message" : @"CHAT_WRITE_FORBIDDEN"}}];
+	c.onMessage = nil;
+
+	XCTAssertEqualObjects(deleted, @[@(1048576000)]);
+	XCTAssertEqual(flat.count, (NSUInteger)1);
+	XCTAssertEqualObjects(flat[0][@"id"], @(1048576000));
+	XCTAssertEqualObjects(flat[0][@"failed"], @YES);
+}
+
 @end
 
 // vim:ft=objc

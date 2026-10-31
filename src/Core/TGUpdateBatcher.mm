@@ -8,7 +8,8 @@ TGUpdateBatcher::TGUpdateBatcher(uint32_t coalesceIntervalMs)
 	  _flushScheduled(false),
 	  _coalesceIntervalMs(coalesceIntervalMs ? coalesceIntervalMs : 100),
 	  _alive(std::make_shared<bool>(true)),
-	  _flushHandler(nil)
+	  _flushHandler(nil),
+	  _messagesHandler(nil)
 {
 }
 
@@ -17,11 +18,23 @@ TGUpdateBatcher::~TGUpdateBatcher() {
 		*_alive = false;
 	}
 	_flushHandler = nil;
+	_messagesHandler = nil;
 }
 
 void TGUpdateBatcher::setFlushHandler(TGUpdateBatchFlushBlock handler) {
 	std::lock_guard<std::mutex> lock(_mutex);
 	_flushHandler = [handler copy];
+}
+
+void TGUpdateBatcher::setMessagesHandler(TGUpdateBatchMessagesBlock handler) {
+	std::lock_guard<std::mutex> lock(_mutex);
+	_messagesHandler = [handler copy];
+}
+
+void TGUpdateBatcher::markMessageDirty(int64_t chatId, int64_t messageId) {
+	std::lock_guard<std::mutex> lock(_mutex);
+	_dirtyMessages[chatId].insert(messageId);
+	scheduleFlushIfNeeded();
 }
 
 void TGUpdateBatcher::markChatDirty(int64_t chatId) {
@@ -61,20 +74,38 @@ void TGUpdateBatcher::scheduleFlushIfNeeded() {
 void TGUpdateBatcher::flushNow() {
 	std::unordered_set<int64_t> chats;
 	std::unordered_set<int64_t> users;
+	std::unordered_map<int64_t, std::unordered_set<int64_t> > messages;
 	bool order = false;
 	TGUpdateBatchFlushBlock handler = nil;
+	TGUpdateBatchMessagesBlock messagesHandler = nil;
 
 	{
 		std::lock_guard<std::mutex> lock(_mutex);
-		if (!_flushScheduled && _dirtyChats.empty() && _dirtyUsers.empty() && !_orderDirty) {
+		if (!_flushScheduled && _dirtyChats.empty() && _dirtyUsers.empty()
+				&& _dirtyMessages.empty() && !_orderDirty) {
 			return;
 		}
 		_flushScheduled = false;
 		chats.swap(_dirtyChats);
 		users.swap(_dirtyUsers);
+		messages.swap(_dirtyMessages);
 		order = _orderDirty;
 		_orderDirty = false;
 		handler = _flushHandler;
+		messagesHandler = _messagesHandler;
+	}
+
+	if (messagesHandler && !messages.empty()) {
+		NSMutableDictionary *byChat = [NSMutableDictionary dictionaryWithCapacity:messages.size()];
+		for (std::unordered_map<int64_t, std::unordered_set<int64_t> >::iterator it = messages.begin();
+			 it != messages.end(); ++it) {
+			NSMutableSet *ids = [NSMutableSet setWithCapacity:it->second.size()];
+			for (int64_t mid : it->second) {
+				[ids addObject:@(mid)];
+			}
+			byChat[@(it->first)] = ids;
+		}
+		messagesHandler(byChat);
 	}
 
 	if (!handler || (chats.empty() && users.empty() && !order)) {
@@ -98,13 +129,15 @@ void TGUpdateBatcher::reset() {
 	std::lock_guard<std::mutex> lock(_mutex);
 	_dirtyChats.clear();
 	_dirtyUsers.clear();
+	_dirtyMessages.clear();
 	_orderDirty = false;
 	_flushScheduled = false;
 }
 
 size_t TGUpdateBatcher::pendingCount() {
 	std::lock_guard<std::mutex> lock(_mutex);
-	return _dirtyChats.size() + _dirtyUsers.size() + (_orderDirty ? 1 : 0);
+	return _dirtyChats.size() + _dirtyUsers.size() + _dirtyMessages.size()
+			+ (_orderDirty ? 1 : 0);
 }
 
 @implementation TGUpdateCoalescer {
@@ -128,6 +161,10 @@ size_t TGUpdateBatcher::pendingCount() {
 	if (_batcher) _batcher->markChatDirty(chatId);
 }
 
+- (void)markMessageDirty:(int64_t)messageId inChat:(int64_t)chatId {
+	if (_batcher) _batcher->markMessageDirty(chatId, messageId);
+}
+
 - (void)markUserDirty:(int64_t)userId {
 	if (_batcher) _batcher->markUserDirty(userId);
 }
@@ -146,6 +183,10 @@ size_t TGUpdateBatcher::pendingCount() {
 
 - (void)setFlushHandler:(TGUpdateBatchFlushBlock)handler {
 	if (_batcher) _batcher->setFlushHandler(handler);
+}
+
+- (void)setMessagesHandler:(TGUpdateBatchMessagesBlock)handler {
+	if (_batcher) _batcher->setMessagesHandler(handler);
 }
 
 - (NSUInteger)pendingCount {
