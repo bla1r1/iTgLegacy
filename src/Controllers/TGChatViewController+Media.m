@@ -178,7 +178,6 @@
 
 - (void)fetchMissingImages {
 	__weak typeof(self) weakSelf = self;
-	CGFloat screenScale = [UIScreen mainScreen].scale;   // read here, used off-thread
 	NSMutableArray *allMsgs = [NSMutableArray array];
 	for (NSDictionary *m in self.messages){
 		if ([m[@"isAlbum"] boolValue] && [m[@"albumMessages"] isKindOfClass:[NSArray class]]) {
@@ -223,55 +222,77 @@
 		}
 	}
 
-	for (NSDictionary *m in allMsgs){
-		NSNumber *fileId = m[@"photoId"];
-		if (![fileId isKindOfClass:NSNumber.class] || fileId.longLongValue < 0)
-			continue;
-		if (self.images[fileId] || [self.imagesRequested containsObject:fileId])
-			continue;
-		[self.imagesRequested addObject:fileId];
+	for (NSDictionary *m in allMsgs)
+		[self fetchImageForMessage:m];
+}
 
-		[[TGClient shared] downloadFile:[fileId integerValue] completion:^(NSString *path){
-			if (!path) {
-				[weakSelf.imagesRequested removeObject:fileId];
+
+/// Loads one message's photo into `images` unless it is there or on its way.
+/// Rows call it too, for a photo the LRU let go of while it was off screen.
+- (void)fetchImageForMessage:(NSDictionary *)m {
+	NSNumber *fileId = m[@"photoId"];
+	if (![fileId isKindOfClass:NSNumber.class] || fileId.longLongValue < 0)
+		return;
+	if (self.images[fileId] || [self.imagesRequested containsObject:fileId])
+		return;
+	__weak typeof(self) weakSelf = self;
+	CGFloat screenScale = [UIScreen mainScreen].scale;   // read here, used off-thread
+	[self.imagesRequested addObject:fileId];
+
+	[[TGClient shared] downloadFile:[fileId integerValue] completion:^(NSString *path){
+		if (!path) {
+			[weakSelf.imagesRequested removeObject:fileId];
+			return;
+		}
+		dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_BACKGROUND, 0), ^{
+			// Stickers arrive as WebP, which UIImage does not know on iOS 7.
+			UIImage *img = [UIImage imageWithContentsOfFile:path];
+			if (!img)
+				img = [UIImage convertFromWebP:path compressedData:nil error:nil];
+
+			if (!img) {
+				NSLog(@"image: cannot decode %@", path.lastPathComponent);
+				dispatch_async(dispatch_get_main_queue(), ^{
+					[weakSelf.imagesRequested removeObject:fileId];
+				});
 				return;
 			}
-			dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_BACKGROUND, 0), ^{
-				// Stickers arrive as WebP, which UIImage does not know on iOS 7.
-				UIImage *img = [UIImage imageWithContentsOfFile:path];
-				if (!img)
-					img = [UIImage convertFromWebP:path compressedData:nil error:nil];
 
-				if (!img) {
-					NSLog(@"image: cannot decode %@", path.lastPathComponent);
-					dispatch_async(dispatch_get_main_queue(), ^{
-						[weakSelf.imagesRequested removeObject:fileId];
-					});
-					return;
+			// A bubble never shows more than kImageMax across, and the file
+			// off the wire can be ten times that - decoding it full size and
+			// letting the main thread resample it on every frame is what made
+			// a chat with pictures stutter.
+			img = [TGIcons decodedImage:img
+							fittingSize:CGSizeMake(kImageMax, kImageMax)
+								   fill:NO scale:screenScale];
+
+			dispatch_async(dispatch_get_main_queue(), ^{
+				TGChatViewController *me = weakSelf;
+				if (!me) return;
+				me.images[fileId] = img;
+				// Done, so not "requested" any more: the cache is an LRU, and an
+				// id left here kept an evicted photo from ever loading again.
+				[me.imagesRequested removeObject:fileId];
+				// Only the rows showing this photo change height. Dropping every
+				// layout cost a full re-measure of the chat (~300 ms on an A4),
+				// which a photo coming back mid-scroll cannot afford.
+				for (NSDictionary *row in me.messages) {
+					BOOL shows = [row[@"photoId"] isEqual:fileId];
+					NSArray *parts = row[@"albumMessages"];
+					if ([parts isKindOfClass:NSArray.class])
+						for (NSDictionary *part in parts)
+							shows = shows || [part[@"photoId"] isEqual:fileId];
+					if (shows && row[@"id"])
+						[me.layoutCache removeObjectForKey:row[@"id"]];
 				}
-
-				// A bubble never shows more than kImageMax across, and the file
-				// off the wire can be ten times that - decoding it full size and
-				// letting the main thread resample it on every frame is what made
-				// a chat with pictures stutter.
-				img = [TGIcons decodedImage:img
-								fittingSize:CGSizeMake(kImageMax, kImageMax)
-									   fill:NO scale:screenScale];
-
-				dispatch_async(dispatch_get_main_queue(), ^{
-					TGChatViewController *me = weakSelf;
-					if (!me) return;
-					me.images[fileId] = img;
-					[me.layoutCache removeAllObjects];
-					[me reloadTableDebounced];
-					// Rows grow when an image arrives, pushing the newest messages
-					// below the fold, so re-anchor to the bottom while first showing.
-					if (me.anchorToBottom)
-						[me scrollToBottomAnimated:NO];
-				});
+				[me reloadTableDebounced];
+				// Rows grow when an image arrives, pushing the newest messages
+				// below the fold, so re-anchor to the bottom while first showing.
+				if (me.anchorToBottom)
+					[me scrollToBottomAnimated:NO];
 			});
-		}];
-	}
+		});
+	}];
 }
 
 /// Cached initials until the real photo arrives; drawing it every row would

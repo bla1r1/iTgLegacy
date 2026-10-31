@@ -3,6 +3,7 @@
 // in them: day and unread separators, the floating date, the jump-down
 // button, swipe to reply, and the animated "typing".
 //
+#import "TGFastDate.h"
 #import "TGTextDraw.h"
 #import "TGChatViewControllerInternal.h"
 #import <QuartzCore/QuartzCore.h>
@@ -53,22 +54,15 @@ static NSString *TGDayTitle(NSTimeInterval stamp) {
 	return day.year == today.year ? [sameYear stringFromDate:date] : [otherYear stringFromDate:date];
 }
 
-static NSInteger TGDayNumber(NSTimeInterval stamp) {
-	NSDateComponents *c = [[NSCalendar currentCalendar]
-			components:NSYearCalendarUnit | NSMonthCalendarUnit | NSDayCalendarUnit
-			  fromDate:[NSDate dateWithTimeIntervalSince1970:stamp]];
-	return c.year * 10000 + c.month * 100 + c.day;
-}
-
 - (NSArray *)messagesWithSeparators:(NSArray *)grouped {
 	if (!grouped.count)
 		return grouped;
 	NSMutableArray *out = [NSMutableArray arrayWithCapacity:grouped.count + 8];
-	NSInteger lastDay = -1;
+	long lastDay = -1;
 	for (NSDictionary *m in grouped){
 		NSTimeInterval stamp = [m[@"date"] doubleValue];
 		if (stamp > 0){
-			NSInteger dayNumber = TGDayNumber(stamp);
+			long dayNumber = TGFastDayNumber((time_t)stamp);
 			if (dayNumber != lastDay){
 				lastDay = dayNumber;
 				[out addObject:@{@"service" : @YES, @"separator" : @"day",
@@ -396,8 +390,10 @@ static const CGFloat kActionBarCloseSide = 44.0f;
 	self.floatingDate = [[UILabel alloc] init];
 	self.floatingDate.font = TGFontCaptionStrong();
 	self.floatingDate.textAlignment = NSTextAlignmentCenter;
+	// Rounded by its background alone. Every view over the table is drawn
+	// again on each frame of a scroll, so a clip or a path-less shadow here
+	// costs an offscreen pass per frame - backboardd, not this app, pays.
 	self.floatingDate.layer.cornerRadius = TGHalf(TGMetricFloatingDateHeight);
-	self.floatingDate.clipsToBounds = YES;
 	self.floatingDate.alpha = 0;
 	self.floatingDate.userInteractionEnabled = NO;
 	[self.view addSubview:self.floatingDate];
@@ -409,6 +405,8 @@ static const CGFloat kActionBarCloseSide = 44.0f;
 	self.jumpButton.layer.shadowOpacity = TGMetricShadowButtonOpacity;
 	self.jumpButton.layer.shadowRadius = TGMetricShadowButtonRadius;
 	self.jumpButton.layer.shadowOffset = TGMetricShadowOffsetEtched;
+	self.jumpButton.layer.shadowPath = [UIBezierPath bezierPathWithOvalInRect:
+			self.jumpButton.bounds].CGPath;
 	self.jumpButton.hidden = YES;
 	[self.jumpButton addTarget:self action:@selector(jumpTapped)
 			  forControlEvents:UIControlEventTouchUpInside];
@@ -419,7 +417,6 @@ static const CGFloat kActionBarCloseSide = 44.0f;
 	self.jumpBadge.textColor = [UIColor whiteColor];
 	self.jumpBadge.textAlignment = NSTextAlignmentCenter;
 	self.jumpBadge.layer.cornerRadius = TGHalf(TGMetricJumpBadgeHeight);
-	self.jumpBadge.clipsToBounds = YES;
 	self.jumpBadge.hidden = YES;
 	[self.jumpButton addSubview:self.jumpBadge];
 

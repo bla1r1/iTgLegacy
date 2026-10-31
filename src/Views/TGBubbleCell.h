@@ -21,12 +21,13 @@
 @property (nonatomic, strong) UIImageView *ticks;
 /// Skeuomorphic top specular highlight reflection line for tactile iOS 6 bubbles.
 @property (nonatomic, strong) UIView *shineBar;
-@property (nonatomic, strong) CAGradientLayer *gradientLayer;
-@property (nonatomic, strong) CAShapeLayer *borderLayer;
 @property (nonatomic, strong) CAGradientLayer *shineGradientLayer;
-/// The bubble's contour mask. One layer per cell, reused: building a fresh
-/// CAShapeLayer for every appearance is what made scrolling cost a redraw.
-@property (nonatomic, strong) CAShapeLayer *bubbleMask;
+/// Gradient, edge and tail of the bubble as one stretchable picture. It
+/// replaced a CAShapeLayer mask, a gradient layer and a stroked shape layer
+/// per bubble: on an A4 backboardd re-rendered the mask offscreen and
+/// stroked the path on the CPU every frame, which was 3.4 s of every 8 s
+/// of scrolling.
+@property (nonatomic, strong) UIImageView *bubbleBack;
 
 /// The dot that says a voice note has not been listened to or a round note
 /// has not been watched. It lives beside the clock, not inside the bubble,
@@ -81,6 +82,12 @@
 @property (nonatomic, readonly) NSString *loopingPath;
 
 - (void)resetForReuse;
+/// Takes every hidden subview of the bubble and the content view out of the
+/// tree; resetForReuse puts them back where they were. Call once the row is
+/// configured. A chat row holds 46 layers and shows about 10, and backboardd
+/// walked and composited all 46 on every frame of a scroll: parking the
+/// hidden ones took the iPod touch 4 from 10-26% dropped frames to 1%.
+- (void)parkHiddenViews;
 - (void)applyTheme;
 
 @end

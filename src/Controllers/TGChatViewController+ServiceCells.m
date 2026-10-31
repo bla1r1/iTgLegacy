@@ -325,8 +325,13 @@
 
 		cell.picture.hidden = NO;
 		cell.picture.frame = CGRectMake(TGMetricZero, fwd, mapW, mapH);
-		cell.picture.clipsToBounds = YES;
-		cell.picture.image = [self imageFor:m];
+		// The card meets the bubble's top edge; the bubble no longer clips
+		// (see TGBubbleBackImage), so the card rounds its own top corners.
+		cell.picture.clipsToBounds = NO;
+		cell.picture.layer.cornerRadius = 0;
+		cell.picture.image = [TGIcons roundedImage:[self imageFor:m] size:CGSizeMake(mapW, mapH)
+											radius:[[TGTheme shared] bubbleCornerRadius]
+										   corners:UIRectCornerTopLeft | UIRectCornerTopRight];
 
 		cell.disc.hidden = NO;
 		cell.disc.userInteractionEnabled = NO;

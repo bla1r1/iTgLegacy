@@ -5,6 +5,9 @@
 #import "TGStyle.h"
 #import "TGJson.h"
 #import "TGWebMDecoder.h"
+#import "TGCapabilities.h"
+#import "TGStickerBudget.h"
+#import "TGPerf.h"
 #include <zlib.h>
 #include <vector>
 #include <cmath>
@@ -255,6 +258,10 @@ static inline float TGScalarAtFast(NSDictionary *prop, double frame, float fallb
 
 // Cached decoded/rasterized frames (NSArray of CGImageRef wrapped in id)
 @property (nonatomic, strong) NSArray *cachedFrames;
+// First frame shown while the rest of the loop rasterises in the background.
+// Kept on the model so a budget-capped device paints the sticker from it on
+// every reuse without rasterising or VP9-decoding again on the main thread.
+@property (nonatomic, strong) UIImage *firstFrame;
 @property (nonatomic, assign) BOOL isRasterizing;
 @property (nonatomic, assign) BOOL isWebM;
 @end
@@ -802,6 +809,9 @@ static CGImageRef TGRasterizeLottieFrame(TGLottieModel *model, double frame, CGS
 	if (self.window) {
 		if (self.isPlaying && self.webMPlayer) {
 			[self.webMPlayer play];
+		} else if (self.isPlaying && self.loaded && self.model.isWebM) {
+			[self ensureWebMPlayer];
+			[self.webMPlayer play];
 		} else if (self.isPlaying && self.loaded && !self.timer) {
 			[self startTimer];
 		}
@@ -818,12 +828,148 @@ static CGImageRef TGRasterizeLottieFrame(TGLottieModel *model, double frame, CGS
 	return [self loadStickerFile:path];
 }
 
+// File-scope, because the background first-frame decode of a .webm fills the
+// same cache and the same decoding-set that load time consults.
+static NSCache *TGLottieStickerCache(void) {
+	static NSCache *cache = nil;
+	static dispatch_once_t onceToken;
+	dispatch_once(&onceToken, ^{
+		cache = [[NSCache alloc] init];
+		cache.countLimit = 32;
+		// Frames count their bytes as cost: without a ceiling the cache paid
+		// 15 MB for one long .tgs loop, more than the whole 32-bit budget.
+		cache.totalCostLimit = TGStickerBudgetForMemory(
+				[TGCapabilities memoryMB]).cacheTotalBytes;
+	});
+	return cache;
+}
+
+static NSMutableSet *TGLottieBuilding(void) {
+	static NSMutableSet *set = nil;
+	static dispatch_once_t onceToken;
+	dispatch_once(&onceToken, ^{ set = [NSMutableSet set]; });
+	return set;
+}
+
+/// One sticker reuse must cost nothing over a background raster pass: on the
+/// iPod touch 4 every cell that showed the .webm dev sticker re-opened the
+/// demuxer and re-decoded the VP9 keyframe, 33-100 ms per row visible as
+/// stepping while the chat scrolled (device log 2026-10-31).
 - (BOOL)loadStickerFile:(NSString *)path {
+	double start = TGPerfNow();
+	BOOL ok = [self loadStickerFileInner:path];
+	const char *kind = self.model ? (self.model.isWebM ? "webm" : "tgs") : "?";
+	TGPerfReport("sticker load", kind, start, 16.0);
+	return ok;
+}
+
+/// The parse and the first raster of a sticker cost tens of ms against the
+/// scroll on this hardware, so none of it runs on the main thread. The model
+/// lands in the cache when it is ready; a load call before then answers NO.
+- (void)buildStickerModelForFile:(NSString *)path {
+	NSCache *cache = TGLottieStickerCache();
+	NSMutableSet *building = TGLottieBuilding();
+	if ([building containsObject:path])
+		return;
+	[building addObject:path];
+	double buildStart = TGPerfNow();
+
+	BOOL isWebM = [path.pathExtension.lowercaseString isEqualToString:@"webm"];
+	// The raster target belongs to this view; the budgeted sides keep a long
+	// loop inside the memory the device has.
+	CGSize viewSize = self.bounds.size;
+	if (viewSize.width <= 0) viewSize = CGSizeMake(130, 130);
+	TGStickerBudget budget = TGStickerBudgetForMemory([TGCapabilities memoryMB]);
+	CGFloat scale = [UIScreen mainScreen].scale;
+	CGSize targetPxSize = CGSizeMake(
+			MIN((CGFloat)budget.pixelSideCap, viewSize.width * scale),
+			MIN((CGFloat)budget.pixelSideCap, viewSize.height * scale));
+
+	__weak typeof(self) weakSelf = self;
+	dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+		TGLottieModel *model = [[TGLottieModel alloc] init];
+		model.path = path;
+		model.isWebM = isWebM;
+		BOOL ok = NO;
+
+		if (isWebM) {
+			model.frameRate = 30.0;
+			model.canvas = CGSizeMake(256, 256);
+			UIImage *firstFrame = [TGWebMDecoder firstFrameFromFile:path];
+			model.firstFrame = firstFrame;
+			ok = (firstFrame != nil);
+		} else {
+			NSData *gz = [NSData dataWithContentsOfFile:path];
+			NSData *json = TGGunzip(gz);
+			NSError *err = nil;
+			NSDictionary *anim = nil;
+			if (json.length)
+				anim = TGJsonParse((const char *)json.bytes, json.length, &err);
+			if (!anim || ![anim isKindOfClass:NSDictionary.class])
+				ok = NO;
+			else {
+				model.anim = anim;
+				model.layers = anim[@"layers"];
+				NSMutableDictionary *byInd = [NSMutableDictionary dictionary];
+				for (NSDictionary *l in anim[@"layers"]) {
+					id ind = l[@"ind"];
+					if (ind) byInd[ind] = l;
+				}
+				model.layersByInd = byInd;
+				model.inPoint = [anim[@"ip"] doubleValue];
+				model.outPoint = [anim[@"op"] doubleValue];
+				model.frameRate = [anim[@"fr"] doubleValue] ?: 60.0;
+				model.canvas = CGSizeMake([anim[@"w"] doubleValue], [anim[@"h"] doubleValue]);
+				ok = model.layers.count > 0 && model.canvas.width > 0;
+				// Frame 0 comes from the same queue: the sticker's very first
+				// appearance on the A4 was a synchronous raster inside the
+				// push burst.
+				if (ok) {
+					CGImageRef f0 = TGRasterizeLottieFrame(model, model.inPoint, targetPxSize);
+					if (f0) {
+						model.firstFrame = [UIImage imageWithCGImage:f0];
+						CGImageRelease(f0);
+					}
+				}
+			}
+		}
+
+		NSString *ext = path.pathExtension.lowercaseString;
+		dispatch_async(dispatch_get_main_queue(), ^{
+			[building removeObject:path];
+			const char *kind = isWebM ? "webm" : "tgs";
+			TGPerfReport("sticker build", kind, buildStart, 50.0);
+			if (!ok) {
+				NSLog(@"TGLottie: cannot parse %@ (%s)",
+						path.lastPathComponent, kind);
+				return;
+			}
+			size_t cost = 0;
+			if (model.firstFrame)
+				cost = TGStickerFrameBytes(
+						(size_t)(model.firstFrame.size.width * model.firstFrame.scale),
+						(size_t)(model.firstFrame.size.height * model.firstFrame.scale), 1);
+			[cache setObject:model forKey:path cost:cost];
+			// This very view still wants the file: show it here at once, the
+			// row reload brings every other visible cell of it in line.
+			if (model.firstFrame && [weakSelf.loadedPath isEqualToString:path])
+				weakSelf.layer.contents = (__bridge id)model.firstFrame.CGImage;
+			if (weakSelf.onStickerReady)
+				weakSelf.onStickerReady();
+		});
+	});
+}
+
+- (BOOL)loadStickerFileInner:(NSString *)path {
 	if (!path.length) return NO;
 	if ([self.loadedPath isEqualToString:path] && self.loaded) {
 		if (self.isPlaying) {
-			if (self.webMPlayer) [self.webMPlayer play];
-			else if (!self.timer) [self startTimer];
+			if (self.model.isWebM) {
+				[self ensureWebMPlayer];
+				[self.webMPlayer play];
+			} else if (!self.timer) {
+				[self startTimer];
+			}
 		}
 		return YES;
 	}
@@ -833,66 +979,19 @@ static CGImageRef TGRasterizeLottieFrame(TGLottieModel *model, double frame, CGS
 		self.webMPlayer = nil;
 	}
 
-	static NSCache *sStickerCache = nil;
-	static dispatch_once_t onceToken;
-	dispatch_once(&onceToken, ^{
-		sStickerCache = [[NSCache alloc] init];
-		sStickerCache.countLimit = 32;
-	});
+	NSCache *cache = TGLottieStickerCache();
+	TGLottieModel *model = [cache objectForKey:path];
 
-	TGLottieModel *model = [sStickerCache objectForKey:path];
-	BOOL isWebM = [path.pathExtension.lowercaseString isEqualToString:@"webm"];
-
-	if (!model) {
-		model = [[TGLottieModel alloc] init];
-		model.path = path;
-		model.isWebM = isWebM;
-
-		if (isWebM) {
-			UIImage *firstFrame = [TGWebMDecoder firstFrameFromFile:path];
-			if (!firstFrame) {
-				NSLog(@"TGLottieView: WebM first frame decode failed for %@", path.lastPathComponent);
-				return NO;
-			}
-			model.frameRate = 30.0;
-			model.canvas = CGSizeMake(256, 256);
-			[sStickerCache setObject:model forKey:path];
-		} else {
-			// Lottie TGS JSON
-			NSData *gz = [NSData dataWithContentsOfFile:path];
-			NSData *json = TGGunzip(gz);
-			if (!json.length){
-				NSLog(@"TGLottie: not gzip or empty: %@", path.lastPathComponent);
-				return NO;
-			}
-
-			NSError *err = nil;
-			NSDictionary *anim = TGJsonParse((const char *)json.bytes, json.length, &err);
-			if (![anim isKindOfClass:NSDictionary.class]){
-				NSLog(@"TGLottie: bad JSON: %@", err);
-				return NO;
-			}
-
-			model.anim = anim;
-			model.layers = anim[@"layers"];
-			NSMutableDictionary *byInd = [NSMutableDictionary dictionary];
-			for (NSDictionary *l in anim[@"layers"]) {
-				id ind = l[@"ind"];
-				if (ind) byInd[ind] = l;
-			}
-			model.layersByInd = byInd;
-			model.inPoint = [anim[@"ip"] doubleValue];
-			model.outPoint = [anim[@"op"] doubleValue];
-			model.frameRate = [anim[@"fr"] doubleValue] ?: 60.0;
-			model.canvas = CGSizeMake([anim[@"w"] doubleValue], [anim[@"h"] doubleValue]);
-
-			if (model.layers.count > 0 && model.canvas.width > 0) {
-				[sStickerCache setObject:model forKey:path];
-			} else {
-				return NO;
-			}
-		}
+	if (!model && ![TGLottieBuilding() containsObject:path]) {
+		// First look at this file: the parse and the first raster never run
+		// on the main thread, so the scroll is not held by them. Until they
+		// answer, this call is NO and the cell shows the emoji it stands for.
+		[self buildStickerModelForFile:path];
+		return NO;
 	}
+	if (!model)
+		// Building in the background right now.
+		return NO;
 
 	self.loadedPath = path;
 	self.model = model;
@@ -900,31 +999,40 @@ static CGImageRef TGRasterizeLottieFrame(TGLottieModel *model, double frame, CGS
 	self.currentFrameIndex = 0;
 	self.loaded = YES;
 
-	// Target pixel rasterization size (clamped to max 256x256 for optimal A5 performance)
+	// Target pixel rasterization size - the view's own pixels, clamped by the
+	// device's memory budget rather than by however many the display might
+	// want: one 256x256 RGBA frame against a 60-frame loop was 15 MB alone.
+	TGStickerBudget budget = TGStickerBudgetForMemory([TGCapabilities memoryMB]);
 	CGSize viewSize = self.bounds.size;
 	if (viewSize.width <= 0) viewSize = CGSizeMake(130, 130);
 	CGFloat screenScale = [UIScreen mainScreen].scale;
-	CGFloat pxW = MIN(256.0f, viewSize.width * screenScale);
-	CGFloat pxH = MIN(256.0f, viewSize.height * screenScale);
-	CGSize targetPxSize = CGSizeMake(pxW, pxH);
+	CGSize targetPxSize = CGSizeMake(
+			MIN((CGFloat)budget.pixelSideCap, viewSize.width * screenScale),
+			MIN((CGFloat)budget.pixelSideCap, viewSize.height * screenScale));
 
 	if (model.isWebM) {
-		self.webMPlayer = [[TGWebMStreamPlayer alloc] initWithPath:path];
-		self.webMPlayer.targetLayer = self.layer;
-		UIImage *first = [TGWebMDecoder firstFrameFromFile:path];
-		if (first) {
-			self.layer.contents = (__bridge id)first.CGImage;
-		}
+		// The demuxer and the codec initialise only when the sticker is told
+		// to play (-play), not on every cell the file happened to pass
+		// through - including the reuse of a cell that had just shown it.
+		if (model.firstFrame)
+			self.layer.contents = (__bridge id)model.firstFrame.CGImage;
 	} else if (model.cachedFrames.count > 0) {
 		// Instantly show frame 0 with hardware layer
 		CGImageRef first = (__bridge CGImageRef)model.cachedFrames[0];
 		self.layer.contents = (__bridge id)first;
 	} else {
-		// Rasterize frame 0 synchronously so the user sees the sticker immediately
-		CGImageRef f0 = TGRasterizeLottieFrame(model, model.inPoint, targetPxSize);
-		if (f0) {
-			self.layer.contents = (__bridge id)f0;
-			CGImageRelease(f0);
+		// Rasterize frame 0 synchronously so the user sees the sticker
+		// immediately - but only once: it was recomputed on every reuse for
+		// as long as the background pass ran, because nothing kept it.
+		if (model.firstFrame) {
+			self.layer.contents = (__bridge id)model.firstFrame.CGImage;
+		} else {
+			CGImageRef f0 = TGRasterizeLottieFrame(model, model.inPoint, targetPxSize);
+			if (f0) {
+				self.layer.contents = (__bridge id)f0;
+				model.firstFrame = [UIImage imageWithCGImage:f0];
+				CGImageRelease(f0);
+			}
 		}
 
 		// Asynchronously pre-rasterize the animation loop on a background thread
@@ -937,7 +1045,9 @@ static CGImageRef TGRasterizeLottieFrame(TGLottieModel *model, double frame, CGS
 				if (duration <= 0.05) duration = 2.0;
 				int totalFrames = (int)ceil(duration * targetFps);
 				if (totalFrames < 1) totalFrames = 1;
-				if (totalFrames > 60) totalFrames = 60; // clamp to reasonable buffer
+				// The budget, not a guess, name the biggest loop this device
+				// may hold: the frame count is what decides the bytes.
+				if (totalFrames > budget.frameCap) totalFrames = budget.frameCap;
 
 				double frameStep = (model.outPoint - model.inPoint) / (double)totalFrames;
 				NSMutableArray *rendered = [NSMutableArray arrayWithCapacity:totalFrames];
@@ -953,6 +1063,15 @@ static CGImageRef TGRasterizeLottieFrame(TGLottieModel *model, double frame, CGS
 				dispatch_async(dispatch_get_main_queue(), ^{
 					model.cachedFrames = rendered;
 					model.isRasterizing = NO;
+					// The real cost is known only now that the loop is done:
+					// re-inserting lets the cache evict what it overpaid for.
+					if (rendered.count > 0) {
+						CGImageRef f0 = (__bridge CGImageRef)rendered[0];
+						size_t cost = TGStickerFrameBytes(CGImageGetWidth(f0),
+														  CGImageGetHeight(f0),
+														  (int)rendered.count);
+						[TGLottieStickerCache() setObject:model forKey:path cost:cost];
+					}
 					if ([weakSelf.loadedPath isEqualToString:path]) {
 						if (rendered.count > 0 && !weakSelf.layer.contents) {
 							weakSelf.layer.contents = (__bridge id)(__bridge CGImageRef)rendered[0];
@@ -973,11 +1092,22 @@ static CGImageRef TGRasterizeLottieFrame(TGLottieModel *model, double frame, CGS
 
 - (void)play {
 	self.isPlaying = YES;
+	if (self.loaded && self.model.isWebM && !self.webMPlayer)
+		[self ensureWebMPlayer];
 	if (self.webMPlayer) {
 		[self.webMPlayer play];
 	} else if (self.loaded && !self.timer) {
 		[self startTimer];
 	}
+}
+
+/// The fopen, nestegg_init and vpx_codec_dec_init of a stream player cost a
+/// few ms, so the player comes up only when something actually plays.
+- (void)ensureWebMPlayer {
+	if (self.webMPlayer || !self.model.isWebM)
+		return;
+	self.webMPlayer = [[TGWebMStreamPlayer alloc] initWithPath:self.model.path];
+	self.webMPlayer.targetLayer = self.layer;
 }
 
 - (void)stop {

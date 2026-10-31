@@ -19,7 +19,10 @@ static const CGFloat kIconDumpSide = 52.0f;
 #import "TGTopicsViewController.h"
 #import "TGGalleryViewController.h"
 #import "TGIcons.h"
+#import "TGBench.h"
+#import "TGLoginViewController.h"
 #import <QuartzCore/QuartzCore.h>
+#include <dlfcn.h>
 
 static NSString *TGBase64FromImage(UIImage *img) {
 	if (!img) return @"";
@@ -76,6 +79,26 @@ static NSString *TGBase64FromImage(UIImage *img) {
 	if ([host isEqualToString:@"phone"] && arg.length){
 		self.currentPhoneNumber = arg;
 		[[TGClient shared] sendPhoneNumber:arg];
+		return YES;
+	}
+
+	// itglegacy://loginstep/<password|recovery|email|emailcode|code|qr> - a sign-in
+	// step on screen without an account that needs it, for checking layout.
+	if ([host isEqualToString:@"loginstep"]){
+		dispatch_async(dispatch_get_main_queue(), ^{
+			[self showLoginUI];
+			if ([arg isEqualToString:@"password"]) [self.loginVC showPasswordStep];
+			else if ([arg isEqualToString:@"recovery"]) [self.loginVC performSelector:@selector(showRecoveryCodeStep)];
+			else if ([arg isEqualToString:@"email"]) [self.loginVC showEmailStep];
+			else if ([arg isEqualToString:@"emailcode"]) [self.loginVC showEmailCodeStep];
+			else if ([arg isEqualToString:@"qr"]) {
+				// The button itself, so the whole path runs: TDLib's request
+				// and the state that answers it.
+				[self.loginVC showPhoneStep];
+				[self.loginVC performSelector:@selector(qrCodeButtonTapped)];
+			}
+			else [self.loginVC showCodeStepWithPhoneNumber:@"+1 555 0100"];
+		});
 		return YES;
 	}
 
@@ -889,8 +912,32 @@ static NSString *TGBase64FromImage(UIImage *img) {
 		return YES;
 	}
 
+	// itglegacy://bench/... - see TGBench.h.
+	if ([host isEqualToString:@"bench"]){
+		NSMutableArray *args = [url.pathComponents mutableCopy];
+		[args removeObject:@"/"];
+		dispatch_async(dispatch_get_main_queue(), ^{
+			[TGBench runWithArguments:args window:self.window];
+		});
+		return YES;
+	}
+
 	if ([host isEqualToString:@"screenshot"]){
 		dispatch_async(dispatch_get_main_queue(), ^{
+			// The framebuffer itself where UIKit still offers it (iOS 6 and
+			// earlier): renderInContext redraws layers and misses what the
+			// system draws, like the tab bar's glow and the status bar.
+			CGImageRef (*grab)(void) = (CGImageRef (*)(void))dlsym(RTLD_DEFAULT, "UIGetScreenImage");
+			CGImageRef screen = grab ? grab() : NULL;
+			if (screen) {
+				NSString *dir = [NSSearchPathForDirectoriesInDomains(
+						NSCachesDirectory, NSUserDomainMask, YES) objectAtIndex:0];
+				BOOL ok = [UIImagePNGRepresentation([UIImage imageWithCGImage:screen])
+						writeToFile:[dir stringByAppendingPathComponent:@"screen.png"] atomically:YES];
+				CGImageRelease(screen);
+				NSLog(@"screenshot (framebuffer) %@", ok ? @"saved" : @"FAILED");
+				return;
+			}
 			// Opaque: with an alpha channel, white text over a solid bubble
 			// composited wrongly and came out orange in the capture - a
 			// screenshot artifact that looked exactly like a colour bug.

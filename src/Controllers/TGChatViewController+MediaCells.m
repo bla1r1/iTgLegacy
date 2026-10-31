@@ -92,6 +92,10 @@
 	NSString *animPath = isAnimSticker ? self.lottiePaths[m[@"docId"]] : nil;
 	if (animPath) {
 		CGFloat side = kLottieSide;
+		__weak typeof(self) weakSelf = self;
+		// A webm still decoding answers NO and reports here; one debounced
+		// reload brings the decoded frame into every visible row of it.
+		cell.lottie.onStickerReady = ^{ [weakSelf reloadTableDebounced]; };
 		cell.bubble.backgroundColor = [UIColor clearColor];
 		cell.bubble.layer.borderWidth = TGMetricBorderNone;
 		cell.bubble.frame = layout.bubbleFrame;
@@ -126,15 +130,14 @@
 	NSString *emoji = m[@"extra"] ?: m[@"emoji"];
 	if (!emoji.length || frame.size.height <= 0)
 		return;
-	cell.icon.hidden = NO;
-	cell.icon.backgroundColor = [UIColor clearColor];
-	cell.icon.layer.cornerRadius = TGMetricCornerNone;
-	cell.icon.textColor = [[TGTheme shared] primaryTextColour];
-	cell.icon.font = TGEmojiFontOfSize(TGHalf(frame.size.height));
-	cell.icon.textAlignment = NSTextAlignmentCenter;
-	cell.icon.text = emoji;
-	cell.icon.frame = frame;
-	[cell.bubble bringSubviewToFront:cell.icon];
+	// Drawn once into an image and cached per emoji and size: a colour-font
+	// glyph this big is 120 ms of layout on an A4, and it used to be paid on
+	// every reuse of the row.
+	cell.picture.hidden = NO;
+	cell.picture.backgroundColor = [UIColor clearColor];
+	cell.picture.image = [TGIcons emojiGlyph:emoji side:frame.size.height];
+	cell.picture.frame = frame;
+	[cell.bubble bringSubviewToFront:cell.picture];
 }
 
 - (void)configureMediaForCell:(TGBubbleCell *)cell message:(NSDictionary *)m layout:(TGMessageLayout *)layout isMine:(BOOL)mine {
@@ -157,10 +160,13 @@
 				iv.hidden = NO;
 				iv.frame = [frames[i] CGRectValue];
 				NSDictionary *itemMsg = albumMsgs[i];
-				iv.image = [self imageFor:itemMsg];
+				if (![self imageFor:itemMsg])
+					[self fetchImageForMessage:itemMsg];
+				[TGIcons setRoundedImage:[self imageFor:itemMsg] inView:iv size:iv.frame.size
+								  radius:TGMetricCornerSmall];
 			} else {
 				iv.hidden = YES;
-				iv.image = nil;
+				[TGIcons setRoundedImage:nil inView:iv size:CGSizeZero radius:0];
 			}
 		}
 
@@ -197,12 +203,20 @@
 		cell.collageView.hidden = YES;
 		cell.picture.hidden = NO;
 		UIImage *img = [self imageFor:m];
-		cell.picture.image = img;
-		cell.picture.backgroundColor = (img || layout.isSticker) ? [UIColor clearColor] : [theme fileTileColour];
+		if (!img)
+			[self fetchImageForMessage:m];   // evicted while off screen
+		// A sticker goes in as it is (a zero size means "do not round").
+		[TGIcons setRoundedImage:img inView:cell.picture
+							size:layout.isSticker ? CGSizeZero : layout.pictureFrame.size
+						  radius:TGMetricCornerMedium];
+		// The tile shows while the rounded copy is still being drawn.
+		cell.picture.backgroundColor = layout.isSticker ? [UIColor clearColor] : [theme fileTileColour];
 		cell.picture.frame = layout.pictureFrame;
 		cell.picture.layer.cornerRadius = layout.isSticker ? TGMetricCornerNone : TGMetricCornerMedium;
 		cell.picture.layer.borderWidth = (layout.isSticker || layout.isRound) ? 0.0f : (theme.isFlat ? 0.0f : 1.0f);
-		cell.picture.clipsToBounds = YES;
+		// A sticker is clipped to a plain rectangle, which is a scissor and
+		// free; a photo is already rounded, so it needs no clip at all.
+		cell.picture.clipsToBounds = layout.isSticker;
 
 		// A sticker draws on nothing but its own image: no fill, no body text.
 		// Until the file arrives the row is a hole in the wallpaper with a
@@ -226,7 +240,6 @@
 		if ([kind isEqualToString:@"messageAnimation"] && ![TGCapabilities canAutoplayGIFs]) {
 			cell.icon.hidden = NO;
 			cell.icon.layer.cornerRadius = TGMetricCornerSmall;
-			cell.icon.clipsToBounds = YES;
 			cell.icon.backgroundColor = [[TGTheme shared] mediaOverlayColour];
 			cell.icon.textColor = [UIColor whiteColor];
 			cell.icon.font = TGFontPlate();

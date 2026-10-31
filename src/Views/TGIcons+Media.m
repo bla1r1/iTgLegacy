@@ -3,8 +3,131 @@
 // Audio and media player vector icons.
 //
 #import "TGIconsInternal.h"
+#import <objc/runtime.h>
+
+/// Rounded copies already made of one image, most recent first. A picture
+/// is usually shown at one size, but the same file can sit in a collage tile
+/// and a single bubble at once; with one slot those two evicted each other
+/// on every cell and the copy was redrawn - JPEG decode included - each time.
+enum { kRoundedVariants = 4 };
+
+typedef struct {
+	CGSize size;
+	CGFloat radius;
+	UIRectCorner corners;
+} TGRoundedKey;
+
+@interface TGRoundedVariants : NSObject {
+@public
+	TGRoundedKey keys[kRoundedVariants];
+	UIImage *images[kRoundedVariants];
+}
+@end
+@implementation TGRoundedVariants
+@end
+
+static char kRoundedVariantKey;
 
 @implementation TGIcons (Media)
+
+static BOOL TGRoundable(UIImage *image, CGSize size) {
+	return image && !image.images.count && size.width >= 1 && size.height >= 1
+			&& image.size.width >= 1 && image.size.height >= 1;
+}
+
+static UIImage *TGRoundedLookup(UIImage *image, CGSize size, CGFloat radius, UIRectCorner corners) {
+	TGRoundedVariants *v = objc_getAssociatedObject(image, &kRoundedVariantKey);
+	for (int i = 0; v && i < kRoundedVariants; i++) {
+		TGRoundedKey k = v->keys[i];
+		if (v->images[i] && CGSizeEqualToSize(k.size, size) && k.radius == radius && k.corners == corners)
+			return v->images[i];
+	}
+	return nil;
+}
+
+/// Any thread: UIGraphics image contexts are per-thread since iOS 4.
+static UIImage *TGRoundedRender(UIImage *image, CGSize size, CGFloat radius, UIRectCorner corners) {
+	CGRect box = CGRectMake(0, 0, size.width, size.height);
+	UIGraphicsBeginImageContextWithOptions(size, NO, 0);
+	if (radius > 0)
+		[[UIBezierPath bezierPathWithRoundedRect:box byRoundingCorners:corners
+									 cornerRadii:CGSizeMake(radius, radius)] addClip];
+	CGFloat k = MAX(size.width / image.size.width, size.height / image.size.height);
+	CGSize fill = CGSizeMake(image.size.width * k, image.size.height * k);
+	[image drawInRect:CGRectMake(TGHalf(size.width - fill.width), TGHalf(size.height - fill.height),
+								 fill.width, fill.height)];
+	UIImage *out = UIGraphicsGetImageFromCurrentImageContext();
+	UIGraphicsEndImageContext();
+	return out;
+}
+
+/// Main thread only, like the lookup: the slots are not locked.
+static void TGRoundedStore(UIImage *image, CGSize size, CGFloat radius, UIRectCorner corners, UIImage *out) {
+	TGRoundedVariants *v = objc_getAssociatedObject(image, &kRoundedVariantKey);
+	if (!v) {
+		v = [[TGRoundedVariants alloc] init];
+		objc_setAssociatedObject(image, &kRoundedVariantKey, v, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+	}
+	for (int i = kRoundedVariants - 1; i > 0; i--) {
+		v->keys[i] = v->keys[i - 1];
+		v->images[i] = v->images[i - 1];
+	}
+	v->keys[0] = (TGRoundedKey){ size, radius, corners };
+	v->images[0] = out;
+}
+
++ (UIImage *)roundedImage:(UIImage *)image size:(CGSize)size radius:(CGFloat)radius
+				  corners:(UIRectCorner)corners {
+	if (!TGRoundable(image, size))
+		return image;
+	UIImage *hit = TGRoundedLookup(image, size, radius, corners);
+	if (hit)
+		return hit;
+	UIImage *out = TGRoundedRender(image, size, radius, corners);
+	if (!out)
+		return image;
+	if ([NSThread isMainThread])
+		TGRoundedStore(image, size, radius, corners, out);
+	return out;
+}
+
+static char kAwaitedKey;
+
++ (void)setRoundedImage:(UIImage *)image inView:(UIImageView *)view size:(CGSize)size
+				 radius:(CGFloat)radius {
+	UIRectCorner corners = UIRectCornerAllCorners;
+	if (!TGRoundable(image, size)) {
+		objc_setAssociatedObject(view, &kAwaitedKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+		view.image = image;
+		return;
+	}
+	UIImage *hit = TGRoundedLookup(image, size, radius, corners);
+	objc_setAssociatedObject(view, &kAwaitedKey, hit ? nil : image, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+	view.image = hit;
+	if (hit)
+		return;
+
+	static dispatch_queue_t queue;
+	static dispatch_once_t once;
+	dispatch_once(&once, ^{
+		queue = dispatch_queue_create("org.legacy.itg.round", DISPATCH_QUEUE_SERIAL);
+	});
+	__weak UIImageView *weakView = view;
+	dispatch_async(queue, ^{
+		UIImage *out = TGRoundedRender(image, size, radius, corners);
+		dispatch_async(dispatch_get_main_queue(), ^{
+			if (!out)
+				return;
+			TGRoundedStore(image, size, radius, corners, out);
+			UIImageView *v = weakView;
+			// The row may have been reused for another message meanwhile.
+			if (v && objc_getAssociatedObject(v, &kAwaitedKey) == image) {
+				objc_setAssociatedObject(v, &kAwaitedKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+				v.image = out;
+			}
+		});
+	});
+}
 
 + (UIImage *)play {
 	return [self iconNamed:@"play" draw:^(CGContextRef ctx, CGFloat s){

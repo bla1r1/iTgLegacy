@@ -1,4 +1,5 @@
 #import "TGChatListViewControllerInternal.h"
+#import "TGPerf.h"
 #import "TGStatusText.h"
 #import "TGStyle.h"
 #import "TGAlertSheet.h"
@@ -799,6 +800,7 @@ static NSString *TGChatDate(NSTimeInterval unix) {
 	}
 
 	NSDictionary *c = [self visibleChats][indexPath.row - header.count];
+	double cellStart = TGPerfNow();
 	cell.titleLabel.text = c[@"title"];
 	cell.dateLabel.text = TGChatDate([c[@"date"] doubleValue]);
 
@@ -868,6 +870,7 @@ static NSString *TGChatDate(NSTimeInterval unix) {
 	cell.avatar.backgroundColor = [UIColor clearColor];
 
 	[cell setNeedsLayout];
+	TGPerfReport("list cell", [c[@"title"] UTF8String] ?: "", cellStart, 33.0);
 	return cell;
 }
 
@@ -885,7 +888,11 @@ static NSString *TGChatDate(NSTimeInterval unix) {
 
 	NSDictionary *c = [self visibleChats][indexPath.row - header.count];
 	NSLog(@"open chat: group=%@ forum=%@", c[@"isGroup"], c[@"isForum"] ?: @"(absent)");
+	double pushStart = TGPerfNow();
 	[self openChatInfo:c];
+	// An open that feels instant lands its screen inside two frames; over
+	// that the tap reads as nothing happening.
+	TGPerfReport("chat open", "push", pushStart, 66.0);
 }
 
 /// The one place a chat dictionary becomes a screen: the forum check is what

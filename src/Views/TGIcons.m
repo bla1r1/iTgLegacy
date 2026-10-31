@@ -1,3 +1,4 @@
+#import "TGTextDraw.h"
 #import "TGIconsInternal.h"
 #import "TGMessageLayout.h"
 #import "TGStyle.h"
@@ -14,6 +15,26 @@ void TGIconsSetCached(NSString *key, UIImage *img) {
 }
 
 @implementation TGIcons
+
++ (UIImage *)emojiGlyph:(NSString *)emoji side:(CGFloat)side {
+	if (!emoji.length || side <= 0.0f)
+		return nil;
+	// Quantised, or a cache keyed by an exact point size never hits: bubble
+	// widths differ by a point between rows.
+	CGFloat quantised = ceilf(side / 8.0f) * 8.0f;
+	NSString *key = [NSString stringWithFormat:@"emoji_%@_%.0f", emoji, quantised];
+	UIImage *cached = TGIconsGetCached(key);
+	if (cached)
+		return cached;
+
+	UIGraphicsBeginImageContextWithOptions(CGSizeMake(quantised, quantised), NO, 0);
+	TGDrawText(emoji, CGRectMake(0.0f, 0.0f, quantised, quantised),
+			TGEmojiFontOfSize(TGHalf(quantised)), nil, NSTextAlignmentCenter, nil);
+	UIImage *glyph = UIGraphicsGetImageFromCurrentImageContext();
+	UIGraphicsEndImageContext();
+	TGIconsSetCached(key, glyph);
+	return glyph;
+}
 
 + (void)initialize {
 	if (self == [TGIcons class]) {

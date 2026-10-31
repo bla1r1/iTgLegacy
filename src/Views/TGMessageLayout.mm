@@ -4,6 +4,7 @@
 #import "TGMessageLayout.h"
 #import "TGStyle.h"
 #import "TGLruCache.hpp"
+#import "TGPerf.h"
 
 #ifndef typeof
 #define typeof __typeof__
@@ -381,7 +382,15 @@ CGSize TGTextSizeWithEntities(NSString *text, NSArray *entities, UIFont *font, C
 	}
 
 	CGSize size = CGSizeZero;
-	NSAttributedString *rich = TGAttributedMessageText(text, entities, font, [UIColor blackColor]);
+	// Over budget, the measure itself says it was the cost: text measures
+	// are made per unique string on the first appearance of a line.
+	double measureStart = TGPerfNow();
+	// Plain text goes on the label as a plain string (TGSetBodyText), so it is
+	// measured as one: the attributed boundingRect took 72-93 ms for 60
+	// bubbles on an iPod touch 4, sizeWithFont: 7 ms, for the same heights.
+	BOOL plain = !entities.count && !TGTextContainsEmoji(text);
+	NSAttributedString *rich = plain ? nil
+			: TGAttributedMessageText(text, entities, font, [UIColor blackColor]);
 
 	if (width > 0) {
 		if (rich) {
@@ -406,6 +415,7 @@ CGSize TGTextSizeWithEntities(NSString *text, NSArray *entities, UIFont *font, C
 	}
 
 	sTextSizeCache.put(key, size);
+	TGPerfReport("text measure", NULL, measureStart, 10.0);
 	return size;
 }
 

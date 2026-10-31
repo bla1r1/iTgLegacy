@@ -9,6 +9,28 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+#include <libkern/OSAtomic.h>
+
+/// One decoded frame's pixels, shared by the player and every CGImage made
+/// over it: freed when the last of them lets go. The slots used to be three
+/// 1 MB arrays inside the player - 3 MB per playing sticker whatever its size
+/// (a 256 px sticker needs 256 KB a frame), and a frame still on a layer
+/// after its player was gone pointed into freed memory.
+typedef struct {
+	int32_t refs;
+	size_t size;
+	uint8_t bytes[];
+} TGFrameSlot;
+
+static void TGFrameSlotRelease(TGFrameSlot *slot) {
+	if (slot && OSAtomicDecrement32Barrier(&slot->refs) == 0)
+		free(slot);
+}
+
+static void TGFrameSlotProviderRelease(void *info, const void *data, size_t size) {
+	(void)data; (void)size;
+	TGFrameSlotRelease((TGFrameSlot *)info);
+}
 
 #if defined(__ARM_NEON__) || defined(__ARM_NEON)
 #include <arm_neon.h>
@@ -38,6 +60,8 @@ static int64_t webm_io_tell(void *userdata) {
 
 #pragma mark - YUV420 to RGBA Converter with ARM NEON SIMD Intrinsics
 
+/// Writes premultiplied BGRA, CoreAnimation's own pixel order: handed RGBA,
+/// it converts every frame of every playing sticker again before upload.
 static void ConvertYUV420ToRGBA(vpx_image_t *img, vpx_image_t *alphaImg, uint8_t *dstRgba,
 								unsigned int width, unsigned int height, size_t rgbaStride) {
 	const uint8_t *yPlane = img->planes[VPX_PLANE_Y];
@@ -115,9 +139,9 @@ static void ConvertYUV420ToRGBA(vpx_image_t *img, vpx_image_t *alphaImg, uint8_t
 			}
 
 			uint8x8x4_t rgba;
-			rgba.val[0] = r_u8;
+			rgba.val[0] = b_u8;
 			rgba.val[1] = g_u8;
-			rgba.val[2] = b_u8;
+			rgba.val[2] = r_u8;
 			rgba.val[3] = a_raw;
 			vst4_u8(dst, rgba);
 			dst += 32;
@@ -148,9 +172,9 @@ static void ConvertYUV420ToRGBA(vpx_image_t *img, vpx_image_t *alphaImg, uint8_t
 				b = (b * aVal) / 255;
 			}
 
-			dst[0] = (uint8_t)r;
+			dst[0] = (uint8_t)b;
 			dst[1] = (uint8_t)g;
-			dst[2] = (uint8_t)b;
+			dst[2] = (uint8_t)r;
 			dst[3] = (uint8_t)aVal;
 			dst += 4;
 		}
@@ -183,7 +207,7 @@ static CGImageRef CreateCGImageFromVpxImages(vpx_image_t *img, vpx_image_t *alph
 	CGImageRef cgImage = CGImageCreate(
 		width, height, 8, 32, rgbaStride,
 		colorSpace,
-		kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big,
+		kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Little,
 		provider, NULL, NO, kCGRenderingIntentDefault);
 
 	CGDataProviderRelease(provider);
@@ -445,9 +469,21 @@ static CGImageRef CreateCGImageFromVpxImages(vpx_image_t *img, vpx_image_t *alph
 	BOOL _codecInited;
 	BOOL _alphaCodecInited;
 	CADisplayLink *_displayLink;
-	uint8_t _ringBuffer[3][512 * 512 * 4];
+	TGFrameSlot *_slots[3];
 	int _ringSlot;
 	CGImageRef _currentImage;
+	BOOL _decoding;                 // main thread only
+}
+
+/// Every player decodes here, never on the main thread. One queue for all
+/// of them: the A4 has one core, so parallel decoders only add switches.
+static dispatch_queue_t TGWebMDecodeQueue(void) {
+	static dispatch_queue_t queue;
+	static dispatch_once_t once;
+	dispatch_once(&once, ^{
+		queue = dispatch_queue_create("org.legacy.itg.webm", DISPATCH_QUEUE_SERIAL);
+	});
+	return queue;
 }
 
 - (instancetype)initWithPath:(NSString *)path {
@@ -512,6 +548,10 @@ static CGImageRef CreateCGImageFromVpxImages(vpx_image_t *img, vpx_image_t *alph
 	if (_currentImage) {
 		CGImageRelease(_currentImage);
 		_currentImage = NULL;
+	}
+	for (int i = 0; i < 3; i++) {
+		TGFrameSlotRelease(_slots[i]);
+		_slots[i] = NULL;
 	}
 	if (_alphaCodecInited) {
 		vpx_codec_destroy(&_alphaCodec);
@@ -625,17 +665,33 @@ static CGImageRef CreateCGImageFromVpxImages(vpx_image_t *img, vpx_image_t *alph
 						unsigned int h = (unsigned int)MIN(512, (int)img->d_h);
 						if (w > 0 && h > 0) {
 							_ringSlot = (_ringSlot + 1) % 3;
-							uint8_t *slotBuf = _ringBuffer[_ringSlot];
 							size_t rgbaStride = w * 4;
+							size_t need = rgbaStride * h;
+							TGFrameSlot *slot = _slots[_ringSlot];
+							if (!slot || slot->size < need) {
+								TGFrameSlotRelease(slot);
+								slot = malloc(sizeof(TGFrameSlot) + need);
+								if (!slot) {
+									_slots[_ringSlot] = NULL;
+									nestegg_free_packet(pkt);
+									return _currentImage;
+								}
+								slot->refs = 1;     // the player's own
+								slot->size = need;
+								_slots[_ringSlot] = slot;
+							}
+							uint8_t *slotBuf = slot->bytes;
 
 							ConvertYUV420ToRGBA(img, alphaImg, slotBuf, w, h, rgbaStride);
 
 							CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
-							CGDataProviderRef provider = CGDataProviderCreateWithData(NULL, slotBuf, rgbaStride * h, NULL);
+							OSAtomicIncrement32Barrier(&slot->refs);
+							CGDataProviderRef provider = CGDataProviderCreateWithData(slot, slotBuf, need,
+									TGFrameSlotProviderRelease);
 							CGImageRef newCg = CGImageCreate(
 								w, h, 8, 32, rgbaStride,
 								colorSpace,
-								kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big,
+								kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Little,
 								provider, NULL, NO, kCGRenderingIntentDefault);
 							CGDataProviderRelease(provider);
 							CGColorSpaceRelease(colorSpace);
@@ -659,16 +715,26 @@ static CGImageRef CreateCGImageFromVpxImages(vpx_image_t *img, vpx_image_t *alph
 }
 
 - (void)tick:(CADisplayLink *)link {
-	if (!_isPlaying) return;
-	CGImageRef img = [self decodeNextFrame];
-	if (img) {
-		if (self.targetLayer) {
-			self.targetLayer.contents = (__bridge id)img;
-		}
-		if (self.onFrame) {
-			self.onFrame(img);
-		}
-	}
+	// A frame still decoding means the core is behind: skip this tick rather
+	// than queue up work, as the player would drop it anyway.
+	if (!_isPlaying || _decoding) return;
+	_decoding = YES;
+	dispatch_async(TGWebMDecodeQueue(), ^{
+		CGImageRef img = CGImageRetain([self decodeNextFrame]);
+		dispatch_async(dispatch_get_main_queue(), ^{
+			// The ring slot behind img is written again two decodes later;
+			// the next decode cannot start before this block has run and its
+			// transaction has committed the frame, so the slot is safe.
+			self->_decoding = NO;
+			if (img && self->_isPlaying) {
+				if (self.targetLayer)
+					self.targetLayer.contents = (__bridge id)img;
+				if (self.onFrame)
+					self.onFrame(img);
+			}
+			CGImageRelease(img);
+		});
+	});
 }
 
 @end

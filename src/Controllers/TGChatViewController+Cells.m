@@ -1,3 +1,4 @@
+#import "TGPerf.h"
 #import "TGChatViewControllerInternal.h"
 #import <QuartzCore/QuartzCore.h>
 #import "TGCapabilities.h"
@@ -20,6 +21,11 @@
 
 	NSDictionary *m = self.messages[indexPath.row];
 	BOOL mine = [m[@"outgoing"] boolValue];
+	// One row has a sixtieth of a second if the scroll is to hold 60 fps, and
+	// a thirtieth before it is visibly jerky on an A4. Anything over that
+	// names itself and its kind in the log; under it this costs one
+	// mach_absolute_time.
+	double cellStart = TGPerfNow();
 	TGMessageLayout *layout = [self layoutForMessage:m atRow:indexPath.row];
 
 	[cell resetForReuse];
@@ -31,7 +37,10 @@
 	int64_t senderId = [m[@"senderId"] longLongValue];
 	if (layout.senderName.length) {
 		cell.senderAvatar.hidden = NO;
-		cell.senderAvatar.image = [self avatarForUser:senderId name:layout.senderName];
+		cell.senderAvatar.image = [TGIcons roundedImage:[self avatarForUser:senderId name:layout.senderName]
+												   size:layout.senderAvatarFrame.size
+												 radius:TGHalf(layout.senderAvatarFrame.size.width)
+												corners:UIRectCornerAllCorners];
 		cell.senderAvatar.frame = layout.senderAvatarFrame;
 
 		cell.sender.hidden = NO;
@@ -42,12 +51,16 @@
 
 	// 2. Service cells (service messages, separators, polls, docs, contacts, locations)
 	if ([self configureServiceCell:cell message:m layout:layout isMine:mine indexPath:indexPath]) {
-		return [self finalizeCell:cell message:m layout:layout isMine:mine];
+		UITableViewCell *done = [self finalizeCell:cell message:m layout:layout isMine:mine];
+		TGPerfReport("cell", [m[@"kind"] UTF8String], cellStart, 33.0);
+		return done;
 	}
 
 	// 3. Audio cells (calls, audio tracks, voice notes)
 	if ([self configureAudioCell:cell message:m layout:layout isMine:mine indexPath:indexPath]) {
-		return [self finalizeCell:cell message:m layout:layout isMine:mine];
+		UITableViewCell *done = [self finalizeCell:cell message:m layout:layout isMine:mine];
+		TGPerfReport("cell", [m[@"kind"] UTF8String], cellStart, 33.0);
+		return done;
 	}
 
 	cell.bubble.frame = layout.bubbleFrame;
@@ -64,7 +77,9 @@
 
 	// 4. Round video notes or animated stickers
 	if ([self configureRoundOrStickerCell:cell message:m layout:layout isMine:mine]) {
-		return [self finalizeCell:cell message:m layout:layout isMine:mine];
+		UITableViewCell *done = [self finalizeCell:cell message:m layout:layout isMine:mine];
+		TGPerfReport("cell", [m[@"kind"] UTF8String], cellStart, 33.0);
+		return done;
 	}
 
 	// 5. Quote headers & replies
@@ -141,7 +156,6 @@
 			reactions.layer.cornerRadius = TGMetricCornerSmall;
 			reactions.layer.borderWidth = 1.0f;
 			reactions.layer.borderColor = [theme separatorColour].CGColor;
-			reactions.clipsToBounds = YES;
 		} else {
 			reactions.backgroundColor = [UIColor clearColor];
 			reactions.layer.borderWidth = 0.0f;
@@ -151,6 +165,80 @@
 				layout.bubbleFrame.size.width - TGDoubled(kPadH), TGMetricLineCaption);
 	} else {
 		reactions.hidden = YES;
+	}
+
+	// 8b. Comments, under a channel post that has a discussion group
+	UIButton *comments = (UIButton *)[cell.bubble viewWithTag:0x9003];
+	if ([m[@"canComment"] boolValue]) {
+		if (!comments) {
+			comments = [UIButton buttonWithType:UIButtonTypeCustom];
+			comments.tag = 0x9003;
+			comments.titleLabel.font = TGFontCaptionStrong();
+			comments.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeft;
+			[comments addTarget:self action:@selector(commentsTapped:)
+			   forControlEvents:UIControlEventTouchUpInside];
+			[cell.bubble addSubview:comments];
+		}
+		NSInteger count = [m[@"replyCount"] integerValue];
+		NSString *label = count == 0 ? @"Leave a comment"
+				: count == 1 ? @"1 Comment"
+				: [NSString stringWithFormat:@"%ld Comments", (long)count];
+		comments.hidden = NO;
+		[comments setTitle:label forState:UIControlStateNormal];
+		[comments setTitleColor:[theme accentColour] forState:UIControlStateNormal];
+		CGFloat below = layout.bodyFrame.origin.y + layout.bodySize.height + TGMetricPadTiny
+				+ ([m[@"reactions"] length] ? TGMetricLineBody : 0);
+		comments.frame = CGRectMake(kPadH, below,
+				layout.bubbleFrame.size.width - TGDoubled(kPadH), TGMetricLineCaption);
+	} else {
+		comments.hidden = YES;
+	}
+
+	// 8c. A bot's inline buttons, rebuilt per message: they are rare enough
+	// that keeping a pool of them per cell is not worth its bookkeeping.
+	UIView *keys = [cell.bubble viewWithTag:0x9004];
+	NSArray *rows = m[@"inlineRows"];
+	if (rows.count) {
+		if (!keys) {
+			keys = [[UIView alloc] init];
+			keys.tag = 0x9004;
+			[cell.bubble addSubview:keys];
+		}
+		for (UIView *old in [keys.subviews copy])
+			[old removeFromSuperview];
+		CGFloat top = layout.bodyFrame.origin.y + layout.bodySize.height + TGMetricBotButtonGap
+				+ ([m[@"reactions"] length] ? TGMetricLineBody : 0)
+				+ ([m[@"canComment"] boolValue] ? TGMetricLineBody : 0);
+		CGFloat width = layout.bubbleFrame.size.width - TGDoubled(kPadH);
+		keys.frame = CGRectMake(kPadH, top, width,
+				rows.count * (TGMetricBotButtonHeight + TGMetricBotButtonGap));
+		for (NSUInteger r = 0; r < rows.count; r++) {
+			NSArray *row = rows[r];
+			CGFloat w = (width - TGMetricBotButtonGap * (row.count - 1)) / row.count;
+			for (NSUInteger c = 0; c < row.count; c++) {
+				NSDictionary *b = row[c];
+				UIButton *key = [UIButton buttonWithType:UIButtonTypeCustom];
+				key.frame = CGRectMake(c * (w + TGMetricBotButtonGap),
+						r * (TGMetricBotButtonHeight + TGMetricBotButtonGap), w, TGMetricBotButtonHeight);
+				key.tag = (NSInteger)(r * 16 + c);
+				key.backgroundColor = [theme cardBackgroundColour];
+				key.layer.cornerRadius = TGMetricCornerSmall;
+				key.layer.borderWidth = TGMetricBorderWidth;
+				key.layer.borderColor = [theme separatorColour].CGColor;
+				key.titleLabel.font = TGFontCaptionStrong();
+				key.titleLabel.lineBreakMode = NSLineBreakByTruncatingTail;
+				BOOL works = ![b[@"kind"] isEqualToString:@"unsupported"];
+				[key setTitle:b[@"text"] forState:UIControlStateNormal];
+				[key setTitleColor:(works ? [theme accentColour] : [theme secondaryTextColour])
+						  forState:UIControlStateNormal];
+				[key addTarget:self action:@selector(botButtonTapped:)
+			  forControlEvents:UIControlEventTouchUpInside];
+				[keys addSubview:key];
+			}
+		}
+		keys.hidden = NO;
+	} else {
+		keys.hidden = YES;
 	}
 
 	// 9. Time & delivery ticks
@@ -204,7 +292,17 @@
 		cell.time.shadowOffset = CGSizeZero;
 	}
 
-	return [self finalizeCell:cell message:m layout:layout isMine:mine];
+	UITableViewCell *done = [self finalizeCell:cell message:m layout:layout isMine:mine];
+	TGPerfReport("cell", [m[@"kind"] UTF8String], cellStart, 33.0);
+	return done;
+}
+
+/// The row's message, found from the button's place in the table.
+- (void)commentsTapped:(UIButton *)button {
+	CGPoint at = [button convertPoint:CGPointZero toView:self.table];
+	NSIndexPath *path = [self.table indexPathForRowAtPoint:at];
+	if (path && path.row < (NSInteger)self.messages.count)
+		[self openCommentsForMessage:self.messages[path.row]];
 }
 
 #pragma mark - ticks
@@ -332,11 +430,74 @@ static UIBezierPath *TGBubbleUnifiedPath(CGSize size, CGFloat tl, CGFloat tr, CG
 	return path;
 }
 
+/// Room the gradient keeps between the caps. The middle is scaled, not
+/// tiled, so the gradient runs top to bottom of any bubble without a seam.
+static const CGFloat kBubbleBackMiddle = 24.0f;
+
+/// The corner radii one bubble of a run gets: a run's first bubble rounds its
+/// top fully, the last one carries the tail on the sender's side.
+static void TGBubbleCorners(TGTheme *theme, BOOL mine, BOOL first, BOOL last,
+		CGFloat *tl, CGFloat *tr, CGFloat *br, CGFloat *bl) {
+	CGFloat big = [theme bubbleCornerRadius];
+	CGFloat small = [theme bubbleJoinedCornerRadius];
+	CGFloat top = first ? big : small;
+	*tl = mine ? big : top;
+	*tr = mine ? top : big;
+	*br = mine ? (last ? 0 : small) : big;
+	*bl = mine ? big : (last ? 0 : small);
+}
+
+/// Every bubble background there is - mine or theirs, first of a run or not,
+/// tailed or not, light or dark - is one of sixteen pictures, drawn once.
+UIImage *TGBubbleBackImage(TGTheme *theme, BOOL mine, BOOL first, BOOL last) {
+	static UIImage *cache[16];
+	BOOL dark = theme.isDarkStyle;
+	unsigned slot = (mine ? 1u : 0u) | (first ? 2u : 0u) | (last ? 4u : 0u) | (dark ? 8u : 0u);
+	if (cache[slot])
+		return cache[slot];
+
+	CGFloat tl, tr, br, bl;
+	TGBubbleCorners(theme, mine, first, last, &tl, &tr, &br, &bl);
+	CGFloat tw = last ? kTailWidth : 0;
+	// Caps hold every curve; what is left between them is straight edge and
+	// gradient, which is all a stretch may touch.
+	CGFloat left = mine ? MAX(tl, bl) : tw + MAX(tl, last ? kTailCurveSpan : bl);
+	CGFloat right = mine ? tw + MAX(tr, last ? kTailCurveSpan : br) : MAX(tr, br);
+	CGFloat top = MAX(tl, tr);
+	CGFloat bottom = MAX(MAX(bl, br), last ? kTailHeight : 0);
+	CGSize ref = CGSizeMake(left + 1 + right, top + kBubbleBackMiddle + bottom);
+
+	UIBezierPath *path = TGBubbleUnifiedPath(CGSizeMake(ref.width - tw, ref.height),
+			tl, tr, br, bl, last, mine);
+	NSArray *colours = mine ? [theme skeuoBubbleMineGradientColours]
+							: [theme skeuoBubbleTheirsGradientColours];
+	UIColor *edge = mine ? [theme skeuoBubbleMineBorderColour] : [theme skeuoBubbleTheirsBorderColour];
+
+	UIGraphicsBeginImageContextWithOptions(ref, NO, 0);
+	CGContextRef ctx = UIGraphicsGetCurrentContext();
+	[path addClip];
+	CGColorSpaceRef space = CGColorSpaceCreateDeviceRGB();
+	CGGradientRef gradient = CGGradientCreateWithColors(space, (__bridge CFArrayRef)colours, NULL);
+	CGContextDrawLinearGradient(ctx, gradient, CGPointZero, CGPointMake(0, ref.height), 0);
+	CGGradientRelease(gradient);
+	CGColorSpaceRelease(space);
+	// Stroked inside the clip, so only the inner half of the line shows -
+	// exactly what the masked 1 pt shape layer drew.
+	[edge setStroke];
+	path.lineWidth = 1.0f;
+	[path stroke];
+	UIImage *image = UIGraphicsGetImageFromCurrentImageContext();
+	UIGraphicsEndImageContext();
+
+	cache[slot] = [image resizableImageWithCapInsets:UIEdgeInsetsMake(top, left, bottom, right)
+										resizingMode:UIImageResizingModeStretch];
+	return cache[slot];
+}
+
 - (void)tableView:(UITableView *)tableView willDisplayCell:(UITableViewCell *)tableCell forRowAtIndexPath:(NSIndexPath *)indexPath {
 	if (![tableCell isKindOfClass:TGBubbleCell.class] || indexPath.row >= (NSInteger)self.messages.count)
 		return;
 	TGBubbleCell *cell = (TGBubbleCell *)tableCell;
-	cell.bubble.layer.mask = nil;
 	cell.tail.hidden = YES;
 
 	NSDictionary *m = self.messages[indexPath.row];
@@ -369,56 +530,34 @@ static UIBezierPath *TGBubbleUnifiedPath(CGSize size, CGFloat tl, CGFloat tr, CG
 	TGTheme *theme = [TGTheme shared];
 	UIColor *fill = cell.bubble.backgroundColor;
 	BOOL plain = !fill || CGColorGetAlpha(fill.CGColor) < TGAlphaEpsilon;
-	if (plain || layout.isService || layout.isSticker || layout.isRound)
+	if (plain || layout.isService || layout.isSticker || layout.isRound) {
+		[cell parkHiddenViews];
 		return;
-
-	BOOL mine = [m[@"outgoing"] boolValue];
-	CGFloat big = [theme bubbleCornerRadius];
-	CGFloat small = [theme bubbleJoinedCornerRadius];
-	CGFloat top = first ? big : small;
-	CGFloat bottom = small;
-	CGSize size = cell.bubble.bounds.size;
-
-	BOOL hasTail = last;
-	CGFloat tl = mine ? big : top;
-	CGFloat tr = mine ? top : big;
-	CGFloat br = mine ? (hasTail ? 0 : bottom) : big;
-	CGFloat bl = mine ? big : (hasTail ? 0 : bottom);
-
-	CGRect layerFrame = cell.bubble.bounds;
-	if (hasTail) {
-		layerFrame = mine ? CGRectMake(0, 0, size.width + kTailWidth, size.height)
-						  : CGRectMake(-kTailWidth, 0, size.width + kTailWidth, size.height);
 	}
 
-	UIBezierPath *path = TGBubbleUnifiedPath(size, tl, tr, br, bl, hasTail, mine);
+	BOOL mine = [m[@"outgoing"] boolValue];
+	CGSize size = cell.bubble.bounds.size;
+	CGRect backFrame = cell.bubble.bounds;
+	if (last) {
+		backFrame = mine ? CGRectMake(0, 0, size.width + kTailWidth, size.height)
+						 : CGRectMake(-kTailWidth, 0, size.width + kTailWidth, size.height);
+	}
 
 	cell.bubble.clipsToBounds = NO;
 	cell.bubble.layer.cornerRadius = 0;
 	cell.bubble.layer.borderWidth = 0;
 	cell.bubble.layer.borderColor = [UIColor clearColor].CGColor;
-
-	CAShapeLayer *mask = cell.bubbleMask;
-	mask.frame = layerFrame;
-	mask.path = path.CGPath;
-	cell.bubble.layer.mask = mask;
-
 	cell.bubble.backgroundColor = [UIColor clearColor];
-	cell.gradientLayer.hidden = NO;
-	cell.gradientLayer.frame = layerFrame;
-	cell.gradientLayer.colors = mine ? [theme skeuoBubbleMineGradientColours] : [theme skeuoBubbleTheirsGradientColours];
-
-	cell.borderLayer.hidden = NO;
-	cell.borderLayer.frame = layerFrame;
-	cell.borderLayer.path = path.CGPath;
-	cell.borderLayer.strokeColor = (mine ? [theme skeuoBubbleMineBorderColour] : [theme skeuoBubbleTheirsBorderColour]).CGColor;
-	cell.borderLayer.lineWidth = 1.0f;
-	cell.borderLayer.fillColor = [UIColor clearColor].CGColor;
+	cell.bubbleBack.image = TGBubbleBackImage(theme, mine, first, last);
+	cell.bubbleBack.frame = backFrame;
+	cell.bubbleBack.hidden = NO;
 
 	cell.shineBar.hidden = YES;
 	cell.shineGradientLayer.hidden = YES;
 
 	cell.tail.hidden = YES;
+
+	[cell parkHiddenViews];
 }
 
 @end

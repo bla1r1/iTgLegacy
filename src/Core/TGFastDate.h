@@ -57,4 +57,16 @@ static inline size_t TGFastChatDate(time_t unix, time_t now, char *out, size_t c
 	return strlen(out);
 }
 
+/// The local calendar day of `unix` as yyyymmdd, for telling whether two
+/// messages fall on the same day. Opening a chat asked NSCalendar for this
+/// once per message - ICU, about 0.8 ms a call on an A4, 54 ms of a 100 ms
+/// open. Day boundaries are local midnight in every calendar, so Gregorian
+/// numbers compare the same as the user's own would. 0 for no date.
+static inline long TGFastDayNumber(time_t unix) {
+	struct tm parts;
+	if (unix <= 0 || !localtime_r(&unix, &parts))
+		return 0;
+	return (long)(parts.tm_year + 1900) * 10000L + (parts.tm_mon + 1) * 100L + parts.tm_mday;
+}
+
 #endif // TGFASTDATE_H

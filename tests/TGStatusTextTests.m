@@ -5,6 +5,7 @@
 // pinned before they ever reach a device.
 #import "TGTestRunner.h"
 #import "TGStatusText.h"
+#import "TGFastDate.h"
 #import "TGClient.h"
 
 @interface TGStatusTextTests : XCTestCase
@@ -14,10 +15,30 @@
 // A userStatusOffline whole N days back (4 hours into that day, so a test
 // run that lands within ±4 h of midnight keeps grading the same day).
 static NSDictionary *offlineDays(NSInteger days){
+	// Anchored to the calendar, not to "now minus four hours": run just after
+	// midnight, that put "today" into yesterday and both tests failed.
+	// Today is halfway between midnight and now; an earlier day is its noon.
 	NSDate *now = [NSDate date];
-	NSTimeInterval was = now.timeIntervalSince1970
-			- days * 86400.0 - 4 * 3600.0;
+	NSCalendar *cal = [NSCalendar currentCalendar];
+	NSDate *midnight = [cal dateFromComponents:[cal components:
+			NSYearCalendarUnit | NSMonthCalendarUnit | NSDayCalendarUnit fromDate:now]];
+	NSTimeInterval start = midnight.timeIntervalSince1970;
+	NSTimeInterval was = days == 0
+			? start + (now.timeIntervalSince1970 - start) / 2
+			: start - days * 86400.0 + 12 * 3600.0;
 	return @{@"@type" : @"userStatusOffline", @"was_online" : @(was)};
+}
+
+// Must agree with NSCalendar, which it replaced in the chat's date
+// separators, on both sides of a local midnight.
+- (void)testFastDayNumberMatchesCalendar {
+	NSCalendar *cal = [NSCalendar currentCalendar];
+	NSDateComponents *c = [[NSDateComponents alloc] init];
+	c.year = 2026; c.month = 3; c.day = 1; c.hour = 0; c.minute = 0; c.second = 30;
+	NSTimeInterval justAfter = [[cal dateFromComponents:c] timeIntervalSince1970];
+	XCTAssertEqual(TGFastDayNumber((time_t)justAfter), 20260301L);
+	XCTAssertEqual(TGFastDayNumber((time_t)(justAfter - 60)), 20260228L);
+	XCTAssertEqual(TGFastDayNumber(0), 0L);
 }
 
 - (void)testOnline {

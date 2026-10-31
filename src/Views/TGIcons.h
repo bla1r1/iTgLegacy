@@ -99,6 +99,11 @@
 /// Drop the cache after a theme change.
 + (void)flush;
 
+/// The emoji a sticker stands for, rasterised once per emoji and size.
+/// Setting it on a UILabel instead costs a colour-font glyph layout on every
+/// cell reuse: 120 ms on an iPod touch 4, four dropped frames for one row.
++ (UIImage *)emojiGlyph:(NSString *)emoji side:(CGFloat)side;
+
 @end
 
 @interface TGIcons (Menu)

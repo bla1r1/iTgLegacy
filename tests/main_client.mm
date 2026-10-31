@@ -25,6 +25,7 @@
 #import "TGUpdatesTests.mm"
 #import "TGP0MigrationTests.mm"
 #import "TGP1MigrationTests.mm"
+#import "TGStickerBudgetTests.m"
 
 int main(int argc, char *argv[]) {
 	@autoreleasepool {

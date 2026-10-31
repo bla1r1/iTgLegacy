@@ -29,6 +29,10 @@ CGFloat TGTextHeight(NSString *text, UIFont *font, CGFloat width);
 void TGDrawText(NSString *text, CGRect rect, UIFont *font, UIColor *colour,
 				NSTextAlignment alignment, NSShadow *shadow);
 
+/// Loads the message fonts off the main thread once the app is up. Call on
+/// the main thread with the body size.
+void TGWarmFonts(CGFloat bodySize);
+
 #ifdef __cplusplus
 }
 #endif

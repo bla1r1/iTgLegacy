@@ -1,3 +1,4 @@
+#import "TGPerf.h"
 #import "TGChatViewController.h"
 #import "TGClient.h"
 #import "TGTheme.h"
@@ -50,7 +51,9 @@
 		self.edgesForExtendedLayout = UIRectEdgeNone;
 
 	[[TGTheme shared] styleNavigationBar:self.navigationController.navigationBar];
+	double vcStart = TGPerfNow();
 	[self buildTitleView];
+	TGPerfReport("chat vc", "title", vcStart, 50.0);
 	self.streamStore = [[TGMessageStreamStore alloc] init];
 	self.messages = @[];
 	self.layoutCache = [[TGMessageLayoutCache alloc] initWithCapacity:500];
@@ -83,8 +86,19 @@
 	self.wallpaperView.clipsToBounds = YES;
 	self.wallpaperView.autoresizingMask = UIViewAutoresizingFlexibleWidth |
 										  UIViewAutoresizingFlexibleHeight;
-	if ([TGCapabilities canShowWallpaper])
-		self.wallpaperView.image = [[TGTheme shared] wallpaper];
+	if ([TGCapabilities canShowWallpaper]) {
+		// The pattern takes about a frame to render on the A4, and the chat
+		// open paid for it inside the push: the tint shows at once, the
+		// texture lands when the background thread finishes.
+		__weak UIImageView *weakWallpaper = self.wallpaperView;
+		self.wallpaperView.backgroundColor = [[TGTheme shared] chatBackgroundColour];
+		dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_LOW, 0), ^{
+			UIImage *image = [[TGTheme shared] wallpaper];
+			dispatch_async(dispatch_get_main_queue(), ^{
+				weakWallpaper.image = image;
+			});
+		});
+	}
 	[self.view addSubview:self.wallpaperView];
 
 	// Hold a message for the things a chat needs and a tap cannot carry.
@@ -99,8 +113,11 @@
 	[self.view addSubview:self.table];
 
 	[self buildInputBar:b];
+	TGPerfReport("chat vc", "input bar", vcStart, 100.0);
 	[self buildChrome];
+	TGPerfReport("chat vc", "chrome", vcStart, 50.0);
 	[self installSwipeToReply];
+	TGPerfReport("chat vc", "swipe + load", vcStart, 100.0);
 
 	[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(keyboardWillShow:)
 			name:UIKeyboardWillShowNotification object:nil];
@@ -170,6 +187,7 @@
 	}
 
 	[self reload];
+	TGPerfReportMemory("chat opened");
 	if ([TGDevShowcase isDevChatId:self.chatId]) {
 		return;
 	}
@@ -458,11 +476,15 @@
 
 - (void)reload {
 	if ([TGDevShowcase isDevChatId:self.chatId]) {
+		double fixtureStart = TGPerfNow();
 		NSArray *messages = [TGDevShowcase messagesForChatId:self.chatId];
+		TGPerfReport("chat dev", "fixtures", fixtureStart, 50.0);
 		[self noteFirstUnreadIn:messages];
 		[self.streamStore resetWithMessages:messages];
 		self.rawMessages = [self.streamStore messages];
 		self.messages = [self groupedMessagesFromMessages:self.rawMessages];
+		double buildStart = TGPerfNow();
+		TGPerfReport("chat dev", "grouping", buildStart, 50.0);
 		self.atChatEnd = YES;
 		self.anchorToBottom = NO;
 
@@ -471,15 +493,22 @@
 		if (tgsPath) self.lottiePaths[@(-101)] = tgsPath;
 		if (webmPath) self.lottiePaths[@(-102)] = webmPath;
 
+		// iOS 6 asks this delegate for the height of every row during
+		// reloadData, so the layout of the whole chat runs synchronously
+		// here - the "outed" tap on this tier. The chip names it exact.
+		double tableStart = TGPerfNow();
 		[self.table reloadData];
+		TGPerfReport("chat table", "layouts during reload", tableStart, 150.0);
 		return;
 	}
 
 	__weak typeof(self) weakSelf = self;
+	double chatStart = TGPerfNow();
 	[[TGClient shared] historyForChat:self.chatId thread:self.threadId limit:60 completion:^(NSArray *messages){
 		TGChatViewController *me = weakSelf;
 		if (!me)
 			return;
+		TGPerfReport("chat load", "history wait", chatStart, 300.0);
 		BOOL firstLoad = !me.unreadChecked;
 		[me noteFirstUnreadIn:messages];
 		[me.streamStore resetWithMessages:messages];
@@ -499,7 +528,11 @@
 			[kinds addObject:m[@"kind"] ?: @"?"];
 		NSLog(@"TDLIB HISTORY: %lu msgs: %@",
 				(unsigned long)messages.count, [kinds componentsJoinedByString:@", "]);
+		// The layout of thirty visible rows is what a first paint on the A4
+		// really pays for; the network wait is logged on its own.
+		double tableStart = TGPerfNow();
 		[me.table reloadData];
+		TGPerfReport("chat table", "reloadData", tableStart, 100.0);
 		if (unreadRow != NSNotFound)
 			[me.table scrollToRowAtIndexPath:[NSIndexPath indexPathForRow:unreadRow inSection:0]
 							atScrollPosition:UITableViewScrollPositionTop animated:NO];

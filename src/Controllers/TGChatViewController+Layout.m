@@ -1,3 +1,4 @@
+#import "TGPerf.h"
 #import "TGChatViewControllerInternal.h"
 #import "TGCapabilities.h"
 #import "TGStyle.h"
@@ -51,6 +52,13 @@ UIColor *TGSenderColour(int64_t userId) {
 		h += kQuoteBlock;
 	if ([m[@"reactions"] length])
 		h += TGMetricLineBody;
+	// The "12 Comments" bar under a channel post.
+	if ([m[@"canComment"] boolValue])
+		h += TGMetricLineBody;
+	// A bot's buttons, a row each.
+	NSUInteger rows = [m[@"inlineRows"] count];
+	if (rows)
+		h += rows * (TGMetricBotButtonHeight + TGMetricBotButtonGap) + TGMetricBotButtonGap;
 	return h;
 }
 
@@ -217,6 +225,7 @@ UIColor *TGSenderColour(int64_t userId) {
 	}
 
 	TGMessageLayout *layout = [[TGMessageLayout alloc] init];
+	double layoutStart = TGPerfNow();
 	layout.runStart = runStart;
 	layout.runEnd = runEnd;
 	CGFloat tableW = self.table.bounds.size.width;
@@ -431,6 +440,10 @@ UIColor *TGSenderColour(int64_t userId) {
 	// ran out past its own edge.
 	if (isTrack)
 		contentW = MAX(contentW, TGMetricTrackContent);
+	// Buttons share the bubble's width; a short question would squeeze them
+	// to a few points each.
+	if ([m[@"inlineRows"] count])
+		contentW = kBubbleMaxW;
 	CGFloat senderH = senderName.length ? TGMetricSenderLineHeight : TGMetricZero;
 	if (senderName.length) {
 		CGFloat senderW = TGTextSize(senderName, TGFontMetaStrong(), 0).width;
@@ -525,6 +538,10 @@ UIColor *TGSenderColour(int64_t userId) {
 	if (isTrack) rowH = kTrackRow + forwarded + senderH;
 
 	layout.rowHeight = MAX(rowH + TGDoubled(TGMetricBubbleRowInset), kBubbleRowMin);
+	// A slow row names its kind, so scrolling or the initial burst can be
+	// associated with what exactly measured heavy.
+	TGPerfReport("layout", kind.length ? [kind UTF8String] : "?",
+			layoutStart, 20.0);
 
 	if (msgId) self.layoutCache[msgId] = layout;
 	return layout;

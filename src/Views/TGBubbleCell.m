@@ -15,6 +15,11 @@ static const CGFloat kWaveUnplayedAlpha = 0.32f;
 	CTFrameRef _textFrame;          // the laid-out body text, for hit-testing
 	CGSize     _textFrameSize;      // the box it was laid out in
 	CGSize     _waveSize;           // the box the bars were laid out in
+	// Parked views, their superviews and indices, in the order they left.
+	// Strong: a few (the reactions label, poll rows) are held by nothing else.
+	NSMutableArray *_parkedViews;
+	NSMutableArray *_parkedParents;
+	NSUInteger _parkedIndex[64];
 }
 @property (nonatomic, strong) NSAttributedString *textFrameString;
 @property (nonatomic, strong) CAShapeLayer *waveUnplayedLayer;
@@ -33,8 +38,6 @@ static const CGFloat kWaveUnplayedAlpha = 0.32f;
 	if (!self)
 		return nil;
 
-	CGFloat scale = [UIScreen mainScreen].scale;
-
 	self.backgroundColor = [UIColor clearColor];
 	self.contentView.backgroundColor = [UIColor clearColor];
 	self.selectionStyle = UITableViewCellSelectionStyleNone;
@@ -44,40 +47,20 @@ static const CGFloat kWaveUnplayedAlpha = 0.32f;
 	self.bubble.layer.cornerRadius = [theme bubbleCornerRadius];
 	self.bubble.layer.borderWidth = 0;
 	self.bubble.layer.borderColor = [UIColor clearColor].CGColor;
-	self.bubble.clipsToBounds = YES;
-	self.bubble.layer.shouldRasterize = YES;
-	self.bubble.layer.rasterizationScale = scale;
+	// Not clipped and not rasterized. Rounded corners with a clip cost an
+	// offscreen pass per frame, and a rasterized bubble is re-rendered into
+	// a fresh texture on every reuse, which is every 40 pt of scrolling.
+	// cornerRadius alone still rounds the background colour, for free.
 	[self.contentView addSubview:self.bubble];
 
-	// These three outlive the cell and are re-pointed at a different message
-	// on every reuse. Without the null actions CoreAnimation animates each
-	// change over a quarter of a second, so bubbles visibly re-draw
-	// themselves mid-scroll and the phone pays for the morph.
-	NSDictionary *still = @{@"frame"    : [NSNull null],
-							@"bounds"   : [NSNull null],
-							@"position" : [NSNull null],
-							@"path"     : [NSNull null],
-							@"colors"   : [NSNull null],
-							@"hidden"   : [NSNull null]};
-
-	self.gradientLayer = [CAGradientLayer layer];
-	self.gradientLayer.hidden = YES;
-	self.gradientLayer.actions = still;
-	[self.bubble.layer insertSublayer:self.gradientLayer atIndex:0];
-
-	self.borderLayer = [CAShapeLayer layer];
-	self.borderLayer.hidden = YES;
-	self.borderLayer.actions = still;
-	[self.bubble.layer addSublayer:self.borderLayer];
-
-	self.bubbleMask = [CAShapeLayer layer];
-	self.bubbleMask.actions = still;
+	self.bubbleBack = [[UIImageView alloc] init];
+	self.bubbleBack.hidden = YES;
+	[self.bubble addSubview:self.bubbleBack];
 
 	self.picture = [[UIImageView alloc] init];
 	self.picture.contentMode = UIViewContentModeScaleAspectFill;
-	self.picture.clipsToBounds = YES;
-	self.picture.layer.shouldRasterize = YES;
-	self.picture.layer.rasterizationScale = scale;
+	// Pictures arrive pre-cropped and pre-rounded (TGIcons roundedImage:);
+	// cornerRadius here only shapes the placeholder fill, which costs nothing.
 	self.picture.layer.borderColor = [theme separatorColour].CGColor;
 	self.picture.layer.borderWidth = theme.isFlat ? 0.0f : 1.0f;
 	self.picture.layer.cornerRadius = TGMetricCornerSmall;
@@ -119,9 +102,6 @@ static const CGFloat kWaveUnplayedAlpha = 0.32f;
 
 	self.senderAvatar = [[UIImageView alloc] init];
 	self.senderAvatar.layer.cornerRadius = TGHalf(TGMetricGroupAvatarSide);
-	self.senderAvatar.clipsToBounds = YES;
-	self.senderAvatar.layer.shouldRasterize = YES;
-	self.senderAvatar.layer.rasterizationScale = scale;
 	self.senderAvatar.hidden = YES;
 	[self.contentView addSubview:self.senderAvatar];
 
@@ -181,7 +161,9 @@ static const CGFloat kWaveUnplayedAlpha = 0.32f;
 	self.icon.textAlignment = NSTextAlignmentCenter;
 	self.icon.textColor = [UIColor whiteColor];
 	self.icon.font = TGFontHeader();
-	self.icon.clipsToBounds = YES;
+	// Unclipped: the rounded corners are its background colour's, and the
+	// glyph never leaves the tile, so a clip would buy an offscreen pass for
+	// nothing.
 	self.icon.hidden = YES;
 	[self.bubble addSubview:self.icon];
 
@@ -207,9 +189,6 @@ static const CGFloat kWaveUnplayedAlpha = 0.32f;
 	self.mediaStamp.textColor = [UIColor whiteColor];
 	self.mediaStamp.textAlignment = NSTextAlignmentCenter;
 	self.mediaStamp.layer.cornerRadius = TGMetricCornerControl;
-	self.mediaStamp.clipsToBounds = YES;
-	self.mediaStamp.layer.shouldRasterize = YES;
-	self.mediaStamp.layer.rasterizationScale = scale;
 	self.mediaStamp.hidden = YES;
 	[self.bubble addSubview:self.mediaStamp];
 
@@ -249,12 +228,9 @@ static const CGFloat kWaveUnplayedAlpha = 0.32f;
 	for (NSInteger i = 0; i < 4; i++) {
 		UIImageView *cv = [[UIImageView alloc] init];
 		cv.contentMode = UIViewContentModeScaleAspectFill;
-		cv.clipsToBounds = YES;
 		cv.layer.cornerRadius = TGMetricCornerSmall;
 		cv.userInteractionEnabled = YES;
 		cv.tag = i;
-		cv.layer.shouldRasterize = YES;
-		cv.layer.rasterizationScale = scale;
 		UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(collageItemTapped:)];
 		[cv addGestureRecognizer:tap];
 		[self.collageViews addObject:cv];
@@ -514,7 +490,43 @@ static const CGFloat kWaveUnplayedAlpha = 0.32f;
 		CFRelease(_textFrame);
 }
 
+- (void)parkIn:(UIView *)container {
+	NSArray *subs = container.subviews;
+	// Last to first, so removing one never shifts an index still to come.
+	for (NSInteger i = (NSInteger)subs.count - 1; i >= 0; i--) {
+		UIView *v = subs[i];
+		if (!v.hidden || _parkedViews.count >= 64)
+			continue;
+		_parkedIndex[_parkedViews.count] = (NSUInteger)i;
+		[_parkedViews addObject:v];
+		[_parkedParents addObject:container];
+		[v removeFromSuperview];
+	}
+}
+
+- (void)parkHiddenViews {
+	if (!_parkedViews) {
+		_parkedViews = [[NSMutableArray alloc] initWithCapacity:48];
+		_parkedParents = [[NSMutableArray alloc] initWithCapacity:48];
+	}
+	[self parkIn:self.bubble];
+	[self parkIn:self.contentView];
+}
+
+/// Puts the parked views back last-in first-out, so each goes to the index it
+/// left from: everything below it is back in place by then.
+- (void)unparkViews {
+	for (NSInteger i = (NSInteger)_parkedViews.count - 1; i >= 0; i--) {
+		UIView *parent = _parkedParents[i];
+		NSUInteger at = MIN(_parkedIndex[i], parent.subviews.count);
+		[parent insertSubview:_parkedViews[i] atIndex:at];
+	}
+	[_parkedViews removeAllObjects];
+	[_parkedParents removeAllObjects];
+}
+
 - (void)resetForReuse {
+	[self unparkViews];
 	[self stopLoopingVideo];
 	self.icon.hidden = YES;
 	self.subtitle.hidden = YES;
@@ -526,19 +538,19 @@ static const CGFloat kWaveUnplayedAlpha = 0.32f;
 	self.bubble.layer.borderWidth = 0;
 	self.bubble.layer.borderColor = [UIColor clearColor].CGColor;
 	self.bubble.backgroundColor = [UIColor clearColor];
-	self.gradientLayer.hidden = YES;
-	self.borderLayer.hidden = YES;
+	self.bubbleBack.hidden = YES;
+	self.bubble.clipsToBounds = NO;
 	self.shineBar.hidden = YES;
-	// Detached, not thrown away: willDisplayCell: points the bubble back at
-	// it with a new path.
-	self.bubble.layer.mask = nil;
 	self.checkbox.hidden = YES;
 	self.disc.hidden = YES;
 	self.artwork.hidden = YES;
 	self.artwork.image = nil;
 	self.wave.hidden = YES;
 	self.picture.hidden = YES;
-	self.picture.image = nil;
+	// Also forgets a rounded copy still being drawn for the last message.
+	[TGIcons setRoundedImage:nil inView:self.picture size:CGSizeZero radius:0];
+	for (UIImageView *cv in self.collageViews)
+		[TGIcons setRoundedImage:nil inView:cv size:CGSizeZero radius:0];
 	self.body.hidden = YES;
 	self.body.text = nil;
 	self.body.attributedText = nil;

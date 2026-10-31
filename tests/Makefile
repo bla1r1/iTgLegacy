@@ -67,7 +67,8 @@ OBJC_SRCS := \
     $(SRC)/Calls/TGCallReflector.m \
     $(SRC)/Calls/TGCall.mm \
     $(SRC)/Views/TGMessageLayout.mm \
-    $(SRC)/Core/TGStyle.m
+    $(SRC)/Core/TGStyle.m \
+    $(SRC)/Core/TGPerf.m
 
 # Real TGClient sources, compiled only into the second binary: the main
 # binary links a test stub of TGClient instead, which the call tests need.
@@ -92,7 +93,9 @@ CLIENT_OBJC_SRCS := \
     $(SRC)/Core/TGClient+Account.m \
     $(SRC)/Core/TGClient+Auth.m \
     $(SRC)/Core/TGThemeFile.m \
-    $(SRC)/Core/TGImageLruCache.mm
+    $(SRC)/Core/TGImageLruCache.mm \
+    $(SRC)/Core/TGStickerBudget.m \
+    $(SRC)/Core/TGPerf.m
 
 # Test helper ObjC sources. TGClientStub and TGCallAudioEngineStub stand in
 # for the iOS-only production classes that TGCall.mm would otherwise need.
@@ -138,7 +141,8 @@ CLIENT_TEST_SRCS := \
     $(TESTS)/TGClientComposeTests.m \
     $(TESTS)/TGThemeFileTests.m \
     $(TESTS)/TGUpdatesTests.mm \
-    $(TESTS)/TGP1MigrationTests.mm
+    $(TESTS)/TGP1MigrationTests.mm \
+    $(TESTS)/TGStickerBudgetTests.m
 
 TEST_BINARY := $(BUILD)/TGCallTests
 CLIENT_BINARY := $(BUILD)/TGClientTests

@@ -15,6 +15,7 @@
 #import <QuartzCore/QuartzCore.h>
 #import "TGStyle.h"
 #import "TGAlertSheet.h"
+#import "TGPerf.h"
 #include <stdio.h>
 
 @implementation AppDelegate
@@ -63,6 +64,7 @@ static void TGDevCommandNotifyCallback(CFNotificationCenterRef center, void *obs
 	self.log = freopen(logPath.UTF8String, "a+", stderr);
 
 	NSLog(@"[LegacyTG] Starting application...");
+	double launchStart = TGPerfNow();
 	TGWatchForIncomingCalls();
 
 	// Listen for developer automation commands via Darwin notification
@@ -78,6 +80,8 @@ static void TGDevCommandNotifyCallback(CFNotificationCenterRef center, void *obs
 	[self.window makeKeyAndVisible];
 
 	[self startTDLib];
+	// One line if the launch itself misbehaves; silent when it is healthy.
+	TGPerfReport("launch", "didFinishLaunching", launchStart, 300.0);
 
 	return YES;
 }
