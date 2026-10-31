@@ -153,10 +153,6 @@
 
 /// The system's caption is grey on grey over a dark list, which is what
 /// this screen had: every other list styles its own.
-- (void)tableView:(UITableView *)tableView willDisplayHeaderView:(UIView *)view
-	   forSection:(NSInteger)section {
-	[[TGTheme shared] styleSectionHeader:view];
-}
 
 @end
 

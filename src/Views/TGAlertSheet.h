@@ -1,11 +1,10 @@
 //
-// TGAlertSheet - the app's own answer to UIAlertView and UIActionSheet.
+// TGAlertSheet - block API over the system's alerts and action sheets.
 //
-// Those two drew themselves in the system's colours, which on a themed app
-// means a white box in the middle of a dark screen, and they answered through
-// a delegate keyed by a tag - which is how one screen ended up with a switch
-// over five integers to remember what it had asked. This rises from the bottom
-// edge like every other sheet here, takes the theme, and answers with a block.
+// UIAlertView and UIActionSheet answer through a delegate keyed by a tag,
+// which is how one screen ended up with a switch over five integers to
+// remember what it had asked. This shows the same system controls (or
+// UIAlertController on iOS 8+) and answers with a block.
 //
 // Four shapes, which is every shape the app was using:
 //
@@ -14,9 +13,9 @@
 //   showChoices   a list to pick from, Cancel under it
 //   showInput     one text field, Cancel and one action
 //
-#import "TGSheet.h"
+#import <UIKit/UIKit.h>
 
-@interface TGAlertSheet : TGSheet
+@interface TGAlertSheet : NSObject
 
 /// Something to read and nothing to decide. `title` may be nil.
 + (void)showMessage:(NSString *)message
@@ -24,7 +23,8 @@
 			 inView:(UIView *)host;
 
 /// A question. `onConfirm` runs only when the action is tapped; a tap on
-/// Cancel or on the backdrop runs nothing. `destructive` draws the action red.
+/// Cancel runs nothing. `destructive` asks from an action sheet
+/// with the action red.
 + (void)showConfirm:(NSString *)message
 			  title:(NSString *)title
 			 action:(NSString *)actionTitle

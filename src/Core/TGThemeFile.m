@@ -25,6 +25,19 @@
 		   [ext isEqualToString:@"theme"];
 }
 
++ (NSDictionary *)chatPaletteFromFile:(NSString *)path name:(NSString **)name {
+	NSDictionary *palette = [self paletteFromFile:path name:name];
+	if (!palette || [palette[@"isDark"] boolValue])
+		return nil;
+	NSArray *roles = @[@"chatBackground", @"bubbleMine", @"bubbleTheirs",
+					   @"service", @"serviceText", @"ticks"];
+	NSMutableDictionary *chat = [NSMutableDictionary dictionary];
+	for (NSString *role in roles)
+		if (palette[role])
+			chat[role] = palette[role];
+	return chat;
+}
+
 + (NSDictionary *)paletteFromFile:(NSString *)path name:(NSString **)name {
 	NSData *data = [NSData dataWithContentsOfFile:path];
 	if (!data.length)

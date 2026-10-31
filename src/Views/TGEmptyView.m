@@ -3,6 +3,7 @@
 // Centered vector iconography, embossed typography, and action buttons.
 //
 #import "TGEmptyView.h"
+#import "TGIcons.h"
 #import "TGTheme.h"
 #import "TGStyle.h"
 
@@ -68,7 +69,7 @@ static const CGFloat kEmptyBtnW     = 160.0f;
 	_iconView = [[UIImageView alloc] initWithFrame:CGRectMake(iconX, startY, kEmptyIconSide, kEmptyIconSide)];
 	_iconView.image = image;
 	_iconView.contentMode = UIViewContentModeScaleAspectFit;
-	_iconView.tintColor = [theme secondaryTextColour];
+	[TGIcons tintImageView:_iconView colour:[theme secondaryTextColour]];
 	_iconView.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleRightMargin;
 	[self addSubview:_iconView];
 

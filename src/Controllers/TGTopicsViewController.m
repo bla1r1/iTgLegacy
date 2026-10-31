@@ -250,13 +250,6 @@
 	cell.detailTextLabel.backgroundColor = [theme listBackgroundColour];
 
 	cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
-	if (theme.isDark) {
-		UIView *selected = [[UIView alloc] init];
-		selected.backgroundColor = [theme bubbleTheirsColour];
-		cell.selectedBackgroundView = selected;
-	} else {
-		cell.selectedBackgroundView = nil;
-	}
 	return cell;
 }
 
@@ -274,10 +267,6 @@
 
 /// The system's caption is grey on grey over a dark list, which is what
 /// this screen had: every other list styles its own.
-- (void)tableView:(UITableView *)tableView willDisplayHeaderView:(UIView *)view
-	   forSection:(NSInteger)section {
-	[[TGTheme shared] styleSectionHeader:view];
-}
 
 @end
 

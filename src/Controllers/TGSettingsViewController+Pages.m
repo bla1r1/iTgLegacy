@@ -44,10 +44,13 @@
 
 		// Account actions card
 		TGSection(nil, nil, @[
-			([TGClient shared].authState != TGAuthStateReady) ? TGActionRow(@"Log in to Telegram", ^{
+			// Rows like every other in Settings: a glyph on a tile, dark text,
+			// a chevron. Two bare blue lines above an icon row read as a
+			// different list that had lost its margin.
+			([TGClient shared].authState != TGAuthStateReady) ? TGIconRow(@"Log in to Telegram", @"privacy", TGIconTileAzure(), ^{
 				[[AppDelegate sharedDelegate] showLoginUI];
-			}) : TGActionRow(@"Add Account", ^{ [weakSelf explainAddAccount]; }),
-			TGActionRow(hasPhoto ? @"Change Profile Photo" : @"Set Profile Photo", ^{
+			}) : TGIconRow(@"Add Account", @"select", TGIconTileAzure(), ^{ [weakSelf explainAddAccount]; }),
+			TGIconRow(hasPhoto ? @"Change Profile Photo" : @"Set Profile Photo", @"react", TGIconTileCoral(), ^{
 				[weakSelf pickProfilePhoto];
 			}),
 			TGIconRow(@"Edit Profile", @"chat", TGIconTileViolet(), ^{

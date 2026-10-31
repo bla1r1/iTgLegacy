@@ -17,6 +17,41 @@
 #import "TGSettingsViewControllerInternal.h"
 #import "TGStyle.h"
 
+/// A settings row whose icon keeps off the card's edge. iOS 7 insets a
+/// cell's image by itself; iOS 6 puts it hard against the rounded border, so
+/// on the iPod the tiles touched the edge while the 4S showed a margin.
+@interface TGSettingsCell : UITableViewCell
+@end
+
+@implementation TGSettingsCell
+- (void)layoutSubviews {
+	[super layoutSubviews];
+	if (!self.imageView.image || NSFoundationVersionNumber > NSFoundationVersionNumber_iOS_6_1)
+		return;
+	CGRect icon = self.imageView.frame;
+	// iOS 7's own inset, so the two systems agree.
+	CGFloat shift = TGMetricGutter - icon.origin.x;
+	if (shift <= 0)
+		return;
+	CGFloat iconRight = CGRectGetMaxX(icon);
+	icon.origin.x += shift;
+	self.imageView.frame = icon;
+	CGFloat edge = self.contentView.bounds.size.width - TGMetricPadMedium;
+	for (UILabel *label in @[self.textLabel, self.detailTextLabel]) {
+		CGRect f = label.frame;
+		// Only labels beside the icon move; a value at the right stays put.
+		if (f.origin.x > iconRight + TGMetricGutter)
+			continue;
+		f.origin.x += shift;
+		// Value1 sizes the title to its text, so it is moved, not narrowed -
+		// narrowing cut "Edit Profile" to "Edit Pro...". Only the cell's
+		// edge limits it.
+		f.size.width = MIN(f.size.width, MAX(0, edge - f.origin.x));
+		label.frame = f;
+	}
+}
+@end
+
 @implementation TGSettingsViewController
 
 - (id)init {
@@ -88,27 +123,10 @@
 }
 
 - (void)applyTheme {
-	TGTheme *theme = [TGTheme shared];
-	self.tableView.backgroundColor = [theme groupedBackgroundColour];
-	if (!theme.isFlat) {
-		self.tableView.separatorStyle = UITableViewCellSeparatorStyleNone;
-	} else {
-		self.tableView.separatorStyle = UITableViewCellSeparatorStyleSingleLine;
-		self.tableView.separatorColor = [theme separatorColour];
-	}
+	[[TGTheme shared] styleGroupedTable:self.tableView];
 }
 
-- (void)tableView:(UITableView *)tableView willDisplayHeaderView:(UIView *)view
-	   forSection:(NSInteger)section {
-	[[TGTheme shared] styleSectionHeader:view];
-}
 
-- (void)tableView:(UITableView *)tableView willDisplayFooterView:(UIView *)view forSection:(NSInteger)section {
-	if ([view isKindOfClass:[UITableViewHeaderFooterView class]]) {
-		UITableViewHeaderFooterView *footer = (UITableViewHeaderFooterView *)view;
-		footer.textLabel.textColor = [[TGTheme shared] sectionHeaderColour];
-	}
-}
 
 - (void)viewWillAppear:(BOOL)animated {
 	[super viewWillAppear:animated];
@@ -175,8 +193,9 @@
 /// The version, the way their page ends with one - and, as in their client,
 /// ten taps on it opens the debug menu.
 - (UIView *)tableView:(UITableView *)tableView viewForFooterInSection:(NSInteger)section {
+	// Every other footer is the system's (titleForFooterInSection:).
 	if (self.page != TGSettingsPageRoot || section != (NSInteger)self.sections.count - 1)
-		return [self footerLabelForSection:section];
+		return nil;
 	NSDictionary *info = [NSBundle mainBundle].infoDictionary;
 	UILabel *label = [[UILabel alloc] initWithFrame:
 			CGRectMake(0, 0, self.view.bounds.size.width, kVersionRow)];
@@ -190,27 +209,6 @@
 	[label addGestureRecognizer:[[UITapGestureRecognizer alloc]
 			initWithTarget:self action:@selector(versionTapped)]];
 	return label;
-}
-
-- (UIView *)footerLabelForSection:(NSInteger)section {
-	NSString *text = self.sections[section][@"footer"];
-	if (!text.length)
-		return nil;
-	CGSize size = [self footerTextSize:text];
-	UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(
-			kFooterInset, TGMetricPad, self.tableView.bounds.size.width - TGDoubled(kFooterInset),
-			size.height)];
-	label.text = text;
-	label.font = TGFontMeta();
-	label.numberOfLines = 0;
-	label.textColor = [[TGTheme shared] secondaryTextColour];
-	label.backgroundColor = [UIColor clearColor];
-
-	UIView *holder = [[UIView alloc] initWithFrame:CGRectMake(0, 0,
-			self.tableView.bounds.size.width, size.height + TGMetricPadLarge)];
-	holder.backgroundColor = [UIColor clearColor];
-	[holder addSubview:label];
-	return holder;
 }
 
 - (void)versionTapped {
@@ -402,6 +400,16 @@
 	return path.row < (NSInteger)rows.count ? rows[path.row] : nil;
 }
 
+- (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
+	NSString *text = self.sections[section][@"header"];
+	return text.length ? text : nil;
+}
+
+- (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
+	NSString *text = self.sections[section][@"footer"];
+	return text.length ? text : nil;
+}
+
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
 	return self.sections.count;
 }
@@ -410,41 +418,9 @@
 	return [self.sections[section][@"rows"] count];
 }
 
-- (CGFloat)tableView:(UITableView *)tableView heightForHeaderInSection:(NSInteger)section {
-	NSString *text = self.sections[section][@"header"];
-	if (text.length)
-		return TGMetricSectionHeaderHeight;
-	return TGMetricSectionHeaderEmpty;
-}
 
-- (UIView *)tableView:(UITableView *)tableView viewForHeaderInSection:(NSInteger)section {
-	NSString *text = self.sections[section][@"header"];
-	if (!text.length)
-		return [[UIView alloc] initWithFrame:CGRectMake(0, 0, tableView.bounds.size.width, TGMetricSectionHeaderEmpty)];
-	UIView *holder = [[UIView alloc] initWithFrame:CGRectMake(0, 0, tableView.bounds.size.width, TGMetricSectionHeaderHeight)];
-	holder.backgroundColor = [UIColor clearColor];
-	UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(kFooterInset,
-			TGMetricPadMedium, tableView.bounds.size.width - TGDoubled(kFooterInset),
-			TGMetricLineBody)];
-	label.text = text.uppercaseString;
-	label.font = TGFontMeta();
-	label.textColor = [[TGTheme shared] sectionHeaderColour];
-	label.backgroundColor = [UIColor clearColor];
-	[holder addSubview:label];
-	return holder;
-}
-
-/// The footers explain things, so there are a lot of words in them; at UIKit's
-/// default size they were louder than the settings they describe. Drawn here
-/// rather than handed over as a title so the size is ours.
-static const CGFloat kFooterInset  = TGMetricGutter;
 /// The version line that ends the root page.
 static const CGFloat kVersionRow   = 40.0f;
-/// Measuring a footer: the narrowest column worth wrapping into, and a height
-/// no footer will reach, which is how sizeWithFont: is told "as tall as it
-/// needs".
-static const CGFloat kFooterMinW   = 100.0f;
-static const CGFloat kFooterMaxH   = 400.0f;
 /// The theme preview: a strip of wallpaper with two bubbles on it.
 static const CGFloat kPreviewInset    = TGMetricPadMedium + TGMetricPadTiny;
 static const CGFloat kPreviewTop      = TGMetricPadLarge - TGMetricPadTiny;
@@ -476,20 +452,11 @@ static const CGFloat kMeNameTop    = TGMetricPadMedium;
 static const CGFloat kMeNameLine   = TGMetricLineTitle + TGMetricPadTiny;
 static const CGFloat kMeTextInset  = TGMetricPadMedium;
 
-- (CGSize)footerTextSize:(NSString *)text {
-	CGFloat width = self.tableView.bounds.size.width - TGDoubled(kFooterInset);
-	return [text sizeWithFont:TGFontMeta()
-			constrainedToSize:CGSizeMake(MAX(width, kFooterMinW), kFooterMaxH)
-				lineBreakMode:NSLineBreakByWordWrapping];
-}
 
 - (CGFloat)tableView:(UITableView *)tableView heightForFooterInSection:(NSInteger)section {
 	if (self.page == TGSettingsPageRoot && section == (NSInteger)self.sections.count - 1)
 		return TGMetricSectionFooterRoot;
-	NSString *text = self.sections[section][@"footer"];
-	if (!text.length)
-		return TGMetricSectionHeaderHidden;
-	return [self footerTextSize:text].height + TGMetricSectionFooterGap;
+	return UITableViewAutomaticDimension;
 }
 
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)path {
@@ -575,17 +542,12 @@ static const CGFloat kMeTextInset  = TGMetricPadMedium;
 				CGRectMake(kPreviewTextLeft, textTop, bubbleW - kPreviewStampRoom, tFit.height)];
 		text.text = lines[i];
 		text.font = font;
-		text.textColor = mine ? (theme.isDarkStyle ? [UIColor whiteColor] : [theme primaryTextColour]) : [theme primaryTextColour];
+		text.textColor = [theme primaryTextColour];
 		text.backgroundColor = [UIColor clearColor];
 		text.adjustsFontSizeToFitWidth = NO;
 		text.numberOfLines = 0;
-		if (theme.isDarkStyle && mine) {
-			text.shadowColor = [theme navBarTextShadowColour];
-			text.shadowOffset = CGSizeMake(0, -1.0f);
-		} else {
-			text.shadowColor = [theme etchedTextShadowColour];
-			text.shadowOffset = CGSizeMake(0, 1.0f);
-		}
+		text.shadowColor = [theme etchedTextShadowColour];
+		text.shadowOffset = CGSizeMake(0, 1.0f);
 		[bubble addSubview:text];
 
 		UILabel *stamp = [[UILabel alloc] initWithFrame:
@@ -630,7 +592,7 @@ static const CGFloat kMeTextInset  = TGMetricPadMedium;
 	NSString *reuse = subtitle ? @"TGSettingsSubtitleCell" : @"TGSettingsCell";
 	UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:reuse];
 	if (!cell)
-		cell = [[UITableViewCell alloc] initWithStyle:(subtitle
+		cell = [[TGSettingsCell alloc] initWithStyle:(subtitle
 						? UITableViewCellStyleSubtitle : UITableViewCellStyleValue1)
 									  reuseIdentifier:reuse];
 
@@ -642,21 +604,24 @@ static const CGFloat kMeTextInset  = TGMetricPadMedium;
 	[theme styleGroupedCell:cell forRow:path.row totalRows:[self.sections[path.section][@"rows"] count]];
 
 	cell.textLabel.text = row[TGRowTitle];
-	cell.textLabel.font = TGFontRow();
 	cell.textLabel.textAlignment = NSTextAlignmentLeft;
-	cell.textLabel.textColor = [kind isEqualToString:TGKindDestructive]
-			? [theme destructiveColour] : [theme primaryTextColour];
 	cell.detailTextLabel.text = row[TGRowDetail];
-	cell.detailTextLabel.font = subtitle ? TGFontCaption() : TGFontBody();
-	cell.detailTextLabel.textColor = subtitle
-			? [theme secondaryTextColour] : [theme cellDetailColour];
+	// The system's own type, as on every other settings page of the OS.
+	UITableViewCell *system = [TGTheme systemCellOfStyle:(subtitle
+			? UITableViewCellStyleSubtitle : UITableViewCellStyleValue1)];
+	cell.textLabel.font = system.textLabel.font;
+	cell.textLabel.textColor = system.textLabel.textColor;
+	cell.detailTextLabel.font = system.detailTextLabel.font;
+	cell.detailTextLabel.textColor = system.detailTextLabel.textColor;
+	if ([kind isEqualToString:TGKindDestructive])
+		cell.textLabel.textColor = [theme destructiveColour];
 
 	if (row[TGRowIcon])
 		cell.imageView.image = [TGIcons settingsIconNamed:row[TGRowIcon]
 													color:row[TGRowColour]];
 
 	if ([kind isEqualToString:TGKindToggle]){
-		TGSwitch *toggle = [[TGSwitch alloc] init];
+		UISwitch *toggle = [[UISwitch alloc] init];
 		toggle.on = [row[TGRowOn] boolValue];
 		toggle.tag = path.section * 100 + path.row;
 		[toggle addTarget:self action:@selector(toggleChanged:)
@@ -692,7 +657,7 @@ static const CGFloat kMeTextInset  = TGMetricPadMedium;
 	static NSString *reuse = @"TGSettingsSwitchInfoCell";
 	UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:reuse];
 	if (!cell)
-		cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle
+		cell = [[TGSettingsCell alloc] initWithStyle:UITableViewCellStyleSubtitle
 									  reuseIdentifier:reuse];
 	[theme styleGroupedCell:cell forRow:path.row totalRows:[self.sections[path.section][@"rows"] count]];
 	cell.selectionStyle = UITableViewCellSelectionStyleNone;
@@ -711,7 +676,7 @@ static const CGFloat kMeTextInset  = TGMetricPadMedium;
 	cell.imageView.image = row[TGRowIcon]
 			? [TGIcons settingsIconNamed:row[TGRowIcon] color:row[TGRowColour]] : nil;
 
-	TGSwitch *toggle = [[TGSwitch alloc] init];
+	UISwitch *toggle = [[UISwitch alloc] init];
 	toggle.on = [row[TGRowOn] boolValue];
 	toggle.tag = path.section * 100 + path.row;
 	[toggle addTarget:self action:@selector(toggleChanged:)

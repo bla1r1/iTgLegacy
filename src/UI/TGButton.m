@@ -121,7 +121,20 @@ static const CGFloat kDefaultPadH = 14.0f;
 	self.titleLabel.font = [self resolvedFont];
 
 	TGTheme *theme = [TGTheme shared];
-	if (_variant == TGButtonVariantSecondary || _variant == TGButtonVariantGhost) {
+	if (_variant == TGButtonVariantGhost) {
+		// A link, as iOS 6 draws "Forgot password?" under a form: no plate,
+		// accent text etched into the background. The translucent plate it
+		// had read as a disabled grey bar, and its disabled title vanished.
+		[self setBackgroundImage:nil forState:UIControlStateNormal];
+		[self setBackgroundImage:nil forState:UIControlStateHighlighted];
+		[self setTitleColor:[theme accentColour] forState:UIControlStateNormal];
+		[self setTitleColor:[[theme accentColour] colorWithAlphaComponent:TGAlphaHighlight]
+				   forState:UIControlStateHighlighted];
+		[self setTitleColor:[theme secondaryTextColour] forState:UIControlStateDisabled];
+		[self setTitleShadowColor:[theme etchedTextShadowColour] forState:UIControlStateNormal];
+		self.titleLabel.shadowOffset = TGMetricShadowOffsetEtched;
+		_spinner.activityIndicatorViewStyle = UIActivityIndicatorViewStyleGray;
+	} else if (_variant == TGButtonVariantSecondary) {
 		[self setTitleColor:[theme primaryTextColour] forState:UIControlStateNormal];
 		[self setTitleShadowColor:[theme etchedTextShadowColour] forState:UIControlStateNormal];
 		self.titleLabel.shadowOffset = CGSizeMake(0, 1.0f);

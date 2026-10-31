@@ -64,23 +64,19 @@ static const CGFloat kFieldWidth = 290.0f;
 }
 
 - (void)applyTheme {
-	self.tableView.backgroundColor = [[TGTheme shared] groupedBackgroundColour];
-	self.tableView.separatorColor = [[TGTheme shared] separatorColour];
+	[[TGTheme shared] styleGroupedTable:self.tableView];
 	[[TGTheme shared] styleNavigationBar:self.navigationController.navigationBar];
 	if (self.firstField) {
 		self.firstField.textColor = [[TGTheme shared] primaryTextColour];
-		self.firstField.keyboardAppearance = [TGTheme shared].isDark
-				? UIKeyboardAppearanceDark : UIKeyboardAppearanceDefault;
+		self.firstField.keyboardAppearance = UIKeyboardAppearanceDefault;
 	}
 	if (self.lastField) {
 		self.lastField.textColor = [[TGTheme shared] primaryTextColour];
-		self.lastField.keyboardAppearance = [TGTheme shared].isDark
-				? UIKeyboardAppearanceDark : UIKeyboardAppearanceDefault;
+		self.lastField.keyboardAppearance = UIKeyboardAppearanceDefault;
 	}
 	if (self.phoneField) {
 		self.phoneField.textColor = [[TGTheme shared] primaryTextColour];
-		self.phoneField.keyboardAppearance = [TGTheme shared].isDark
-				? UIKeyboardAppearanceDark : UIKeyboardAppearanceDefault;
+		self.phoneField.keyboardAppearance = UIKeyboardAppearanceDefault;
 	}
 }
 
@@ -91,8 +87,7 @@ static const CGFloat kFieldWidth = 290.0f;
 	field.font = TGFontRow();
 	field.delegate = self;
 	field.returnKeyType = UIReturnKeyDone;
-	field.keyboardAppearance = [TGTheme shared].isDark
-			? UIKeyboardAppearanceDark : UIKeyboardAppearanceDefault;
+	field.keyboardAppearance = UIKeyboardAppearanceDefault;
 	field.textColor = [[TGTheme shared] primaryTextColour];
 	field.attributedPlaceholder = [[NSAttributedString alloc]
 			initWithString:placeholder
@@ -131,11 +126,6 @@ static const CGFloat kFieldWidth = 290.0f;
 	return cell;
 }
 
-- (void)tableView:(UITableView *)tableView
-	   willDisplayHeaderView:(UIView *)view
-				 forSection:(NSInteger)section {
-	[[TGTheme shared] styleSectionHeader:view];
-}
 
 #pragma mark - saving
 

@@ -70,6 +70,10 @@ The two halves are not comparable: 1076 functions include every bot, Stars, busi
 - **Download manager** — **done**: Settings → Downloads; pause, cancel, remove, sweep
 - **Reporting** — **done**: profile More menu; `reportChat` two-step; Report Spam in groups; Report Reaction
 - **Recents** — **done**: search opens on Top Chats + Recently Opened, deduplicated; `addRecentlyFoundChat` on open
+- **Sign-in recovery** — **done**: forgotten cloud password (`requestAuthenticationPasswordRecovery` → `checkAuthenticationPasswordRecoveryCode` → `recoverAuthenticationPassword`), password hint shown, email address and email code steps, "Can't access this email?" (`resetAuthenticationEmailAddress`), "Didn't get the code?" (`reportAuthenticationCodeMissing`)
+- **Channel comments** — **done**: "N Comments" bar under a channel post with a discussion group; `getMessageThread` opens the thread as a chat
+- **Everyday actions** — **done**: Delete Contact (`removeContacts`), Delete for Everyone (`deleteChat`), hold the pinned strip to Unpin All (`unpinAllChatMessages` / `unpinAllForumTopicMessages`), Move Up/Down for pinned chats (`setPinnedChats`), Jump to Date from the profile menu (`getChatMessageByDate`)
+- **Bot buttons** — **done**: inline keyboards under bot messages (callback via `getCallbackQueryAnswer`, URL, login via `getLoginUrlInfo` / `getLoginUrl` with a confirm, switch-inline into the composer, copy text, user); reply keyboards in a panel behind a key in the composer, kept live by `updateChatReplyMarkup`. Web apps, payments, games and password callbacks show greyed out
 
 ---
 
@@ -149,7 +153,7 @@ Tier 1 is down to what has no screen to land on. In order:
 5. `updateUnreadMessageCount` — needs the app-icon badge drawn first, same.
 6. `updateLanguagePackStrings` — only matters once the app ships more than one language.
 
-Not an update, but the largest single feature hole left: bot keyboards. `replyMarkupInlineKeyboard`, `replyMarkupShowKeyboard` and `getCallbackQueryAnswer` are unimplemented, so buttons under a bot's message are not drawn and cannot be pressed. Inline mode (`getInlineQueryResults`, `sendInlineQueryResultMessage`) already works.
+Bot keyboards, once the largest feature hole, are in (see Tier 1).
 
 ---
 

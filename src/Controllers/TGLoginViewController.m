@@ -46,7 +46,7 @@
 }
 
 - (UIStatusBarStyle)preferredStatusBarStyle {
-    return [TGTheme shared].isDark ? UIStatusBarStyleLightContent : UIStatusBarStyleDefault;
+    return UIStatusBarStyleDefault;
 }
 
 - (void)setupUI {
@@ -207,10 +207,10 @@
     self.prefixSeparator.backgroundColor = [theme separatorColour];
 
     self.phonePrefixField.textColor = [theme primaryTextColour];
-    self.phonePrefixField.keyboardAppearance = theme.isDark ? UIKeyboardAppearanceDark : UIKeyboardAppearanceLight;
+    self.phonePrefixField.keyboardAppearance = UIKeyboardAppearanceLight;
 
     self.inputField.textColor = [theme primaryTextColour];
-    self.inputField.keyboardAppearance = theme.isDark ? UIKeyboardAppearanceDark : UIKeyboardAppearanceLight;
+    self.inputField.keyboardAppearance = UIKeyboardAppearanceLight;
 
     if (self.inputField.placeholder.length) {
         self.inputField.attributedPlaceholder = [[NSAttributedString alloc]

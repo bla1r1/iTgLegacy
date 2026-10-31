@@ -376,28 +376,6 @@
 	}];
 }
 
-- (void)chooseAutoNight {
-	__weak typeof(self) weakSelf = self;
-	[TGAlertSheet showChoices:@[@"Disabled", @"22:00 - 07:00",
-								@"21:00 - 08:00", @"23:00 - 06:00"]
-						title:@"Auto-Night Mode"
-			 destructiveIndex:-1
-					   inView:self.view
-					 onChoice:^(NSInteger index){
-		TGTheme *theme = [TGTheme shared];
-		if (index == 0){
-			theme.autoNight = TGAutoNightOff;
-		} else {
-			static const NSInteger from[3] = {22, 21, 23};
-			static const NSInteger to[3]   = { 7,  8,  6};
-			theme.autoNightFromHour = from[index - 1];
-			theme.autoNightToHour   = to[index - 1];
-			theme.autoNight = TGAutoNightScheduled;
-		}
-		[weakSelf rebuild];
-	}];
-}
-
 /// Four sizes is enough on a 3.5-inch screen; a slider would be finer than
 /// the difference it makes.
 - (void)chooseTextSize {

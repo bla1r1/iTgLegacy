@@ -1,4 +1,5 @@
 #import "TGEditProfileViewController.h"
+#import "TGSheet.h"
 #import "TGClient.h"
 #import "TGTheme.h"
 #import "TGIcons.h"
@@ -82,14 +83,13 @@ static const CGFloat kFieldWidth = 290.0f;
 }
 
 - (void)applyTheme {
-	self.tableView.backgroundColor = [[TGTheme shared] groupedBackgroundColour];
-	self.tableView.separatorColor = [[TGTheme shared] separatorColour];
+	[[TGTheme shared] styleGroupedTable:self.tableView];
 	[[TGTheme shared] styleNavigationBar:self.navigationController.navigationBar];
 }
 
 - (void)updateFieldAppearances {
 	NSArray *fields = @[self.firstField, self.lastField, self.usernameField, self.bioField];
-	UIKeyboardAppearance kb = [TGTheme shared].isDark ? UIKeyboardAppearanceDark : UIKeyboardAppearanceDefault;
+	UIKeyboardAppearance kb = UIKeyboardAppearanceDefault;
 	for (UITextField *f in fields) {
 		if (!f) continue;
 		f.textColor = [[TGTheme shared] primaryTextColour];
@@ -108,23 +108,13 @@ static const CGFloat kFieldWidth = 290.0f;
 	field.font = TGFontRow();
 	field.delegate = self;
 	field.returnKeyType = UIReturnKeyDone;
-	field.keyboardAppearance = [TGTheme shared].isDark ? UIKeyboardAppearanceDark : UIKeyboardAppearanceDefault;
+	field.keyboardAppearance = UIKeyboardAppearanceDefault;
 	field.textColor = [[TGTheme shared] primaryTextColour];
 	[self setPlaceholder:placeholder on:field];
 	return field;
 }
 
-- (void)tableView:(UITableView *)tableView willDisplayHeaderView:(UIView *)view
-	   forSection:(NSInteger)section {
-	[[TGTheme shared] styleSectionHeader:view];
-}
 
-- (void)tableView:(UITableView *)tableView willDisplayFooterView:(UIView *)view forSection:(NSInteger)section {
-	if ([view isKindOfClass:[UITableViewHeaderFooterView class]]) {
-		UITableViewHeaderFooterView *footer = (UITableViewHeaderFooterView *)view;
-		footer.textLabel.textColor = [[TGTheme shared] sectionHeaderColour];
-	}
-}
 
 /// UITextField draws its placeholder in a fixed pale grey, which on a dark
 /// theme is grey on near-black and effectively invisible - an empty Last name

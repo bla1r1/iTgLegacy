@@ -35,8 +35,7 @@
 }
 
 - (void)applyTheme {
-	self.tableView.backgroundColor = [[TGTheme shared] groupedBackgroundColour];
-	self.tableView.separatorColor = [[TGTheme shared] separatorColour];
+	[[TGTheme shared] styleGroupedTable:self.tableView];
 	[[TGTheme shared] styleNavigationBar:self.navigationController.navigationBar];
 }
 
@@ -69,17 +68,7 @@
 	return nil;
 }
 
-- (void)tableView:(UITableView *)tableView willDisplayHeaderView:(UIView *)view
-	   forSection:(NSInteger)section {
-	[[TGTheme shared] styleSectionHeader:view];
-}
 
-- (void)tableView:(UITableView *)tableView willDisplayFooterView:(UIView *)view forSection:(NSInteger)section {
-	if ([view isKindOfClass:[UITableViewHeaderFooterView class]]) {
-		UITableViewHeaderFooterView *footer = (UITableViewHeaderFooterView *)view;
-		footer.textLabel.textColor = [[TGTheme shared] sectionHeaderColour];
-	}
-}
 
 #pragma mark - table
 

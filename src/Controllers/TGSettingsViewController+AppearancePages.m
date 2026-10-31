@@ -30,11 +30,6 @@
 		})];
 	}
 
-	NSString *autoNightDetail = (theme.autoNight == TGAutoNightScheduled)
-			? [NSString stringWithFormat:@"%02ld:00 - %02ld:00",
-					(long)theme.autoNightFromHour, (long)theme.autoNightToHour]
-			: @"Disabled";
-
 	return @[
 		TGSection(nil, nil, @[TGRow(TGKindPreview, @"")]),
 
@@ -49,14 +44,6 @@
 			}),
 		]),
 
-		TGSection(@"Auto-Night Mode",
-				  @"There is no system dark mode on this OS to follow, so the "
-				  @"schedule is the automatic. Picking a theme by hand at night "
-				  @"turns the schedule off until morning.", @[
-			TGTapRow(@"Auto-Night Mode", autoNightDetail, ^{
-				[weakSelf chooseAutoNight];
-			}),
-		]),
 
 		TGSection(@"Design System",
 				  @"Interactive gallery demonstrating iOS 6 Reimagined tactile "

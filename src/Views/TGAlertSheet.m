@@ -1,315 +1,215 @@
-#import "TGTextDraw.h"
 #import "TGAlertSheet.h"
-#import "TGTheme.h"
-#import "TGStyle.h"
 
-static const CGFloat kRow      = TGMetricActionRow; ///< one button
-static const CGFloat kPad      = TGMetricAlertPad;  ///< text from the card's edge
-static const CGFloat kTextGap  = TGMetricAlertTextGap; ///< title to message
-static const CGFloat kFieldTop = TGMetricAlertFieldTop;
-
-/// The list shape is the one the others are built on, and it takes a message
-/// the public list form has no room for.
-@interface TGAlertSheet ()
-+ (void)showChoices:(NSArray *)titles
-			  title:(NSString *)title
-			message:(NSString *)message
-   destructiveIndex:(NSInteger)destructiveIndex
-			 inView:(UIView *)host
-		   onChoice:(void (^)(NSInteger index))onChoice;
+/// The system's own alerts and sheets behind the block API the app calls:
+/// UIAlertView and UIActionSheet up to iOS 7, UIAlertController from 8. They
+/// look like every other app on the phone, on whichever OS it runs; the
+/// drawn sheet this replaced was an iOS 6 imitation everywhere.
+///
+/// The pre-8 classes answer a delegate; an instance of this class is that
+/// delegate, holds the blocks, and keeps itself alive in sLive until the
+/// alert is gone.
+@interface TGAlertSheet () <UIAlertViewDelegate, UIActionSheetDelegate>
+@property (nonatomic, copy) void (^onButton)(NSInteger buttonIndex, NSString *text);
 @end
 
-@implementation TGAlertSheet {
-	UITextField *_field;
-	void (^_onSubmit)(NSString *);
-	void (^_onChoice)(NSInteger);
+static NSMutableSet *sLive;
+
+@implementation TGAlertSheet
+
++ (BOOL)hasAlertController {
+	return NSClassFromString(@"UIAlertController") != nil;
 }
 
-#pragma mark - the pieces every shape is built from
-
-/// The block of text at the top of a card: a bold title, a message under it,
-/// or either on its own. Returns the height it took.
-+ (CGFloat)addTextTo:(UIView *)card title:(NSString *)title message:(NSString *)message {
-	TGTheme *theme = [TGTheme shared];
-	CGFloat width = card.bounds.size.width - TGDoubled(kPad);
-	CGFloat y = kPad;
-
-	if (title.length){
-		CGSize size = [self sizeOfText:title font:TGFontRowStrong() width:width];
-		UILabel *label = [[UILabel alloc] initWithFrame:
-				CGRectMake(kPad, y, width, size.height)];
-		label.text = title;
-		label.font = TGFontRowStrong();
-		label.textColor = [theme primaryTextColour];
-		label.numberOfLines = 0;
-		label.textAlignment = NSTextAlignmentCenter;
-		label.backgroundColor = [UIColor clearColor];
-		[card addSubview:label];
-		y += size.height + (message.length ? kTextGap : 0);
-	}
-
-	if (message.length){
-		CGSize size = [self sizeOfText:message font:TGFontCaption() width:width];
-		UILabel *label = [[UILabel alloc] initWithFrame:
-				CGRectMake(kPad, y, width, size.height)];
-		label.text = message;
-		label.font = TGFontCaption();
-		label.textColor = [theme secondaryTextColour];
-		label.numberOfLines = 0;
-		label.textAlignment = NSTextAlignmentCenter;
-		label.backgroundColor = [UIColor clearColor];
-		[card addSubview:label];
-		y += size.height;
-	}
-
-	return y > kPad ? y + kPad : 0;
++ (TGAlertSheet *)holderWith:(void (^)(NSInteger, NSString *))onButton {
+	if (!sLive)
+		sLive = [NSMutableSet set];
+	TGAlertSheet *holder = [[TGAlertSheet alloc] init];
+	holder.onButton = onButton;
+	[sLive addObject:holder];
+	return holder;
 }
 
-/// Text height, through whichever measuring call this OS has.
-+ (CGSize)sizeOfText:(NSString *)text font:(UIFont *)font width:(CGFloat)width {
-	return CGSizeMake(width, TGTextHeight(text, font, width));
+/// The controller a UIAlertController is presented from: the top of
+/// whatever the host's window is showing.
++ (UIViewController *)presenterFor:(UIView *)host {
+	UIWindow *window = host.window ?: [UIApplication sharedApplication].keyWindow;
+	UIViewController *vc = window.rootViewController;
+	while (vc.presentedViewController)
+		vc = vc.presentedViewController;
+	return vc;
 }
 
-/// One button row, with the hairline above it that separates it from whatever
-/// it follows.
-- (UIButton *)addRowTo:(UIView *)card atY:(CGFloat)y title:(NSString *)title
-		   destructive:(BOOL)destructive separator:(BOOL)separator {
-	TGTheme *theme = [TGTheme shared];
-	if (separator){
-		UIView *line = [[UIView alloc] initWithFrame:
-				CGRectMake(0, y, card.bounds.size.width, TGMetricHairline)];
-		line.backgroundColor = [theme separatorColour];
-		[card addSubview:line];
++ (void)present:(UIAlertController *)alert from:(UIView *)host {
+	// iPad shows a sheet as a popover, which needs somewhere to point.
+	UIPopoverPresentationController *pop = alert.popoverPresentationController;
+	if (pop) {
+		pop.sourceView = host;
+		pop.sourceRect = CGRectMake(CGRectGetMidX(host.bounds), CGRectGetMaxY(host.bounds) - 1, 1, 1);
 	}
-	UIButton *button = [UIButton buttonWithType:UIButtonTypeCustom];
-	button.frame = CGRectMake(0, y, card.bounds.size.width, kRow);
-	button.titleLabel.font = destructive ? TGFontRowStrong() : TGFontRow();
-	[button setTitle:title forState:UIControlStateNormal];
-	if (!theme.isFlat) {
-		TGButtonStyle btnStyle = destructive ? TGButtonStyleDestructive : TGButtonStyleSilver;
-		[TGTheme applySkeuomorphicStyleToButton:button style:btnStyle];
-	} else {
-		[button setTitleColor:destructive ? [theme destructiveColour] : [theme accentColour]
-					 forState:UIControlStateNormal];
-		[button setTitleColor:[theme secondaryTextColour] forState:UIControlStateHighlighted];
-	}
-	[card addSubview:button];
-	return button;
+	[[self presenterFor:host] presentViewController:alert animated:YES completion:nil];
 }
 
-/// The Cancel card that sits on its own under the stack, as an action sheet's
-/// does. Dismissing is all it ever means, so it needs no block.
-- (void)addCancelCardTitled:(NSString *)title {
-	UIView *card = [self addCardOfHeight:kRow edgeToEdge:NO];
-	UIButton *cancel = [self addRowTo:card atY:0 title:(title ?: @"Cancel")
-						  destructive:NO separator:NO];
-	cancel.titleLabel.font = TGFontRowStrong();
-	if (![TGTheme shared].isFlat) {
-		[TGTheme applySkeuomorphicStyleToButton:cancel style:TGButtonStyleSilver];
-	}
-	[cancel addTarget:self action:@selector(dismiss)
-	 forControlEvents:UIControlEventTouchUpInside];
+/// Title and message as one line of an action sheet, which has only a title.
+static NSString *TGSheetTitle(NSString *title, NSString *message) {
+	if (title.length && message.length)
+		return [NSString stringWithFormat:@"%@\n\n%@", title, message];
+	return title.length ? title : (message.length ? message : nil);
+}
+
+static NSString *TGTrimmed(NSString *text) {
+	return [text ?: @"" stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
 }
 
 #pragma mark - the four shapes
 
 + (void)showMessage:(NSString *)message title:(NSString *)title inView:(UIView *)host {
-	if (!host || (!message.length && !title.length))
+	if ([self hasAlertController]) {
+		UIAlertController *alert = [UIAlertController alertControllerWithTitle:title message:message
+				preferredStyle:UIAlertControllerStyleAlert];
+		[alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleCancel handler:nil]];
+		[self present:alert from:host];
 		return;
-	TGAlertSheet *sheet = [self sheetForView:host];
-	CGFloat width = host.bounds.size.width - TGDoubled(TGMetricCardMargin);
-	CGFloat textHeight = [self addTextTo:[[UIView alloc] initWithFrame:
-			CGRectMake(0, 0, width, 0)] title:title message:message];
-
-	UIView *card = [sheet addCardOfHeight:textHeight + kRow edgeToEdge:NO];
-	[self addTextTo:card title:title message:message];
-	UIButton *ok = [sheet addRowTo:card atY:textHeight title:@"OK"
-					   destructive:NO separator:YES];
-	if (![TGTheme shared].isFlat) {
-		[TGTheme applySkeuomorphicStyleToButton:ok style:TGButtonStyleAction];
 	}
-	[ok addTarget:sheet action:@selector(dismiss)
- forControlEvents:UIControlEventTouchUpInside];
-	[sheet present];
+	[[[UIAlertView alloc] initWithTitle:title message:message delegate:nil
+					  cancelButtonTitle:@"OK" otherButtonTitles:nil] show];
 }
 
 + (void)showConfirm:(NSString *)message title:(NSString *)title
 			 action:(NSString *)actionTitle destructive:(BOOL)destructive
 			 inView:(UIView *)host onConfirm:(void (^)(void))onConfirm {
-	if (!host)
+	// An action that destroys something asks from the bottom with a red
+	// button, as iOS itself does; anything else is a plain alert.
+	if ([self hasAlertController]) {
+		UIAlertController *alert = [UIAlertController alertControllerWithTitle:title message:message
+				preferredStyle:destructive ? UIAlertControllerStyleActionSheet : UIAlertControllerStyleAlert];
+		[alert addAction:[UIAlertAction actionWithTitle:actionTitle
+				style:destructive ? UIAlertActionStyleDestructive : UIAlertActionStyleDefault
+				handler:^(UIAlertAction *a){ if (onConfirm) onConfirm(); }]];
+		[alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+		[self present:alert from:host];
 		return;
-	[self showChoices:@[actionTitle ?: @"OK"]
-				title:title
-			  message:message
-	 destructiveIndex:destructive ? 0 : -1
-			   inView:host
-			 onChoice:^(NSInteger index){ if (onConfirm) onConfirm(); }];
+	}
+	if (destructive) {
+		[self showChoices:@[actionTitle] title:title message:message destructiveIndex:0
+				   inView:host onChoice:^(NSInteger index){ if (onConfirm) onConfirm(); }];
+		return;
+	}
+	TGAlertSheet *holder = [self holderWith:^(NSInteger button, NSString *text){
+		if (button == 1 && onConfirm)
+			onConfirm();
+	}];
+	[[[UIAlertView alloc] initWithTitle:title message:message delegate:holder
+					  cancelButtonTitle:@"Cancel" otherButtonTitles:actionTitle, nil] show];
 }
 
 + (void)showChoices:(NSArray *)titles title:(NSString *)title
-   destructiveIndex:(NSInteger)destructiveIndex inView:(UIView *)host
-		   onChoice:(void (^)(NSInteger index))onChoice {
-	[self showChoices:titles title:title message:nil
-	 destructiveIndex:destructiveIndex inView:host onChoice:onChoice];
+   destructiveIndex:(NSInteger)destructiveIndex
+			 inView:(UIView *)host onChoice:(void (^)(NSInteger index))onChoice {
+	[self showChoices:titles title:title message:nil destructiveIndex:destructiveIndex
+			   inView:host onChoice:onChoice];
 }
 
-/// The one the other three end up in. A message under the title is what
-/// separates a confirmation from a plain list, and nothing else does.
 + (void)showChoices:(NSArray *)titles title:(NSString *)title message:(NSString *)message
-   destructiveIndex:(NSInteger)destructiveIndex inView:(UIView *)host
-		   onChoice:(void (^)(NSInteger index))onChoice {
-	if (!host || titles.count == 0)
+   destructiveIndex:(NSInteger)destructiveIndex
+			 inView:(UIView *)host onChoice:(void (^)(NSInteger index))onChoice {
+	if (!titles.count)
 		return;
-	TGAlertSheet *sheet = [self sheetForView:host];
-	CGFloat width = host.bounds.size.width - TGDoubled(TGMetricCardMargin);
-	CGFloat textHeight = [self addTextTo:[[UIView alloc] initWithFrame:
-			CGRectMake(0, 0, width, 0)] title:title message:message];
-
-	UIView *card = [sheet addCardOfHeight:textHeight + kRow * titles.count
-							   edgeToEdge:NO];
-	[self addTextTo:card title:title message:message];
-
-	for (NSUInteger i = 0; i < titles.count; i++){
-		UIButton *button = [sheet addRowTo:card
-									   atY:textHeight + kRow * i
-									 title:titles[i]
-							   destructive:(NSInteger)i == destructiveIndex
-								 separator:(i > 0 || textHeight > 0)];
-		button.tag = (NSInteger)i;
-		[button addTarget:sheet action:@selector(choiceTapped:)
-		 forControlEvents:UIControlEventTouchUpInside];
+	if ([self hasAlertController]) {
+		UIAlertController *sheet = [UIAlertController alertControllerWithTitle:title message:message
+				preferredStyle:UIAlertControllerStyleActionSheet];
+		[titles enumerateObjectsUsingBlock:^(NSString *t, NSUInteger i, BOOL *stop){
+			[sheet addAction:[UIAlertAction actionWithTitle:t
+					style:(NSInteger)i == destructiveIndex ? UIAlertActionStyleDestructive : UIAlertActionStyleDefault
+					handler:^(UIAlertAction *a){ if (onChoice) onChoice((NSInteger)i); }]];
+		}];
+		[sheet addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+		[self present:sheet from:host];
+		return;
 	}
-
-	sheet->_onChoice = [onChoice copy];
-	[sheet addCancelCardTitled:nil];
-	[sheet present];
+	TGAlertSheet *holder = [self holderWith:nil];
+	UIActionSheet *sheet = [[UIActionSheet alloc] initWithTitle:TGSheetTitle(title, message) delegate:holder
+			cancelButtonTitle:nil destructiveButtonTitle:nil otherButtonTitles:nil];
+	for (NSString *t in titles)
+		[sheet addButtonWithTitle:t];
+	if (destructiveIndex >= 0 && destructiveIndex < (NSInteger)titles.count)
+		sheet.destructiveButtonIndex = destructiveIndex;
+	sheet.cancelButtonIndex = [sheet addButtonWithTitle:@"Cancel"];
+	NSInteger cancel = sheet.cancelButtonIndex;
+	holder.onButton = ^(NSInteger button, NSString *text){
+		if (button != cancel && button >= 0 && onChoice)
+			onChoice(button);
+	};
+	[sheet showInView:host.window ?: host];
 }
 
 + (void)showInput:(NSString *)title message:(NSString *)message
 	  placeholder:(NSString *)placeholder text:(NSString *)text
 		   action:(NSString *)actionTitle inView:(UIView *)host
-		 onSubmit:(void (^)(NSString *))onSubmit {
-	[self showTextFieldInput:title message:message
-				   placeholder:placeholder text:text secure:NO
-					   action:actionTitle inView:host
-					 onSubmit:onSubmit];
+		 onSubmit:(void (^)(NSString *text))onSubmit {
+	[self showField:title message:message placeholder:placeholder text:text secure:NO
+			 action:actionTitle inView:host onSubmit:onSubmit];
 }
 
-/// The same card with dots instead of letters - what a password is worth
-/// asking for with. Everything else about the flow is the ordinary input.
 + (void)showSecureInput:(NSString *)title message:(NSString *)message
-			placeholder:(NSString *)placeholder
-				 action:(NSString *)actionTitle
-				 inView:(UIView *)host
-			  onSubmit:(void (^)(NSString *text))onSubmit {
-	[self showTextFieldInput:title message:message
-				   placeholder:placeholder text:nil secure:YES
-					   action:actionTitle inView:host
-					 onSubmit:onSubmit];
+			placeholder:(NSString *)placeholder action:(NSString *)actionTitle
+				 inView:(UIView *)host onSubmit:(void (^)(NSString *text))onSubmit {
+	[self showField:title message:message placeholder:placeholder text:nil secure:YES
+			 action:actionTitle inView:host onSubmit:onSubmit];
 }
 
-+ (void)showTextFieldInput:(NSString *)title message:(NSString *)message
-			   placeholder:(NSString *)placeholder text:(NSString *)text
-					secure:(BOOL)secure
-					action:(NSString *)actionTitle inView:(UIView *)host
-				  onSubmit:(void (^)(NSString *text))onSubmit {
-	if (!host)
+/// One field: the submit runs only on the action and never with an empty
+/// string, which is what every caller had been checking for itself.
++ (void)showField:(NSString *)title message:(NSString *)message
+	  placeholder:(NSString *)placeholder text:(NSString *)text secure:(BOOL)secure
+		   action:(NSString *)actionTitle inView:(UIView *)host
+		 onSubmit:(void (^)(NSString *text))onSubmit {
+	void (^submit)(NSString *) = ^(NSString *typed){
+		NSString *clean = TGTrimmed(typed);
+		if (clean.length && onSubmit)
+			onSubmit(clean);
+	};
+	if ([self hasAlertController]) {
+		UIAlertController *alert = [UIAlertController alertControllerWithTitle:title message:message
+				preferredStyle:UIAlertControllerStyleAlert];
+		[alert addTextFieldWithConfigurationHandler:^(UITextField *field){
+			field.placeholder = placeholder;
+			field.text = text;
+			field.secureTextEntry = secure;
+		}];
+		__weak UIAlertController *weakAlert = alert;
+		[alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+		[alert addAction:[UIAlertAction actionWithTitle:actionTitle style:UIAlertActionStyleDefault
+				handler:^(UIAlertAction *a){ submit(weakAlert.textFields.firstObject.text); }]];
+		[self present:alert from:host];
 		return;
-	TGTheme *theme = [TGTheme shared];
-	TGAlertSheet *sheet = [self sheetForView:host];
-	CGFloat width = host.bounds.size.width - TGDoubled(TGMetricCardMargin);
-	CGFloat textHeight = [self addTextTo:[[UIView alloc] initWithFrame:
-			CGRectMake(0, 0, width, 0)] title:title message:message];
-	CGFloat fieldHeight = TGMetricRow - kFieldTop;
-
-	UIView *card = [sheet addCardOfHeight:textHeight + kFieldTop + fieldHeight + kRow
-							   edgeToEdge:NO];
-	[self addTextTo:card title:title message:message];
-
-	UITextField *field = [[UITextField alloc] initWithFrame:
-			CGRectMake(kPad, textHeight + kFieldTop, width - TGDoubled(kPad), fieldHeight)];
-	field.font = TGFontRow();
-	field.text = text ?: @"";
+	}
+	TGAlertSheet *holder = [self holderWith:^(NSInteger button, NSString *typed){
+		if (button == 1)
+			submit(typed);
+	}];
+	UIAlertView *alert = [[UIAlertView alloc] initWithTitle:title message:message delegate:holder
+										  cancelButtonTitle:@"Cancel" otherButtonTitles:actionTitle, nil];
+	alert.alertViewStyle = secure ? UIAlertViewStyleSecureTextInput : UIAlertViewStylePlainTextInput;
+	UITextField *field = [alert textFieldAtIndex:0];
 	field.placeholder = placeholder;
-	field.textColor = [theme primaryTextColour];
-	if (!theme.isFlat) {
-		field.borderStyle = UITextBorderStyleNone;
-		[TGTheme applySkeuomorphicInputStyle:field];
-	} else {
-		field.borderStyle = UITextBorderStyleRoundedRect;
-	}
-	field.autocorrectionType = UITextAutocorrectionTypeNo;
-	field.returnKeyType = UIReturnKeyDone;
-	field.clearButtonMode = UITextFieldViewModeWhileEditing;
-	field.secureTextEntry = secure;
-	field.autocapitalizationType = UITextAutocapitalizationTypeNone;
-	[card addSubview:field];
-	sheet->_field = field;
-	sheet->_onSubmit = [onSubmit copy];
-
-	UIButton *done = [sheet addRowTo:card atY:textHeight + kFieldTop + fieldHeight
-							   title:(actionTitle ?: @"OK") destructive:NO separator:YES];
-	if (!theme.isFlat) {
-		[TGTheme applySkeuomorphicStyleToButton:done style:TGButtonStyleAction];
-	}
-	[done addTarget:sheet action:@selector(submitTapped)
-   forControlEvents:UIControlEventTouchUpInside];
-	[field addTarget:sheet action:@selector(submitTapped)
-	forControlEvents:UIControlEventEditingDidEndOnExit];
-
-	[sheet addCancelCardTitled:nil];
-	// The keyboard comes up with the sheet, so the inset is in place before
-	// the slide rather than shoving the card a second time.
-	[[NSNotificationCenter defaultCenter] addObserver:sheet
-											 selector:@selector(keyboardChanged:)
-												 name:UIKeyboardWillShowNotification
-											   object:nil];
-	[sheet present];
-	[field becomeFirstResponder];
+	field.text = text;
+	[alert show];
 }
 
-#pragma mark - answering
+#pragma mark - pre-iOS 8 delegates
 
-- (void)choiceTapped:(UIButton *)button {
-	void (^choice)(NSInteger) = _onChoice;
-	NSInteger index = button.tag;
-	[self dismiss];
-	if (choice)
-		choice(index);
+- (void)alertView:(UIAlertView *)alertView didDismissWithButtonIndex:(NSInteger)buttonIndex {
+	NSString *typed = alertView.alertViewStyle == UIAlertViewStyleDefault
+			? nil : [alertView textFieldAtIndex:0].text;
+	if (self.onButton)
+		self.onButton(buttonIndex, typed);
+	[sLive removeObject:self];
 }
 
-- (void)submitTapped {
-	NSString *text = [_field.text stringByTrimmingCharactersInSet:
-			[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-	void (^submit)(NSString *) = _onSubmit;
-	[_field resignFirstResponder];
-	[self dismiss];
-	if (submit && text.length)
-		submit(text);
-}
-
-- (void)keyboardChanged:(NSNotification *)note {
-	CGRect frame = [note.userInfo[UIKeyboardFrameEndUserInfoKey] CGRectValue];
-	// Before iOS 8 the frame arrives in unrotated screen coordinates, so in
-	// landscape its width is what covers the screen's height. The shorter side
-	// is the keyboard's own height either way.
-	CGFloat height = UIInterfaceOrientationIsLandscape(
-			[UIApplication sharedApplication].statusBarOrientation)
-			? MIN(frame.size.width, frame.size.height)
-			: frame.size.height;
-	[UIView animateWithDuration:TGAnimationDurationMedium animations:^{ self.bottomInset = height; }];
-}
-
-- (void)dismiss {
-	[[NSNotificationCenter defaultCenter] removeObserver:self];
-	[_field resignFirstResponder];
-	[super dismiss];
-}
-
-- (void)dealloc {
-	[[NSNotificationCenter defaultCenter] removeObserver:self];
+- (void)actionSheet:(UIActionSheet *)actionSheet didDismissWithButtonIndex:(NSInteger)buttonIndex {
+	if (self.onButton)
+		self.onButton(buttonIndex, nil);
+	[sLive removeObject:self];
 }
 
 @end
-
-// vim:ft=objc

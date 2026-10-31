@@ -204,7 +204,6 @@ static inline NSString *TGBytes(long long bytes) {
 - (void)askDeleteAccountNow;
 - (void)openSupport;
 - (void)askPrivacyRuleAtIndex:(NSUInteger)index;
-- (void)chooseAutoNight;
 - (void)chooseTextSize;
 - (void)chooseWallpaper;
 - (void)presentWallpaperPicker;

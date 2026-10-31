@@ -178,4 +178,30 @@ static void TGAssertColour(NSString *key, NSDictionary *palette,
 	XCTAssertLessThan(sa, 0.9f, "too opaque: the alpha byte was lost");
 	TGAssertColour(@"service", palette, 0x22, 0x30, 0x3c);
 }
+/// iOS 6-12 never had dark chrome, so a dark file is refused outright and a
+/// light one reaches only the chat: bars and lists stay the system's.
+- (void)testChatPaletteRefusesDarkAndKeepsOnlyChatRoles {
+	NSString *light = [NSString stringWithFormat:
+		@"actionBarDefault=%d\n"
+		"windowBackgroundWhite=%d\n"
+		"chat_outBubble=%d\n"
+		"chat_inBubble=%d\n",
+		TGAtThemeARGB(0x51, 0x7D, 0xA2),
+		TGAtThemeARGB(0xFF, 0xFF, 0xFF),
+		TGAtThemeARGB(0x2B, 0x5D, 0x7F),
+		TGAtThemeARGB(0xFF, 0xFF, 0xFF)];
+	NSString *name = nil;
+	NSDictionary *chat = [TGThemeFile chatPaletteFromFile:TGThemeWriteTemp(@"chatonly.attheme", light)
+													 name:&name];
+	XCTAssertNotNil(chat);
+	XCTAssertEqualObjects(name, @"chatonly");
+	TGAssertColour(@"bubbleMine", chat, 0x2B, 0x5D, 0x7F);
+	XCTAssertNil(chat[@"bar"], "%@", chat);
+	XCTAssertNil(chat[@"listBackground"], "%@", chat);
+
+	NSString *dark = [NSString stringWithFormat:@"windowBackgroundWhite=%d\n",
+		TGAtThemeARGB(0x26, 0x2E, 0x26)];
+	XCTAssertNil([TGThemeFile chatPaletteFromFile:TGThemeWriteTemp(@"night.attheme", dark) name:NULL]);
+}
+
 @end

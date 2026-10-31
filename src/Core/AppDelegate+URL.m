@@ -806,11 +806,10 @@ static NSString *TGBase64FromImage(UIImage *img) {
 		dispatch_async(dispatch_get_main_queue(), ^{
 			NSString *themeId = arg.lowercaseString;
 			// The old names still work; scripts on the device use them.
-			if ([themeId isEqualToString:@"skeuomorphic"]) themeId = @"classic";
-			else if ([themeId isEqualToString:@"flat"])    themeId = @"day";
-			else if ([themeId isEqualToString:@"dark"])    themeId = @"night";
-			else if ([themeId isEqualToString:@"none"])    themeId = @"day";
-			else if (![@[@"classic", @"day", @"night", @"nightblue"] containsObject:themeId])
+			// Every built-in name is Classic now.
+			if ([@[@"skeuomorphic", @"flat", @"dark", @"none", @"day", @"night", @"nightblue"] containsObject:themeId])
+				themeId = @"classic";
+			else if (![themeId isEqualToString:@"classic"])
 				themeId = [@"file:" stringByAppendingString:arg];
 
 			NSLog(@"theme: %@ -> %@", arg,

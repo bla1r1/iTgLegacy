@@ -140,9 +140,6 @@ static const CGFloat TGMetricMediaStripHeader   = 38.0f;
 
 #pragma mark - table section metrics
 
-static const CGFloat TGMetricSectionHeaderHeight = 32.0f;
-static const CGFloat TGMetricSectionHeaderEmpty  = 20.0f;
-static const CGFloat TGMetricSectionFooterGap    = TGMetricPadLarge;
 static const CGFloat TGMetricSectionFooterRoot   = 38.0f;
 
 static const CGFloat TGMetricToastBottomOffset = 70.0f;
@@ -168,7 +165,6 @@ static const CGFloat TGMetricImageHintBottomOffset = 34.0f;
 #pragma mark - media and collage layout
 
 static const CGFloat TGMetricScreenWidth        = 320.0f;
-static const CGFloat TGMetricCompactBarHeight   = 32.0f;
 static const CGFloat TGMetricCollageWidth       = 220.0f;
 static const CGFloat TGMetricCollageGap         = TGMetricPadTiny;
 static const CGFloat TGMetricCollageHeightDual  = 135.0f;
@@ -181,11 +177,17 @@ static const CGFloat TGMetricSelectionShift     = 34.0f;
 static const CGFloat TGMetricLoginQRSize        = 180.0f;
 
 static const CGFloat TGMetricStackTop   = TGMetricPadLarge;
-static const CGFloat TGMetricStackStep  = TGMetricPad;
+static const CGFloat TGMetricStackStep  = TGMetricPadMedium;  // 8 left the field touching the button
 static const CGFloat TGMetricStackGroup = 20.0f;
 static const CGFloat TGMetricLoginSubtitleHeight = TGMetricLineSubhead + TGMetricLineSubhead;
 static const CGFloat TGMetricLoginPrefixWidth    = 56.0f;
 static const CGFloat TGMetricLoginLinkHeight     = 30.0f;
+/// A bot's inline button under its message, and the space between two.
+static const CGFloat TGMetricBotButtonHeight     = 32.0f;
+static const CGFloat TGMetricBotButtonGap        = 4.0f;
+/// One key of a bot's reply keyboard, and how many rows show before it scrolls.
+static const CGFloat TGMetricBotKeyHeight        = 40.0f;
+static const NSInteger TGMetricBotKeyRowsShown   = 4;
 static const CGFloat TGMetricStackQRTop          = 64.0f;
 static const CGFloat TGMetricUploadPhotoSide     = 640.0f;
 static const CGFloat TGMetricTextMeasureHeight   = 10000.0f;
@@ -240,7 +242,6 @@ static const CGFloat TGMetricFloatingDateTopOffset = TGMetricPad;
 static const CGFloat TGMetricMenuActionOffset      = 60.0f;
 static const CGFloat TGMetricChatListMenuX         = 120.0f;
 static const CGFloat TGMetricChatCellDateGap       = TGMetricPadSmall;
-static const CGFloat TGMetricSectionHeaderHidden = 0.001f;
 static const CGFloat TGFontMessageBaseSize      = 13.0f;
 static const CGFloat TGFontMessageStep          = 2.0f;
 static const CGFloat TGPlaybackSpeedNormal      = 1.0f;

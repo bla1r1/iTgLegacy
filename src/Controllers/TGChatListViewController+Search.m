@@ -4,21 +4,8 @@
 
 - (void)styleSearchBar {
 	TGTheme *theme = [TGTheme shared];
-	self.searchBar.barStyle = theme.isDark ? UIBarStyleBlack : UIBarStyleDefault;
-	if ([self.searchBar respondsToSelector:@selector(setBarTintColor:)])
-		self.searchBar.barTintColor = [theme searchBarBackgroundColour];
-	self.searchBar.tintColor = [theme accentColour];
-	self.searchBar.backgroundColor = [theme searchBarBackgroundColour];
-	if (!theme.isFlat) {
-		[self.searchBar setBackgroundImage:[TGTheme skeuomorphicBarImageWithColor:[theme searchBarBackgroundColour] height:TGMetricRow]];
-	} else {
-		[self.searchBar setBackgroundImage:nil];
-	}
-	if ([self.searchBar respondsToSelector:@selector(setImage:forSearchBarIcon:state:)]) {
-		[self.searchBar setImage:[TGIcons searchLensOfSize:TGMetricSearchIconSize colour:[theme secondaryTextColour]]
-				forSearchBarIcon:UISearchBarIconSearch
-						   state:UIControlStateNormal];
-	}
+	self.searchBar.barStyle = UIBarStyleDefault;
+	[theme styleSearchBar:self.searchBar];
 }
 
 - (BOOL)searchBarShouldBeginEditing:(UISearchBar *)searchBar {

@@ -33,9 +33,9 @@ static const CGFloat kAvatarLargeSide = 60.0f;
 	TGButton *_busyToggleBtn;
 
 	// Switches
-	TGSwitch *_pushSwitch;
+	UISwitch *_pushSwitch;
 	UILabel *_pushLabel;
-	TGSwitch *_soundSwitch;
+	UISwitch *_soundSwitch;
 	UILabel *_soundLabel;
 
 	// Sliders
@@ -79,7 +79,7 @@ static const CGFloat kAvatarLargeSide = 60.0f;
 	TGAvatarView *_smallAvatar;
 	TGAvatarView *_onlineAvatar;
 	TGAvatarView *_largeAvatar;
-	TGSearchBar *_searchHeaderBar;
+	UISearchBar *_searchHeaderBar;
 }
 @end
 
@@ -152,7 +152,7 @@ static const CGFloat kAvatarLargeSide = 60.0f;
 	[_contentView addSubview:_busyToggleBtn];
 
 	// ── 2. Switches ─────────────────────────────────────────
-	_pushSwitch = [[TGSwitch alloc] initWithFrame:CGRectZero];
+	_pushSwitch = [[UISwitch alloc] initWithFrame:CGRectZero];
 	_pushSwitch.on = YES;
 	[_pushSwitch addTarget:self action:@selector(switchChanged:) forControlEvents:UIControlEventValueChanged];
 	[_contentView addSubview:_pushSwitch];
@@ -163,7 +163,7 @@ static const CGFloat kAvatarLargeSide = 60.0f;
 	_pushLabel.text = @"Push Notifications: ON";
 	[_contentView addSubview:_pushLabel];
 
-	_soundSwitch = [[TGSwitch alloc] initWithFrame:CGRectZero];
+	_soundSwitch = [[UISwitch alloc] initWithFrame:CGRectZero];
 	_soundSwitch.on = NO;
 	[_soundSwitch addTarget:self action:@selector(switchChanged:) forControlEvents:UIControlEventValueChanged];
 	[_contentView addSubview:_soundSwitch];
@@ -330,7 +330,7 @@ static const CGFloat kAvatarLargeSide = 60.0f;
 	[_largeAvatar setName:@"Telegram" colourId:3];
 	[_contentView addSubview:_largeAvatar];
 
-	_searchHeaderBar = [[TGSearchBar alloc] initWithFrame:CGRectZero];
+	_searchHeaderBar = [[UISearchBar alloc] initWithFrame:CGRectZero];
 	_searchHeaderBar.placeholder = @"Search chats and contacts...";
 	[_contentView addSubview:_searchHeaderBar];
 }
@@ -346,7 +346,7 @@ static const CGFloat kAvatarLargeSide = 60.0f;
 	[_busyToggleBtn setTitle:willBeBusy ? @"Restore Normal State" : @"Toggle Busy Spinner" forState:UIControlStateNormal];
 }
 
-- (void)switchChanged:(TGSwitch *)sender {
+- (void)switchChanged:(UISwitch *)sender {
 	if (sender == _pushSwitch) {
 		_pushLabel.text = [NSString stringWithFormat:@"Push Notifications: %@", sender.isOn ? @"ON" : @"OFF"];
 	} else if (sender == _soundSwitch) {

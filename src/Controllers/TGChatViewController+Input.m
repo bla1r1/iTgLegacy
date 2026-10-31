@@ -66,9 +66,7 @@
 	self.input.textColor = [[TGTheme shared] primaryTextColour];
 	self.input.font = TGFontBody();
 	self.input.returnKeyType = UIReturnKeySend;
-	self.input.keyboardAppearance = [TGTheme shared].isDark
-			? UIKeyboardAppearanceAlert : UIKeyboardAppearanceDefault;
-	self.input.delegate = self;
+		self.input.delegate = self;
 	self.input.autoresizingMask = UIViewAutoresizingFlexibleWidth;
 	[self.inputBar addSubview:self.input];
 

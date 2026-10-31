@@ -42,6 +42,12 @@ void TGIconsSetCached(NSString *key, UIImage *img) {
 												 selector:@selector(flush)
 													 name:TGThemeChangedNotification
 												   object:nil];
+		// Every icon is drawn again on demand; after a memory warning they
+		// are the cheapest megabytes to give back.
+		[[NSNotificationCenter defaultCenter] addObserver:self
+												 selector:@selector(flush)
+													 name:UIApplicationDidReceiveMemoryWarningNotification
+												   object:nil];
 	}
 }
 
@@ -377,6 +383,45 @@ static void TGDrawTabPath(CGContextRef ctx, UIBezierPath *path, BOOL filled) {
 		CGContextMoveToPoint(ctx, TGHalf(s), 21);
 		CGContextAddLineToPoint(ctx, TGHalf(s), s - 4);
 		CGContextStrokePath(ctx);
+	}];
+}
+
++ (void)tintImageView:(UIImageView *)view colour:(UIColor *)colour {
+	if (!view || !colour)
+		return;
+	if (NSFoundationVersionNumber > NSFoundationVersionNumber_iOS_6_1) {
+		view.tintColor = colour;
+		return;
+	}
+	UIImage *tinted = [self image:view.image filledWith:colour];
+	if (tinted)
+		view.image = tinted;
+}
+
++ (UIImage *)image:(UIImage *)image filledWith:(UIColor *)colour {
+	if (!image.CGImage || !colour)
+		return nil;
+	CGRect box = CGRectMake(0, 0, image.size.width, image.size.height);
+	UIGraphicsBeginImageContextWithOptions(image.size, NO, image.scale);
+	CGContextRef ctx = UIGraphicsGetCurrentContext();
+	CGContextTranslateCTM(ctx, 0, image.size.height);
+	CGContextScaleCTM(ctx, 1.0, -1.0);
+	CGContextClipToMask(ctx, box, image.CGImage);
+	[colour setFill];
+	CGContextFillRect(ctx, box);
+	UIImage *out = UIGraphicsGetImageFromCurrentImageContext();
+	UIGraphicsEndImageContext();
+	return out;
+}
+
+/// U+2328 would say "keyboard", but iOS 6 has no glyph for it.
++ (UIImage *)botKeyboard {
+	return [self iconNamed:@"botKeyboard" draw:^(CGContextRef ctx, CGFloat s){
+		CGFloat key = (s - 10) / 3.0f;
+		for (int row = 0; row < 2; row++)
+			for (int col = 0; col < 3; col++)
+				CGContextFillRect(ctx, CGRectMake(3 + col * (key + 2), s * 0.3f + row * (key + 2),
+												  key, key * 0.8f));
 	}];
 }
 

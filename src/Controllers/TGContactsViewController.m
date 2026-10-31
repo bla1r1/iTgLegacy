@@ -26,6 +26,31 @@ static const NSUInteger kPhotoCacheCap = 50;
 @property (nonatomic, strong) NSMutableSet *picked;
 @end
 
+/// A contact row with its avatar inset and a fixed size. The stock cell sized
+/// the image view to the picture and put it at x 0 on iOS 6, so a large
+/// photo filled the row's height flush against the screen edge.
+@interface TGContactCell : UITableViewCell
+@end
+
+@implementation TGContactCell
+- (void)layoutSubviews {
+	[super layoutSubviews];
+	CGFloat side = TGMetricListAvatar;
+	CGFloat h = self.contentView.bounds.size.height;
+	self.imageView.frame = CGRectMake(TGMetricPad, TGCenteredOrigin(h, side), side, side);
+	CGFloat x = TGMetricPad + side + TGMetricPadMedium;
+	// To the content view's edge: UIKit sized the labels for the picture as
+	// it was before the inset, and the names came out cut short.
+	CGFloat width = MAX(0, self.contentView.bounds.size.width - x - TGMetricPadMedium);
+	for (UILabel *label in @[self.textLabel, self.detailTextLabel]) {
+		CGRect f = label.frame;
+		f.origin.x = x;
+		f.size.width = width;
+		label.frame = f;
+	}
+}
+@end
+
 @implementation TGContactsViewController
 
 - (void)viewDidLoad {
@@ -55,6 +80,8 @@ static const NSUInteger kPhotoCacheCap = 50;
 	self.photos = [[TGImageLruCache alloc] initWithCapacity:kPhotoCacheCap];
 	self.photosRequested = [NSMutableSet set];
 	self.tableView.rowHeight = TGMetricPersonRow;
+	// No separators drawn under the last contact, across the empty screen.
+	self.tableView.tableFooterView = [[UIView alloc] initWithFrame:CGRectZero];
 	self.tableView.backgroundColor = [[TGTheme shared] listBackgroundColour];
 	self.tableView.separatorColor = [[TGTheme shared] separatorColour];
 
@@ -178,8 +205,8 @@ static NSString *TGContactName(NSDictionary *u) {
 	static NSString *reuse = @"TGContactCell";
 	UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:reuse];
 	if (!cell)
-		cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle
-									  reuseIdentifier:reuse];
+		cell = [[TGContactCell alloc] initWithStyle:UITableViewCellStyleSubtitle
+									reuseIdentifier:reuse];
 
 	NSDictionary *u = self.users[indexPath.row];
 	NSString *name = TGContactName(u);
@@ -213,22 +240,12 @@ static NSString *TGContactName(NSDictionary *u) {
 					(name.length ? [name substringToIndex:1].uppercaseString : @"?")
 									   size:TGMetricListAvatar
 								   colourId:[u[@"id"] longLongValue]];
-	cell.imageView.image = photo;
-	cell.imageView.layer.cornerRadius = TGHalf(TGMetricListAvatar);
-	cell.imageView.clipsToBounds = YES;
-	cell.imageView.layer.shouldRasterize = YES;
-	cell.imageView.layer.rasterizationScale = [UIScreen mainScreen].scale;
-	cell.imageView.layer.borderColor = [[TGTheme shared] separatorColour].CGColor;
-	cell.imageView.layer.borderWidth = 1.0f;
-	cell.imageView.contentMode = UIViewContentModeScaleAspectFill;
+	// Cropped and rounded once at the row's size: no clip, no rasterizing.
+	cell.imageView.image = [TGIcons roundedImage:photo
+										   size:CGSizeMake(TGMetricListAvatar, TGMetricListAvatar)
+										 radius:TGHalf(TGMetricListAvatar)
+										corners:UIRectCornerAllCorners];
 
-	if ([TGTheme shared].isDark) {
-		UIView *selected = [[UIView alloc] init];
-		selected.backgroundColor = [[TGTheme shared] bubbleTheirsColour];
-		cell.selectedBackgroundView = selected;
-	} else {
-		cell.selectedBackgroundView = nil;
-	}
 	return cell;
 }
 
@@ -356,10 +373,6 @@ static NSString *TGContactName(NSDictionary *u) {
 
 /// The system's caption is grey on grey over a dark list, which is what
 /// this screen had: every other list styles its own.
-- (void)tableView:(UITableView *)tableView willDisplayHeaderView:(UIView *)view
-	   forSection:(NSInteger)section {
-	[[TGTheme shared] styleSectionHeader:view];
-}
 
 @end
 

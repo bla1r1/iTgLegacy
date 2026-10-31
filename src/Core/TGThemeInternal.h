@@ -41,62 +41,24 @@ static inline UIColor *TGThemeRGB(int r, int g, int b) {
 #define TG_MEDIA_CIRCLE   TGThemeRGB(0x72, 0xB5, 0xE9)   // media circle
 #define TG_FILE_NAME      TGThemeRGB(0x4E, 0x9A, 0xD4)
 
-// Dark Skeuomorphic Palette (Night iOS 6)
-#define TG_GRAY_DARK16    TGThemeRGB(0x20, 0x20, 0x20)   // bars
-#define TG_GRAY_DARK15    TGThemeRGB(0x21, 0x21, 0x21)   // lists, cards
-#define TG_GRAY_DARK14    TGThemeRGB(0x23, 0x23, 0x23)   // chat background
-#define TG_GRAY_DARK13    TGThemeRGB(0x33, 0x33, 0x33)   // incoming bubble, separators
-#define TG_GRAY_DARK6     TGThemeRGB(0x99, 0x99, 0x99)   // secondary text
-#define TG_STEEL_DARK13   TGThemeRGB(0x7D, 0x84, 0x8A)   // timestamp
-#define TG_BLUE_DARK6     TGThemeRGB(0x1B, 0x5A, 0x7D)   // outgoing bubble
-
 #pragma mark - the role resolver
 
-/// The standard shape of a colour getter: an imported theme wins outright,
-/// otherwise the built-in value depends on the built-in dark style. Used as
-///
-///     - (UIColor *)barColour {
-///         return TGRole(@"bar", TG_GRAY_DARK16, TG_BLUE_DARK4);
-///     }
-///
-/// Getters whose light branch is dynamic (pattern colours, derived tints) or
-/// whose imported key does not divide into a clean pair fall back to writing
-/// the three lines out; both shapes must stay interchangeable.
-#define TGRole(key, dark, light) \
-	([self importedColour:key] ?: (self.isDarkStyle ? (dark) : (light)))
+/// The standard shape of a colour getter: an imported theme wins for the
+/// chat roles it may set (see -importedColour:), the built-in value otherwise.
+#define TGRole(key, light) ([self importedColour:key] ?: (light))
 
 #pragma mark - the imported role registry
 
-// Importable roles and what they cover (one name in the dictionaries every
-// theme file parser produces - TGThemeFile.m; anything a parser leaves out
-// simply falls through to the built-in palettes above):
+// Theme file parsers (TGThemeFile.m) emit a dictionary keyed by role name.
+// The app reads only the chat roles from it - the system draws everything
+// else on iOS 6-12, which never had dark or tinted chrome:
 //
-//   bar               navigation bar, tab bar, profile header backdrop
-//   barTitle          navigation bar title
-//   barSubtitle       secondary line in a navigation header
-//   barButton         navigation bar buttons and icons
-//   accent            links, unread badges, settings values, typing colour
-//   destructive       delete actions, red alerts
-//   chatBackground    chat canvas and grouped page backdrop
+//   chatBackground    chat canvas
 //   bubbleMine        outgoing bubble
 //   bubbleTheirs      incoming bubble
-//   listBackground    plain list background
-//   cardBackground    grouped card surface
-//   primaryText       main text
-//   secondaryText     secondary text, timestamps, section captions
-//   searchBarBackground   the recessed search well
-//   actionTile        translucent tiles in the profile header
+//   service           service message plate ("X joined the group")
+//   serviceText       text on that plate
 //   ticks             delivery checkmarks
-//   badge             unread badge plate
-//   badgeText          text inside the unread badge
-//   mutedBadge         the same badge when the chat is muted
-//   service            service message plate ("X joined the group")
-//   serviceText        text on that plate
-//   groupedBackground  the page behind a grouped settings list
-//   separator          hairlines between rows
-//   calloutGlossTop   gloss card top reflection
-//   calloutGlossBottom    gloss card bottom reflection
-//
 //
 // Adding a new external theme format starts here and in TGThemeFile.m:
 // write a parser that emits a dictionary keyed by these names (see
@@ -104,5 +66,4 @@ static inline UIColor *TGThemeRGB(int r, int g, int b) {
 
 @interface TGTheme ()
 - (UIColor *)importedColour:(NSString *)key;
-- (BOOL)hasCustomPalette;
 @end

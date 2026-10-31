@@ -293,7 +293,7 @@ static const CGFloat kSwitchTagHeight  = 12.0f;
 			tint = rgb(0x3B, 0xA2, 0x48);
 			break;
 		case TGButtonStyleGhost:
-			tint = [TGTheme shared].isDarkStyle ? [UIColor colorWithWhite:1.0f alpha:0.12f] : [UIColor colorWithWhite:0.0f alpha:0.08f];
+			tint = [UIColor colorWithWhite:0.0f alpha:0.08f];
 			break;
 	}
 	return [self skeuomorphicButtonImageWithColor:tint
@@ -309,18 +309,12 @@ static const CGFloat kSwitchTagHeight  = 12.0f;
 	CGContextRef ctx = UIGraphicsGetCurrentContext();
 
 	TGTheme *theme = [TGTheme shared];
-	if (theme.isDarkStyle) {
-		CGContextSetRGBFillColor(ctx, 0.10f, 0.11f, 0.13f, 1.0f);
-		CGContextFillRect(ctx, CGRectMake(0, 0, 1.0f, height));
-		CGContextSetRGBFillColor(ctx, 0.08f, 0.09f, 0.10f, 1.0f);
-		CGContextFillRect(ctx, CGRectMake(1.0f, 0, 1.0f, height));
-	} else {
-		// Classic iOS 6 fine woven pinstripes
-		CGContextSetRGBFillColor(ctx, 0.85f, 0.86f, 0.89f, 1.0f);
-		CGContextFillRect(ctx, CGRectMake(0, 0, 1.0f, height));
-		CGContextSetRGBFillColor(ctx, 0.77f, 0.80f, 0.83f, 1.0f);
-		CGContextFillRect(ctx, CGRectMake(1.0f, 0, 1.0f, height));
-	}
+	// Classic iOS 6 fine woven pinstripes
+	CGContextSetRGBFillColor(ctx, 0.85f, 0.86f, 0.89f, 1.0f);
+	CGContextFillRect(ctx, CGRectMake(0, 0, 1.0f, height));
+	CGContextSetRGBFillColor(ctx, 0.77f, 0.80f, 0.83f, 1.0f);
+	CGContextFillRect(ctx, CGRectMake(1.0f, 0, 1.0f, height));
+
 
 	UIImage *img = UIGraphicsGetImageFromCurrentImageContext();
 	UIGraphicsEndImageContext();
@@ -331,26 +325,16 @@ static const CGFloat kSwitchTagHeight  = 12.0f;
 	CGFloat width = 16.0f, height = 16.0f;
 	TGTileCanvas canvas = TGTileBegin(width, height, [UIScreen mainScreen].scale);
 
-	BOOL dark = [TGTheme shared].isDarkStyle;
-	if (dark)
-		TGTileFillAll(&canvas, 0.11f, 0.12f, 0.14f);
-	else
-		TGTileFillAll(&canvas, 0.92f, 0.93f, 0.94f);
+	TGTileFillAll(&canvas, 0.92f, 0.93f, 0.94f);
 
 	// Fine deterministic micro-grain
 	for (int y = 0; y < (int)height; y++) {
 		for (int x = 0; x < (int)width; x++) {
 			int h = ((x * 47 + y * 31 + (x ^ y)) % 17);
 			if (h == 0) {
-				if (dark)
-					TGTileBlend(&canvas, x, y, 1.0f, 1.0f, 0.15f, 0.16f, 0.18f, 0.40f);
-				else
-					TGTileBlend(&canvas, x, y, 1.0f, 1.0f, 0.85f, 0.87f, 0.89f, 0.45f);
+				TGTileBlend(&canvas, x, y, 1.0f, 1.0f, 0.85f, 0.87f, 0.89f, 0.45f);
 			} else if (h == 1) {
-				if (dark)
-					TGTileBlend(&canvas, x, y, 1.0f, 1.0f, 0.08f, 0.09f, 0.10f, 0.35f);
-				else
-					TGTileBlend(&canvas, x, y, 1.0f, 1.0f, 0.98f, 0.98f, 1.00f, 0.35f);
+				TGTileBlend(&canvas, x, y, 1.0f, 1.0f, 0.98f, 0.98f, 1.00f, 0.35f);
 			}
 		}
 	}
@@ -363,10 +347,7 @@ static const CGFloat kSwitchTagHeight  = 12.0f;
 	TGTileCanvas canvas = TGTileBegin(width, height, [UIScreen mainScreen].scale);
 
 	// Base tone: authentic Apple charcoal linen or slate
-	if ([TGTheme shared].isDarkStyle)
-		TGTileFillAll(&canvas, 0.14f, 0.15f, 0.17f);
-	else
-		TGTileFillAll(&canvas, 0.22f, 0.23f, 0.26f);
+	TGTileFillAll(&canvas, 0.22f, 0.23f, 0.26f);
 
 	// Cross-hatch threads with highlights and depth shadows
 	for (int y = 0; y < (int)height; y++) {
@@ -398,20 +379,12 @@ static const CGFloat kSwitchTagHeight  = 12.0f;
 	CGFloat width = 32.0f, height = 32.0f;
 	TGTileCanvas canvas = TGTileBegin(width, height, [UIScreen mainScreen].scale);
 
-	BOOL dark = [TGTheme shared].isDarkStyle;
-	if (dark)
-		// Vintage aged dark parchment
-		TGTileFillAll(&canvas, 0.18f, 0.16f, 0.13f);
-	else
-		// Classic Notes app warm cream parchment
-		TGTileFillAll(&canvas, 0.96f, 0.94f, 0.88f);
+	// Classic Notes app warm cream parchment
+	TGTileFillAll(&canvas, 0.96f, 0.94f, 0.88f);
 
 	// Laid paper horizontal watermark line (spaced every 16pt)
 	for (int y = 0; y < (int)height; y += 16) {
-		if (dark)
-			TGTileBlend(&canvas, 0, y, width, 1.0f, 0.13f, 0.11f, 0.09f, 0.40f);
-		else
-			TGTileBlend(&canvas, 0, y, width, 1.0f, 0.88f, 0.84f, 0.74f, 0.35f);
+		TGTileBlend(&canvas, 0, y, width, 1.0f, 0.88f, 0.84f, 0.74f, 0.35f);
 	}
 
 	// Natural organic paper fibers and warm flecks
@@ -420,16 +393,10 @@ static const CGFloat kSwitchTagHeight  = 12.0f;
 			int h = ((x * 53 + y * 29 + (x ^ (y * 3))) % 19);
 			if (h == 0) {
 				// Fiber fleck
-				if (dark)
-					TGTileBlend(&canvas, x, y, 1.5f, 1.0f, 0.24f, 0.20f, 0.16f, 0.45f);
-				else
-					TGTileBlend(&canvas, x, y, 1.5f, 1.0f, 0.85f, 0.79f, 0.65f, 0.40f);
+				TGTileBlend(&canvas, x, y, 1.5f, 1.0f, 0.85f, 0.79f, 0.65f, 0.40f);
 			} else if (h == 1) {
 				// Fine light tooth
-				if (dark)
-					TGTileBlend(&canvas, x, y, 1.0f, 1.0f, 0.22f, 0.19f, 0.15f, 0.30f);
-				else
-					TGTileBlend(&canvas, x, y, 1.0f, 1.0f, 0.99f, 0.98f, 0.94f, 0.30f);
+				TGTileBlend(&canvas, x, y, 1.0f, 1.0f, 0.99f, 0.98f, 0.94f, 0.30f);
 			}
 		}
 	}
@@ -441,13 +408,8 @@ static const CGFloat kSwitchTagHeight  = 12.0f;
 	CGFloat width = 24.0f, height = 24.0f;
 	TGTileCanvas canvas = TGTileBegin(width, height, [UIScreen mainScreen].scale);
 
-	BOOL dark = [TGTheme shared].isDarkStyle;
-	if (dark)
-		// Deep pine casino felt
-		TGTileFillAll(&canvas, 0.08f, 0.18f, 0.11f);
-	else
-		// Authentic Apple Game Center billiard felt
-		TGTileFillAll(&canvas, 0.11f, 0.31f, 0.16f);
+	// Authentic Apple Game Center billiard felt
+	TGTileFillAll(&canvas, 0.11f, 0.31f, 0.16f);
 
 	// Soft stippled wool fibers
 	for (int y = 0; y < (int)height; y++) {
@@ -455,16 +417,10 @@ static const CGFloat kSwitchTagHeight  = 12.0f;
 			int h = ((x * 41 + y * 23 + (x ^ (y * 5))) % 13);
 			if (h == 0) {
 				// Light fiber highlight
-				if (dark)
-					TGTileBlend(&canvas, x, y, 1.0f, 1.0f, 0.13f, 0.28f, 0.17f, 0.50f);
-				else
-					TGTileBlend(&canvas, x, y, 1.0f, 1.0f, 0.17f, 0.44f, 0.23f, 0.45f);
+				TGTileBlend(&canvas, x, y, 1.0f, 1.0f, 0.17f, 0.44f, 0.23f, 0.45f);
 			} else if (h == 1) {
 				// Shadow fiber depth
-				if (dark)
-					TGTileBlend(&canvas, x, y, 1.0f, 1.0f, 0.04f, 0.10f, 0.06f, 0.55f);
-				else
-					TGTileBlend(&canvas, x, y, 1.0f, 1.0f, 0.06f, 0.18f, 0.09f, 0.50f);
+				TGTileBlend(&canvas, x, y, 1.0f, 1.0f, 0.06f, 0.18f, 0.09f, 0.50f);
 			}
 		}
 	}
@@ -515,11 +471,8 @@ static const CGFloat kSwitchTagHeight  = 12.0f;
 	UIBezierPath *path = [UIBezierPath bezierPathWithRoundedRect:rect cornerRadius:radius];
 
 	// Background fill
-	if ([TGTheme shared].isDarkStyle) {
-		CGContextSetRGBFillColor(ctx, 0.14f, 0.16f, 0.18f, 1.0f);
-	} else {
-		CGContextSetRGBFillColor(ctx, 1.0f, 1.0f, 1.0f, 1.0f);
-	}
+	CGContextSetRGBFillColor(ctx, 1.0f, 1.0f, 1.0f, 1.0f);
+
 	CGContextAddPath(ctx, path.CGPath);
 	CGContextFillPath(ctx);
 
@@ -803,42 +756,24 @@ static const CGFloat kSwitchTagHeight  = 12.0f;
 
 	CGColorSpaceRef cs = CGColorSpaceCreateDeviceRGB();
 	TGTheme *theme = [TGTheme shared];
-	if (theme.isDarkStyle) {
-		CGFloat comps[] = {
-			0.18f, 0.19f, 0.21f, 1.0f,
-			0.14f, 0.15f, 0.16f, 1.0f,
-			0.10f, 0.11f, 0.12f, 1.0f
-		};
-		CGFloat locs[] = { 0.0f, 0.5f, 1.0f };
-		CGGradientRef grad = CGGradientCreateWithColorComponents(cs, comps, locs, 3);
-		CGContextDrawLinearGradient(ctx, grad, CGPointZero, CGPointMake(0, height), 0);
-		CGGradientRelease(grad);
+	// Classic iOS 6 brushed aluminum satin gradient
+	CGFloat comps[] = {
+		0.92f, 0.93f, 0.95f, 1.0f,
+		0.82f, 0.84f, 0.86f, 1.0f,
+		0.72f, 0.74f, 0.77f, 1.0f
+	};
+	CGFloat locs[] = { 0.0f, 0.5f, 1.0f };
+	CGGradientRef grad = CGGradientCreateWithColorComponents(cs, comps, locs, 3);
+	CGContextDrawLinearGradient(ctx, grad, CGPointZero, CGPointMake(0, height), 0);
+	CGGradientRelease(grad);
 
-		// Top highlight
-		CGContextSetRGBStrokeColor(ctx, 1.0f, 1.0f, 1.0f, 0.15f);
-		CGContextSetLineWidth(ctx, 1.0f);
-		CGContextMoveToPoint(ctx, 0, 0.5f);
-		CGContextAddLineToPoint(ctx, width, 0.5f);
-		CGContextStrokePath(ctx);
-	} else {
-		// Classic iOS 6 brushed aluminum satin gradient
-		CGFloat comps[] = {
-			0.92f, 0.93f, 0.95f, 1.0f,
-			0.82f, 0.84f, 0.86f, 1.0f,
-			0.72f, 0.74f, 0.77f, 1.0f
-		};
-		CGFloat locs[] = { 0.0f, 0.5f, 1.0f };
-		CGGradientRef grad = CGGradientCreateWithColorComponents(cs, comps, locs, 3);
-		CGContextDrawLinearGradient(ctx, grad, CGPointZero, CGPointMake(0, height), 0);
-		CGGradientRelease(grad);
+	// Top 1px crisp specular highlight line
+	CGContextSetRGBStrokeColor(ctx, 1.0f, 1.0f, 1.0f, 0.90f);
+	CGContextSetLineWidth(ctx, 1.0f);
+	CGContextMoveToPoint(ctx, 0, 0.5f);
+	CGContextAddLineToPoint(ctx, width, 0.5f);
+	CGContextStrokePath(ctx);
 
-		// Top 1px crisp specular highlight line
-		CGContextSetRGBStrokeColor(ctx, 1.0f, 1.0f, 1.0f, 0.90f);
-		CGContextSetLineWidth(ctx, 1.0f);
-		CGContextMoveToPoint(ctx, 0, 0.5f);
-		CGContextAddLineToPoint(ctx, width, 0.5f);
-		CGContextStrokePath(ctx);
-	}
 	CGColorSpaceRelease(cs);
 
 	UIImage *img = UIGraphicsGetImageFromCurrentImageContext();
@@ -847,139 +782,14 @@ static const CGFloat kSwitchTagHeight  = 12.0f;
 	return [img resizableImageWithCapInsets:UIEdgeInsetsMake(cap, cap, cap, cap)];
 }
 
-+ (UIImage *)skeuomorphicTabSelectionIndicator {
-	return nil;
-}
-
-+ (UIImage *)skeuomorphicGroupedCellBackgroundForRow:(NSInteger)row
-                                           totalRows:(NSInteger)total
-                                         highlighted:(BOOL)highlighted
-                                               width:(CGFloat)width
-                                              height:(CGFloat)height {
-	CGFloat screenW = [UIScreen mainScreen].bounds.size.width;
-	if (screenW <= 0) screenW = 320.0f;
-	CGFloat baseH = TGMetricRow;
-	CGFloat scale = [UIScreen mainScreen].scale;
-	UIGraphicsBeginImageContextWithOptions(CGSizeMake(screenW, baseH), NO, scale);
-	CGContextRef ctx = UIGraphicsGetCurrentContext();
-
-	CGFloat margin = TGMetricPad - 2.0f;
-	CGFloat cardW = screenW - margin * 2.0f;
-	CGRect cardRect = CGRectMake(margin, 0, cardW, baseH);
-
-	BOOL isFirst = (row == 0);
-	BOOL isLast = (row >= total - 1);
-	CGFloat radius = TGMetricCornerCard - 2.0f;
-
-	UIRectCorner corners = 0;
-	if (isFirst && isLast) {
-		corners = UIRectCornerAllCorners;
-	} else if (isFirst) {
-		corners = UIRectCornerTopLeft | UIRectCornerTopRight;
-	} else if (isLast) {
-		corners = UIRectCornerBottomLeft | UIRectCornerBottomRight;
-	}
-
-	UIBezierPath *path = [UIBezierPath bezierPathWithRoundedRect:cardRect
-											   byRoundingCorners:corners
-													 cornerRadii:CGSizeMake(radius, radius)];
-
-	TGTheme *theme = [TGTheme shared];
-	CGColorSpaceRef cs = CGColorSpaceCreateDeviceRGB();
-
-	if (highlighted) {
-		// Classic Apple blue gradient for selected row
-		[path addClip];
-		CGFloat comps[] = {
-			0.02f, 0.44f, 0.92f, 1.0f,
-			0.01f, 0.28f, 0.77f, 1.0f
-		};
-		CGFloat locs[] = { 0.0f, 1.0f };
-		CGGradientRef grad = CGGradientCreateWithColorComponents(cs, comps, locs, 2);
-		CGContextDrawLinearGradient(ctx, grad, CGPointMake(0, 0), CGPointMake(0, baseH), 0);
-		CGGradientRelease(grad);
-
-		// Top inner hairline
-		CGContextSetRGBStrokeColor(ctx, 1.0f, 1.0f, 1.0f, 0.30f);
-		CGContextSetLineWidth(ctx, 1.0f);
-		CGContextMoveToPoint(ctx, margin + (isFirst ? radius : 0), 0.5f);
-		CGContextAddLineToPoint(ctx, margin + cardW - (isFirst ? radius : 0), 0.5f);
-		CGContextStrokePath(ctx);
-	} else {
-		// Background fill
-		if (theme.isDarkStyle) {
-			[rgb(0x22, 0x24, 0x28) setFill];
-		} else {
-			[[UIColor whiteColor] setFill];
-		}
-		[path fill];
-
-		// Outer border
-		UIColor *borderCol = theme.isDarkStyle ? [UIColor colorWithWhite:1.0f alpha:0.12f] : rgb(0xBE, 0xBE, 0xC2);
-		[borderCol setStroke];
-		path.lineWidth = 1.0f;
-		[path stroke];
-
-		// Etched bottom highlight on bottom edge of card
-		if (isLast) {
-			UIColor *bottomShine = theme.isDarkStyle ? [UIColor colorWithWhite:1.0f alpha:0.04f] : [UIColor colorWithWhite:1.0f alpha:0.75f];
-			[bottomShine setStroke];
-			CGContextSetLineWidth(ctx, 1.0f);
-			CGContextMoveToPoint(ctx, margin + radius, baseH - 0.5f);
-			CGContextAddLineToPoint(ctx, margin + cardW - radius, baseH - 0.5f);
-			CGContextStrokePath(ctx);
-		}
-
-		// Etched separator between rows (does not touch outer border!)
-		if (!isLast) {
-			CGFloat divInset = TGMetricPad + TGMetricPadTiny;
-			// Dark hairline
-			UIColor *darkLine = theme.isDarkStyle ? [UIColor colorWithWhite:1.0f alpha:0.08f] : rgb(0xE2, 0xE2, 0xE6);
-			[darkLine setStroke];
-			CGContextSetLineWidth(ctx, 0.5f);
-			CGContextMoveToPoint(ctx, margin + divInset, baseH - 1.0f);
-			CGContextAddLineToPoint(ctx, margin + cardW - 1.0f, baseH - 1.0f);
-			CGContextStrokePath(ctx);
-
-			// White highlight line underneath
-			UIColor *whiteLine = theme.isDarkStyle ? [UIColor colorWithWhite:1.0f alpha:0.04f] : [UIColor whiteColor];
-			[whiteLine setStroke];
-			CGContextSetLineWidth(ctx, 0.5f);
-			CGContextMoveToPoint(ctx, margin + divInset, baseH - 0.5f);
-			CGContextAddLineToPoint(ctx, margin + cardW - 1.0f, baseH - 0.5f);
-			CGContextStrokePath(ctx);
-		}
-	}
-	CGColorSpaceRelease(cs);
-
-	UIImage *img = UIGraphicsGetImageFromCurrentImageContext();
-	UIGraphicsEndImageContext();
-
-	// 9-slice resizable insets
-	UIEdgeInsets capInsets;
-	CGFloat capX = margin + radius + TGMetricPadTiny;
-	if (isFirst && isLast) {
-		capInsets = UIEdgeInsetsMake(radius + TGMetricPadTiny, capX, radius + TGMetricPadTiny, capX);
-	} else if (isFirst) {
-		capInsets = UIEdgeInsetsMake(radius + TGMetricPadTiny, capX, TGMetricPadTiny, capX);
-	} else if (isLast) {
-		capInsets = UIEdgeInsetsMake(TGMetricPadTiny, capX, radius + TGMetricPadTiny, capX);
-	} else {
-		capInsets = UIEdgeInsetsMake(TGMetricPadTiny, capX, TGMetricPadTiny, capX);
-	}
-
-	return [img resizableImageWithCapInsets:capInsets resizingMode:UIImageResizingModeStretch];
-}
-
+/// The system's rounded grouped cell, coloured by the theme: UIKit draws the
+/// card, its corners and its selection. The drawn card images it replaced
+/// imitated exactly that, and only iOS 6's version of it.
 - (void)styleGroupedCell:(UITableViewCell *)cell forRow:(NSInteger)row totalRows:(NSInteger)total {
 	if (!cell) return;
+	// The cell's own background view is left alone: on iOS 6 it is the
+	// rounded card, and taking it away left bare labels on the table.
 	[self styleCell:cell];
-	cell.backgroundColor = [UIColor clearColor];
-	cell.contentView.backgroundColor = [UIColor clearColor];
-	UIImage *norm = [TGTheme skeuomorphicGroupedCellBackgroundForRow:row totalRows:total highlighted:NO width:0 height:0];
-	UIImage *high = [TGTheme skeuomorphicGroupedCellBackgroundForRow:row totalRows:total highlighted:YES width:0 height:0];
-	cell.backgroundView = [[UIImageView alloc] initWithImage:norm];
-	cell.selectedBackgroundView = [[UIImageView alloc] initWithImage:high];
 }
 
 

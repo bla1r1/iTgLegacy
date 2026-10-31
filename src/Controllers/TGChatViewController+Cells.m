@@ -269,12 +269,12 @@
 		cell.shineGradientLayer.hidden = YES;
 
 		if (mine) {
-			cell.body.textColor = theme.isDarkStyle ? [UIColor whiteColor] : [theme primaryTextColour];
-			cell.body.shadowColor = theme.isDarkStyle ? [theme navBarTextShadowColour] : [theme etchedTextShadowColour];
-			cell.body.shadowOffset = theme.isDarkStyle ? CGSizeMake(0, -1.0f) : CGSizeMake(0, 1.0f);
+			cell.body.textColor = [theme primaryTextColour];
+			cell.body.shadowColor = [theme etchedTextShadowColour];
+			cell.body.shadowOffset = CGSizeMake(0, 1.0f);
 			cell.time.textColor = [theme timeMineColour];
-			cell.time.shadowColor = theme.isDarkStyle ? [theme navBarTextShadowColour] : [theme etchedTextShadowColour];
-			cell.time.shadowOffset = theme.isDarkStyle ? CGSizeMake(0, -1.0f) : CGSizeMake(0, 1.0f);
+			cell.time.shadowColor = [theme etchedTextShadowColour];
+			cell.time.shadowOffset = CGSizeMake(0, 1.0f);
 		} else {
 			cell.body.textColor = [theme primaryTextColour];
 			cell.body.shadowColor = [theme etchedTextShadowColour];
@@ -448,11 +448,10 @@ static void TGBubbleCorners(TGTheme *theme, BOOL mine, BOOL first, BOOL last,
 }
 
 /// Every bubble background there is - mine or theirs, first of a run or not,
-/// tailed or not, light or dark - is one of sixteen pictures, drawn once.
+/// tailed or not - is one of eight pictures, drawn once.
 UIImage *TGBubbleBackImage(TGTheme *theme, BOOL mine, BOOL first, BOOL last) {
-	static UIImage *cache[16];
-	BOOL dark = theme.isDarkStyle;
-	unsigned slot = (mine ? 1u : 0u) | (first ? 2u : 0u) | (last ? 4u : 0u) | (dark ? 8u : 0u);
+	static UIImage *cache[8];
+	unsigned slot = (mine ? 1u : 0u) | (first ? 2u : 0u) | (last ? 4u : 0u);
 	if (cache[slot])
 		return cache[slot];
 

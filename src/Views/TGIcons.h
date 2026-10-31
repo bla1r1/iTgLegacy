@@ -30,10 +30,35 @@
 + (UIImage *)pin;
 + (UIImage *)microphone;
 + (UIImage *)sticker;
+/// Colours a glyph in an image view. UIView's tintColor arrived in iOS 7:
+/// on 6 the setter is an unrecognized selector and the app aborts (the
+/// snackbar, every popup menu, the profile tiles and empty states did), so
+/// there the view gets a copy of its image already filled with `colour`.
++ (void)tintImageView:(UIImageView *)view colour:(UIColor *)colour;
+/// `image` with every opaque pixel filled with `colour`.
++ (UIImage *)image:(UIImage *)image filledWith:(UIColor *)colour;
+/// A bot's keyboard: six keys in two rows.
++ (UIImage *)botKeyboard;
 
 /// The circular play button their media blocks use: a 42dp disc in blue with
 /// a white glyph, scaled to whatever side is asked for.
 + (UIImage *)mediaDiscOfSide:(CGFloat)side playing:(BOOL)playing;
+
+/// `image` cropped to fill `size` with `corners` rounded by `radius`, drawn
+/// once and kept on the source image for the next appearance. A layer's
+/// cornerRadius plus clipsToBounds costs an offscreen pass every frame, and
+/// shouldRasterize on top of it a new texture on every cell reuse. Returns
+/// animated images untouched.
++ (UIImage *)roundedImage:(UIImage *)image size:(CGSize)size radius:(CGFloat)radius
+				  corners:(UIRectCorner)corners;
+
+/// The same, for a picture in a table row: a copy already made is set at
+/// once; otherwise the view is emptied, the copy is drawn on a background
+/// queue and set when ready - unless the view was given another image in
+/// between. The first rounding of a photo decodes the JPEG, 150-300 ms on an
+/// A4, which in a scroll is that many dropped frames.
++ (void)setRoundedImage:(UIImage *)image inView:(UIImageView *)view size:(CGSize)size
+				 radius:(CGFloat)radius;
 
 /// The same disc carrying a sheet of paper, which is what their file block puts
 /// on its tile.

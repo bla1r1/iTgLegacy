@@ -1,29 +1,14 @@
 //
-// TGTheme - app appearance theme manager (Skeuomorphic, Flat, Dark, Night Blue).
+// TGTheme - colours and textures for what the app draws itself. Bars,
+// lists and alerts are the system's; a theme file only recolours the chat.
 //
 #import <UIKit/UIKit.h>
-
-typedef NS_ENUM(NSInteger, TGThemeStyle) {
-    TGThemeStyleSkeuomorphic = 0,   ///< "Classic" (Light iOS 6 Skeuomorphic)
-    TGThemeStyleDark         = 1,   ///< "Night" (Dark iOS 6 Skeuomorphic)
-    TGThemeStyleFlat         = TGThemeStyleSkeuomorphic,
-    TGThemeStyleNightBlue    = TGThemeStyleDark
-};
-
-/// Auto-Night, as their Appearance page offers it. There is no system dark
-/// mode to follow on this OS, so scheduled is the only automatic there is.
-typedef NS_ENUM(NSInteger, TGAutoNightMode) {
-    TGAutoNightOff = 0,
-    TGAutoNightScheduled
-};
 
 @interface TGTheme : NSObject
 
 + (instancetype)shared;
 
-/// Persisted; defaults to skeuomorphic below iOS 7 and flat from iOS 7 on.
-@property (nonatomic, assign) TGThemeStyle style;
-/// YES for the flat style and for dark, which is flat drawn on dark surfaces.
+/// Always NO; kept for the screens that still branch on it.
 @property (nonatomic, readonly) BOOL isFlat;
 
 /// Posted when the style changes so open screens can restyle themselves.
@@ -33,14 +18,8 @@ extern NSString *const TGThemeChangedNotification;
 
 /// Name of the imported theme in use, or nil for the built-in styles.
 @property (nonatomic, readonly) NSString *importedName;
-/// YES for the built-in dark style, and when an imported theme calls itself dark.
-@property (nonatomic, readonly) BOOL isDark;
-/// YES only for the built-in dark style: an imported theme brings its own
-/// colours and must not be second-guessed by the dark defaults.
-@property (nonatomic, readonly) BOOL isDarkStyle;
-
 /// Adopt a theme file made for an official client (.tgios-theme, .attheme).
-/// Returns NO if the file cannot be read. Persists across launches.
+/// Returns NO if the file cannot be read or is dark. Persists across launches.
 - (BOOL)importThemeAtPath:(NSString *)path;
 
 /// Drop the imported theme and go back to the built-in style.
@@ -62,18 +41,6 @@ extern NSString *const TGThemeChangedNotification;
 /// Adopt one by id. NO when a theme file cannot be read; the previous theme
 /// stays in that case. Posts TGThemeChangedNotification once.
 - (BOOL)selectThemeId:(NSString *)themeId;
-
-#pragma mark - auto-night
-
-/// Off unless the user asked for it. When scheduled, the theme becomes Night
-/// between -autoNightFromHour and -autoNightToHour and goes back after.
-@property (nonatomic, assign) TGAutoNightMode autoNight;
-@property (nonatomic, assign) NSInteger autoNightFromHour;   ///< default 22
-@property (nonatomic, assign) NSInteger autoNightToHour;     ///< default 7
-
-/// Switch to or away from Night if the schedule says so. Cheap and idempotent;
-/// called when the app comes forward and once an hour while it is open.
-- (void)applyAutoNightIfDue;
 
 /// Message text size in points. Persisted; 15 is the default.
 @property (nonatomic, assign) CGFloat messageFontSize;
@@ -102,14 +69,17 @@ typedef NS_ENUM(NSInteger, TGWallpaperType) {
 /// Adopt a picture as the wallpaper; nil clears it. Persisted.
 - (void)setWallpaperImage:(UIImage *)image;
 
-/// Style a table cell so an imported theme reaches the settings screens too;
-/// grouped tables draw white cells otherwise.
+/// A cell with the system's fonts and colours.
 - (void)styleCell:(UITableViewCell *)cell;
 
-/// A table's section caption. Seven screens did this by hand and five left
-/// the system's, which on a dark theme is grey on grey - so the same caption
-/// was two colours depending on which list it was over.
-- (void)styleSectionHeader:(UIView *)headerView;
+/// iOS 6's own navigation-bar blue.
+- (UIColor *)systemBarBlueColour;
+/// A search bar the way the running OS draws one.
+- (void)styleSearchBar:(UISearchBar *)bar;
+/// A stock cell of this style, for reading the system's fonts and colours.
++ (UITableViewCell *)systemCellOfStyle:(UITableViewCellStyle)style;
+/// A grouped table the way the running OS draws one.
+- (void)styleGroupedTable:(UITableView *)table;
 
 /// Apply the bar styling to a navigation bar.
 - (void)styleNavigationBar:(UINavigationBar *)bar;
@@ -182,15 +152,7 @@ typedef NS_ENUM(NSInteger, TGButtonStyle) {
 /// Brushed aluminum satin metal image for chat composer bar.
 + (UIImage *)skeuomorphicInputBarImageWithHeight:(CGFloat)height;
 
-/// Glowing spotlight selection indicator image for iOS 6 tab bar.
-+ (UIImage *)skeuomorphicTabSelectionIndicator;
 
-/// Inset rounded card background image for iOS 6 grouped table rows.
-+ (UIImage *)skeuomorphicGroupedCellBackgroundForRow:(NSInteger)row
-                                           totalRows:(NSInteger)total
-                                         highlighted:(BOOL)highlighted
-                                               width:(CGFloat)width
-                                              height:(CGFloat)height;
 
 - (void)styleGroupedCell:(UITableViewCell *)cell forRow:(NSInteger)row totalRows:(NSInteger)total;
 

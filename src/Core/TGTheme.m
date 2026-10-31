@@ -1,5 +1,6 @@
 #import "TGTheme.h"
 #import "TGThemeFile.h"
+#import "TGIcons.h"
 #import "TGThemeInternal.h"
 #import "TGStyle.h"
 
@@ -11,16 +12,10 @@ static NSString *const kStyleKey  = @"themeStyle";
 static NSString *const kImportKey = @"themeImportPath";
 static NSString *const kFontKey   = @"messageFontSize";
 
-static NSString *const kAutoNightKey     = @"themeAutoNight";
-static NSString *const kAutoNightFromKey = @"themeAutoNightFrom";
-static NSString *const kAutoNightToKey   = @"themeAutoNightTo";
-static NSString *const kBeforeNightKey   = @"themeStyleBeforeNight";
 static NSString *const kWallpaperTypeKey = @"themeWallpaperType";
 
 @implementation TGTheme {
 	NSDictionary *_imported;
-	// Built-in theme palette (e.g. Night Blue)
-	NSDictionary *_builtinPalette;
 	UIImage *_wallpaper;
 }
 
@@ -36,36 +31,19 @@ static NSString *const kWallpaperTypeKey = @"themeWallpaperType";
 	if (!self)
 		return nil;
 
-	NSNumber *stored = [NSUserDefaults.standardUserDefaults objectForKey:kStyleKey];
-	if (stored){
-		NSInteger val = stored.integerValue;
-		_style = (val == TGThemeStyleDark || val == 2 || val == 3) ? TGThemeStyleDark : TGThemeStyleSkeuomorphic;
-	} else {
-		_style = TGThemeStyleSkeuomorphic;
-	}
+	// Night is gone; a stored Night, or a dark theme file, comes back light.
+	[NSUserDefaults.standardUserDefaults removeObjectForKey:kStyleKey];
 	NSString *imported = [NSUserDefaults.standardUserDefaults stringForKey:kImportKey];
 	if (imported.length)
 		[self loadImportedTheme:[TGTheme pathInDocuments:imported]];
-	[self loadBuiltinPalette];
-	[self applyAutoNightIfDue];
 	return self;
 }
 
 #pragma mark - the theme list
 
-- (void)loadBuiltinPalette {
-	_builtinPalette = nil;
-}
-
-// Whether custom palette or imported theme is active
-- (BOOL)hasCustomPalette {
-	return _imported != nil || _builtinPalette != nil;
-}
-
 + (NSArray *)availableThemes {
 	NSMutableArray *themes = [@[
 		@{@"id" : @"classic", @"name" : @"Classic", @"dark" : @NO},
-		@{@"id" : @"night",   @"name" : @"Night",   @"dark" : @YES},
 	] mutableCopy];
 
 	for (NSString *path in [self availableThemeFiles]){
@@ -80,18 +58,11 @@ static NSString *const kWallpaperTypeKey = @"themeWallpaperType";
 	return themes;
 }
 
-static NSString *TGIdForStyle(TGThemeStyle style) {
-	switch (style){
-		case TGThemeStyleDark: return @"night";
-		default:               return @"classic";
-	}
-}
-
 - (NSString *)currentThemeId {
 	NSString *imported = [NSUserDefaults.standardUserDefaults stringForKey:kImportKey];
 	if (_imported && imported.length)
 		return [@"file:" stringByAppendingString:imported];
-	return TGIdForStyle(_style);
+	return @"classic";
 }
 
 - (BOOL)selectThemeId:(NSString *)themeId {
@@ -102,25 +73,17 @@ static NSString *TGIdForStyle(TGThemeStyle style) {
 		NSString *name = [themeId substringFromIndex:5];
 		if (![self loadImportedTheme:[TGTheme pathInDocuments:name]])
 			return NO;
-		_builtinPalette = nil;
 		[NSUserDefaults.standardUserDefaults setObject:name forKey:kImportKey];
 		[NSUserDefaults.standardUserDefaults synchronize];
 		[self themeChanged];
 		return YES;
 	}
 
-	TGThemeStyle style = TGThemeStyleSkeuomorphic;
-	if ([themeId isEqualToString:@"night"] || [themeId isEqualToString:@"nightblue"])
-		style = TGThemeStyleDark;
-
-	// Switching style clears any active imported theme file.
+	// Anything else is Classic: clear the imported file.
 	_imported = nil;
 	_importedName = nil;
 	[NSUserDefaults.standardUserDefaults removeObjectForKey:kImportKey];
-	_style = style;
-	[NSUserDefaults.standardUserDefaults setInteger:style forKey:kStyleKey];
 	[NSUserDefaults.standardUserDefaults synchronize];
-	[self loadBuiltinPalette];
 	[self themeChanged];
 	return YES;
 }
@@ -128,73 +91,6 @@ static NSString *TGIdForStyle(TGThemeStyle style) {
 - (void)themeChanged {
 	[[NSNotificationCenter defaultCenter] postNotificationName:TGThemeChangedNotification
 													   object:nil];
-}
-
-#pragma mark - auto-night
-
-- (TGAutoNightMode)autoNight {
-	return (TGAutoNightMode)[NSUserDefaults.standardUserDefaults integerForKey:kAutoNightKey];
-}
-
-- (void)setAutoNight:(TGAutoNightMode)mode {
-	[NSUserDefaults.standardUserDefaults setInteger:mode forKey:kAutoNightKey];
-	[NSUserDefaults.standardUserDefaults synchronize];
-	[self applyAutoNightIfDue];
-}
-
-- (NSInteger)autoNightFromHour {
-	NSNumber *stored = [NSUserDefaults.standardUserDefaults objectForKey:kAutoNightFromKey];
-	return stored ? stored.integerValue : 22;
-}
-
-- (void)setAutoNightFromHour:(NSInteger)hour {
-	[NSUserDefaults.standardUserDefaults setInteger:hour forKey:kAutoNightFromKey];
-	[NSUserDefaults.standardUserDefaults synchronize];
-	[self applyAutoNightIfDue];
-}
-
-- (NSInteger)autoNightToHour {
-	NSNumber *stored = [NSUserDefaults.standardUserDefaults objectForKey:kAutoNightToKey];
-	return stored ? stored.integerValue : 7;
-}
-
-- (void)setAutoNightToHour:(NSInteger)hour {
-	[NSUserDefaults.standardUserDefaults setInteger:hour forKey:kAutoNightToKey];
-	[NSUserDefaults.standardUserDefaults synchronize];
-	[self applyAutoNightIfDue];
-}
-
-- (void)applyAutoNightIfDue {
-	if (self.autoNight != TGAutoNightScheduled)
-		return;
-
-	NSInteger hour = [[[NSCalendar currentCalendar]
-			components:NSHourCalendarUnit fromDate:[NSDate date]] hour];
-	NSInteger from = self.autoNightFromHour, to = self.autoNightToHour;
-	// The window normally crosses midnight, which is why this is an OR.
-	BOOL night = (from <= to) ? (hour >= from && hour < to)
-							  : (hour >= from || hour < to);
-
-	NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
-	if (night){
-		if (self.isDark)
-			return;
-		// Remember what to go back to, so morning does not land on whichever
-		// light theme happens to be first in the list.
-		[defaults setObject:[self currentThemeId] forKey:kBeforeNightKey];
-		[defaults synchronize];
-		[self selectThemeId:@"night"];
-		return;
-	}
-
-	if (!self.isDark)
-		return;
-	NSString *before = [defaults stringForKey:kBeforeNightKey];
-	if (!before.length)
-		return;              // the user chose a dark theme themselves
-	[defaults removeObjectForKey:kBeforeNightKey];
-	[defaults synchronize];
-	[self selectThemeId:before];
 }
 
 - (CGFloat)messageFontSize {
@@ -225,7 +121,7 @@ static NSString *TGIdForStyle(TGThemeStyle style) {
 
 - (BOOL)loadImportedTheme:(NSString *)path {
 	NSString *name = nil;
-	NSDictionary *palette = [TGThemeFile paletteFromFile:path name:&name];
+	NSDictionary *palette = [TGThemeFile chatPaletteFromFile:path name:&name];
 	if (!palette)
 		return NO;
 	_imported = palette;
@@ -234,13 +130,7 @@ static NSString *TGIdForStyle(TGThemeStyle style) {
 }
 
 - (void)clearImportedTheme {
-	[self selectThemeId:TGIdForStyle(_style)];
-}
-
-- (BOOL)isDark {
-	if (_imported)
-		return [_imported[@"isDark"] boolValue];
-	return _style == TGThemeStyleDark;
+	[self selectThemeId:@"classic"];
 }
 
 + (NSArray *)availableThemeFiles {
@@ -256,64 +146,89 @@ static NSString *TGIdForStyle(TGThemeStyle style) {
 	return found;
 }
 
-// Imported color override with fallback
 - (UIColor *)importedColour:(NSString *)key {
-	return _imported[key] ?: _builtinPalette[key];
+	return _imported[key];
 }
 
-- (void)setStyle:(TGThemeStyle)style {
-	if (_style == style)
-		return;
-	_style = style;
-	[NSUserDefaults.standardUserDefaults setInteger:style forKey:kStyleKey];
-	[NSUserDefaults.standardUserDefaults synchronize];
-	[self loadBuiltinPalette];
-	[self themeChanged];
-}
-
-// Check if flat styling is active (flat style deleted, pure skeuomorphic)
 - (BOOL)isFlat {
 	return NO;
 }
 
-// Built-in dark style
-- (BOOL)isDarkStyle {
-	return _style == TGThemeStyleDark && _imported == nil;
++ (UITableViewCell *)systemCellOfStyle:(UITableViewCellStyle)style {
+	static UITableViewCell *cells[4];
+	if (style < 0 || style > 3)
+		style = UITableViewCellStyleDefault;
+	if (!cells[style])
+		cells[style] = [[UITableViewCell alloc] initWithStyle:style reuseIdentifier:nil];
+	return cells[style];
 }
 
 - (void)styleCell:(UITableViewCell *)cell {
-	cell.textLabel.font = TGFontRow();
-	cell.detailTextLabel.font = TGFontBody();
-	cell.detailTextLabel.textColor = [self cellDetailColour];
-
-	UIColor *bg = [self cardBackgroundColour];
-	cell.backgroundColor = bg;
-	cell.textLabel.backgroundColor = bg;
-	cell.textLabel.opaque = YES;
-	cell.detailTextLabel.backgroundColor = bg;
-	cell.detailTextLabel.opaque = YES;
-
-	cell.textLabel.textColor = [self primaryTextColour];
-	if (![self hasCustomPalette] && !self.isDarkStyle) {
-		cell.selectedBackgroundView = nil;
-		return;
-	}
-	UIView *selected = [[UIView alloc] init];
-	selected.backgroundColor = [self bubbleTheirsColour];
-	cell.selectedBackgroundView = selected;
+	// UIKit's own cell: its fonts and colours, and labels it can highlight -
+	// opaque white ones showed as boxes on the blue selection.
+	UITableViewCell *system = [TGTheme systemCellOfStyle:UITableViewCellStyleValue1];
+	cell.textLabel.font = system.textLabel.font;
+	cell.textLabel.textColor = system.textLabel.textColor;
+	cell.detailTextLabel.font = system.detailTextLabel.font;
+	cell.detailTextLabel.textColor = system.detailTextLabel.textColor;
+	cell.textLabel.backgroundColor = [UIColor clearColor];
+	cell.detailTextLabel.backgroundColor = [UIColor clearColor];
+	cell.textLabel.opaque = NO;
+	cell.detailTextLabel.opaque = NO;
+	cell.selectedBackgroundView = nil;
 }
 
-- (void)styleSectionHeader:(UIView *)headerView {
-	if (![headerView isKindOfClass:UITableViewHeaderFooterView.class])
-		return;
-	UITableViewHeaderFooterView *header = (UITableViewHeaderFooterView *)headerView;
-	header.textLabel.textColor = [self sectionHeaderColour];
-	header.textLabel.font = TGFontCaption();
+/// A search bar as the OS draws one: grey on iOS 6, light on 7, nothing of
+/// ours painted on it. A dark or imported theme gets the black style and
+/// its own colours.
+- (void)styleSearchBar:(UISearchBar *)bar {
+	if ([bar respondsToSelector:@selector(setBackgroundImage:)])
+		[bar setBackgroundImage:nil];
+	bar.barStyle = UIBarStyleDefault;
+	bar.tintColor = nil;
+	if ([bar respondsToSelector:@selector(setBarTintColor:)])
+		bar.barTintColor = nil;
+}
+
+/// A grouped table as UIKit draws it on the OS it runs on - iOS 6's
+/// pinstripes and rounded cards, iOS 7's grey sheet - with only the colours
+/// changed on a dark or imported theme.
+- (void)styleGroupedTable:(UITableView *)table {
+	// The system's own background view draws iOS 6's pinstripes; a pattern
+	// colour on a view of ours came out black.
+	table.separatorStyle = UITableViewCellSeparatorStyleSingleLine;
 }
 
 - (void)styleTabBar:(UITabBar *)bar {
 	if (!bar)
 		return;
+
+	// iOS 6's own tab bar: black glass and the blue glow on the selected
+	// item, the look every app on the phone around this one has.
+	if (NSFoundationVersionNumber <= NSFoundationVersionNumber_iOS_6_1) {
+		// The system tab bar tinted the slate blue of the system nav bar, so
+		// the top and bottom of the screen are one colour.
+		bar.tintColor = [self systemBarBlueColour];
+		if ([bar respondsToSelector:@selector(setBackgroundImage:)])
+			bar.backgroundImage = nil;
+		if ([bar respondsToSelector:@selector(setSelectionIndicatorImage:)])
+			bar.selectionIndicatorImage = nil;
+		// On the blue bar the system's grey glyphs went dark; they are drawn
+		// white instead - full for the selected tab, faded for the rest.
+		for (UITabBarItem *item in bar.items) {
+			UIImage *mask = item.image;
+			if (!mask || ![item respondsToSelector:@selector(setFinishedSelectedImage:withFinishedUnselectedImage:)])
+				continue;
+			UIColor *off = [UIColor colorWithWhite:1.0f alpha:TGAlphaSecondary];
+			[item setFinishedSelectedImage:[TGIcons image:mask filledWith:[UIColor whiteColor]]
+			   withFinishedUnselectedImage:[TGIcons image:mask filledWith:off]];
+			[item setTitleTextAttributes:@{UITextAttributeTextColor : off}
+								forState:UIControlStateNormal];
+			[item setTitleTextAttributes:@{UITextAttributeTextColor : [UIColor whiteColor]}
+								forState:UIControlStateSelected];
+		}
+		return;
+	}
 
 	if ([bar respondsToSelector:@selector(setBarTintColor:)]){
 		bar.translucent = NO;      // see -styleNavigationBar:
@@ -323,14 +238,11 @@ static NSString *TGIdForStyle(TGThemeStyle style) {
 		bar.tintColor = [self barColour];
 	}
 
-	UIColor *tabColor = self.isDarkStyle ? TGThemeRGB(0x22, 0x26, 0x2E) : TGThemeRGB(0x45, 0x56, 0x68);
-	UIImage *tabBg = [TGTheme skeuomorphicBarImageWithColor:tabColor height:TGMetricTabBarH];
-	if ([bar respondsToSelector:@selector(setBackgroundImage:)]) {
-		bar.backgroundImage = tabBg;
-	}
-	if ([bar respondsToSelector:@selector(setSelectionIndicatorImage:)]) {
-		bar.selectionIndicatorImage = [TGTheme skeuomorphicTabSelectionIndicator];
-	}
+	// Their own bar from 7 on as well: no painted plate, no glow indicator.
+	if ([bar respondsToSelector:@selector(setBackgroundImage:)])
+		bar.backgroundImage = nil;
+	if ([bar respondsToSelector:@selector(setSelectionIndicatorImage:)])
+		bar.selectionIndicatorImage = nil;
 }
 
 #pragma mark - wallpaper
@@ -422,38 +334,33 @@ static NSString *TGIdForStyle(TGThemeStyle style) {
 	if (!bar)
 		return;
 
-	// barTintColor is iOS 7; on iOS 6 the bar colour is tintColor itself.
-	// A dark bar needs light status-bar glyphs, which is what barStyle decides.
-	bar.barStyle = self.isDark ? UIBarStyleBlack : UIBarStyleDefault;
+	bar.barStyle = UIBarStyleDefault;
 
-	CGFloat barHeight = bar.bounds.size.height > 0 ? bar.bounds.size.height : TGMetricRow;
-	UIImage *bgImageAttached = [TGTheme skeuomorphicBarImageWithColor:[self barColour] height:TGMetricPadWide + TGMetricRow];
-	UIImage *bgImageStandard = [TGTheme skeuomorphicBarImageWithColor:[self barColour] height:barHeight];
-	if ([bar respondsToSelector:@selector(setBackgroundImage:forBarPosition:barMetrics:)]) {
-		[bar setBackgroundImage:bgImageAttached forBarPosition:UIBarPositionTopAttached barMetrics:UIBarMetricsDefault];
-		[bar setBackgroundImage:bgImageStandard forBarPosition:UIBarPositionAny barMetrics:UIBarMetricsDefault];
-	} else if ([bar respondsToSelector:@selector(setBackgroundImage:forBarMetrics:)]) {
-		[bar setBackgroundImage:bgImageStandard forBarMetrics:UIBarMetricsDefault];
+	// iOS 6 draws its own bar: tinted, it is the real gloss, edge and shadow,
+	// and its Back and Done buttons match it because they come from the same
+	// place. The procedural imitation below was close, never the same.
+	if (NSFoundationVersionNumber <= NSFoundationVersionNumber_iOS_6_1) {
+		if ([bar respondsToSelector:@selector(setBackgroundImage:forBarMetrics:)])
+			[bar setBackgroundImage:nil forBarMetrics:UIBarMetricsDefault];
+		if ([bar respondsToSelector:@selector(setShadowImage:)])
+			[bar setShadowImage:nil];
+		// No tint at all: iOS 6's own slate-blue bar and white title. A pale
+		// theme tint made it read as not quite iOS.
+		bar.tintColor = nil;
+		bar.titleTextAttributes = nil;
+		return;
 	}
-	if ([bar respondsToSelector:@selector(setShadowImage:)]) {
-		[bar setShadowImage:[[UIImage alloc] init]];
-	}
-	if ([bar respondsToSelector:@selector(setBarTintColor:)]) {
-		bar.translucent = NO;
-		bar.barTintColor = [self barColour];
-		bar.tintColor = [self barButtonColour];
-		NSShadow *shadow = [[NSShadow alloc] init];
-		shadow.shadowColor = [self navBarTextShadowColour];
-		shadow.shadowOffset = CGSizeMake(0, -1.0f);
-		bar.titleTextAttributes = @{
-			NSForegroundColorAttributeName : [self barTitleColour],
-			NSFontAttributeName            : TGFontRowStrong(),
-			NSShadowAttributeName          : shadow,
-		};
-	} else {
-		bar.tintColor = [self barColour];
-		bar.titleTextAttributes = @{ UITextAttributeTextColor : [self barTitleColour] };
-	}
+
+	// iOS 7 and later: their flat bar, its hairline and their title font. The
+	// iOS 6 gloss painted over it here looked foreign on every later system.
+	if ([bar respondsToSelector:@selector(setBackgroundImage:forBarMetrics:)])
+		[bar setBackgroundImage:nil forBarMetrics:UIBarMetricsDefault];
+	if ([bar respondsToSelector:@selector(setShadowImage:)])
+		[bar setShadowImage:nil];
+	bar.translucent = NO;
+	bar.barTintColor = [self barColour];
+	bar.tintColor = [self barButtonColour];
+	bar.titleTextAttributes = @{ NSForegroundColorAttributeName : [self barTitleColour] };
 }
 
 @end

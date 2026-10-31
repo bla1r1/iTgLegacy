@@ -318,7 +318,7 @@
 	self.input.backgroundColor = [theme listBackgroundColour];
 	self.input.textColor = [theme primaryTextColour];
 	self.input.layer.borderColor = [theme separatorColour].CGColor;
-	self.input.keyboardAppearance = theme.isDark ? UIKeyboardAppearanceDark : UIKeyboardAppearanceLight;
+	self.input.keyboardAppearance = UIKeyboardAppearanceLight;
 	self.sendButton.backgroundColor = [theme accentColour];
 	self.wallpaperView.image = [theme wallpaper];
 	self.titleNameLabel.textColor = [theme barTitleColour];

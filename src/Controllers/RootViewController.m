@@ -14,19 +14,6 @@
 #import "TGStyle.h"
 #import "TGPlayerView.h"
 
-/// Compact navigation bar to maximize vertical space on 3.5" displays.
-static const CGFloat kCompactBarHeight = TGMetricCompactBarHeight;
-
-@interface TGCompactNavigationBar : UINavigationBar
-@end
-
-@implementation TGCompactNavigationBar
-- (CGSize)sizeThatFits:(CGSize)size {
-	CGSize fitted = [super sizeThatFits:size];
-	fitted.height = kCompactBarHeight;
-	return fitted;
-}
-@end
 
 @interface RootViewController () <UINavigationControllerDelegate>
 @property (nonatomic, strong) TGPlayerMiniBar *playerMiniBar;
@@ -64,10 +51,11 @@ static const CGFloat kCompactBarHeight = TGMetricCompactBarHeight;
 	contactsNC.tabBarItem = [[UITabBarItem alloc] initWithTitle:@"Contacts"
 														   image:[TGIcons contacts] tag:1];
 
+	// The standard 44 pt bar, like the other two tabs. A 32 pt one here, to win
+	// a line on a 3.5" screen, made Settings the only tab whose bar jumped in
+	// height and squeezed a Back button drawn for 44.
 	UINavigationController *settingsNC =
-		[[TGNavController alloc] initWithNavigationBarClass:[TGCompactNavigationBar class]
-													  toolbarClass:nil];
-	[settingsNC setViewControllers:@[[[TGSettingsViewController alloc] init]]];
+		[[TGNavController alloc] initWithRootViewController:[[TGSettingsViewController alloc] init]];
 	settingsNC.delegate = self;
 	settingsNC.tabBarItem = [[UITabBarItem alloc] initWithTitle:@"Settings"
 														   image:[TGIcons settings] tag:2];

@@ -201,6 +201,7 @@ APP_SRC_M := \
 	src/Core/TGStyle.m \
 	src/Core/TGTextDraw.m \
 	src/Core/TGPerf.m \
+	src/Core/TGBench.m \
 	src/Core/TGStickerBudget.m \
 	src/Core/TGThemeFile.m \
 	src/Views/TGIcons.m \
@@ -218,7 +219,6 @@ APP_SRC_M := \
 	src/Views/TGEmptyView.m \
 	src/Views/TGStatusBanner.m \
 	src/UI/TGButton.m \
-	src/UI/TGSwitch.m \
 	src/UI/TGSlider.m \
 	src/UI/TGTextField.m \
 	src/UI/TGSegmentedControl.m \
@@ -226,8 +226,6 @@ APP_SRC_M := \
 	src/UI/TGBadge.m \
 	src/UI/TGReactionPicker.m \
 	src/UI/TGAvatarView.m \
-	src/UI/TGSearchBar.m \
-	src/UI/TGTableViewCell.m \
 	src/UI/TGBarButtonItem.m \
 	src/UI/TGMediaThumbnailView.m \
 	src/UI/TGGalleryViewController.m \
@@ -250,6 +248,7 @@ APP_SRC_M := \
 	src/Controllers/TGChatViewController+Selection.m \
 	src/Controllers/TGChatViewController+Audio.m \
 	src/Controllers/TGChatViewController+Search.m \
+	src/Controllers/TGChatViewController+Bots.m \
 	src/Controllers/TGChatViewController+Actions.m \
 	src/Controllers/TGChatViewController+Layout.m \
 	src/Controllers/TGChatViewController+Cells.m \
@@ -308,6 +307,7 @@ APP_SRC_MM := \
 APP_SRC_C := \
 	third_party/yyjson/yyjson.c \
 	src/Core/TGUpdateType.c \
+	src/Core/TGSampler.c \
 	compat/tlv_polyfill.c \
 	src/Calls/TGCallCrypto.c \
 	third_party/nestegg/nestegg.c \

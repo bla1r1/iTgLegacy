@@ -773,13 +773,6 @@ static NSString *TGChatDate(NSTimeInterval unix) {
 	cell.onlineDot.layer.borderColor = bg.CGColor;
 	cell.separator.backgroundColor = [theme separatorColour];
 
-	if (theme.isDark) {
-		UIView *selected = [[UIView alloc] init];
-		selected.backgroundColor = [theme bubbleTheirsColour];
-		cell.selectedBackgroundView = selected;
-	} else {
-		cell.selectedBackgroundView = nil;
-	}
 
 	NSArray *header = [self headerRows];
 	if (indexPath.row < (NSInteger)header.count){
@@ -917,9 +910,5 @@ static NSString *TGChatDate(NSTimeInterval unix) {
 
 /// The system's caption is grey on grey over a dark list, which is what
 /// this screen had: every other list styles its own.
-- (void)tableView:(UITableView *)tableView willDisplayHeaderView:(UIView *)view
-	   forSection:(NSInteger)section {
-	[[TGTheme shared] styleSectionHeader:view];
-}
 
 @end

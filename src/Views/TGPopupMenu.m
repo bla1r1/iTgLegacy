@@ -1,4 +1,5 @@
 #import "TGPopupMenu.h"
+#import "TGAlertSheet.h"
 #import "TGTheme.h"
 #import "TGIcons.h"
 #import <QuartzCore/QuartzCore.h>
@@ -41,7 +42,18 @@ static TGPopupMenu *sOpenMenu = nil;
            inView:(UIView *)host
          onChoice:(void (^)(NSInteger, NSString *))choice
 {
-	[self showItems:items atPoint:point inView:host reactions:nil selectedReaction:nil onReaction:nil onChoice:choice];
+	// A plain list of actions is what UIActionSheet is for; the drawn popup
+	// stays only where it carries something the system sheet cannot
+	// (reactions, the emoji header).
+	NSMutableArray *titles = [NSMutableArray arrayWithCapacity:items.count];
+	__block NSInteger destructive = -1;
+	[items enumerateObjectsUsingBlock:^(NSDictionary *item, NSUInteger i, BOOL *stop){
+		[titles addObject:item[@"title"] ?: @""];
+		if (destructive < 0 && [item[@"destructive"] boolValue])
+			destructive = (NSInteger)i;
+	}];
+	[TGAlertSheet showChoices:titles title:nil destructiveIndex:destructive inView:host
+					 onChoice:^(NSInteger index){ if (choice) choice(index, titles[index]); }];
 }
 
 + (void)showItems:(NSArray *)items
@@ -286,26 +298,19 @@ static TGPopupMenu *sOpenMenu = nil;
 					kMenuGlyphX, TGCenteredOrigin(kMenuRowH, kMenuGlyphSide), kMenuGlyphSide, kMenuGlyphSide)];
 			icon.image = glyph;
 			icon.contentMode = UIViewContentModeScaleAspectFit;
-			BOOL dark = theme.isDarkStyle;
-			icon.tintColor = destructive ? [theme destructiveColour] : (dark ? [UIColor whiteColor] : [theme primaryTextColour]);
+			[TGIcons tintImageView:icon colour:(destructive ? [theme destructiveColour]
+					: [theme primaryTextColour])];
 			[row addSubview:icon];
 		}
 
-		BOOL dark = theme.isDarkStyle;
 		UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(
 				kMenuLabelX, 0, kMenuCardW - kMenuLabelX - TGMetricPad, kMenuRowH)];
 		label.text = title;
 		label.font = TGFontRowStrong();
 		label.backgroundColor = [UIColor clearColor];
-		if (destructive) {
-			label.textColor = [theme destructiveColour];
-			label.shadowColor = dark ? nil : [theme etchedTextShadowColour];
-			label.shadowOffset = CGSizeMake(0, dark ? -1.0f : 1.0f);
-		} else {
-			label.textColor = dark ? [UIColor whiteColor] : [theme primaryTextColour];
-			label.shadowColor = dark ? [theme navBarTextShadowColour] : [theme etchedTextShadowColour];
-			label.shadowOffset = CGSizeMake(0, dark ? -1.0f : 1.0f);
-		}
+		label.textColor = destructive ? [theme destructiveColour] : [theme primaryTextColour];
+		label.shadowColor = [theme etchedTextShadowColour];
+		label.shadowOffset = CGSizeMake(0, 1.0f);
 		[row addSubview:label];
 
 		currentY += kMenuRowH;

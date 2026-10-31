@@ -6,7 +6,7 @@
 
 UIColor *TGSenderColour(int64_t userId) {
 	// Same slot as the sender's placeholder avatar, so the two always match.
-	return [TGIcons nameColourForId:userId dark:[TGTheme shared].isDark];
+	return [TGIcons nameColourForId:userId dark:NO];
 }
 
 @implementation TGChatViewController (Layout)

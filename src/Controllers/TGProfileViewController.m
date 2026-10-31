@@ -400,10 +400,6 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 	return nil;
 }
 
-- (void)tableView:(UITableView *)tableView willDisplayHeaderView:(UIView *)view
-	   forSection:(NSInteger)section {
-	[[TGTheme shared] styleSectionHeader:view];
-}
 
 - (void)tableView:(UITableView *)tableView willDisplayFooterView:(UIView *)view forSection:(NSInteger)section {
 	if ([view isKindOfClass:[UITableViewHeaderFooterView class]]) {

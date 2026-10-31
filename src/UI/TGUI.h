@@ -3,7 +3,6 @@
 
 // Core Controls
 #import "TGButton.h"
-#import "TGSwitch.h"
 #import "TGSlider.h"
 #import "TGTextField.h"
 #import "TGSegmentedControl.h"
@@ -12,10 +11,8 @@
 
 // Identity & Search
 #import "TGAvatarView.h"
-#import "TGSearchBar.h"
 
 // Lists & Navigation
-#import "TGTableViewCell.h"
 #import "TGBarButtonItem.h"
 #import "TGMediaThumbnailView.h"
 

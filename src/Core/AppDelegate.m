@@ -90,16 +90,6 @@ static void TGDevCommandNotifyCallback(CFNotificationCenterRef center, void *obs
 
 #pragma mark - TDLib
 
-- (void)applicationDidBecomeActive:(UIApplication *)application {
-	[[TGTheme shared] applyAutoNightIfDue];
-
-	static NSTimer *nightTimer = nil;
-	if (!nightTimer)
-		nightTimer = [NSTimer scheduledTimerWithTimeInterval:3600
-				target:[TGTheme shared] selector:@selector(applyAutoNightIfDue)
-			  userInfo:nil repeats:YES];
-}
-
 - (void)startTDLib {
 	TGClient *tg = [TGClient shared];
 	__weak typeof(self) weakSelf = self;
@@ -202,9 +192,7 @@ static void TGDevCommandNotifyCallback(CFNotificationCenterRef center, void *obs
 	vc.view.backgroundColor = [theme listBackgroundColour];
 
 	UIActivityIndicatorView *spinner = [[UIActivityIndicatorView alloc]
-			initWithActivityIndicatorStyle:theme.isDark
-					? UIActivityIndicatorViewStyleWhite
-					: UIActivityIndicatorViewStyleGray];
+			initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleGray];
 	spinner.center = CGPointMake(TGHalf(vc.view.bounds.size.width),
 								 TGHalf(vc.view.bounds.size.height));
 	spinner.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin |

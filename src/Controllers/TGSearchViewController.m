@@ -87,21 +87,7 @@ static const CGFloat kSearchBarWidth = 240.0f;
 	TGTheme *theme = [TGTheme shared];
 	self.tableView.backgroundColor = [theme listBackgroundColour];
 	self.tableView.separatorColor = [theme separatorColour];
-	self.bar.barStyle = theme.isDark ? UIBarStyleBlack : UIBarStyleDefault;
-	if ([self.bar respondsToSelector:@selector(setBarTintColor:)])
-		self.bar.barTintColor = [theme searchBarBackgroundColour];
-	self.bar.tintColor = [theme accentColour];
-	self.bar.backgroundColor = [theme searchBarBackgroundColour];
-	if (!theme.isFlat) {
-		[self.bar setBackgroundImage:[TGTheme skeuomorphicBarImageWithColor:[theme searchBarBackgroundColour] height:TGMetricRow]];
-	} else {
-		[self.bar setBackgroundImage:nil];
-	}
-	if ([self.bar respondsToSelector:@selector(setImage:forSearchBarIcon:state:)]) {
-		[self.bar setImage:[TGIcons searchLensOfSize:TGMetricSearchIconSize colour:[theme secondaryTextColour]]
-		  forSearchBarIcon:UISearchBarIconSearch
-					 state:UIControlStateNormal];
-	}
+	[theme styleSearchBar:self.bar];
 	[theme styleNavigationBar:self.navigationController.navigationBar];
 }
 
@@ -262,10 +248,6 @@ static const CGFloat kSearchBarWidth = 240.0f;
 	return self.messageHits.count ? @"Messages" : nil;
 }
 
-- (void)tableView:(UITableView *)tableView willDisplayHeaderView:(UIView *)view
-	   forSection:(NSInteger)section {
-	[[TGTheme shared] styleSectionHeader:view];
-}
 
 - (UIImage *)avatarForChat:(int64_t)chatId
 					 title:(NSString *)title
@@ -361,13 +343,6 @@ static const CGFloat kSearchBarWidth = 240.0f;
 											fileId:nil];
 	}
 
-	if (theme.isDark) {
-		UIView *selected = [[UIView alloc] init];
-		selected.backgroundColor = [theme bubbleTheirsColour];
-		cell.selectedBackgroundView = selected;
-	} else {
-		cell.selectedBackgroundView = nil;
-	}
 
 	return cell;
 }

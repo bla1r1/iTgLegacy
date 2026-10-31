@@ -119,6 +119,13 @@ static TGSnackbar *sOpenBar = nil;
 	label.autoresizingMask = UIViewAutoresizingFlexibleWidth;
 	[self addSubview:label];
 
+	// Nothing to take back: a plain notice has no UNDO, and the line runs on
+	// into the room the button would have had.
+	if (!_commit) {
+		label.frame = CGRectMake(kTextLeft, 0, self.bounds.size.width - kTextLeft - kBarInset, kBarHeight);
+		return;
+	}
+
 	UIButton *undo = [UIButton buttonWithType:UIButtonTypeCustom];
 	undo.frame = CGRectMake(self.bounds.size.width - kUndoWidth - kBarInset, 0,
 			kUndoWidth, kBarHeight);
@@ -137,7 +144,7 @@ static TGSnackbar *sOpenBar = nil;
 			TGCenteredOrigin(kBarHeight, kUndoGlyph), kUndoGlyph, kUndoGlyph)];
 	arrow.image = [TGIcons menuGlyphNamed:@"undo"];
 	arrow.contentMode = UIViewContentModeScaleAspectFit;
-	arrow.tintColor = [[TGTheme shared] accentColour];
+	[TGIcons tintImageView:arrow colour:[[TGTheme shared] accentColour]];
 	arrow.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
 	[self insertSubview:arrow belowSubview:undo];
 }
