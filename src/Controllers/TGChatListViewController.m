@@ -18,6 +18,70 @@ static const CGFloat kRowGlyph     = 28.0f;
 
 @implementation TGChatListViewController
 
+/// The first frame after a launch used to be an empty table until TDLib
+/// answered loadChats - seconds on the A4 when the cache is cold. The last
+/// painted list is written here and drawn again on the next start; the live
+/// list replaces it as soon as it arrives.
+static NSString *TGChatSnapshotPath(void) {
+	NSString *dir = [NSSearchPathForDirectoriesInDomains(
+			NSCachesDirectory, NSUserDomainMask, YES) objectAtIndex:0];
+	return [dir stringByAppendingPathComponent:@"chat-list-snapshot.plist"];
+}
+
+/// Only primitive fields go to the plist. chatsById also holds TDLib records
+/// (permissions, action bar, background) that are not plist values and are
+/// not read by a list row.
+static NSDictionary *TGChatSnapshotRow(NSDictionary *chat) {
+	static NSArray *keys = nil;
+	static dispatch_once_t once;
+	dispatch_once(&once, ^{
+		keys = @[@"id", @"title", @"date", @"text", @"previewText", @"lastAuthor",
+				@"unread", @"unreadMentions", @"markedUnread", @"isMuted",
+				@"isPinned", @"isOnline", @"isSaved", @"lastId", @"lastOutgoing",
+				@"readOutbox", @"readInbox", @"photoFileId", @"isGroup", @"isForum",
+				@"isSecret", @"order", @"archiveOrder", @"supergroupId", @"draft"];
+	});
+	NSMutableDictionary *row = [NSMutableDictionary dictionaryWithCapacity:keys.count];
+	for (NSString *key in keys){
+		id value = chat[key];
+		if ([value isKindOfClass:NSNumber.class] || [value isKindOfClass:NSString.class])
+			row[key] = value;
+	}
+	return row[@"id"] ? row : nil;
+}
+
+- (NSArray *)loadChatSnapshot {
+	NSArray *rows = [NSArray arrayWithContentsOfFile:TGChatSnapshotPath()];
+	if (![rows isKindOfClass:NSArray.class])
+		return @[];
+	NSMutableArray *chats = [NSMutableArray arrayWithCapacity:rows.count];
+	for (NSDictionary *row in rows)
+		if ([row isKindOfClass:NSDictionary.class] && row[@"id"])
+			[chats addObject:row];
+	return chats;
+}
+
+- (void)saveChatSnapshot:(NSArray *)chats {
+	if (!chats.count)
+		return;
+	NSTimeInterval now = [NSDate timeIntervalSinceReferenceDate];
+	if (now - self.snapshotWrittenAt < 5.0)
+		return;
+	self.snapshotWrittenAt = now;
+	NSMutableArray *rows = [NSMutableArray arrayWithCapacity:chats.count];
+	for (NSDictionary *chat in chats){
+		NSDictionary *row = TGChatSnapshotRow(chat);
+		if (row)
+			[rows addObject:row];
+	}
+	if (!rows.count)
+		return;
+	NSString *path = TGChatSnapshotPath();
+	dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_LOW, 0), ^{
+		[rows writeToFile:path atomically:YES];
+	});
+}
+
 - (void)willAnimateRotationToInterfaceOrientation:(UIInterfaceOrientation)toInterfaceOrientation
 							  duration:(NSTimeInterval)duration {
 	[super willAnimateRotationToInterfaceOrientation:toInterfaceOrientation duration:duration];
@@ -32,9 +96,11 @@ static const CGFloat kRowGlyph     = 28.0f;
 	[super viewDidLoad];
 
 	self.title = self.showsArchive ? @"Archived" : @"Chats";
-	// The top "Folders" button retired: the pill strip is the switcher now,
-	// and every action on the list sits on the bars already.
-	self.chats = @[];
+	// The last list is drawn before TDLib answers, so a cold start is the
+	// previous conversation list rather than a blank screen.
+	self.cachedChats = (self.showsArchive || self.folderId != 0)
+			? @[] : [self loadChatSnapshot];
+	self.chats = self.cachedChats;
 	self.avatars = [[TGImageLruCache alloc] initWithCapacity:50];
 	self.avatarsRequested = [NSMutableSet set];
 
@@ -413,6 +479,7 @@ static const CGFloat kRowGlyph     = 28.0f;
 			return da > db ? NSOrderedAscending : NSOrderedDescending;
 		}];
 		weakSelf.mergedChats = combined;
+		[weakSelf saveChatSnapshot:combined];
 		// A folder answer that dropped unseen ids is not the whole
 		// picture: withholding the signature makes the next pass run
 		// again, and a short retry covers a silent cache (no chat
@@ -663,6 +730,12 @@ static const CGFloat kRowGlyph     = 28.0f;
 	// chats with no folder, the rest lives behind chatListFolder requests.
 	// The merge below fills the gap in the background.
 	NSArray *baseChats = self.mergedChats ?: [TGClient shared].chats;
+	if (!baseChats.count && self.cachedChats.count)
+		baseChats = self.cachedChats;
+	// Once the live list is here the snapshot has done its job; keeping it
+	// would let a logout or a cleared account bring the old rows back.
+	if ([TGClient shared].chats.count)
+		self.cachedChats = @[];
 	NSMutableArray *list = [NSMutableArray array];
 	BOOL hasShowcase = NO;
 	for (NSDictionary *c in baseChats) {
@@ -680,6 +753,8 @@ static const CGFloat kRowGlyph     = 28.0f;
 	[self.tableView reloadData];
 	[self rebuildTableHeader];
 	[self fetchMissingAvatars];
+	if ([TGClient shared].chats.count)
+		[self saveChatSnapshot:baseChats];
 	[self mergeAllFolderChats];
 
 	BOOL hasContent = ([self visibleChats].count > 0 || self.searchResults != nil || [self headerRows].count > 0);

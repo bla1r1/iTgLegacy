@@ -39,6 +39,10 @@
 @property (nonatomic, strong) NSArray *mergedChats;   // all chats: main + folders
 @property (nonatomic, copy) NSString *mergedSignature;
 @property (nonatomic, assign) BOOL mergeInFlight;
+/// The last list written to disk, drawn on the first frame before TDLib's
+/// loadChats has answered. Cleared as soon as the live list arrives.
+@property (nonatomic, strong) NSArray *cachedChats;
+@property (nonatomic, assign) NSTimeInterval snapshotWrittenAt;
 /// The stories strip's rows, newest first. Loaded from -activeStoryRowsForList:
 /// and only re-read when the last read is a few seconds old, because the
 /// chat list reloads for every chat update and each strip read is up to 60

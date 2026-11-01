@@ -55,7 +55,7 @@ Zones that were fixed more than once. Column format: check — why it broke befo
 
 | Check | Broke in | Device | Host |
 |---|---|---|---|
-| `getChats` doesn't block UI; list never left empty | 09c3880 | Cold start: first row ≤ 1 s, first screen ≤ 3 s on 4S | Model test: 200-chat fixture fits budget |
+| `getChats` doesn't block UI; list never left empty | 09c3880 | Cold start: first row ≤ 1 s, first screen ≤ 3 s on 4S; the last painted list appears immediately, then is replaced by the live one when `loadChats` answers | Model test: 200-chat fixture fits budget; `TGChatSnapshotRow` keeps only plist-safe list fields |
 | `updateNewMessage` inserts at top; rest not resorted | — | Receive on second device with list open: row appears on top, no scroll jump | Insertion test: chat becomes first, all other positions unchanged |
 | Unread badge matches server; reading clears exactly what was read | — | Read a chat on second account: badge clears identically on both, never over-clears | Counter model: mark-read decrements by amount read, not to zero |
 | Paging down twice never returns a duplicate chat id | 09c3880 | Scroll to bottom twice: second page has no already-visible chat id | Dedupe test: same fixture page added twice → no duplicate |
