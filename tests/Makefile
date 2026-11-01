@@ -180,6 +180,7 @@ CLIENT_TEST_SRCS := \
     $(TESTS)/TGClientFoldersTests.m \
     $(TESTS)/TGClientGroupsTests.m \
     $(TESTS)/TGClientMessagesFunctionsTests.m \
+    $(TESTS)/TGClientRecordOnceTests.m \
     $(TESTS)/TGMessageParserTests.m \
     $(TESTS)/TGClientAccountTests.m \
     $(TESTS)/TGClientProfileTests.m \

@@ -7,6 +7,7 @@
 #import "TGChatViewController.h"
 #import "TGUI.h"
 #import "TGClient.h"
+#import "TGVideoNoteViewController.h"
 #import "TGSheet.h"
 #import "TGTheme.h"
 #import "TGIcons.h"
@@ -72,12 +73,18 @@
 @property (nonatomic, assign) int64_t editingId;             // editing instead
 @property (nonatomic, strong) UIView *composeBanner;         // "Reply to ..."
 @property (nonatomic, strong) UIButton *micButton;
-@property (nonatomic, strong) UIButton *recordModeButton;
 /// NO records a voice note, YES a round video note. A tap on the mic
 /// switches the mode; a hold records the selected one.
 @property (nonatomic, assign) BOOL videoNoteMode;
+/// The wait before the touch turns into a recording, so a short tap can stay
+/// a mode switch instead of beginning to write.
+@property (nonatomic, strong) NSTimer *recordStartPendingTimer;
+/// YES while the note being recorded was toggled view-once ("1"): one open
+/// and it is gone, per Telegram's self destruct immediately.
+@property (nonatomic, assign) BOOL recordOnce;
 @property (nonatomic, strong) NSDate *recordBeganAt;
-@property (nonatomic, assign) NSInteger recordSelfDestructSeconds;
+@property (nonatomic, assign) BOOL videoNoteOverlayActive;
+@property (nonatomic, strong) TGVideoNoteViewController *videoNoteOverlay;
 // The bar over a chat nobody has spoken to: report spam, add to contacts.
 @property (nonatomic, strong) UIView *actionBarView;
 @property (nonatomic, strong) UILabel *actionBarLabel;
@@ -93,6 +100,7 @@
 @property (nonatomic, strong) UIView *recordLockView;
 @property (nonatomic, strong) UIButton *recordCancelButton;
 @property (nonatomic, strong) UIButton *recordSendButton;
+@property (nonatomic, strong) UIButton *recordPauseButton;
 @property (nonatomic, strong) UIButton *recordOnceButton;
 @property (nonatomic, strong) UILabel *recordCancelSlideLabel;
 @property (nonatomic, assign) int64_t playingMessageId;
@@ -279,6 +287,7 @@
 - (void)toggleRecordMode;
 - (void)recordStart;
 - (void)recordFinish;
+- (void)recordPauseToggled;
 - (void)toggleRecordOnce;
 - (void)recordCancel;
 - (void)recordTouchDown:(UIButton *)btn withEvent:(UIEvent *)event;

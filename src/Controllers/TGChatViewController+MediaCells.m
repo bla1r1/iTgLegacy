@@ -40,6 +40,11 @@
 		}
 		NSInteger dur = [m[@"duration"] integerValue];
 		NSString *durStr = (dur > 0) ? [NSString stringWithFormat:@"%ld:%02ld", (long)(dur / 60), (long)(dur % 60)] : @"";
+		if ([m[@"viewOnce"] boolValue]){
+			// The one-time round note wears its "1" like their chat does - the
+			// clock that sent it has one opening in it.
+			durStr = durStr.length ? [@"1 " stringByAppendingString:durStr] : @"1";
+		}
 		NSString *stamp = (layout.stamp.length && ![layout.stamp isEqualToString:@"(null)"]) ? layout.stamp : @"";
 
 		CGRect frame = layout.bubbleFrame;

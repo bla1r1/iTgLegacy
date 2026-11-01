@@ -596,24 +596,25 @@
 - (void)sendVoiceAtPath:(NSString *)path duration:(NSInteger)seconds
                  toChat:(int64_t)chatId thread:(int64_t)threadId {
 	[self sendVoiceAtPath:path duration:seconds toChat:chatId thread:threadId
-			 selfDestruct:0];
+				 viewOnce:NO];
 }
 
 - (void)sendVoiceAtPath:(NSString *)path duration:(NSInteger)seconds
 				 toChat:(int64_t)chatId thread:(int64_t)threadId
-		   selfDestruct:(NSInteger)seconds {
+			   viewOnce:(BOOL)viewOnce {
 	if (!path.length)
 		return;
 
 	NSDictionary *attributes = [[NSFileManager defaultManager]
 			attributesOfItemAtPath:path error:nil];
-	NSLog(@"TGClient: sending voice %@ (%llu bytes, %lds, destruct %ld) to %lld",
+	NSLog(@"TGClient: sending voice %@ (%llu bytes, %lds, once %d) to %lld",
 			path.lastPathComponent, [attributes fileSize], (long)seconds,
-			(long)seconds, chatId);
+			viewOnce, chatId);
 
-	id destruct = seconds > 0
-			? @{@"@type" : @"messageSelfDestructTypeTimer",
-				@"self_destruct_time" : @(seconds)}
+	// The one-time mode is written the way their clients do it: a timer of
+	// 0x7fffffff, whose whole meaning is "gone the moment it is opened".
+	id destruct = viewOnce
+			? @{@"@type" : @"messageSelfDestructTypeImmediately"}
 			: [NSNull null];
 
 	// Answered rather than fire-and-forget: a rejected voice note is silent
@@ -644,12 +645,11 @@
 
 - (void)sendVideoNoteAtPath:(NSString *)path duration:(NSInteger)seconds
 					 toChat:(int64_t)chatId thread:(int64_t)threadId
-			   selfDestruct:(NSInteger)seconds {
+				   viewOnce:(BOOL)viewOnce {
 	if (!path.length)
 		return;
-	id destruct = seconds > 0
-			? @{@"@type" : @"messageSelfDestructTypeTimer",
-				@"self_destruct_time" : @(seconds)}
+	id destruct = viewOnce
+			? @{@"@type" : @"messageSelfDestructTypeImmediately"}
 			: [NSNull null];
 	[self request:@{
 		@"@type"                : @"sendMessage",

@@ -211,6 +211,8 @@ NSDictionary *TGFlattenMessage(NSDictionary *m) {
 	NSNumber *duration = nil;
 	NSData *waveform = nil;
 	NSString *audioTitle = nil, *audioPerformer = nil;
+	NSString *destType = [m[@"self_destruct_type"] isKindOfClass:NSDictionary.class]
+			? m[@"self_destruct_type"][@"@type"] : @"";
 	NSNumber *albumCoverId = nil;
 	BOOL isService = NO;
 	NSString *callState = nil;     // "missed" or "answered" on a call message
@@ -678,6 +680,15 @@ NSDictionary *TGFlattenMessage(NSDictionary *m) {
 							![content[@"is_listened"] boolValue]) ||
 						 ([ctype isEqualToString:@"messageVideoNote"] &&
 							![content[@"is_viewed"] boolValue])),
+		// The one-time marks a message can carry. "Immediately" is the "1"
+		// button's way of saying the content is gone the moment it is
+		// opened; "Timer" ticks after the open, second counts for the chat
+		// to show how long it has.
+		@"viewOnce" : @([destType isEqualToString:
+				@"messageSelfDestructTypeImmediately"]),
+		@"destructSeconds" : ([destType isEqualToString:
+				@"messageSelfDestructTypeTimer"]
+				? m[@"self_destruct_type"][@"self_destruct_time"] ?: @0 : @0),
 		@"waveform"  : waveform ?: [NSData data],
 		@"audioTitle"     : audioTitle     ?: @"",
 		@"audioPerformer" : audioPerformer ?: @"",

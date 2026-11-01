@@ -27,6 +27,9 @@ static const int kBufferByteSize = 3840; // 40ms of 16-bit 48kHz mono
 }
 
 @property (nonatomic, assign) BOOL isRecordingFlag;
+@property (nonatomic, assign) BOOL isPausedFlag;
+@property (nonatomic, assign) NSTimeInterval capturedSeconds;
+@property (nonatomic, strong) NSDate *segmentStart;
 @property (nonatomic, strong) NSString *ogaPath;
 @property (nonatomic, strong) NSDate *startedAt;
 
@@ -65,8 +68,36 @@ static void TGVoiceRecorderInputCallback(void *inUserData,
 	return self.isRecordingFlag;
 }
 
+/// Only the samples the queue delivered count: a pause stops the queue, not
+/// the wall clock, so the clock here is accumulated segments plus the live one.
 - (NSTimeInterval)duration {
-	return self.startedAt ? -[self.startedAt timeIntervalSinceNow] : 0;
+	return self.capturedSeconds + (self.segmentStart
+			? -[self.segmentStart timeIntervalSinceNow] : 0);
+}
+
+- (BOOL)paused {
+	return self.isPausedFlag && self.isRecordingFlag;
+}
+
+- (void)pause {
+	if (!self.isRecordingFlag || self.isPausedFlag)
+		return;
+	OSStatus status = AudioQueuePause(_audioQueue);
+	if (status == noErr){
+		self.capturedSeconds += -[self.segmentStart timeIntervalSinceNow];
+		self.segmentStart = nil;
+		self.isPausedFlag = YES;
+	}
+}
+
+- (void)resume {
+	if (!self.isRecordingFlag || !self.isPausedFlag)
+		return;
+	OSStatus status = AudioQueueStart(_audioQueue, NULL);
+	if (status == noErr){
+		self.segmentStart = [NSDate date];
+		self.isPausedFlag = NO;
+	}
 }
 
 - (BOOL)start {
@@ -144,7 +175,9 @@ static void TGVoiceRecorderInputCallback(void *inUserData,
 	}
 
 	self.isRecordingFlag = YES;
-	self.startedAt = [NSDate date];
+	self.isPausedFlag = NO;
+	self.capturedSeconds = 0;
+	self.segmentStart = [NSDate date];
 	return YES;
 }
 
@@ -176,7 +209,10 @@ static void TGVoiceRecorderInputCallback(void *inUserData,
 
 - (void)cancel {
 	self.isRecordingFlag = NO;
+	self.isPausedFlag = NO;
 	self.startedAt = nil;
+	self.segmentStart = nil;
+	self.capturedSeconds = 0;
 
 	if (_audioQueue) {
 		AudioQueueStop(_audioQueue, true);
@@ -208,6 +244,8 @@ static void TGVoiceRecorderInputCallback(void *inUserData,
 	self.isRecordingFlag = NO;
 	NSTimeInterval seconds = self.duration;
 	self.startedAt = nil;
+	self.segmentStart = nil;
+	self.capturedSeconds = 0;
 
 	if (_audioQueue) {
 		AudioQueueStop(_audioQueue, true);

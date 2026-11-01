@@ -158,9 +158,18 @@ static const CGFloat kSendInset       = 6.0f;
 static const CGFloat kStickerInset    = TGMetricSendSide + 6.0f;
 static const CGFloat kStickerWidth    = 30.0f;
 static const CGFloat kFieldLeft       = 40.0f;
-static const CGFloat kFieldRoom       = 170.0f;
+/// The sticker, not the camera/mic switch, is the nearest thing on the field's
+/// right; the field ends before it with one small pad of air. There used to be
+/// a second record-mode button in this bar's right end and the room was wider
+/// for it - one button switched modes from its own tap, and second control
+/// went away.
+static const CGFloat kFieldRoom       = 88.0f;
 static const CGFloat kFieldInsetV     = TGMetricPad;
 static const CGFloat kFieldLeftPad    = TGMetricPadMedium;
+/// The mode the recording button was left in, written by the chat that changed
+/// it and read back by whichever chat opens next - Telegram keeps the choice
+/// made in one chat for every other one.
+static NSString *const kRecordVideoModeKey = @"currentModeVideo";
 /// The reply / edit banner above the composer: a stripe, then two lines.
 static const CGFloat kBannerStripeX   = TGMetricPadMedium + TGMetricPadTiny;
 static const CGFloat kBannerStripeTop = TGMetricPad;

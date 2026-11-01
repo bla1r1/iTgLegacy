@@ -6,6 +6,7 @@
 // composition before it is handed to TDLib.
 //
 #import <Foundation/Foundation.h>
+#import <AVFoundation/AVFoundation.h>
 
 @interface TGVideoNoteRecorder : NSObject
 
@@ -13,9 +14,22 @@
 
 @property (nonatomic, readonly) BOOL recording;
 @property (nonatomic, readonly) NSTimeInterval duration;
+@property (nonatomic, readonly) BOOL paused;
+@property (nonatomic, readonly) BOOL isFrontCamera;   ///< which side the lens looks
+@property (nonatomic, readonly) AVCaptureSession *session;
+
+/// Fires once once the lens is up and running (main queue). The overlay adds
+/// the preview layer here instead of waiting for `start` to return - warm-up
+/// is off-thread, so the overlay is already on screen by then.
+@property (nonatomic, copy) void (^onSession)(AVCaptureSession *session);
+/// Fires once the file open lands and the clock may count (main queue).
+@property (nonatomic, copy) void (^onReady)(void);
 
 - (BOOL)start;
+- (void)pause;
+- (void)resume;
 - (void)stopWithCompletion:(void (^)(NSString *path, NSTimeInterval duration))completion;
+- (void)switchCamera;
 - (void)cancel;
 
 @end

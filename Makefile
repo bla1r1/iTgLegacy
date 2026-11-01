@@ -332,6 +332,7 @@ APP_SRC_M := \
 	src/Controllers/TGDMTopicViewController.m \
 	src/Controllers/TGDiceViewController.m \
 	src/Controllers/TGEphemeralViewController.m \
+	src/Controllers/TGVideoNoteViewController.m \
 	src/Controllers/TGPublicStoriesViewController.m \
 	src/Controllers/TGLiveStoryViewController.m \
 	src/Controllers/TGBusinessViewController.m \

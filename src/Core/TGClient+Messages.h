@@ -126,16 +126,17 @@
 /// Send a recorded voice note (.oga), with its duration in seconds.
 - (void)sendVoiceAtPath:(NSString *)path duration:(NSInteger)seconds
                  toChat:(int64_t)chatId thread:(int64_t)threadId;
-/// A voice note with a self-destruct timer: 0 for a normal note, 1–60 for a
-/// one-time note in a private chat.
+/// A voice note for one viewing: `viewOnce` asks Telegram to keep it only
+/// until the other side opened it, the same one-time mode the "1" button on
+/// their recorder sets (a self destruct that fires immediately on open).
 - (void)sendVoiceAtPath:(NSString *)path duration:(NSInteger)seconds
 				 toChat:(int64_t)chatId thread:(int64_t)threadId
-		   selfDestruct:(NSInteger)seconds;
+			   viewOnce:(BOOL)viewOnce;
 
 /// A square video note recorded on this device.
 - (void)sendVideoNoteAtPath:(NSString *)path duration:(NSInteger)seconds
 					 toChat:(int64_t)chatId thread:(int64_t)threadId
-			   selfDestruct:(NSInteger)seconds;
+				   viewOnce:(BOOL)viewOnce;
 
 /// Send a video file from the library.
 - (void)sendVideoAtPath:(NSString *)path toChat:(int64_t)chatId;

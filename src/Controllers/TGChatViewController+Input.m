@@ -12,8 +12,9 @@
 #import "TGEphemeralViewController.h"
 #import "TGStyle.h"
 
-static const CGFloat kRecordModeSide = 28.0f;
-static const CGFloat kRecordModeGap  = 30.0f;
+// The mode the recording button was left in last chat, persisted read/write
+// on both sides of the input bar. Telegram keeps the choice made in one chat
+// for every other one.
 #import "TGVideoNoteRecorder.h"
 
 @implementation TGChatViewController (Input)
@@ -102,6 +103,9 @@ static const CGFloat kRecordModeGap  = 30.0f;
 
 	// Hold to record, release to send - the gesture every client uses. It sits
 	// where Send is and swaps with it depending on whether anything is typed.
+	// The same button is the mode switch: a quick tap turns voice note
+	// recording into a round video note and back, the way Telegram keeps two
+	// modes on one spot instead of a second control beside the paperclip.
 	self.micButton = [UIButton buttonWithType:UIButtonTypeCustom];
 	self.micButton.frame = self.sendButton.frame;
 	[self.micButton setImage:[TGIcons microphone] forState:UIControlStateNormal];
@@ -118,21 +122,8 @@ static const CGFloat kRecordModeGap  = 30.0f;
 	[self.micButton addTarget:self action:@selector(recordDrag:withEvent:)
 			 forControlEvents:UIControlEventTouchDragInside | UIControlEventTouchDragOutside];
 	[self.inputBar addSubview:self.micButton];
-
-	// A visible camera/mic switch beside the recorder. The tap-on-mic path
-	// stays, but a dedicated control is what makes the mode discoverable.
-	self.recordModeButton = [UIButton buttonWithType:UIButtonTypeCustom];
-	// Beside the paperclip, where there is room on a 320 pt bar and the
-	// camera/mic switch cannot be hidden by the text field.
-	// Between the text field and the sticker; the field is narrowed by
-	// kFieldRoom for exactly this slot.
-	self.recordModeButton.frame = CGRectMake(
-			b.size.width - kSendSide - kStickerInset - kRecordModeGap, sendY,
-			kRecordModeSide, kSendSide);
-	self.recordModeButton.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
-	[self.recordModeButton addTarget:self action:@selector(toggleRecordMode)
-					forControlEvents:UIControlEventTouchUpInside];
-	[self.inputBar addSubview:self.recordModeButton];
+	self.videoNoteMode = [[NSUserDefaults standardUserDefaults]
+			boolForKey:kRecordVideoModeKey];
 	[self updateRecordModeIcon];
 
 	[self.input addTarget:self action:@selector(inputChanged)

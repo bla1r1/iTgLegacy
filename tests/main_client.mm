@@ -52,6 +52,7 @@
 #import "TGChatListRowGeometryTests.m"
 #import "TGUIFormatTests.m"
 #import "TGClientMessagesFunctionsTests.m"
+#import "TGClientRecordOnceTests.m"
 
 int main(int argc, char *argv[]) {
 	@autoreleasepool {

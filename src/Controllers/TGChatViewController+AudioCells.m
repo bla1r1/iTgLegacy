@@ -173,6 +173,10 @@
 		NSInteger seconds = [m[@"duration"] integerValue];
 		NSString *durText = [NSString stringWithFormat:@"%ld:%02ld",
 				(long)(seconds / 60), (long)(seconds % 60)];
+		// The "1" their client puts before the clock: the note goes away the
+		// first time it is opened, so the run keeps one listening in it.
+		if ([m[@"viewOnce"] boolValue])
+			durText = [@"1 " stringByAppendingString:durText];
 		cell.body.hidden = NO;
 		cell.body.numberOfLines = 1;
 		cell.body.font = TGFontMeta();
