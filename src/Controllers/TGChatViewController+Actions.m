@@ -231,7 +231,7 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 		[items addObject:@{@"title" : @"Translate", @"icon" : @"edit"}];
 	if (text.length)
 		[items addObject:@{@"title" : @"Find Quote", @"icon" : @"data"}];
-	if ([text containsString:@"#"])
+	if ([text rangeOfString:@"#"].location != NSNotFound)
 		[items addObject:@{@"title" : @"Search by Hashtag", @"icon" : @"data"}];
 	if ([m[@"kind"] isEqualToString:@"messageLocation"] ||
 			[m[@"kind"] isEqualToString:@"messageLiveLocation"])
@@ -1981,6 +1981,18 @@ static NSString *TGSheetDate(NSTimeInterval unix) {
 - (void)showReactorsOfActionMessage {
 	__weak typeof(self) weakSelf = self;
 	[self withActionMessage:^(int64_t messageId, int64_t chatId, NSDictionary *m){
+		[weakSelf showReactorsOfMessage:m];
+	}];
+}
+
+/// The reaction pill under a bubble opens the same sheet; a tap on "👍 3"
+/// names the three people without a long press first.
+- (void)showReactorsOfMessage:(NSDictionary *)m {
+	int64_t messageId = [m[@"id"] longLongValue];
+	int64_t chatId = self.chatId;
+	if (!messageId)
+		return;
+	__weak typeof(self) weakSelf = self;
 		NSArray *groups = m[@"interaction_info"][@"reactions"][@"reactions"];
 		if (![groups isKindOfClass:NSArray.class] || !groups.count){
 			[TGAlertSheet showMessage:@"This message carries no reactions."
@@ -2054,7 +2066,6 @@ static NSString *TGSheetDate(NSTimeInterval unix) {
 				}];
 			}];
 		}];
-	}];
 }
 
 - (void)showAuthorOfActionMessage {

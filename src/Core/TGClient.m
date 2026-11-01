@@ -1234,6 +1234,10 @@ NSDictionary *TGFormattedText(NSString *text) {
 		@"database_directory"     : db,
 		@"files_directory"        : [db stringByAppendingPathComponent:@"files"],
 		@"use_message_database"   : @YES,
+		// Chat rows and downloaded files have to survive a launch, or every
+		// start is a cold sync: the list, avatars and media are fetched again.
+		@"use_chat_info_database" : @YES,
+		@"use_file_database"      : @YES,
 		@"use_secret_chats"       : @NO,
 		@"api_id"                 : @(apiId),
 		@"api_hash"               : [NSString stringWithUTF8String:apiHash],

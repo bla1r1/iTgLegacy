@@ -356,6 +356,7 @@
 - (void)chromeDidScroll;
 - (void)installSwipeToReply;
 - (void)showChatAction:(NSString *)action resting:(NSString *)resting;
+- (void)showReactorsOfMessage:(NSDictionary *)message;
 - (void)stopChrome;
 - (void)sendImage:(UIImage *)image;
 

@@ -296,7 +296,7 @@ static UIColor *TGColourFromDesktopHex(NSString *raw) {
 		NSString *value = [trimmed substringFromIndex:colon.location + 1];
 		NSString *first = [value stringByTrimmingCharactersInSet:
 				[NSCharacterSet whitespaceCharacterSet]];
-		if (!key.length || !first.length || [key containsString:@"//"])
+		if (!key.length || !first.length || [key rangeOfString:@"//"].location != NSNotFound)
 			continue;
 		// a newline inside the key collapses to a space after normalisation
 		NSString *plainKey = [[key componentsSeparatedByString:@" "] lastObject];

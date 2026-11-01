@@ -239,6 +239,19 @@ if [ -n "$hits" ]; then
     echo "$hits"
 fi
 
+
+# ── 8. iOS 8 selectors on an iOS 6 app ──────────────────────────────────────
+# containsString: looks harmless and compiles against the SDK, but the runtime
+# on the iPod/4S has no such selector and the app dies with an uncaught
+# exception the first time the path runs.
+hits=$(grep -rnE '\b(localizedCaseInsensitive)?[Cc]ontainsString:' src \
+        --include='*.m' --include='*.mm' --include='*.h')
+if [ -n "$hits" ]; then
+    report "A selector newer than this app's oldest supported iOS:" \
+            "use [string rangeOfString:...].location != NSNotFound"
+    echo "$hits"
+fi
+
 if [ "$status" -eq 0 ]; then
     echo "  design tokens: clean"
 fi

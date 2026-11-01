@@ -1,11 +1,14 @@
 #import "TGPerf.h"
 #import "TGChatViewControllerInternal.h"
 #import <QuartzCore/QuartzCore.h>
+#import <objc/runtime.h>
 #import "TGCapabilities.h"
 #import "TGStyle.h"
 #import "TGMusicPlayer.h"
 
 @implementation TGChatViewController (Cells)
+
+static char kTGReactionPillMessageKey;
 
 #pragma mark - table
 
@@ -158,6 +161,15 @@
 		reactions.frame = CGRectMake(kPadH,
 				layout.bodyFrame.origin.y + layout.bodySize.height + TGMetricPadTiny,
 				layout.bubbleFrame.size.width - TGDoubled(kPadH), TGMetricLineCaption);
+		// The pill is the shortest path to who reacted: a tap opens the same
+		// list the menu's Reactions row does, without a long press first.
+		reactions.userInteractionEnabled = YES;
+		for (UIGestureRecognizer *old in [reactions.gestureRecognizers copy])
+			[reactions removeGestureRecognizer:old];
+		[reactions addGestureRecognizer:[[UITapGestureRecognizer alloc]
+				initWithTarget:self action:@selector(reactionPillTapped:)]];
+		objc_setAssociatedObject(reactions, &kTGReactionPillMessageKey, m,
+								 OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 	} else {
 		reactions.hidden = YES;
 	}
@@ -543,6 +555,12 @@ UIImage *TGBubbleBackImage(TGTheme *theme, BOOL mine, BOOL first, BOOL last) {
 	cell.tail.hidden = YES;
 
 	[cell parkHiddenViews];
+}
+
+- (void)reactionPillTapped:(UITapGestureRecognizer *)tap {
+	NSDictionary *m = objc_getAssociatedObject(tap.view, &kTGReactionPillMessageKey);
+	if (m)
+		[self showReactorsOfMessage:m];
 }
 
 @end
