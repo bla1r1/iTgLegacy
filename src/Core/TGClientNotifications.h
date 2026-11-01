@@ -56,9 +56,30 @@ extern NSString *const TGStickerListsChangedNotification;
 /// a join request arrived. userInfo carries "chatId".
 extern NSString *const TGChatMembersChangedNotification;
 
+/// The local notification list changed: a group arrived, went away, or a row
+/// inside it changed. TDLib sends this while the app is running; the Active
+/// Notifications screen re-reads the groups it draws. userInfo carries
+/// "pending" - YES while TDLib still has delayed or unreceived notifications.
+extern NSString *const TGActiveNotificationsChangedNotification;
+
+/// Telegram changed the account's autosave settings, here or on another
+/// client. No payload: the Autosave page and the Data row re-read the three
+/// scopes and the per-chat exceptions in one request.
+extern NSString *const TGAutosaveSettingsChangedNotification;
+
+/// A language pack's strings changed. userInfo carries "packId"; an open
+/// Language page re-reads the pack record and, if it was showing a string
+/// list, that list too.
+extern NSString *const TGLanguagePackStringsChangedNotification;
+
 /// Notification settings changed for a scope, or a chat's default was
 /// flipped. No payload: the settings screen reads all three scopes at once.
 extern NSString *const TGNotificationSettingsChangedNotification;
+
+/// TDLib's local notification list moved - a group arrived, a notification
+/// was added or one was removed here. No payload: the Active Notifications
+/// page reads the client's whole list, which is short.
+extern NSString *const TGActiveNotificationsChangedNotification;
 
 /// A forum topic was created, renamed, pinned, closed or read. userInfo
 /// carries "chatId" when the update names one.
@@ -82,3 +103,24 @@ extern NSString *const TGAccentColorsChangedNotification;
 /// The contacts with a birthday nearby changed. No payload; the privacy page
 /// re-reads the count and the list is on the client.
 extern NSString *const TGContactCloseBirthdaysChangedNotification;
+
+/// An account-status fact changed: a freeze started or ended, a subscription
+/// moved, age verification parameters arrived, or Telegram asked for a
+/// reCAPTCHA. The privacy page re-reads the rows from the client.
+extern NSString *const TGAccountStatusChangedNotification;
+
+/// Telegram's default chat background or its emoji chat themes moved. The
+/// Appearance page re-reads both; there is no per-row payload.
+extern NSString *const TGAppearanceDefaultsChangedNotification;
+
+/// Telegram's list of message effects changed. The held-message effect sheet
+/// reads the ids live instead of keeping the list it opened with.
+extern NSString *const TGMessageEffectsChangedNotification;
+
+/// A bot's streaming draft was stopped server-side. userInfo carries "chatId",
+/// "forumTopicId", "draftId" and "draftText" (what was cached before the stop).
+extern NSString *const TGChatDraftStoppedNotification;
+
+/// A scheduled video was published and the message now carries it. userInfo
+/// carries "chatId" and "messageId"; the open chat re-reads that message.
+extern NSString *const TGChatVideoPublishedNotification;

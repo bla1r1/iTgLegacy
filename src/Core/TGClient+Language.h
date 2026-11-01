@@ -19,6 +19,11 @@
 					   keys:(NSArray *)keys
 				 completion:(void (^)(NSArray *strings))completion;
 
+/// The strings the last updateLanguagePackStrings carried for each pack,
+/// keyed by pack id. A change, not the whole pack - the page re-reads the
+/// list it was showing rather than pretending a partial answer is complete.
+@property (nonatomic, readonly) NSDictionary *languagePackStringsByPack;
+
 /// One string, read back from the local pack database. `kind` is "ordinary",
 /// "pluralized" or "deleted"; nil when the key is not in the pack.
 - (void)languagePackString:(NSString *)key

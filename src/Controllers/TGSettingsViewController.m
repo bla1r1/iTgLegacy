@@ -72,6 +72,10 @@
 	self.muted    = [NSMutableDictionary dictionary];
 	self.previews = [NSMutableDictionary dictionary];
 	self.suggestFrequent = YES;
+	NSDictionary *savedDiagnostics = [NSUserDefaults.standardUserDefaults
+			objectForKey:@"TGCallDiagnosticsSent"];
+	self.callDiagnostics = savedDiagnostics
+			? [savedDiagnostics mutableCopy] : [NSMutableDictionary dictionary];
 
 	self.title = [self pageTitle];
 
@@ -113,6 +117,44 @@
 		if (weakSelf.page == TGSettingsPageAppearance)
 			[weakSelf rebuild];
 	}];
+	// Account status and Telegram's appearance defaults are pushed, so the
+	// page that draws them re-reads while it is open - a freeze that starts
+	// during a session should not need Settings closed and reopened.
+	[[NSNotificationCenter defaultCenter] addObserverForName:TGAccountStatusChangedNotification
+			object:nil queue:[NSOperationQueue mainQueue]
+		 usingBlock:^(NSNotification *note){
+		if (weakSelf.page == TGSettingsPagePrivacy)
+			[weakSelf rebuild];
+	}];
+	[[NSNotificationCenter defaultCenter] addObserverForName:TGAppearanceDefaultsChangedNotification
+			object:nil queue:[NSOperationQueue mainQueue]
+		 usingBlock:^(NSNotification *note){
+		if (weakSelf.page == TGSettingsPageAppearance)
+			[weakSelf rebuild];
+	}];
+	// The Active Notifications page is a view of the client's local list:
+	// removing one row, or TDLib replacing the list, must reach it without a
+	// reopen. The summary row on the page above reads the same count.
+	[[NSNotificationCenter defaultCenter] addObserverForName:TGActiveNotificationsChangedNotification
+			object:nil queue:[NSOperationQueue mainQueue]
+		 usingBlock:^(NSNotification *note){
+		if (weakSelf.page == TGSettingsPageActiveNotifications ||
+			weakSelf.page == TGSettingsPageNotifications)
+			[weakSelf rebuild];
+	}];
+	// Autosave and language state can change on another client while these
+	// pages are open. Both re-read their whole record rather than patching
+	// one row from an update that carries only one scope or one string.
+	[[NSNotificationCenter defaultCenter] addObserverForName:TGAutosaveSettingsChangedNotification
+			object:nil queue:[NSOperationQueue mainQueue]
+		 usingBlock:^(NSNotification *note){
+		[weakSelf autosaveSettingsChanged];
+	}];
+	[[NSNotificationCenter defaultCenter] addObserverForName:TGLanguagePackStringsChangedNotification
+			object:nil queue:[NSOperationQueue mainQueue]
+		 usingBlock:^(NSNotification *note){
+		[weakSelf languagePackStringsChanged:note.userInfo[@"packId"]];
+	}];
 }
 
 - (void)dealloc {
@@ -140,12 +182,15 @@
 		case TGSettingsPageDownloads:     return @"Downloads";
 		case TGSettingsPageAutosave:      return @"Autosave";
 		case TGSettingsPageNotifications: return @"Notifications and Sounds";
+		case TGSettingsPageNotificationSounds: return @"Custom Sounds";
+		case TGSettingsPageActiveNotifications: return @"Active Notifications";
 		case TGSettingsPagePrivacy:       return @"Privacy and Security";
 		case TGSettingsPageLanguage:      return @"Language";
 		case TGSettingsPageBlocked:       return @"Blocked Users";
 		case TGSettingsPagePowerSaving:   return @"Power Saving";
 		case TGSettingsPageRecentCalls:   return @"Recent Calls";
 		case TGSettingsPageWallpaper:     return @"Chat Wallpaper";
+		case TGSettingsPagePaymentData:   return @"Orders and Payment Data";
 		case TGSettingsPageDebug:         return @"Debug Menu";
 		default:                          return @"Settings";
 	}
@@ -252,7 +297,19 @@
 
 /// Three scopes arrive as three updates when they are reset at once.
 - (void)notificationSettingsChanged {
-	if (self.page != TGSettingsPageNotifications)
+	if (self.page != TGSettingsPageNotifications &&
+		self.page != TGSettingsPageNotificationSounds)
+		return;
+	[NSObject cancelPreviousPerformRequestsWithTarget:self
+			selector:@selector(loadForPage) object:nil];
+	[self performSelector:@selector(loadForPage) withObject:nil afterDelay:0.3];
+}
+
+/// updateAutosaveSettings moves one scope at a time and a client change can
+/// be a short run of them. The Autosave page and the Data row read the whole
+/// record, so one re-read a third of a second later covers the burst.
+- (void)autosaveSettingsChanged {
+	if (self.page != TGSettingsPageAutosave && self.page != TGSettingsPageData)
 		return;
 	[NSObject cancelPreviousPerformRequestsWithTarget:self
 			selector:@selector(loadForPage) object:nil];
@@ -353,6 +410,29 @@
 				[weakSelf rebuild];
 			}];
 		}
+		return;
+	}
+
+	if (self.page == TGSettingsPageNotificationSounds){
+		// A sound added or removed here, or on another client, arrives as
+		// updateSavedNotificationSounds and the same settings notification.
+		[[NSNotificationCenter defaultCenter] removeObserver:self
+				name:TGNotificationSettingsChangedNotification object:nil];
+		[[NSNotificationCenter defaultCenter] addObserver:self
+				selector:@selector(notificationSettingsChanged)
+					name:TGNotificationSettingsChangedNotification object:nil];
+		[[TGClient shared] savedNotificationSoundsWithCompletion:^(NSArray *sounds){
+			weakSelf.savedSounds = sounds;
+			weakSelf.savedSoundsLoaded = YES;
+			[weakSelf rebuild];
+		}];
+		return;
+	}
+
+	if (self.page == TGSettingsPageActiveNotifications){
+		// No request exists for this list: updateActiveNotifications is the
+		// only copy, and it is already on the client.
+		[self rebuild];
 		return;
 	}
 
@@ -475,6 +555,17 @@
 	if (self.page == TGSettingsPageRecentCalls){
 		[[TGClient shared] recentCallsWithCompletion:^(NSArray *calls){
 			weakSelf.calls = calls;
+			[weakSelf rebuild];
+		}];
+		return;
+	}
+
+	if (self.page == TGSettingsPagePaymentData){
+		[[TGClient shared] savedOrderInfoWithCompletion:^(NSDictionary *order,
+														  NSString *error){
+			weakSelf.savedOrder = order;
+			weakSelf.savedOrderError = error;
+			weakSelf.savedOrderLoaded = YES;
 			[weakSelf rebuild];
 		}];
 		return;

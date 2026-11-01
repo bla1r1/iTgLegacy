@@ -303,6 +303,51 @@ int64_t TGArchiveOrder(NSArray *positions) {
 	}];
 }
 
+/// One forumTopic in the shape the topic list and the Topic Info screen read.
+/// `topic` is a forumTopic; getForumTopic answers with the same object, so
+/// both paths share this and cannot disagree about a count or a flag.
+static NSDictionary *TGForumTopicRow(NSDictionary *topic) {
+	if (![topic isKindOfClass:NSDictionary.class])
+		return nil;
+	NSDictionary *info = topic[@"info"];
+	if (![info isKindOfClass:NSDictionary.class])
+		info = topic;
+	NSDictionary *icon = [info[@"icon"] isKindOfClass:NSDictionary.class]
+			? info[@"icon"] : nil;
+	NSDictionary *creator = [info[@"creator_id"] isKindOfClass:NSDictionary.class]
+			? info[@"creator_id"] : nil;
+	NSDictionary *last = [topic[@"last_message"] isKindOfClass:NSDictionary.class]
+			? topic[@"last_message"] : nil;
+	id thread = info[@"forum_topic_id"] ?: info[@"message_thread_id"];
+	if (![thread isKindOfClass:NSNumber.class])
+		thread = @(0);
+	NSDictionary *settings = [topic[@"notification_settings"]
+			isKindOfClass:NSDictionary.class] ? topic[@"notification_settings"] : nil;
+	NSString *title = last ? (TGMessagePreview(last) ?: @"") : @"";
+	return @{
+		@"threadId" : thread,
+		@"name"     : info[@"name"] ?: @"",
+		@"text"     : title,
+		@"date"     : last[@"date"] ?: @(0),
+		@"unread"   : topic[@"unread_count"] ?: @(0),
+		@"unreadMentions" : topic[@"unread_mention_count"] ?: @(0),
+		@"unreadReactions" : topic[@"unread_reaction_count"] ?: @(0),
+		@"unreadPollVotes" : topic[@"unread_poll_vote_count"] ?: @(0),
+		@"pinned"   : topic[@"is_pinned"] ?: @NO,
+		@"order"    : topic[@"order"] ?: @(0),
+		@"general"  : info[@"is_general"] ?: @NO,
+		@"closed"   : info[@"is_closed"] ?: @NO,
+		@"hidden"   : info[@"is_hidden"] ?: @NO,
+		@"outgoing" : info[@"is_outgoing"] ?: @NO,
+		@"implicitName" : info[@"is_name_implicit"] ?: @NO,
+		@"created"  : info[@"creation_date"] ?: @(0),
+		@"creatorId" : creator[@"user_id"] ?: @(0),
+		@"colour"   : icon[@"color"] ?: @(0),
+		@"iconEmojiId" : icon[@"custom_emoji_id"] ?: @(0),
+		@"notificationSettings" : settings ?: @{},
+	};
+}
+
 /// A forum keeps several threads in one chat; each topic reads like a chat row.
 - (void)forumTopicsForChat:(int64_t)chatId completion:(void (^)(NSArray *))completion {
 	[self request:@{
@@ -316,20 +361,162 @@ int64_t TGArchiveOrder(NSArray *positions) {
 	} completion:^(NSDictionary *result){
 		NSMutableArray *out = [NSMutableArray array];
 		for (NSDictionary *topic in result[@"topics"]){
-			NSDictionary *info = topic[@"info"];
-			NSDictionary *last = topic[@"last_message"];
-			[out addObject:@{
-				@"threadId" : info[@"message_thread_id"] ?: @(0),
-				@"name"     : info[@"name"] ?: @"",
-				@"text"     : [last isKindOfClass:NSDictionary.class]
-								? (TGMessagePreview(last) ?: @"") : @"",
-				@"unread"   : topic[@"unread_count"] ?: @(0),
-				@"unreadReactions" : topic[@"unread_reaction_count"] ?: @(0),
-				@"date"     : last[@"date"] ?: @(0),
-			}];
+			NSDictionary *row = TGForumTopicRow(topic);
+			if (row)
+				[out addObject:row];
 		}
 		NSLog(@"TGClient: %lu forum topics", (unsigned long)out.count);
 		if (completion) completion(out);
+	}];
+}
+
+- (void)forumTopic:(int64_t)threadId
+            inChat:(int64_t)chatId
+        completion:(void (^)(NSDictionary *))completion {
+	if (!chatId || !threadId){
+		if (completion) completion(nil);
+		return;
+	}
+	[self request:@{@"@type" : @"getForumTopic",
+					@"chat_id" : @(chatId),
+					@"forum_topic_id" : @(threadId)}
+	   completion:^(NSDictionary *result){
+		if ([result[@"@type"] isEqualToString:@"error"]){
+			NSLog(@"getForumTopic %lld/%lld: %@",
+				  (long long)chatId, (long long)threadId, result[@"message"]);
+			if (completion) completion(nil);
+			return;
+		}
+		if (completion) completion(TGForumTopicRow(result));
+	}];
+}
+
+- (void)forumTopicLinkForTopic:(int64_t)threadId
+                         inChat:(int64_t)chatId
+                     completion:(void (^)(NSString *))completion {
+	if (!chatId || !threadId){
+		if (completion) completion(nil);
+		return;
+	}
+	[self request:@{@"@type" : @"getForumTopicLink",
+					@"chat_id" : @(chatId),
+					@"forum_topic_id" : @(threadId)}
+	   completion:^(NSDictionary *result){
+		if ([result[@"@type"] isEqualToString:@"error"]){
+			NSLog(@"getForumTopicLink %lld/%lld: %@",
+				  (long long)chatId, (long long)threadId, result[@"message"]);
+			if (completion) completion(nil);
+			return;
+		}
+		NSString *link = result[@"link"];
+		if (completion) completion(link.length ? link : nil);
+	}];
+}
+
+- (void)readAllForumTopicMentionsInChat:(int64_t)chatId
+                                  topic:(int64_t)threadId
+                             completion:(void (^)(BOOL, NSString *))completion {
+	if (!chatId || !threadId){
+		if (completion) completion(NO, @"That topic has no id.");
+		return;
+	}
+	[self request:@{@"@type" : @"readAllForumTopicMentions",
+					@"chat_id" : @(chatId),
+					@"forum_topic_id" : @(threadId)}
+	   completion:^(NSDictionary *result){
+		BOOL ok = ![result[@"@type"] isEqualToString:@"error"];
+		NSString *error = ok ? nil : (result[@"message"] ?: @"Telegram refused.");
+		if (!ok)
+			NSLog(@"readAllForumTopicMentions %lld/%lld: %@",
+				  (long long)chatId, (long long)threadId, error);
+		if (completion) completion(ok, error);
+	}];
+}
+
+- (void)readAllForumTopicPollVotesInChat:(int64_t)chatId
+                                   topic:(int64_t)threadId
+                              completion:(void (^)(BOOL, NSString *))completion {
+	if (!chatId || !threadId){
+		if (completion) completion(NO, @"That topic has no id.");
+		return;
+	}
+	[self request:@{@"@type" : @"readAllForumTopicPollVotes",
+					@"chat_id" : @(chatId),
+					@"forum_topic_id" : @(threadId)}
+	   completion:^(NSDictionary *result){
+		BOOL ok = ![result[@"@type"] isEqualToString:@"error"];
+		NSString *error = ok ? nil : (result[@"message"] ?: @"Telegram refused.");
+		if (!ok)
+			NSLog(@"readAllForumTopicPollVotes %lld/%lld: %@",
+				  (long long)chatId, (long long)threadId, error);
+		if (completion) completion(ok, error);
+	}];
+}
+
+- (void)setForumTopicNotificationSettings:(NSDictionary *)settings
+                                    topic:(int64_t)threadId
+                                   inChat:(int64_t)chatId
+                               completion:(void (^)(BOOL, NSString *))completion {
+	if (![settings isKindOfClass:NSDictionary.class] || !chatId || !threadId){
+		if (completion) completion(NO, @"That topic has no settings to write.");
+		return;
+	}
+	NSMutableDictionary *record = [settings mutableCopy];
+	record[@"@type"] = @"chatNotificationSettings";
+	[self request:@{@"@type" : @"setForumTopicNotificationSettings",
+					@"chat_id" : @(chatId),
+					@"forum_topic_id" : @(threadId),
+					@"notification_settings" : record}
+	   completion:^(NSDictionary *result){
+		BOOL ok = ![result[@"@type"] isEqualToString:@"error"];
+		NSString *error = ok ? nil : (result[@"message"] ?: @"Telegram refused.");
+		if (!ok)
+			NSLog(@"setForumTopicNotificationSettings %lld/%lld: %@",
+				  (long long)chatId, (long long)threadId, error);
+		if (completion) completion(ok, error);
+	}];
+}
+
+- (void)setPinnedForumTopics:(NSArray *)topicIds
+                      inChat:(int64_t)chatId
+                  completion:(void (^)(BOOL, NSString *))completion {
+	if (!chatId){
+		if (completion) completion(NO, @"That chat has no id.");
+		return;
+	}
+	NSMutableArray *ids = [NSMutableArray array];
+	for (NSNumber *topicId in topicIds ?: @[])
+		if ([topicId isKindOfClass:NSNumber.class])
+			[ids addObject:@([topicId longLongValue])];
+	[self request:@{@"@type" : @"setPinnedForumTopics",
+					@"chat_id" : @(chatId),
+					@"forum_topic_ids" : ids}
+	   completion:^(NSDictionary *result){
+		BOOL ok = ![result[@"@type"] isEqualToString:@"error"];
+		NSString *error = ok ? nil : (result[@"message"] ?: @"Telegram refused.");
+		if (!ok)
+			NSLog(@"setPinnedForumTopics %lld: %@", (long long)chatId, error);
+		if (completion) completion(ok, error);
+	}];
+}
+
+- (void)toggleGeneralForumTopicHidden:(BOOL)hidden
+                               inChat:(int64_t)chatId
+                           completion:(void (^)(BOOL, NSString *))completion {
+	if (!chatId){
+		if (completion) completion(NO, @"That chat has no id.");
+		return;
+	}
+	[self request:@{@"@type" : @"toggleGeneralForumTopicIsHidden",
+					@"chat_id" : @(chatId),
+					@"is_hidden" : @(hidden)}
+	   completion:^(NSDictionary *result){
+		BOOL ok = ![result[@"@type"] isEqualToString:@"error"];
+		NSString *error = ok ? nil : (result[@"message"] ?: @"Telegram refused.");
+		if (!ok)
+			NSLog(@"toggleGeneralForumTopicIsHidden %lld: %@",
+				  (long long)chatId, error);
+		if (completion) completion(ok, error);
 	}];
 }
 

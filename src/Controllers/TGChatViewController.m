@@ -126,6 +126,12 @@
 	[self refreshReplyKeyboard];
 	[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(replyMarkupChanged:)
 			name:TGChatReplyMarkupChangedNotification object:nil];
+	// Server-side composer facts: a bot's draft was stopped, or a scheduled
+	// video went live. Both arrive as updates, not as a re-open.
+	[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(draftStopped:)
+			name:TGChatDraftStoppedNotification object:nil];
+	[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(videoPublished:)
+			name:TGChatVideoPublishedNotification object:nil];
 	TGPerfReport("chat vc", "chrome", vcStart, 50.0);
 	[self installSwipeToReply];
 	TGPerfReport("chat vc", "swipe + load", vcStart, 100.0);
@@ -457,6 +463,37 @@
 - (void)readOutboxChanged:(NSNotification *)note {
 	if ([note.userInfo[@"chatId"] longLongValue] == self.chatId)
 		[self reloadTableDebounced];
+}
+
+/// updateStopMessageDraft names the chat, topic and draft. The composer only
+/// clears when it still holds the text the client had cached: a stop must not
+/// wipe words typed after it. The table reloads either way, because the
+/// message being streamed may have changed too.
+- (void)draftStopped:(NSNotification *)note {
+	NSDictionary *info = note.userInfo;
+	if ([info[@"chat_id"] longLongValue] != self.chatId)
+		return;
+	int64_t topicId = [info[@"forum_topic_id"] longLongValue];
+	if (topicId && topicId != self.threadId)
+		return;
+	NSString *draft = info[@"draft_text"];
+	if ([draft isKindOfClass:NSString.class] && draft.length &&
+			[self.input.text isEqualToString:draft]){
+		self.input.text = @"";
+		[self inputChanged];
+	}
+	[self reloadTableDebounced];
+	[TGSnackbar showInView:self.view text:@"Draft stopped" seconds:2 onCommit:nil];
+}
+
+/// updateVideoPublished says which message gained the video. The history is
+/// re-read rather than patched, because the message's kind and its file both
+/// changed; the chat list is nudged by the client on the same update.
+- (void)videoPublished:(NSNotification *)note {
+	if ([note.userInfo[@"chat_id"] longLongValue] != self.chatId)
+		return;
+	[self reload];
+	[TGSnackbar showInView:self.view text:@"Video published" seconds:2 onCommit:nil];
 }
 
 - (void)reloadTableDebounced {
@@ -975,8 +1012,11 @@
 	}];
 }
 
-/// The option that was tapped votes for itself. Which poll it belongs to comes
-/// from the cell it sits in, because a button knows nothing about messages.
+/// The option that was tapped opens its own card: what TDLib says the answer
+/// still allows, then the vote. Voting is still one tap later, because the
+/// vote is irreversible and the card is the honest place to say what the
+/// answer can be used for. Which poll it belongs to comes from the cell it
+/// sits in, because a button knows nothing about messages.
 - (void)pollOptionTapped:(UIButton *)option {
 	UIView *view = option;
 	while (view && ![view isKindOfClass:TGBubbleCell.class])
@@ -986,13 +1026,67 @@
 		return;
 
 	NSInteger index = option.tag - 0x9100;
-	[[TGClient shared] votePoll:cell.pollMessageId
-						 inChat:self.chatId
-						options:@[@(index)]];
+	NSDictionary *message = nil;
+	for (NSDictionary *candidate in self.messages){
+		if ([candidate[@"id"] longLongValue] == cell.pollMessageId){
+			message = candidate;
+			break;
+		}
+	}
+	NSArray *options = message[@"pollOptions"];
+	NSDictionary *pollOption = (index >= 0 && index < (NSInteger)options.count)
+			? options[(NSUInteger)index] : nil;
+	NSString *optionId = pollOption[@"id"];
+	id optionText = pollOption[@"text"];
+	NSString *label = [optionText isKindOfClass:NSDictionary.class]
+			? (optionText[@"text"] ?: @"")
+			: ([optionText isKindOfClass:NSString.class] ? optionText : @"This answer");
+	BOOL closed = [message[@"pollClosed"] boolValue];
 
-	// TDLib answers with an updated message; re-read so the shares move.
-	dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)),
-			dispatch_get_main_queue(), ^{ [self reload]; });
+	__weak typeof(self) weakSelf = self;
+	[[TGClient shared] pollOptionProperties:(optionId ?: @"")
+								 ofMessage:cell.pollMessageId
+									inChat:self.chatId
+								completion:^(NSDictionary *properties, NSString *error){
+		TGChatViewController *me = weakSelf;
+		if (!me)
+			return;
+
+		NSString *body;
+		if (properties){
+			body = [NSString stringWithFormat:
+					@"Can be deleted: %@\nCan be replied to: %@\n"
+					@"Can be replied to in another chat: %@\nCan get a link: %@",
+					[properties[@"canBeDeleted"] boolValue] ? @"yes" : @"no",
+					[properties[@"canBeReplied"] boolValue] ? @"yes" : @"no",
+					[properties[@"canBeRepliedInAnotherChat"] boolValue] ? @"yes" : @"no",
+					[properties[@"canGetLink"] boolValue] ? @"yes" : @"no"];
+		} else {
+			body = error ?: @"Telegram did not answer with the answer's properties.";
+		}
+
+		void (^vote)(void) = ^{
+			[[TGClient shared] votePoll:cell.pollMessageId
+								 inChat:me.chatId
+								options:@[@(index)]];
+			// TDLib answers with an updated message; re-read so the shares move.
+			dispatch_after(dispatch_time(DISPATCH_TIME_NOW,
+					(int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+				[me reload];
+			});
+		};
+
+		if (closed){
+			[TGAlertSheet showMessage:body title:label inView:me.view];
+			return;
+		}
+		[TGAlertSheet showChoices:@[@"Vote for this answer"]
+							title:label
+						  message:body
+				 destructiveIndex:-1
+						   inView:me.view
+						 onChoice:^(NSInteger choice){ vote(); }];
+	}];
 }
 
 #pragma mark - pinned message

@@ -18,6 +18,14 @@ typedef NS_ENUM(NSInteger, TGSettingsPage) {
 	TGSettingsPageDownloads,
 	TGSettingsPageWallpaper,
 	TGSettingsPageAutosave,
+	/// Orders and payment data: the saved checkout, a card lookup, a
+	/// suggested post's offer and validateOrderInfo. Reached from Privacy and
+	/// Security's payment section.
+	TGSettingsPagePaymentData,
+	/// Reached from Notifications and Sounds: saved sounds and the local list
+	/// TDLib keeps while the app is running.
+	TGSettingsPageNotificationSounds,
+	TGSettingsPageActiveNotifications,
 	/// Reached by tapping the version under the root list ten times, the way
 	/// their Debug Menu is. Not linked from anywhere.
 	TGSettingsPageDebug

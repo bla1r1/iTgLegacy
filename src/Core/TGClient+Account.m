@@ -1,6 +1,10 @@
 #import "TGClientInternal.h"
 #import "TGStatusText.h"
 
+/// Defined with the autosave reads below; the update branch above it only
+/// needs the same flattening so both paths produce one row shape.
+static NSDictionary *TGFlattenAutosaveScope(NSDictionary *settings);
+
 /// TDLib names the three scopes; the app names them shortly.
 static NSString *TGScopeType(NSString *scope) {
 	if ([scope isEqualToString:@"groups"])   return @"notificationSettingsScopeGroupChats";
@@ -264,7 +268,17 @@ static NSArray *TGPacksFrom(NSDictionary *target) {
 #pragma mark - account
 
 - (void)sessionsWithCompletion:(void (^)(NSArray *))completion {
+	[self sessionsWithInactiveTtlCompletion:^(NSArray *sessions, NSInteger ttlDays){
+		if (completion) completion(sessions);
+	}];
+}
+
+- (void)sessionsWithInactiveTtlCompletion:(void (^)(NSArray *, NSInteger))completion {
 	[self request:@{@"@type" : @"getActiveSessions"} completion:^(NSDictionary *result){
+		if ([result[@"@type"] isEqualToString:@"error"]){
+			if (completion) completion(@[], 0);
+			return;
+		}
 		NSMutableArray *out = [NSMutableArray array];
 		for (NSDictionary *session in result[@"sessions"]){
 			[out addObject:@{
@@ -276,10 +290,12 @@ static NSArray *TGPacksFrom(NSDictionary *target) {
 				@"isCurrent"  : session[@"is_current"] ?: @NO,
 				@"isUnconfirmed" : session[@"is_unconfirmed"] ?: @NO,
 				@"canAcceptSecretChats" : session[@"can_accept_secret_chats"] ?: @YES,
+				@"canAcceptCalls" : session[@"can_accept_calls"] ?: @YES,
 				@"lastActive" : session[@"last_active_date"] ?: @0,
 			}];
 		}
-		if (completion) completion(out);
+		if (completion)
+			completion(out, [result[@"inactive_session_ttl_days"] integerValue]);
 	}];
 }
 
@@ -289,6 +305,42 @@ static NSArray *TGPacksFrom(NSDictionary *target) {
 
 - (void)confirmSession:(long long)sessionId {
 	[self send:@{@"@type" : @"confirmSession", @"session_id" : @(sessionId)}];
+}
+
+- (void)toggleSession:(long long)sessionId
+	   canAcceptCalls:(BOOL)canAccept
+		   completion:(void (^)(BOOL, NSString *))completion {
+	if (!sessionId){
+		if (completion) completion(NO, @"No session was named.");
+		return;
+	}
+	[self request:@{@"@type" : @"toggleSessionCanAcceptCalls",
+					@"session_id" : @(sessionId),
+					@"can_accept_calls" : @(canAccept)}
+	   completion:^(NSDictionary *result){
+		BOOL failed = [result[@"@type"] isEqualToString:@"error"];
+		NSString *message = [result[@"message"] isKindOfClass:NSString.class]
+				? result[@"message"] : @"Telegram refused that.";
+		if (completion) completion(!failed, failed ? message : nil);
+	}];
+}
+
+- (void)setInactiveSessionTtlDays:(NSInteger)days
+					   completion:(void (^)(BOOL, NSString *))completion {
+	// TDLib's own range; naming it here means the picker cannot send a value
+	// the server will only reject.
+	if (days < 1 || days > 366){
+		if (completion) completion(NO, @"The idle timeout is 1 to 366 days.");
+		return;
+	}
+	[self request:@{@"@type" : @"setInactiveSessionTtl",
+					@"inactive_session_ttl_days" : @((int32_t)days)}
+	   completion:^(NSDictionary *result){
+		BOOL failed = [result[@"@type"] isEqualToString:@"error"];
+		NSString *message = [result[@"message"] isKindOfClass:NSString.class]
+				? result[@"message"] : @"Telegram refused that.";
+		if (completion) completion(!failed, failed ? message : nil);
+	}];
 }
 
 - (void)setName:(NSString *)firstName last:(NSString *)lastName {
@@ -424,6 +476,41 @@ static NSArray *TGPacksFrom(NSDictionary *target) {
 			@"canVideoCall" : full[@"supports_video_calls"] ?: @NO,
 		});
 	}];
+}
+
+#pragma mark - local notifications
+
+/// The group types TDLib names. A raw "@type" is not what a row header
+/// should read, and the four labels are all the schema has.
+- (void)applyHavePendingNotificationsUpdate:(NSDictionary *)update {
+	self.haveDelayedNotifications =
+			[update[@"have_delayed_notifications"] boolValue];
+	self.haveUnreceivedNotifications =
+			[update[@"have_unreceived_notifications"] boolValue];
+	[[NSNotificationCenter defaultCenter]
+			postNotificationName:TGActiveNotificationsChangedNotification
+						  object:self
+						userInfo:@{@"pending" : @(self.havePendingNotifications)}];
+}
+
+- (void)applyAutosaveSettingsUpdate:(NSDictionary *)update {
+	NSString *scopeType = update[@"scope"][@"@type"] ?: @"";
+	NSString *scope = nil;
+	if ([scopeType isEqualToString:@"autosaveSettingsScopeGroupChats"])
+		scope = @"groups";
+	else if ([scopeType isEqualToString:@"autosaveSettingsScopeChannelChats"])
+		scope = @"channels";
+	else if ([scopeType isEqualToString:@"autosaveSettingsScopePrivateChats"])
+		scope = @"private";
+
+	if (scope.length && [update[@"settings"] isKindOfClass:NSDictionary.class]){
+		NSMutableDictionary *scopes = [self.autosaveSettingsByScope mutableCopy]
+				?: [NSMutableDictionary dictionary];
+		scopes[scope] = TGFlattenAutosaveScope(update[@"settings"]);
+		self.autosaveSettingsByScope = scopes;
+	}
+	[[NSNotificationCenter defaultCenter]
+			postNotificationName:TGAutosaveSettingsChangedNotification object:self];
 }
 
 #pragma mark - account settings
@@ -988,6 +1075,8 @@ static NSDictionary *TGFlattenAutosaveScope(NSDictionary *settings) {
 			NSString *reason = content[@"discard_reason"][@"@type"];
 			[out addObject:@{
 				@"userId"   : @(chatId),
+				@"chatId"   : @(chatId),
+				@"messageId": m[@"id"] ?: @0,
 				@"name"     : [weakSelf nameForUserId:chatId] ?: @"Unknown",
 				@"outgoing" : @([m[@"is_outgoing"] boolValue]),
 				@"missed"   : @([reason isEqualToString:@"callDiscardReasonMissed"] ||

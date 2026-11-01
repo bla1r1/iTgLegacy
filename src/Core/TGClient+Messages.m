@@ -1444,6 +1444,40 @@ static id TGMessageTopicForThread(TGClient *client, int64_t chatId, int64_t thre
 	}];
 }
 
+/// What one answer still allows. TDLib answers with a record of four flags;
+/// the card names each one instead of showing the raw object, because a
+/// client that only prints JSON has not told the user anything.
+- (void)pollOptionProperties:(NSString *)optionId
+				   ofMessage:(int64_t)messageId
+					  inChat:(int64_t)chatId
+				  completion:(void (^)(NSDictionary *, NSString *))completion {
+	optionId = [optionId isKindOfClass:NSString.class] ? optionId : @"";
+	if (!optionId.length){
+		if (completion) completion(nil, @"This answer has no id to look up.");
+		return;
+	}
+	[self request:@{
+		@"@type"        : @"getPollOptionProperties",
+		@"chat_id"      : @(chatId),
+		@"message_id"   : @(messageId),
+		@"poll_option_id" : optionId,
+	} completion:^(NSDictionary *result){
+		if ([result[@"@type"] isEqualToString:@"error"]){
+			NSString *message = [result[@"message"] isKindOfClass:NSString.class]
+					? result[@"message"] : @"Telegram refused that lookup.";
+			if (completion) completion(nil, message);
+			return;
+		}
+		if (completion)
+			completion(@{
+				@"canBeDeleted"             : result[@"can_be_deleted"] ?: @NO,
+				@"canBeReplied"             : result[@"can_be_replied"] ?: @NO,
+				@"canBeRepliedInAnotherChat": result[@"can_be_replied_in_another_chat"] ?: @NO,
+				@"canGetLink"               : result[@"can_get_link"] ?: @NO,
+			}, nil);
+	}];
+}
+
 /// Every poll in the chat read up on: the votes are no longer new once the
 /// chat has been seen, which is what a badge on the answer options is.
 - (void)readAllChatPollVotes:(int64_t)chatId {

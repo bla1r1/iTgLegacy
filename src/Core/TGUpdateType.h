@@ -145,21 +145,6 @@
 // screen - not a hunt for the string. scripts/tdlib_coverage.sh reports
 // these apart from the updates that change something (--ignored).
 #define TG_IGNORED_UPDATES(X) \
-	X(TGUpdateActiveNotifications,         "updateActiveNotifications") \
-	X(TGUpdateNotification,                "updateNotification") \
-	X(TGUpdateNotificationGroup,           "updateNotificationGroup") \
-	X(TGUpdateHavePendingNotifications,    "updateHavePendingNotifications") \
-	X(TGUpdateFreezeState,                 "updateFreezeState") \
-	X(TGUpdateAgeVerificationParameters,   "updateAgeVerificationParameters") \
-	X(TGUpdateApplicationRecaptchaVerificationRequired, "updateApplicationRecaptchaVerificationRequired") \
-	X(TGUpdateUserSubscription,            "updateUserSubscription") \
-	X(TGUpdateAutosaveSettings,            "updateAutosaveSettings") \
-	X(TGUpdateLanguagePackStrings,         "updateLanguagePackStrings") \
-	X(TGUpdateDefaultBackground,           "updateDefaultBackground") \
-	X(TGUpdateEmojiChatThemes,             "updateEmojiChatThemes") \
-	X(TGUpdateAvailableMessageEffects,     "updateAvailableMessageEffects") \
-	X(TGUpdateStopMessageDraft,            "updateStopMessageDraft") \
-	X(TGUpdateVideoPublished,              "updateVideoPublished")
 
 typedef enum {
 	TGUpdateUnknown = 0,

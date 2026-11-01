@@ -131,6 +131,22 @@ static void TGTextAnswer(TGClient *client, NSDictionary *request,
 	}];
 }
 
+- (void)applyLanguagePackStringsUpdate:(NSDictionary *)update {
+	NSString *packId = [update[@"language_pack_id"] isKindOfClass:NSString.class]
+			? update[@"language_pack_id"] : @"";
+	if (!packId.length)
+		return;
+	NSArray *rows = TGLanguagePackStrings(update);
+	NSMutableDictionary *changed = [self.languagePackStringsByPack mutableCopy]
+			?: [NSMutableDictionary dictionary];
+	changed[packId] = rows;
+	self.languagePackStringsByPack = changed;
+	[[NSNotificationCenter defaultCenter]
+			postNotificationName:TGLanguagePackStringsChangedNotification
+						  object:self
+						userInfo:@{@"packId" : packId}];
+}
+
 - (void)languagePackString:(NSString *)key
 					  pack:(NSString *)packId
 				completion:(void (^)(NSString *, NSString *))completion {

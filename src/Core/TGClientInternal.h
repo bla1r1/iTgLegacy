@@ -62,6 +62,22 @@ NSDictionary *TGStickerInfo(NSDictionary *sticker);
 /// public surface reads it; the setter rebuilds it so one switch does not
 /// clear the sources this screen does not show.
 @property (nonatomic, copy) NSDictionary *reactionNotificationSettingsValue;
+/// TDLib's local notification groups, as updateActiveNotifications and the
+/// two incremental updates shape them. Each group keeps its notifications
+/// sorted by id; the Active Notifications screen draws this and only asks the
+/// server again on first open or after its own removal.
+@property (nonatomic, copy) NSArray *activeNotificationGroupRows;
+/// updateHavePendingNotifications: TDLib is still fetching or delaying
+/// notifications, so the list is incomplete and the screen shows a spinner.
+@property (nonatomic, assign) BOOL haveDelayedNotifications;
+@property (nonatomic, assign) BOOL haveUnreceivedNotifications;
+/// The last autosaveSettings scope update, keyed by "private", "groups" and
+/// "channels". Exceptions are not carried by updateAutosaveSettings; the
+/// screen re-reads getAutosaveSettings for those.
+@property (nonatomic, strong) NSMutableDictionary *autosaveSettingsByScope;
+/// The last strings updateLanguagePackStrings carried for each pack. A later
+/// update may be partial, so this is the last change, not a complete pack.
+@property (nonatomic, copy) NSDictionary *languagePackStringsByPack;
 /// The GIF provider and the emoji it suggests, from
 /// updateAnimationSearchParameters. "gif" is the bot every client ships with.
 @property (nonatomic, copy) NSString *gifSearchProvider;
@@ -86,6 +102,32 @@ NSDictionary *TGStickerInfo(NSDictionary *sticker);
 /// Contacts with a birthday nearby, from updateContactCloseBirthdays. The
 /// privacy page shows the count and hideContactCloseBirthdays empties it.
 @property (nonatomic, strong) NSArray *contactCloseBirthdays;
+/// Telegram's own account facts, kept whole rather than reduced to the one
+/// line each Settings row shows: the sheet behind the row reads the reason,
+/// the dates and the action the update named. Nil until that update arrives.
+@property (nonatomic, copy) NSDictionary *freezeStateValue;
+@property (nonatomic, copy) NSDictionary *ageVerificationParametersValue;
+@property (nonatomic, copy) NSDictionary *recaptchaVerificationRequestValue;
+/// Subscriptions are per user; the signed-in account is the one the Privacy
+/// page draws, but the update names whoever it is about.
+@property (nonatomic, strong) NSMutableDictionary *userSubscriptionsById;
+/// The two effect lists from updateAvailableMessageEffects. The effect sheet
+/// reads them live, so a list that changes while the menu is open is the one
+/// the next hold shows.
+@property (nonatomic, strong) NSArray *reactionMessageEffectIds;
+@property (nonatomic, strong) NSArray *stickerMessageEffectIds;
+/// The default background record (for_dark_theme plus the background object)
+/// and the emoji chat themes, both read by Appearance.
+@property (nonatomic, copy) NSDictionary *defaultBackgroundValue;
+@property (nonatomic, strong) NSArray *emojiChatThemesValue;
+/// The last draft stop and the last auto-published video, kept so a screen
+/// that opens after the notification can still say what happened.
+@property (nonatomic, copy) NSDictionary *stoppedMessageDraftValue;
+@property (nonatomic, copy) NSDictionary *publishedVideoValue;
+/// updateActiveNotifications and its two incremental shapes, flattened for
+/// the Active Notifications page. It is the only copy: TDLib has no request
+/// that re-reads it.
+@property (nonatomic, strong) NSArray *activeNotificationGroupsValue;
 @property (nonatomic, assign) TGConnectionState connectionState;
 @property (nonatomic, strong) NSMutableDictionary *pendingRequests;  // @extra -> completion
 @property (nonatomic, assign) NSUInteger requestSeq;
@@ -128,6 +170,19 @@ extern double TGFileWaiterTimeoutSeconds;
 - (void)mergeChat:(NSDictionary *)chat;
 - (void)applyChatUpdate:(NSDictionary *)update;
 - (void)rebuildChats;
+/// The local notification list's four updates. They live beside the public
+/// activeNotifications read so the row shape and the incremental shape agree.
+- (void)applyActiveNotificationsUpdate:(NSDictionary *)update;
+- (void)applyNotificationUpdate:(NSDictionary *)update;
+- (void)applyNotificationGroupUpdate:(NSDictionary *)update;
+- (void)applyHavePendingNotificationsUpdate:(NSDictionary *)update;
+/// updateAutosaveSettings carries one scope, never the exception list; the
+/// page re-reads the whole record. Kept in TGClient+Account where the
+/// getAutosaveSettings flattening lives.
+- (void)applyAutosaveSettingsUpdate:(NSDictionary *)update;
+/// updateLanguagePackStrings carries the strings that changed, not a whole
+/// pack. Kept in TGClient+Language beside getLanguagePackStrings.
+- (void)applyLanguagePackStringsUpdate:(NSDictionary *)update;
 /// One field on one chat row changed, so the list is stale but nothing is
 /// waiting on it this instant. Updates that arrive in floods - a typing
 /// storm, the presence burst at login, a forum flag landing on twenty chats
@@ -135,6 +190,13 @@ extern double TGFileWaiterTimeoutSeconds;
 - (void)markChatRowDirty:(int64_t)chatId;
 - (NSString *)previewForLastMessage:(NSDictionary *)last inChat:(NSMutableDictionary *)info;
 
+@end
+
+/// The local notification list's three update shapes, in one place because
+/// they all end by posting the same notification. A category rather than the
+/// class extension, because the implementation lives in TGClient+Notifications.
+@interface TGClient (NotificationsInternal)
+- (void)applyActiveNotificationUpdate:(NSDictionary *)update;
 @end
 
 #ifdef __cplusplus

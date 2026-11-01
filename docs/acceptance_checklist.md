@@ -94,6 +94,21 @@ Zones that were fixed more than once. Column format: check — why it broke befo
 | Member avatars appear in both member lists | — | Group profile and Group Settings: a member with a profile photo shows it within 2 s; one without keeps initials; scrolling does not reload the table wholesale | `TGClientAccountTests.testProfilePhoto_*` pins the file-id lookup; `TGMemberAvatarStore` cache/download is UIKit-bound |
 | Telegram's refusal is shown where rights are missing | — | Non-admin taps Permissions or a mode switch: the sheet names why Telegram refused; the row keeps its old value | The same `BOOL ok, NSString *error` completions the supergroup tests cover |
 
+### Backgrounds and diagnostics
+
+| Check | Broke in | Device | Host |
+|---|---|---|---|
+| Installed backgrounds match the account, in the light and dark lists | — | Settings → Appearance → Chat Backgrounds: every background on the official client is listed; flipping Dark Theme Backgrounds swaps the list and its default ≤ 2 s | `TGClientAppearanceDiagnosticsTests`: `getInstalledBackgrounds` sends the theme flag, flattens id/name/default/type/file |
+| A catalogue search shows a result or Telegram's miss | — | Chat Backgrounds → Search Telegram's Backgrounds → `cat`: the result appears with its thumbnail; a nonsense name shows the server's sentence in the page | `searchBackground` names the query, error text survives |
+| Installing a found background makes it the default | — | Tap a search result → Install as Default: the result joins Installed with "Default" under it, and a reopened chat uses it | `setDefaultBackground` sends `inputBackgroundRemote` and keeps the pattern type |
+| A background's remote address is readable and copyable | — | Installed → a background → Show Remote URL: the alert names the HTTPS address; Copy Address puts it on the clipboard | `getBackgroundUrl` sends name and type; a chat theme and a nameless background refuse without a request |
+| Remove, reset and delete-default each show their answer | — | Remove drops one row ≤ 2 s; Reset restores Telegram's set; Delete Default puts chats back and leaves the installed list | `removeInstalledBackground`, `resetInstalledBackgrounds` and `deleteDefaultBackground` shapes, including refusals |
+| Network page reads state, config, database and totals | — | Settings → Data and Storage → Network: TDLib State names the authorization and connection words, Application Config lists key/value rows, Database Statistics shows the report, Data Usage matches the official client's figure | `getCurrentState` flattening, `getApplicationConfig` nested JsonValue, `getDatabaseStatistics` string |
+| Network type and added usage entries reach TDLib | — | Network Type → Wi-Fi: the row says Wi-Fi and the server's answer; Add Usage Entry → 100/200 bytes, 3.5 s: the totals grow by the entry | `setNetworkType` object and refusal; `addNetworkStatistics` call entry fields |
+| A statistical graph renders its points | — | Network → Statistical Graph → chat id, token: the list names the point count and draws one bar per point; an async token is followed; an expired token shows Telegram's message | `getStatisticalGraph` data/async/error paths and line rendering |
+| A custom request shows its own result | — | Debug Menu → Send Custom Request → `getOption`, `{"name":"version"}`: the viewer pretty-prints the result and Copy keeps it | `sendCustomRequest` method and parameters, result string |
+| Changing the database key warns, saves and survives a refusal | — | Debug Menu → Database Encryption Key: the warning names the risk; a set key survives a relaunch (TDLib opens the database); a refused change keeps the old key | `setDatabaseEncryptionKey` base64 bytes, key saved on ok, old key restored on error, empty key refused |
+
 ### Calls connectivity
 
 | Check | Broke in | Device | Host |
@@ -139,6 +154,26 @@ Zones that were fixed more than once. Column format: check — why it broke befo
 | Autosave switches write the scope and survive reopening the page | — | Toggle Photos for Groups: reopen Autosave: switch stays as set; clearing exceptions empties the list | `TGClientAutosaveContactsTests`: get/set/clear shapes |
 | Imported contact count follows an import | — | Contacts → Import → Import: alert names the accepted count; footer shows the account total | `TGClientAutosaveContactsTests`: changeImportedContacts + getImportedContactCount |
 | Auto-download presets come from Telegram, not a constant | — | Data & Storage → Presets shows Medium sizes; choose High: Wi-Fi switch follows and the toast names the preset | `TGClientFileToolsTests`: getAutoDownloadSettingsPresets flat shape |
+| Autosave follows a change made on another client | — | With Autosave open, change a scope on a second device: the switch and exception count move ≤ 2 s without reopening | `TGUpdatesTests`: `updateAutosaveSettings` keeps the scope and posts `TGAutosaveSettingsChangedNotification` |
+| Active notifications draw, change and remove | — | Settings → Notifications and Sounds → Active: groups name their chat and count; a new background message adds a row; remove drops it; Clear All empties the list; the spinner shows while TDLib reports pending | `TGUpdatesTests`: the four `updateNotification*` shapes; `TGClientAccountTests`: `removeNotification` / `removeNotificationGroup` ids and cache |
+| A language pack change reaches the page | — | With Language open and Strings read once, change a string on another client: the Strings detail and the sheet follow ≤ 2 s | `TGUpdatesTests`: `updateLanguagePackStrings` names the pack and keeps the change |
+
+### Orders, call diagnostics, websites, bot buttons and poll answers
+
+The screens are UIKit and checked on device; every request shape behind them is in `TGClientMiscTests`. A user account may see Telegram's refusal on the bot-only rows; the refusal itself is the expected screen.
+
+| Check | Broke in | Device | Host |
+|---|---|---|---|
+| Saved order reads, then deletes after a confirm | — | Privacy and Security → Orders and Payment Data: the row names the saved name ≤ 2 s; Delete → confirm: the row says "None saved" and reopening the page keeps it gone | `testSavedOrderInfo_ReadsTheOrderTelegramKept`, `testDeleteSavedOrderInfo_SendsTheRequestAndKeepsTheRefusal` |
+| Card lookup shows the provider's title and links | — | Type a full card number: the sheet names the card ≤ 3 s and offers the provider's action titles; a short number never sends and says why | `testBankCardInfo_StripsSpacesBeforeTheLookup`, `testBankCardInfo_AShortNumberNeverLeavesTheDevice` |
+| An offer names the message and a Stars price | — | Add an Offer → chat id, message id, 250: either "Offer sent" with the message id or Telegram's refusal, never a silent sheet | `testAddOffer_BuildsEverySendOptionAndTheStarPrice`, `testAddOffer_NoPriceSendsNothing` |
+| Order validation reads the order-info id and shipping | — | Validate an Order → invoice + seven fields: the sheet names `order_info_id` and each shipping option, or Telegram's sentence | `testValidateOrderInfo_BuildsEveryRequiredOrderField`, `testValidateOrderInfo_NoInvoiceNameSendsNothing` |
+| A finished call sends its log file | — | Recent Calls → a call → Send Call Log: "Telegram accepted the call log"; the row then reads "log sent", survives a reopen, and the log shows one `sendCallLog` with a local path that no longer exists | `testSendCallLog_WritesALocalFileForTheCallMessage`, `testSendCallLog_RefusalCarriesTheServersSentence` |
+| A finished call sends its debug record | — | Same card → Send Debug Information: accepted or refused with the server's words; on success the row reads "debug sent" and the request carries the JSON | `testSendCallDebugInformation_NamesTheCallAndCarriesTheJSON`, `testSendCallDebugInformation_EmptyTextNeverLeavesTheDevice` |
+| A session's calls switch and the idle timeout are real | — | Devices → tap a session → Stop Accepting Calls: reopening the row shows the new state; Inactive Session Timeout → 90 days: the row says 90 and survives reopening | `testSessions_CarryTheIdleTimeoutAndCallsSwitch`, `testToggleSessionCanAcceptCalls_SendsTheBooleanAndTheRefusal`, `testSetInactiveSessionTtl_SendsTheDaysAndRefusesOutOfRange` |
+| Connected websites list and sign out one or all | — | Devices → Connected Websites: every site with browser and last use ≤ 3 s; sign one out: the row disappears after the re-read; Disconnect All → confirm: the list empties | `testConnectedWebsites_ReadsEverySite`, `testDisconnectWebsite_NamesTheWebsiteId`, `testDisconnectAllWebsites_SendsTheOneRequest` |
+| A prepared keyboard button is saved and read back | — | Debug → Bot Tools → Save Prepared Keyboard Button: the prepared id appears, Fetch It Back shows the same text, or a user account shows the refusal | `testSavePreparedKeyboardButton_BuildsACompleteTextButton`, `testPreparedKeyboardButton_ReadsTheButtonAndTheRefusal` |
+| A poll answer's card names what it still allows | — | Tap an answer: the card lists delete/reply/another-chat/link flags ≤ 2 s, then Vote is one tap below; a closed poll shows the flags without Vote | `testPollOptionProperties_ReadsEveryFlag`, `testPollOptionProperties_RefusalIsTheServersSentence` |
 
 ---
 

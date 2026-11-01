@@ -21,6 +21,16 @@ static TGClient *U(void) {
 	c.onMessage = nil;
 	c.reactionDefaultEmoji = nil;
 	c.reactionNotificationSettingsValue = nil;
+	c.freezeStateValue = nil;
+	c.ageVerificationParametersValue = nil;
+	c.recaptchaVerificationRequestValue = nil;
+	c.userSubscriptionsById = [NSMutableDictionary dictionary];
+	c.reactionMessageEffectIds = nil;
+	c.stickerMessageEffectIds = nil;
+	c.defaultBackgroundValue = nil;
+	c.emojiChatThemesValue = nil;
+	c.stoppedMessageDraftValue = nil;
+	c.publishedVideoValue = nil;
 	[c.updateCoalescer reset];
 	TGOptionReset();
 	return c;
@@ -687,6 +697,184 @@ static NSMutableDictionary *info(TGClient *c, int64_t chatId) {
 
 	[[NSNotificationCenter defaultCenter] removeObserver:token];
 	XCTAssertTrue(told);
+}
+
+// ─── account status and server defaults ─────────────────────────────────────
+
+- (void)testFreezeState_KeepsTheDatesAndTheAppealLink {
+	TGClient *c = U();
+	__block BOOL told = NO;
+	id token = [[NSNotificationCenter defaultCenter]
+			addObserverForName:TGAccountStatusChangedNotification object:nil
+			queue:nil usingBlock:^(NSNotification *n){ told = YES; }];
+
+	[c handleUpdate:@{@"@type" : @"updateFreezeState", @"is_frozen" : @YES,
+					  @"freezing_date" : @(1700000000),
+					  @"deletion_date" : @(1702592000),
+					  @"appeal_link" : @"https://telegram.org/appeal"}];
+
+	[[NSNotificationCenter defaultCenter] removeObserver:token];
+	XCTAssertTrue(told);
+	XCTAssertEqualObjects(c.freezeState[@"is_frozen"], @YES);
+	XCTAssertEqualObjects(c.freezeState[@"freezing_date"], @(1700000000));
+	XCTAssertEqualObjects(c.freezeState[@"deletion_date"], @(1702592000));
+	XCTAssertEqualObjects(c.freezeState[@"appeal_link"],
+						  @"https://telegram.org/appeal");
+}
+
+- (void)testAgeVerificationParameters_AreTheWholeServerRecord {
+	TGClient *c = U();
+	__block BOOL told = NO;
+	id token = [[NSNotificationCenter defaultCenter]
+			addObserverForName:TGAccountStatusChangedNotification object:nil
+			queue:nil usingBlock:^(NSNotification *n){ told = YES; }];
+
+	[c handleUpdate:@{@"@type" : @"updateAgeVerificationParameters",
+					  @"parameters" : @{@"@type" : @"ageVerificationParameters",
+										@"min_age" : @(18),
+										@"verification_bot_username" : @"agebot",
+										@"country" : @"DE"}}];
+
+	[[NSNotificationCenter defaultCenter] removeObserver:token];
+	XCTAssertTrue(told);
+	XCTAssertEqualObjects(c.ageVerificationParameters[@"min_age"], @(18));
+	XCTAssertEqualObjects(c.ageVerificationParameters[@"verification_bot_username"],
+						  @"agebot");
+	XCTAssertEqualObjects(c.ageVerificationParameters[@"country"], @"DE");
+
+	// A second update without parameters clears the row, not leaves 18 on it.
+	[c handleUpdate:@{@"@type" : @"updateAgeVerificationParameters"}];
+	XCTAssertNil(c.ageVerificationParameters);
+}
+
+- (void)testRecaptchaRequest_KeepsTheActionAndSiteKey {
+	TGClient *c = U();
+	__block BOOL told = NO;
+	id token = [[NSNotificationCenter defaultCenter]
+			addObserverForName:TGAccountStatusChangedNotification object:nil
+			queue:nil usingBlock:^(NSNotification *n){ told = YES; }];
+
+	[c handleUpdate:@{@"@type" : @"updateApplicationRecaptchaVerificationRequired",
+					  @"verification_id" : @"41",
+					  @"action" : @"LOGIN",
+					  @"recaptcha_key_id" : @"site-key"}];
+
+	[[NSNotificationCenter defaultCenter] removeObserver:token];
+	XCTAssertTrue(told);
+	XCTAssertEqualObjects(c.recaptchaVerificationRequest[@"verification_id"], @(41));
+	XCTAssertEqualObjects(c.recaptchaVerificationRequest[@"action"], @"LOGIN");
+	XCTAssertEqualObjects(c.recaptchaVerificationRequest[@"recaptcha_key_id"],
+						  @"site-key");
+}
+
+- (void)testUserSubscription_IsFiledByTheUserItNames {
+	TGClient *c = U();
+	XCTAssertNil([c subscriptionForUserId:1001]);
+
+	[c handleUpdate:@{@"@type" : @"updateUserSubscription", @"user_id" : @(1001),
+					  @"payload" : @"monthly", @"is_canceled" : @YES,
+					  @"is_restored" : @NO, @"is_payment_failed" : @NO}];
+	[c handleUpdate:@{@"@type" : @"updateUserSubscription", @"user_id" : @(2002),
+					  @"payload" : @"yearly", @"is_canceled" : @NO,
+					  @"is_restored" : @YES, @"is_payment_failed" : @YES}];
+
+	XCTAssertEqualObjects([c subscriptionForUserId:1001][@"payload"], @"monthly");
+	XCTAssertEqualObjects([c subscriptionForUserId:1001][@"is_canceled"], @YES);
+	XCTAssertEqualObjects([c subscriptionForUserId:2002][@"payload"], @"yearly");
+	XCTAssertEqualObjects([c subscriptionForUserId:2002][@"is_payment_failed"], @YES);
+	XCTAssertNil([c subscriptionForUserId:3003]);
+}
+
+- (void)testAvailableMessageEffects_KeepBothListsAsNumbers {
+	TGClient *c = U();
+	__block BOOL told = NO;
+	id token = [[NSNotificationCenter defaultCenter]
+			addObserverForName:TGMessageEffectsChangedNotification object:nil
+			queue:nil usingBlock:^(NSNotification *n){ told = YES; }];
+
+	// int64 arrives over JSON as either a number or a decimal string.
+	[c handleUpdate:@{@"@type" : @"updateAvailableMessageEffects",
+					  @"reaction_effect_ids" : @[@"11", @(12)],
+					  @"sticker_effect_ids" : @[@"21"]}];
+
+	[[NSNotificationCenter defaultCenter] removeObserver:token];
+	XCTAssertTrue(told);
+	XCTAssertEqualObjects(c.availableMessageEffectIds, (@[@(11), @(12)]));
+	XCTAssertEqualObjects(c.availableStickerEffectIds, (@[@(21)]));
+}
+
+- (void)testDefaultBackgroundAndEmojiThemes_TellAppearance {
+	TGClient *c = U();
+	__block int posts = 0;
+	id token = [[NSNotificationCenter defaultCenter]
+			addObserverForName:TGAppearanceDefaultsChangedNotification object:nil
+			queue:nil usingBlock:^(NSNotification *n){ posts++; }];
+
+	[c handleUpdate:@{@"@type" : @"updateDefaultBackground",
+					  @"for_dark_theme" : @YES,
+					  @"background" : @{@"@type" : @"background",
+										@"id" : @"7",
+										@"is_default" : @YES,
+										@"is_dark" : @YES,
+										@"name" : @"Night",
+										@"type" : @{@"@type" : @"backgroundTypeFill"}}}];
+	[c handleUpdate:@{@"@type" : @"updateEmojiChatThemes",
+					  @"chat_themes" : @[@{@"@type" : @"emojiChatTheme",
+										  @"name" : @"Sunset",
+										  @"light_settings" : @{},
+										  @"dark_settings" : @{}}]}];
+
+	[[NSNotificationCenter defaultCenter] removeObserver:token];
+	XCTAssertEqual(posts, 2);
+	XCTAssertEqualObjects(c.defaultBackground[@"for_dark_theme"], @YES);
+	XCTAssertEqualObjects(c.defaultBackground[@"background"][@"name"], @"Night");
+	XCTAssertEqual([c.defaultBackground[@"background"][@"id"] longLongValue], 7LL);
+	XCTAssertEqualObjects(c.emojiChatThemes[0][@"name"], @"Sunset");
+}
+
+- (void)testStopMessageDraft_ClearsTheCachedTextAndNamesTheDraft {
+	TGClient *c = U();
+	__block NSDictionary *stopped = nil;
+	id token = [[NSNotificationCenter defaultCenter]
+			addObserverForName:TGChatDraftStoppedNotification object:nil
+			queue:nil usingBlock:^(NSNotification *n){ stopped = n.userInfo; }];
+	[c handleUpdate:@{@"@type" : @"updateChatDraftMessage", @"chat_id" : @(5),
+					  @"draft_message" : @{@"@type" : @"draftMessage",
+						  @"input_message_text" : @{@"@type" : @"inputMessageText",
+							  @"text" : @{@"@type" : @"formattedText",
+										  @"text" : @"half a sentence"}}}}];
+
+	[c handleUpdate:@{@"@type" : @"updateStopMessageDraft", @"chat_id" : @(5),
+					  @"forum_topic_id" : @(0), @"draft_id" : @"77"}];
+
+	[[NSNotificationCenter defaultCenter] removeObserver:token];
+	XCTAssertEqualObjects([c draftForChat:5], @"");
+	XCTAssertEqualObjects(c.stoppedMessageDraft[@"chat_id"], @(5));
+	XCTAssertEqualObjects(c.stoppedMessageDraft[@"draft_id"], @(77));
+	XCTAssertEqualObjects(stopped[@"draft_text"], @"half a sentence");
+}
+
+- (void)testVideoPublished_NudgesTheMessageChatAndAnnouncesIt {
+	TGClient *c = U();
+	NSMutableArray *nudged = [NSMutableArray array];
+	c.onMessage = ^(int64_t chatId, NSDictionary *message, int64_t deletedId){
+		if (!message && deletedId == 0) [nudged addObject:@(chatId)];
+	};
+	__block NSDictionary *published = nil;
+	id token = [[NSNotificationCenter defaultCenter]
+			addObserverForName:TGChatVideoPublishedNotification object:nil
+			queue:nil usingBlock:^(NSNotification *n){ published = n.userInfo; }];
+
+	[c handleUpdate:@{@"@type" : @"updateVideoPublished", @"chat_id" : @(9),
+					  @"message_id" : @(501)}];
+	[c.updateCoalescer flushNow];
+	c.onMessage = nil;
+
+	[[NSNotificationCenter defaultCenter] removeObserver:token];
+	XCTAssertEqualObjects(c.publishedVideo[@"chat_id"], @(9));
+	XCTAssertEqualObjects(c.publishedVideo[@"message_id"], @(501));
+	XCTAssertEqualObjects(published[@"message_id"], @(501));
+	XCTAssertEqualObjects(nudged, (@[@(9)]));
 }
 
 @end

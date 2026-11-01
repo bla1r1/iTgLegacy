@@ -95,6 +95,7 @@ CLIENT_OBJC_SRCS := \
     $(SRC)/Core/TGMessageFlatten.m \
     $(SRC)/Core/TGClient+MessageMeta.m \
     $(SRC)/Core/TGClient+SavedMessages.m \
+    $(SRC)/Core/TGClient+Notifications.m \
     $(SRC)/Core/TGClient+Stickers.m \
     $(SRC)/Core/TGClient+Files.mm \
     $(SRC)/Core/TGStickerPack.mm \
@@ -103,11 +104,18 @@ CLIENT_OBJC_SRCS := \
     $(SRC)/Core/TGClient+Proxy.m \
     $(SRC)/Core/TGClient+Groups.m \
     $(SRC)/Core/TGClient+Usernames.m \
+    $(SRC)/Core/TGClient+Payments.m \
+    $(SRC)/Core/TGClient+Calls.m \
+    $(SRC)/Core/TGClient+Websites.m \
+    $(SRC)/Core/TGClient+BotTools.m \
     $(SRC)/Core/TGClient+Language.m \
     $(SRC)/Core/TGClient+Search.m \
     $(SRC)/Core/TGClient+Downloads.m \
     $(SRC)/Core/TGClient+Secret.m \
     $(SRC)/Core/TGClient+Account.m \
+    $(SRC)/Core/TGClient+Appearance.m \
+    $(SRC)/Core/TGClient+Diagnostics.m \
+    $(SRC)/Core/TGDatabaseKey.m \
     $(SRC)/Core/TGClient+Profile.m \
     $(SRC)/Core/TGClient+Auth.m \
     $(SRC)/Core/TGThemeFile.m \
@@ -169,6 +177,9 @@ CLIENT_TEST_SRCS := \
     $(TESTS)/TGClientSearchLanguageTests.m \
     $(TESTS)/TGClientUsernamesTests.m \
     $(TESTS)/TGClientEmojiReactionsTests.m \
+    $(TESTS)/TGClientAppearanceDiagnosticsTests.m \
+    $(TESTS)/TGClientMiscTests.m \
+    $(TESTS)/TGClientNotificationsForumTests.m \
     $(TESTS)/TGThemeFileTests.m \
     $(TESTS)/TGUpdatesTests.mm \
     $(TESTS)/TGP1MigrationTests.mm \

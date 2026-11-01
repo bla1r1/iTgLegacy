@@ -110,7 +110,7 @@ FRAMEWORKS := -framework UIKit -framework Foundation -framework QuickLook \
               -framework CoreLocation -framework MapKit \
               -framework CoreTelephony -framework CoreImage \
               -framework CoreText -framework AssetsLibrary \
-              -framework ImageIO
+              -framework ImageIO -framework Security
 
 
 # TDLib is loaded at runtime from libtdjson.dylib, never linked.
@@ -210,14 +210,22 @@ APP_SRC_M := \
 	src/Core/TGMessageFlatten.m \
 	src/Core/TGClient+MessageMeta.m \
 	src/Core/TGClient+SavedMessages.m \
+	src/Core/TGClient+Notifications.m \
 	src/Core/TGStatusText.m \
 	src/Core/TGBase64.m \
 	src/Controllers/TGNavController.m \
 	src/Core/TGClient+Account.m \
+	src/Core/TGClient+Appearance.m \
+	src/Core/TGClient+Diagnostics.m \
+	src/Core/TGDatabaseKey.m \
 	src/Core/TGClient+Profile.m \
 	src/Core/TGClient+Proxy.m \
 	src/Core/TGClient+Groups.m \
 	src/Core/TGClient+Usernames.m \
+	src/Core/TGClient+Payments.m \
+	src/Core/TGClient+Calls.m \
+	src/Core/TGClient+Websites.m \
+	src/Core/TGClient+BotTools.m \
 	src/Core/TGClient+Language.m \
 	src/Core/TGClient+Search.m \
 	src/Core/TGClient+ChatTools.m \
@@ -303,7 +311,9 @@ APP_SRC_M := \
 	src/Controllers/TGScheduledViewController.m \
 	src/Controllers/TGForwardPicker.m \
 	src/Controllers/TGCallViewController.m \
+	src/Controllers/TGActiveNotificationsViewController.m \
 	src/Controllers/TGListViewController.m \
+	src/Controllers/TGNetworkViewController.m \
 	src/Controllers/TGChatToolsViewController.m \
 	src/Controllers/TGProfileViewController.m \
 	src/Controllers/TGProfileViewController+Actions.m \
@@ -318,8 +328,10 @@ APP_SRC_M := \
 	src/Controllers/TGFileInfoViewController.m \
 	src/Controllers/TGFileToolsViewController.m \
 	src/Controllers/TGSessionsViewController.m \
+	src/Controllers/TGWebsitesViewController.m \
 	src/Controllers/TGTermsViewController.m \
 	src/Controllers/TGProfilePhotosViewController.m \
+	src/Controllers/TGBackgroundsViewController.m \
 	src/Controllers/TGSettingsViewController.m \
 	src/Controllers/TGSettingsViewController+Pages.m \
 	src/Controllers/TGSettingsViewController+AppearancePages.m \
@@ -462,6 +474,7 @@ ipa-armv7: $(MACHOFIX) $(ARMV7_ALL_OBJS)
 		$(ARMV7_ALL_OBJS) $(FRAMEWORKS) $(WEBP_ARMV7) $(TDLIB_LIBS) $(DEPS_LIBS) -o "$(BUILD_DIR)/armv7/app/$(APP_NAME).app/$(APP_NAME)"
 	@cp -f "$(ROOT_DIR)/resources/Info.plist" "$(BUILD_DIR)/armv7/app/$(APP_NAME).app/Info.plist" 2>/dev/null || true
 	@cp -f "$(ROOT_DIR)/resources/fonts/"*.ttf "$(BUILD_DIR)/armv7/app/$(APP_NAME).app/" 2>/dev/null || true
+	@cp -f "$(ROOT_DIR)/resources/sounds/"*.mp3 "$(BUILD_DIR)/armv7/app/$(APP_NAME).app/" 2>/dev/null || true
 	@cp -rf "$(ROOT_DIR)/images/"* "$(BUILD_DIR)/armv7/app/$(APP_NAME).app/" 2>/dev/null || true
 	@# TDLib rides along as its own image: statically linked it pushes __TEXT
 	@# past the 16MB armv7 thumb branch limit. Built by scripts/build_tdlib_dylib.sh.
@@ -483,6 +496,7 @@ ipa-arm64: $(ARM64_ALL_OBJS)
 		$(ARM64_ALL_OBJS) $(FRAMEWORKS) $(WEBP_ARM64) $(TDLIB_LIBS_ARM64) $(DEPS_LIBS) -o "$(BUILD_DIR)/arm64/app/$(APP_NAME).app/$(APP_NAME)"
 	@cp -f "$(ROOT_DIR)/resources/Info.plist" "$(BUILD_DIR)/arm64/app/$(APP_NAME).app/Info.plist" 2>/dev/null || true
 	@cp -f "$(ROOT_DIR)/resources/fonts/"*.ttf "$(BUILD_DIR)/arm64/app/$(APP_NAME).app/" 2>/dev/null || true
+	@cp -f "$(ROOT_DIR)/resources/sounds/"*.mp3 "$(BUILD_DIR)/arm64/app/$(APP_NAME).app/" 2>/dev/null || true
 	@cp -rf "$(ROOT_DIR)/images/"* "$(BUILD_DIR)/arm64/app/$(APP_NAME).app/" 2>/dev/null || true
 	@codesign -s - --force "$(BUILD_DIR)/arm64/app/$(APP_NAME).app" 2>/dev/null || true
 	@rm -rf "$(BUILD_DIR)/Payload" "$(IPA_ARM64)"

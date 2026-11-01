@@ -20,9 +20,10 @@
 - (void)chatsInFolder:(NSInteger)folderId completion:(void (^)(NSArray *chats))completion;
 
 /// Topics of a forum supergroup - a forum holds several independent threads
-/// in one chat. Each entry: "threadId", "name", "text", "unread", "date" and
-/// "unreadReactions" - the reactions on the topic's messages nobody opened
-/// yet. Empty for a chat that is not a forum.
+/// in one chat. Each entry: "threadId", "name", "text", "unread", "date",
+/// "unreadMentions", "unreadReactions", "unreadPollVotes", "pinned",
+/// "general", "closed", "hidden", "created", "colour", "iconEmojiId" and the
+/// raw "notificationSettings" record. Empty for a chat that is not a forum.
 - (void)forumTopicsForChat:(int64_t)chatId completion:(void (^)(NSArray *topics))completion;
 
 /// Clear the reaction marks on a topic. Called when the topic is opened:
@@ -31,6 +32,47 @@
 - (void)readAllForumTopicReactionsInChat:(int64_t)chatId
                                   topic:(int64_t)threadId
                              completion:(void (^)(BOOL ok))completion;
+
+/// One topic read fresh: getForumTopic, the same fields the list row carries
+/// plus the notification record. nil when Telegram refuses the id.
+- (void)forumTopic:(int64_t)threadId
+            inChat:(int64_t)chatId
+        completion:(void (^)(NSDictionary *topic))completion;
+
+/// The t.me link to one topic, which is what Copy Link puts on the clipboard.
+- (void)forumTopicLinkForTopic:(int64_t)threadId
+                         inChat:(int64_t)chatId
+                     completion:(void (^)(NSString *link))completion;
+
+/// The two badges that are not reactions. readAllForumTopicReactions already
+/// exists; these clear mentions and poll votes when their topic is opened.
+- (void)readAllForumTopicMentionsInChat:(int64_t)chatId
+                                  topic:(int64_t)threadId
+                             completion:(void (^)(BOOL ok, NSString *error))completion;
+
+- (void)readAllForumTopicPollVotesInChat:(int64_t)chatId
+                                   topic:(int64_t)threadId
+                              completion:(void (^)(BOOL ok, NSString *error))completion;
+
+/// setForumTopicNotificationSettings replaces the whole chatNotificationSettings
+/// object, so `settings` is the complete record the screen built from the one
+/// getForumTopic returned. The answer keeps Telegram's refusal text.
+- (void)setForumTopicNotificationSettings:(NSDictionary *)settings
+                                    topic:(int64_t)threadId
+                                   inChat:(int64_t)chatId
+                               completion:(void (^)(BOOL ok, NSString *error))completion;
+
+/// Writes the pinned order whole: the ids in `topicIds`, top first. A topic
+/// left out is unpinned. Requires can_manage_topics.
+- (void)setPinnedForumTopics:(NSArray *)topicIds
+                      inChat:(int64_t)chatId
+                  completion:(void (^)(BOOL ok, NSString *error))completion;
+
+/// Hides the General topic (and closes it) or brings it back. `isHidden` tells
+/// the api which direction to go.
+- (void)toggleGeneralForumTopicHidden:(BOOL)hidden
+                               inChat:(int64_t)chatId
+                           completion:(void (^)(BOOL ok, NSString *error))completion;
 
 /// Making and minding a forum's topics. `colour` indexes the six hues TDLib
 /// accepts, 0-5. `iconEmojiId` is one of the ids `forumTopicDefaultIcons`

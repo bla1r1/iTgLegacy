@@ -335,6 +335,16 @@
                   inChat:(int64_t)chatId
               completion:(void (^)(BOOL ok))completion;
 
+/// What one answer still allows: "canBeDeleted", "canBeReplied",
+/// "canBeRepliedInAnotherChat" and "canGetLink". `optionId` is pollOption's
+/// string id. Nil with `error` when the poll has no such option or Telegram
+/// refuses the read, which is what the answer card shows.
+- (void)pollOptionProperties:(NSString *)optionId
+				   ofMessage:(int64_t)messageId
+					  inChat:(int64_t)chatId
+				  completion:(void (^)(NSDictionary *properties,
+									   NSString *error))completion;
+
 /// Every poll in the chat read up on, so the fresh-vote badge is gone.
 - (void)readAllChatPollVotes:(int64_t)chatId;
 

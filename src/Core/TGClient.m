@@ -1,5 +1,6 @@
 #import "TGClientInternal.h"
 #import "TGBase64.h"
+#import "TGDatabaseKey.h"
 #import "TGOptions.h"
 #import "TGCall.h"
 #import "TGJson.h"
@@ -25,6 +26,22 @@ static NSString *TGFolderTitle(NSDictionary *f){
 	return answer;
 }
 
+/// Effect ids arrive as a vector<int64>; over JSON that is either a number or
+/// a decimal string. Both are reduced to NSNumber here so every reader can
+/// pass one straight back to getMessageEffect.
+static NSArray *TGEffectIdList(id value){
+	if (![value isKindOfClass:NSArray.class])
+		return @[];
+	NSMutableArray *ids = [NSMutableArray array];
+	for (id raw in value){
+		if (![raw isKindOfClass:NSNumber.class] &&
+			![raw isKindOfClass:NSString.class])
+			continue;
+		[ids addObject:@([raw longLongValue])];
+	}
+	return ids;
+}
+
 NSString *const TGChatReadOutboxChangedNotification = @"TGChatReadOutboxChangedNotification";
 NSString *const TGChatReplyMarkupChangedNotification = @"TGChatReplyMarkupChangedNotification";
 NSString *const TGConnectionStateChangedNotification = @"TGConnectionStateChangedNotification";
@@ -45,6 +62,14 @@ NSString *const TGPrivacyRulesChangedNotification = @"TGPrivacyRulesChangedNotif
 NSString *const TGSessionsChangedNotification = @"TGSessionsChangedNotification";
 NSString *const TGAccentColorsChangedNotification = @"TGAccentColorsChangedNotification";
 NSString *const TGContactCloseBirthdaysChangedNotification = @"TGContactCloseBirthdaysChangedNotification";
+NSString *const TGAccountStatusChangedNotification = @"TGAccountStatusChangedNotification";
+NSString *const TGAppearanceDefaultsChangedNotification = @"TGAppearanceDefaultsChangedNotification";
+NSString *const TGMessageEffectsChangedNotification = @"TGMessageEffectsChangedNotification";
+NSString *const TGChatDraftStoppedNotification = @"TGChatDraftStoppedNotification";
+NSString *const TGChatVideoPublishedNotification = @"TGChatVideoPublishedNotification";
+NSString *const TGActiveNotificationsChangedNotification = @"TGActiveNotificationsChangedNotification";
+NSString *const TGAutosaveSettingsChangedNotification = @"TGAutosaveSettingsChangedNotification";
+NSString *const TGLanguagePackStringsChangedNotification = @"TGLanguagePackStringsChangedNotification";
 
 @implementation TGClient
 
@@ -66,6 +91,50 @@ NSString *const TGContactCloseBirthdaysChangedNotification = @"TGContactCloseBir
 
 - (NSArray *)animationSearchEmojis {
 	return self.gifSearchEmojis ?: @[];
+}
+
+// The public account-status surface reads the records handleUpdate keeps.
+// Each one is nil or empty until its update arrives, never a made-up default:
+// the Settings rows have to distinguish "Telegram says none" from "not told".
+- (NSDictionary *)freezeState {
+	return self.freezeStateValue;
+}
+
+- (NSDictionary *)ageVerificationParameters {
+	return self.ageVerificationParametersValue;
+}
+
+- (NSDictionary *)recaptchaVerificationRequest {
+	return self.recaptchaVerificationRequestValue;
+}
+
+- (NSDictionary *)subscriptionForUserId:(int64_t)userId {
+	id row = self.userSubscriptionsById[@(userId)];
+	return [row isKindOfClass:NSDictionary.class] ? row : nil;
+}
+
+- (NSArray *)availableMessageEffectIds {
+	return self.reactionMessageEffectIds ?: @[];
+}
+
+- (NSArray *)availableStickerEffectIds {
+	return self.stickerMessageEffectIds ?: @[];
+}
+
+- (NSDictionary *)defaultBackground {
+	return self.defaultBackgroundValue;
+}
+
+- (NSArray *)emojiChatThemes {
+	return self.emojiChatThemesValue ?: @[];
+}
+
+- (NSDictionary *)stoppedMessageDraft {
+	return self.stoppedMessageDraftValue;
+}
+
+- (NSDictionary *)publishedVideo {
+	return self.publishedVideoValue;
 }
 
 // The Saved Messages topics, array-shaped the way the screen reads them:
@@ -102,6 +171,7 @@ NSString *const TGContactCloseBirthdaysChangedNotification = @"TGContactCloseBir
 		s.archivedChats = @[];
 		s.folders = @[];
 		s.chats = @[];
+		s.userSubscriptionsById = [NSMutableDictionary dictionary];
 		s.outbox = [NSMutableArray array];
 		s.pendingRequests = [NSMutableDictionary dictionary];
 		s.outboxLock = [[NSLock alloc] init];
@@ -795,26 +865,188 @@ NSDictionary *TGFormattedText(NSString *text) {
 									   @"nonce" : nonce}];
 		return;
 	}
-	// The scaffold: let through so the filter and the dispatch agree, marked
-	// here so the update has one named place, and reported by the coverage
-	// tool apart from the ones that act. Each waits for the screen named
-	// beside it; docs/feature_backlog.md says what that screen is.
-	case TGUpdateActiveNotifications:      // local notification drawing is APNs for now
+	case TGUpdateFreezeState: {
+		// A restriction Telegram puts on the account, with the dates and the
+		// appeal address it wants shown. Kept whole because the row is one
+		// line but the sheet behind it has to answer "until when" and "where
+		// do I appeal"; the Privacy page re-reads both.
+		id appeal = obj[@"appeal_link"];
+		self.freezeStateValue = @{
+			@"is_frozen"     : @([obj[@"is_frozen"] boolValue]),
+			@"freezing_date" : obj[@"freezing_date"] ?: @(0),
+			@"deletion_date" : obj[@"deletion_date"] ?: @(0),
+			@"appeal_link"   : [appeal isKindOfClass:NSString.class] ? appeal : @"",
+		};
+		[[NSNotificationCenter defaultCenter]
+				postNotificationName:TGAccountStatusChangedNotification object:self];
+		return;
+	}
+	case TGUpdateAgeVerificationParameters: {
+		// The age gate: how old the country requires, which bot answers it,
+		// and the country. A nil parameters clears the row rather than leaving
+		// yesterday's minimum age on screen.
+		id parameters = obj[@"parameters"];
+		self.ageVerificationParametersValue =
+				[parameters isKindOfClass:NSDictionary.class] ? parameters : nil;
+		[[NSNotificationCenter defaultCenter]
+				postNotificationName:TGAccountStatusChangedNotification object:self];
+		return;
+	}
+	case TGUpdateApplicationRecaptchaVerificationRequired: {
+		// Telegram wants a reCAPTCHA solved before the request goes through.
+		// The request is not an age-verification token: it carries the action,
+		// the site key and an id of its own, so it gets its own record and the
+		// Privacy row shows exactly what the server asked for.
+		id action = obj[@"action"];
+		id keyId = obj[@"recaptcha_key_id"];
+		self.recaptchaVerificationRequestValue = @{
+			@"verification_id"  : @([obj[@"verification_id"] longLongValue]),
+			@"action"           : [action isKindOfClass:NSString.class] ? action : @"",
+			@"recaptcha_key_id" : [keyId isKindOfClass:NSString.class] ? keyId : @"",
+		};
+		[[NSNotificationCenter defaultCenter]
+				postNotificationName:TGAccountStatusChangedNotification object:self];
+		return;
+	}
+	case TGUpdateUserSubscription: {
+		// A subscription changed, for this account or for someone it names.
+		// The update is about a user id, so it is filed by that id; the
+		// Privacy page asks for the signed-in one and shows its flags.
+		if (!obj[@"user_id"])
+			return;
+		// int64 may arrive as a decimal string; the dictionary key has to be
+		// the same NSNumber the screen asks about.
+		NSNumber *userId = @([obj[@"user_id"] longLongValue]);
+		id payload = obj[@"payload"];
+		NSMutableDictionary *record = [@{
+			@"payload"           : [payload isKindOfClass:NSString.class] ? payload : @"",
+			@"is_canceled"       : @([obj[@"is_canceled"] boolValue]),
+			@"is_restored"       : @([obj[@"is_restored"] boolValue]),
+			@"is_payment_failed" : @([obj[@"is_payment_failed"] boolValue]),
+		} mutableCopy];
+		if (!self.userSubscriptionsById)
+			self.userSubscriptionsById = [NSMutableDictionary dictionary];
+		self.userSubscriptionsById[userId] = record;
+		[[NSNotificationCenter defaultCenter]
+				postNotificationName:TGAccountStatusChangedNotification object:self
+							userInfo:@{@"userId" : userId}];
+		return;
+	}
+	case TGUpdateAvailableMessageEffects: {
+		// The effects the effect sheet may offer. Ids are kept as numbers so
+		// the sheet can name one in getMessageEffect without re-parsing a
+		// string; a second list is the sticker effects, which the same sheet
+		// lists under their own label.
+		self.reactionMessageEffectIds = TGEffectIdList(obj[@"reaction_effect_ids"]);
+		self.stickerMessageEffectIds = TGEffectIdList(obj[@"sticker_effect_ids"]);
+		[[NSNotificationCenter defaultCenter]
+				postNotificationName:TGMessageEffectsChangedNotification object:self];
+		return;
+	}
+	case TGUpdateDefaultBackground: {
+		// Telegram's own background for new chats. The whole background is
+		// kept because its name, id and type are what Appearance has to show;
+		// for_dark_theme says which of the two defaults moved.
+		id background = obj[@"background"];
+		self.defaultBackgroundValue = @{
+			@"for_dark_theme" : @([obj[@"for_dark_theme"] boolValue]),
+			@"background"     : [background isKindOfClass:NSDictionary.class]
+					? background : @{},
+		};
+		[[NSNotificationCenter defaultCenter]
+				postNotificationName:TGAppearanceDefaultsChangedNotification object:self];
+		return;
+	}
+	case TGUpdateEmojiChatThemes: {
+		// The emoji chat themes Telegram offers. The names and their light and
+		// dark settings are kept whole; Appearance lists the names and the
+		// sheet behind one reads its settings.
+		id themes = obj[@"chat_themes"];
+		self.emojiChatThemesValue =
+				[themes isKindOfClass:NSArray.class] ? themes : @[];
+		[[NSNotificationCenter defaultCenter]
+				postNotificationName:TGAppearanceDefaultsChangedNotification object:self];
+		return;
+	}
+	case TGUpdateStopMessageDraft: {
+		// A streaming draft was stopped. The cached text in the chat row is
+		// what the composer would put back, so it is cleared here; the open
+		// chat hears which text it was and clears the field only when the
+		// field still holds that text, not something typed over it.
+		if (!obj[@"chat_id"])
+			return;
+		int64_t chat = [obj[@"chat_id"] longLongValue];
+		NSNumber *chatId = @(chat);
+		NSString *previous = self.chatsById[chatId][@"draft"];
+		if (![previous isKindOfClass:NSString.class])
+			previous = @"";
+		NSMutableDictionary *row = self.chatsById[chatId];
+		if (row) {
+			row[@"draft"] = @"";
+			[self markChatRowDirty:chat];
+		}
+		NSDictionary *state = @{
+			@"chat_id"       : @(chat),
+			@"forum_topic_id": obj[@"forum_topic_id"] ?: @(0),
+			@"draft_id"      : @([obj[@"draft_id"] longLongValue]),
+			@"draft_text"    : previous,
+		};
+		self.stoppedMessageDraftValue = state;
+		[[NSNotificationCenter defaultCenter]
+				postNotificationName:TGChatDraftStoppedNotification object:self
+							userInfo:state];
+		return;
+	}
+	case TGUpdateVideoPublished: {
+		// A scheduled video went live. It is a message change plus a chat-list
+		// change (the preview and order move), so both windows are nudged; the
+		// open chat also gets the id to re-read that one message.
+		if (!obj[@"chat_id"] || !obj[@"message_id"])
+			return;
+		NSNumber *chatId = @([obj[@"chat_id"] longLongValue]);
+		NSNumber *messageId = @([obj[@"message_id"] longLongValue]);
+		NSDictionary *state = @{
+			@"chat_id"    : chatId,
+			@"message_id" : messageId,
+		};
+		self.publishedVideoValue = state;
+		if (self.updateCoalescer)
+			[self.updateCoalescer markMessageDirty:[messageId longLongValue]
+											inChat:[chatId longLongValue]];
+		[self markChatRowDirty:[chatId longLongValue]];
+		[[NSNotificationCenter defaultCenter]
+				postNotificationName:TGChatVideoPublishedNotification object:self
+							userInfo:state];
+		return;
+	}
+
+	// TDLib's local notification list. The page that removes entries reads
+	// this copy, because no request re-reads what updateActiveNotifications
+	// sent.
+	case TGUpdateActiveNotifications:
 	case TGUpdateNotification:
 	case TGUpdateNotificationGroup:
-	case TGUpdateHavePendingNotifications:
-	case TGUpdateFreezeState:              // no freeze banner
-	case TGUpdateAgeVerificationParameters:
-	case TGUpdateApplicationRecaptchaVerificationRequired:  // no reCAPTCHA surface
-	case TGUpdateUserSubscription:         // no Premium surface
-	case TGUpdateAutosaveSettings:         // no gallery autosave
-	case TGUpdateLanguagePackStrings:      // one language ships so far
-	case TGUpdateDefaultBackground:        // chat backgrounds are not drawn
-	case TGUpdateEmojiChatThemes:
-	case TGUpdateAvailableMessageEffects:  // message effects are not rendered
-	case TGUpdateStopMessageDraft:         // no bot draft streaming to draw
-	case TGUpdateVideoPublished:           // no scheduled video
+		[self applyActiveNotificationUpdate:obj];
 		return;
+	case TGUpdateHavePendingNotifications: {
+		// TDLib is still fetching or delaying notifications. The screen keeps
+		// a spinner up until both flags are off rather than calling the list
+		// final while rows are still on the way.
+		[self applyHavePendingNotificationsUpdate:obj];
+		return;
+	}
+	case TGUpdateAutosaveSettings: {
+		// One scope, here or on another client. The exception list is not in
+		// this update, so the page re-reads the whole record.
+		[self applyAutosaveSettingsUpdate:obj];
+		return;
+	}
+	case TGUpdateLanguagePackStrings: {
+		// The strings that changed, not a whole pack. The Language page
+		// re-reads the pack record and any string list it already showed.
+		[self applyLanguagePackStringsUpdate:obj];
+		return;
+	}
 	case TGUpdateMessageContainsUnreadPollVotes: {
 		// The badge on a poll whose votes you have not looked at. Same storm
 		// risk as a reaction count, same window.
@@ -1275,10 +1507,15 @@ NSDictionary *TGFormattedText(NSString *text) {
 
 	UIDevice *dev = [UIDevice currentDevice];
 
+	// The key this app set through Debug Menu, if any. An empty string is
+	// TDLib's unencrypted database, which is how every install starts.
+	NSData *databaseKey = [TGDatabaseKey currentKey];
+
 	[self send:@{
 		@"@type"                  : @"setTdlibParameters",
 		@"database_directory"     : db,
 		@"files_directory"        : [db stringByAppendingPathComponent:@"files"],
+		@"database_encryption_key": TGBase64Encode(databaseKey),
 		@"use_message_database"   : @YES,
 		// Chat rows and downloaded files have to survive a launch, or every
 		// start is a cold sync: the list, avatars and media are fetched again.

@@ -296,8 +296,12 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 
 	[items addObject:@{@"title" : @"Message Info", @"icon" : @"data"}];
 	[items addObject:@{@"title" : @"Shared Media Map", @"icon" : @"data"}];
-	if ([m[@"effectId"] longLongValue] > 0)
-		[items addObject:@{@"title" : @"Message Effect", @"icon" : @"react"}];
+	// The message's own effect, or the server's list when this message has
+	// none: either way the sheet can name an effect and fetch it live.
+	if ([m[@"effectId"] longLongValue] > 0 ||
+			[TGClient shared].availableMessageEffectIds.count ||
+			[TGClient shared].availableStickerEffectIds.count)
+		[items addObject:@{@"title" : @"Message Effects", @"icon" : @"react"}];
 
 	// A dice or a ball is a message whose whole point is the tap.
 	if ([m[@"kind"] isEqualToString:@"messageAnimatedEmoji"])
@@ -718,24 +722,73 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 						   seconds:2 onCommit:nil];
 		}];
 
-	} else if ([action isEqualToString:@"Message Effect"]){
-		int64_t effectId = [m[@"effectId"] longLongValue];
-		__weak typeof(self) weakSelf = self;
-		[[TGClient shared] messageEffectWithId:effectId
-									completion:^(NSDictionary *effect){
-			TGChatViewController *me = weakSelf;
-			if (!me)
-				return;
-			if (!effect){
-				[TGAlertSheet showMessage:@"Telegram has no effect with that id."
-									title:@"Message Effect" inView:me.view];
-				return;
-			}
-			NSString *premium = [effect[@"premium"] boolValue] ? @" (Premium)" : @"";
-			[TGAlertSheet showMessage:[NSString stringWithFormat:@"%@%@",
-					effect[@"emoji"] ?: @"", premium]
-								title:@"Message Effect" inView:me.view];
-		}];
+	} else if ([action isEqualToString:@"Message Effects"]){
+		// The message's own effect leads, then whatever updateAvailableMessageEffects
+		// last listed. Live at the moment of the hold, not the list the menu
+		// was built with; a picked id is fetched for its emoji and kind.
+		int64_t currentEffect = [m[@"effectId"] longLongValue];
+		NSMutableArray *effectIds = [NSMutableArray array];
+		NSMutableArray *titles = [NSMutableArray array];
+		NSMutableSet *seen = [NSMutableSet set];
+		if (currentEffect > 0){
+			[effectIds addObject:@(currentEffect)];
+			[titles addObject:[NSString stringWithFormat:@"This message - %lld",
+					(long long)currentEffect]];
+			[seen addObject:@(currentEffect)];
+		}
+		for (NSNumber *effectId in [TGClient shared].availableMessageEffectIds){
+			if ([seen containsObject:effectId])
+				continue;
+			[seen addObject:effectId];
+			[effectIds addObject:effectId];
+			[titles addObject:[NSString stringWithFormat:@"Reaction effect %lld",
+					(long long)[effectId longLongValue]]];
+		}
+		for (NSNumber *effectId in [TGClient shared].availableStickerEffectIds){
+			if ([seen containsObject:effectId])
+				continue;
+			[seen addObject:effectId];
+			[effectIds addObject:effectId];
+			[titles addObject:[NSString stringWithFormat:@"Sticker effect %lld",
+					(long long)[effectId longLongValue]]];
+		}
+		if (!effectIds.count){
+			[TGAlertSheet showMessage:@"Telegram has not sent its message effects yet."
+								title:@"Message Effects" inView:self.view];
+		} else {
+			__weak typeof(self) weakSelf = self;
+			[TGAlertSheet showChoices:titles
+								title:@"Message Effects"
+							  message:@"The effects Telegram offers; the record names its emoji and whether it needs Premium."
+					 destructiveIndex:-1
+							   inView:self.view
+							 onChoice:^(NSInteger index){
+				if (index < 0 || (NSUInteger)index >= effectIds.count)
+					return;
+				int64_t effectId = [effectIds[(NSUInteger)index] longLongValue];
+				[[TGClient shared] messageEffectWithId:effectId
+											completion:^(NSDictionary *effect){
+					TGChatViewController *me = weakSelf;
+					if (!me)
+						return;
+					if (!effect){
+						[TGAlertSheet showMessage:@"Telegram has no effect with that id."
+											title:@"Message Effect" inView:me.view];
+						return;
+					}
+					NSString *premium = [effect[@"is_premium"] boolValue] ? @"yes" : @"no";
+					id effectType = effect[@"type"];
+					NSString *kind = [effectType isKindOfClass:NSDictionary.class]
+							? effectType[@"@type"] : nil;
+					if (![kind isKindOfClass:NSString.class] || !kind.length)
+						kind = @"unknown";
+					[TGAlertSheet showMessage:[NSString stringWithFormat:
+							@"Emoji: %@\nPremium: %@\nKind: %@",
+							effect[@"emoji"] ?: @"none", premium, kind]
+										title:@"Message Effect" inView:me.view];
+				}];
+			}];
+		}
 
 	} else if ([action isEqualToString:@"Copy Link"]){
 		__weak typeof(self) weakSelf = self;

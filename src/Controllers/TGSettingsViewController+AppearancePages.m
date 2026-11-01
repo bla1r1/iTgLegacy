@@ -4,8 +4,33 @@
 //
 #import "TGSettingsViewControllerInternal.h"
 #import "TGAlertSheet.h"
+#import "TGBackgroundsViewController.h"
 #import "TGGalleryViewController.h"
 #import "TGStyle.h"
+
+/// The background type is a td_api object name; "backgroundTypeFill" reads
+/// better as "Fill" in a sheet, and an absent type is said plainly.
+static NSString *TGBackgroundTypeLabel(id type) {
+	NSString *name = [type isKindOfClass:NSDictionary.class] ? type[@"@type"] : nil;
+	if (![name isKindOfClass:NSString.class] || !name.length)
+		return @"Unknown";
+	NSString *prefix = @"backgroundType";
+	if ([name rangeOfString:prefix].location == 0)
+		return [name substringFromIndex:prefix.length];
+	return name;
+}
+
+static NSString *TGDefaultBackgroundDetail(NSDictionary *state) {
+	if (![state isKindOfClass:NSDictionary.class])
+		return @"Not received";
+	NSDictionary *background = state[@"background"];
+	NSString *name = [background isKindOfClass:NSDictionary.class]
+			? background[@"name"] : nil;
+	NSString *which = [state[@"for_dark_theme"] boolValue] ? @"Dark" : @"Light";
+	if ([name isKindOfClass:NSString.class] && name.length)
+		return [NSString stringWithFormat:@"%@ - %@", which, name];
+	return [NSString stringWithFormat:@"%@ default", which];
+}
 
 @implementation TGSettingsViewController (AppearancePages)
 
@@ -59,6 +84,23 @@ static NSString *TGAccentColorName(NSInteger colourId) {
 		]),
 
 
+		TGSection(@"Telegram Defaults",
+				  @"What Telegram itself offers for new chats: the default "
+				  @"background and the chat themes built from emoji. Both are "
+				  @"pushed by the server, so the rows fill in while you watch.",
+				  @[
+			TGTapRow(@"Default Background",
+					TGDefaultBackgroundDetail([TGClient shared].defaultBackground), ^{
+				[weakSelf showDefaultBackground];
+			}),
+			TGTapRow(@"Emoji Chat Themes",
+					[TGClient shared].emojiChatThemes.count
+							? [NSString stringWithFormat:@"%lu",
+									(unsigned long)[TGClient shared].emojiChatThemes.count]
+							: @"None",
+					^{ [weakSelf showEmojiChatThemes]; }),
+		]),
+
 		TGSection(@"Design System",
 				  @"Interactive gallery demonstrating iOS 6 Reimagined tactile "
 				  @"components, states, and live controls.", @[
@@ -80,6 +122,18 @@ static NSString *TGAccentColorName(NSInteger colourId) {
 					weakSelf.accentColorsLoaded
 							? TGAccentColorName(weakSelf.profileAccentColorId) : @"...",
 					^{ [weakSelf chooseAccentColorForProfile:YES]; }),
+		]),
+
+		TGSection(@"Telegram Backgrounds",
+				  @"Telegram keeps chat backgrounds on the account. The list "
+				  @"here is the one Telegram installed, and the catalogue is "
+				  @"searched on its server.", @[
+			TGTapRow(@"Chat Backgrounds", @"Installed, search, default", ^{
+				TGBackgroundsViewController *backgrounds =
+						[[TGBackgroundsViewController alloc] init];
+				backgrounds.hidesBottomBarWhenPushed = YES;
+				[weakSelf.navigationController pushViewController:backgrounds animated:YES];
+			}),
 		]),
 
 		TGSection(@"Color Theme",
@@ -129,6 +183,76 @@ static NSString *TGAccentColorName(NSInteger colourId) {
 				  textures),
 		TGSection(@"Custom Photo", nil, customRows)
 	];
+}
+
+/// The default background is one record, so the sheet can name its id, which
+/// side of the theme it belongs to, and its type. A background not received
+/// yet says so rather than drawing a made-up one.
+- (void)showDefaultBackground {
+	NSDictionary *state = [TGClient shared].defaultBackground;
+	if (![state isKindOfClass:NSDictionary.class]){
+		[TGAlertSheet showMessage:@"Telegram has not sent a default background yet."
+							title:@"Default Background" inView:self.view];
+		return;
+	}
+	NSDictionary *background = state[@"background"];
+	NSString *name = [background isKindOfClass:NSDictionary.class]
+			? background[@"name"] : nil;
+	NSString *details = [NSString stringWithFormat:
+			@"%@\nId: %lld\nName: %@\nDark variant: %@\nDefault: %@\nType: %@",
+			TGDefaultBackgroundDetail(state),
+			(long long)[background[@"id"] longLongValue],
+			([name isKindOfClass:NSString.class] && name.length) ? name : @"unnamed",
+			[background[@"is_dark"] boolValue] ? @"yes" : @"no",
+			[background[@"is_default"] boolValue] ? @"yes" : @"no",
+			TGBackgroundTypeLabel(background[@"type"])];
+	[TGAlertSheet showMessage:details title:@"Default Background" inView:self.view];
+}
+
+/// Each emoji chat theme carries a light and a dark settings record. The list
+/// is the names the server sent; the sheet behind one shows the accent and
+/// background it would apply, without pretending this client can select it.
+- (void)showEmojiChatThemes {
+	NSArray *themes = [TGClient shared].emojiChatThemes;
+	if (!themes.count){
+		[TGAlertSheet showMessage:@"Telegram has not sent any emoji chat themes."
+							title:@"Emoji Chat Themes" inView:self.view];
+		return;
+	}
+	NSMutableArray *titles = [NSMutableArray array];
+	for (NSDictionary *theme in themes){
+		NSString *name = [theme isKindOfClass:NSDictionary.class] ? theme[@"name"] : nil;
+		[titles addObject:([name isKindOfClass:NSString.class] && name.length)
+				? name : @"Unnamed theme"];
+	}
+	[TGAlertSheet showChoices:titles
+						title:@"Emoji Chat Themes"
+					  message:@"The chat themes Telegram offers, newest list first."
+			 destructiveIndex:-1
+					   inView:self.view
+					 onChoice:^(NSInteger index){
+		if (index < 0 || (NSUInteger)index >= themes.count)
+			return;
+		id chosen = themes[(NSUInteger)index];
+		if (![chosen isKindOfClass:NSDictionary.class])
+			return;
+		NSDictionary *theme = chosen;
+		NSDictionary *light = theme[@"light_settings"];
+		NSDictionary *dark = theme[@"dark_settings"];
+		NSDictionary *lightBackground = light[@"background"];
+		NSDictionary *darkBackground = dark[@"background"];
+		NSString *details = [NSString stringWithFormat:
+				@"%@\nLight accent: %ld\nLight background: %@\n"
+				@"Dark accent: %ld\nDark background: %@",
+				titles[(NSUInteger)index],
+				(long)[light[@"accent_color"] integerValue],
+				TGBackgroundTypeLabel(lightBackground[@"type"]),
+				(long)[dark[@"accent_color"] integerValue],
+				TGBackgroundTypeLabel(darkBackground[@"type"])];
+		[TGAlertSheet showMessage:details
+							title:titles[(NSUInteger)index]
+						   inView:self.view];
+	}];
 }
 
 - (void)chooseAccentColorForProfile:(BOOL)profile {

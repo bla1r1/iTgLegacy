@@ -153,6 +153,9 @@ static inline NSString *TGBytes(long long bytes) {
 /// The current pack's record, read back from getLanguagePackInfo. The actions
 /// that edit a pack need the whole object, not only the id.
 @property (nonatomic, strong) NSDictionary *languageInfo;
+/// The string list this page last read. updateLanguagePackStrings re-reads it
+/// so the row's count and the sheet both follow the server.
+@property (nonatomic, strong) NSArray *languagePackStrings;
 /// The country this device is in, its preferred language and its flag. All
 /// three come from Telegram so the page agrees with the phone step.
 @property (nonatomic, strong) NSString *countryCode;
@@ -197,6 +200,9 @@ static inline NSString *TGBytes(long long bytes) {
 /// The downloads page: the list Telegram keeps, and how many are running.
 @property (nonatomic, strong) NSArray *downloads;
 @property (nonatomic, assign) NSInteger activeDownloads;
+/// Custom Sounds: getSavedNotificationSounds answered, and whether it has.
+@property (nonatomic, strong) NSArray *savedSounds;
+@property (nonatomic, assign) BOOL savedSoundsLoaded;
 /// Data and Storage: Telegram's Low/Medium/High auto-download presets, as
 /// getAutoDownloadSettingsPresets answered them.
 @property (nonatomic, strong) NSDictionary *autoDownloadPresets;
@@ -207,6 +213,15 @@ static inline NSString *TGBytes(long long bytes) {
 @property (nonatomic, assign) BOOL accentColorsLoaded;
 @property (nonatomic, assign) NSInteger accentColorId;
 @property (nonatomic, assign) NSInteger profileAccentColorId;
+/// The payment page: the order Telegram kept from the last checkout. A 404
+/// is "none saved", not a read failure, so the error is kept apart.
+@property (nonatomic, strong) NSDictionary *savedOrder;
+@property (nonatomic, strong) NSString *savedOrderError;
+@property (nonatomic, assign) BOOL savedOrderLoaded;
+/// Recent Calls: which diagnostics have already gone for a call, keyed by
+/// "chatId:messageId" and kept in defaults so the row can say so after a
+/// reopen. Sending a log twice is allowed; the row only records that one did.
+@property (nonatomic, strong) NSMutableDictionary *callDiagnostics;
 
 + (NSArray *)privacySettings;
 + (NSArray *)privacyTitles;
@@ -233,6 +248,8 @@ static inline NSString *TGBytes(long long bytes) {
 - (void)askRecoveryEmailCodeFor:(NSString *)address;
 - (void)runDownloadActionFor:(NSDictionary *)download;
 - (void)showPremiumState;
+- (void)runRecentCallActionFor:(NSDictionary *)call;
+- (void)noteCallDiagnostic:(NSString *)kind forCall:(NSDictionary *)call;
 - (void)showTwoStepState;
 - (void)showLostPasswordFlow;
 - (void)askPasswordRecoveryCodeFor:(NSString *)pattern;
@@ -245,6 +262,10 @@ static inline NSString *TGBytes(long long bytes) {
 - (void)showVerifyEmailFlow;
 - (void)askEmailVerificationCodeFor:(NSString *)pattern;
 - (void)showApplicationVerification;
+- (void)showFreezeState;
+- (void)showSubscriptionState;
+- (void)showAgeVerificationState;
+- (void)showRecaptchaVerification;
 - (void)askCurrentPasswordThen:(void (^)(NSString *current))next;
 - (void)askNewPasswordReplacing:(NSString *)current;
 - (void)commitPassword:(NSString *)new replacing:(NSString *)current hint:(NSString *)hint;
@@ -268,6 +289,8 @@ static inline NSString *TGBytes(long long bytes) {
 - (void)showCloseFriends;
 - (void)hideCloseBirthdays;
 - (void)chooseAccentColorForProfile:(BOOL)profile;
+- (void)showDefaultBackground;
+- (void)showEmojiChatThemes;
 - (void)chooseTextSize;
 - (void)chooseWallpaper;
 - (void)presentWallpaperPicker;
@@ -281,12 +304,32 @@ static inline NSString *TGBytes(long long bytes) {
 - (NSArray *)appearanceSections;
 - (NSArray *)dataSections;
 - (NSArray *)notificationSections;
+- (NSArray *)soundSections;
+- (NSArray *)activeNotificationSections;
+- (void)addSoundFromBundle;
+- (void)addSoundFromDocuments;
+- (void)addSavedSoundAtPath:(NSString *)path;
+- (void)showSavedSound:(NSDictionary *)sound;
+- (void)removeSavedSound:(NSDictionary *)sound;
+- (void)removeNotificationRow:(NSDictionary *)notification
+                      inGroup:(NSDictionary *)group;
+- (void)removeNotificationGroup:(NSDictionary *)group;
 - (NSArray *)privacySections;
 - (NSArray *)languageSections;
 - (NSArray *)blockedSections;
 - (NSArray *)powerSavingSections;
 - (NSArray *)recentCallSections;
 - (NSArray *)wallpaperSections;
+- (NSArray *)paymentSections;
+- (void)showBankCardLookup;
+- (void)addOfferFlow;
+- (void)validateOrderFlow;
+- (void)askOrderFieldAtIndex:(NSUInteger)index
+						keys:(NSArray *)keys
+					 prompts:(NSArray *)prompts
+					  values:(NSMutableDictionary *)values
+				   allowSave:(BOOL)allowSave;
+- (void)runOrderValidation:(NSMutableDictionary *)values allowSave:(BOOL)allowSave;
 - (NSArray *)debugSections;
 - (NSArray *)folderSections;
 - (NSArray *)proxySections;
@@ -296,6 +339,8 @@ static inline NSString *TGBytes(long long bytes) {
 - (NSString *)autoDownloadPresetSummary;
 - (void)changeAutosaveScope:(NSString *)scope photos:(BOOL)photos videos:(BOOL)videos;
 - (void)clearAutosaveExceptions;
+- (void)autosaveSettingsChanged;
+- (void)languagePackStringsChanged:(NSString *)packId;
 
 @end
 

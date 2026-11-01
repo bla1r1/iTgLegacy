@@ -5,6 +5,7 @@
 #import "TGSettingsViewControllerInternal.h"
 #import "TGAlertSheet.h"
 #import "TGForwardPicker.h"
+#import "TGNetworkViewController.h"
 #import "TGStorageViewController.h"
 #import "TGFileInfoViewController.h"
 
@@ -38,6 +39,11 @@ static NSString *TGChatNameForId(NSNumber *chatId) {
 		TGSection(@"Usage", nil, @[
 			TGTapRow(@"Downloads", nil, ^{
 				[weakSelf openPage:TGSettingsPageDownloads];
+			}),
+			TGTapRow(@"Network", @"Type, state, usage, graphs", ^{
+				TGNetworkViewController *network = [[TGNetworkViewController alloc] init];
+				network.hidesBottomBarWhenPushed = YES;
+				[weakSelf.navigationController pushViewController:network animated:YES];
 			}),
 			TGTapRow(@"Storage Usage", nil, ^{
 				TGStorageViewController *storage = [[TGStorageViewController alloc] init];
