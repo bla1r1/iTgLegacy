@@ -37,6 +37,7 @@
 #import "TGClientStoriesTests.m"
 #import "TGClientTier2Tests.m"
 #import "TGClientTier3AuditTests.m"
+#import "TGClientTier3BotsTests.m"
 #import "TGClientGroupCallsTests.m"
 #import "TGClientBusinessTests.m"
 #import "TGClientNotificationsForumTests.m"

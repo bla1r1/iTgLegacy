@@ -18,6 +18,20 @@
 @property (nonatomic, copy) NSString *oauthURL;
 @property (nonatomic, copy) NSString *oauthCode;
 @property (nonatomic, strong) NSArray *answerLines;
+/// The bot-session half: a token, the ids Telegram puts on a query, and the
+/// few text values the answer* and Web App calls need. Nothing here is a
+/// second account; the token is sent to checkAuthenticationBotToken and the
+/// server's answer is the whole result.
+@property (nonatomic, copy) NSString *botToken;
+@property (nonatomic, assign) int64_t queryId;
+@property (nonatomic, copy) NSString *requestId;
+@property (nonatomic, assign) int64_t botChatId;
+@property (nonatomic, copy) NSString *payload;
+@property (nonatomic, copy) NSString *passkeyClientData;
+@property (nonatomic, copy) NSString *passkeyAttestation;
+@property (nonatomic, assign) int32_t pendingUpdateCount;
+@property (nonatomic, assign) BOOL commandScopeChat;
+@property (nonatomic, copy) NSString *webAppMode;
 @end
 
 @implementation TGBotConsoleViewController
@@ -25,6 +39,7 @@
 - (instancetype)init {
 	if ((self = [super init])){
 		_language = @"en";
+		_webAppMode = @"compact";
 		_answerLines = @[@"A bot id is needed for every row below."];
 	}
 	return self;
@@ -125,7 +140,106 @@
 	for (NSString *line in self.answerLines)
 		[answers addObject:TGBInfo(line, nil)];
 
+	NSMutableArray *botSession = [NSMutableArray array];
+	[botSession addObject:TGBAction(@"Bot Token",
+			self.botToken.length ? @"Set - tap to replace" : @"Not set", @"botToken")];
+	[botSession addObject:TGBAction(@"Connect As Bot", nil, @"connectBot")];
+	[botSession addObject:TGBAction(@"Query ID", self.queryId
+			? [NSString stringWithFormat:@"%lld", self.queryId] : @"Set", @"queryId")];
+	[botSession addObject:TGBAction(@"Request ID",
+			self.requestId.length ? self.requestId : @"Set", @"requestId")];
+	[botSession addObject:TGBAction(@"Bot Chat ID", self.botChatId
+			? [NSString stringWithFormat:@"%lld", self.botChatId] : @"Set",
+			@"botChatId")];
+	[botSession addObject:TGBAction(@"Text / Data",
+			self.payload.length ? self.payload : @"Set", @"payload")];
+	[botSession addObject:TGBAction(@"Passkey Client Data",
+			self.passkeyClientData.length ? self.passkeyClientData : @"Set",
+			@"passkeyClientData")];
+	[botSession addObject:TGBAction(@"Passkey Attestation",
+			self.passkeyAttestation.length ? self.passkeyAttestation : @"Set",
+			@"passkeyAttestation")];
+	[botSession addObject:TGBAction(@"Pending Update Count",
+			[NSString stringWithFormat:@"%d", (int)self.pendingUpdateCount],
+			@"pendingCount")];
+	[botSession addObject:TGBAction(@"Command Scope",
+			self.commandScopeChat ? @"Chat" : @"Default", @"commandScope")];
+	[botSession addObject:TGBAction(@"Web App Mode", self.webAppMode,
+			@"webAppMode")];
+
+	NSMutableArray *commands = [NSMutableArray array];
+	[commands addObject:TGBAction(@"Get Commands", nil, @"getCommands")];
+	[commands addObject:TGBAction(@"Set Commands", nil, @"setCommands")];
+	[commands addObject:TGBAction(@"Delete Commands", nil, @"deleteCommands")];
+	[commands addObject:TGBAction(@"Get Menu Button", nil, @"getMenuButton")];
+	[commands addObject:TGBAction(@"Set Menu Button", nil, @"setMenuButton")];
+	[commands addObject:TGBAction(@"Get Managed Bot Token", nil,
+			@"managedToken")];
+	[commands addObject:TGBAction(@"Get Managed Bot Access", nil,
+			@"managedGet")];
+	[commands addObject:TGBAction(@"Set Managed Bot Access", nil,
+			@"managedSet")];
+	[commands addObject:TGBAction(@"Set Bot Updates Status", nil,
+			@"updatesStatus")];
+
+	NSMutableArray *botAnswers = [NSMutableArray array];
+	[botAnswers addObject:TGBAction(@"Answer Inline Query", nil, @"answerInline")];
+	[botAnswers addObject:TGBAction(@"Answer Callback Query", nil,
+			@"answerCallback")];
+	[botAnswers addObject:TGBAction(@"Answer Custom Query", nil,
+			@"answerCustom")];
+	[botAnswers addObject:TGBAction(@"Answer Guest Query", nil, @"answerGuest")];
+	[botAnswers addObject:TGBAction(@"Answer Web App Query", nil,
+			@"answerWebApp")];
+	[botAnswers addObject:TGBAction(@"Answer PreCheckout Query", nil,
+			@"answerPreCheckout")];
+	[botAnswers addObject:TGBAction(@"Answer Shipping Query", nil,
+			@"answerShipping")];
+	[botAnswers addObject:TGBAction(@"Reply With Ephemeral Message", nil,
+			@"answerEphemeral")];
+
+	NSMutableArray *passkeys = [NSMutableArray array];
+	[passkeys addObject:TGBAction(@"Get Login Passkeys", nil, @"getPasskeys")];
+	[passkeys addObject:TGBAction(@"Get Passkey Parameters", nil,
+			@"passkeyParameters")];
+	[passkeys addObject:TGBAction(@"Get Authentication Passkey Parameters", nil,
+			@"authPasskeyParameters")];
+	[passkeys addObject:TGBAction(@"Add Login Passkey", nil, @"addPasskey")];
+	[passkeys addObject:TGBAction(@"Remove Login Passkey", nil,
+			@"removePasskey")];
+	[passkeys addObject:TGBAction(@"Check Authentication Passkey", nil,
+			@"checkPasskey")];
+
+	NSMutableArray *webApps = [NSMutableArray array];
+	[webApps addObject:TGBAction(@"Open Web App", nil, @"openWebApp")];
+	[webApps addObject:TGBAction(@"Close Web App", nil, @"closeWebApp")];
+	[webApps addObject:TGBAction(@"Check Web App File Download", nil,
+			@"checkWebAppFile")];
+	[webApps addObject:TGBAction(@"Get Guard Bot Web App URL", nil,
+			@"guardWebApp")];
+	[webApps addObject:TGBAction(@"Send Web App Data", nil, @"sendWebData")];
+	[webApps addObject:TGBAction(@"Send Web App Custom Request", nil,
+			@"sendWebCustom")];
+
 	self.sections = @[
+		TGBSection(@"BOT SESSION", @"A bot token is checked by TDLib's own "
+				@"sign-in. In a ready user session Telegram refuses it; the "
+				@"answer below is that refusal, not a login. The ids are what "
+				@"Telegram puts on a query, a button or a Web App launch.",
+				botSession),
+		TGBSection(@"COMMANDS AND MENU", @"A bot owns these records. A user "
+				@"session still sends the request and shows the refusal.",
+				commands),
+		TGBSection(@"QUERY ANSWERS", @"answer* belongs to a bot session. Each "
+				@"row sends one real answer with the id above; Telegram "
+				@"decides whether that account may.", botAnswers),
+		TGBSection(@"PASSKEYS", @"Passkeys need an authenticator and an "
+				@"AuthenticationServices API newer than iOS 12. The requests "
+				@"are real; the attestation fields are pasted base64.",
+				passkeys),
+		TGBSection(@"WEB APP HOST", @"This build has no WebView host, so no "
+				@"Web App is drawn. The requests still go to Telegram and the "
+				@"answer, including a refusal, is shown.", webApps),
 		TGBSection(@"BOT RECORD", @"These calls work when this account owns the "
 				@"bot, which is what TDLib's can_be_edited guard checks.",
 				identity),
@@ -185,7 +299,378 @@
 
 - (void)didChooseAction:(NSString *)action row:(NSDictionary *)row {
 	__weak typeof(self) weakSelf = self;
-	if ([action isEqualToString:@"botId"]){
+	if ([action isEqualToString:@"botToken"]){
+		[TGAlertSheet showSecureInput:@"Bot Token" message:@"The token BotFather gave"
+						 placeholder:@"123:abc" action:@"Save" inView:self.view
+						  onSubmit:^(NSString *text){
+			weakSelf.botToken = text;
+			[weakSelf rebuildSections];
+		}];
+		return;
+	}
+	if ([action isEqualToString:@"queryId"]){
+		[self askText:@"Query ID" message:@"Telegram's id for the query"
+		  placeholder:@"123" text:(self.queryId
+				  ? [NSString stringWithFormat:@"%lld", self.queryId] : nil)
+			   action:@"Save" completion:^(NSString *text){
+			weakSelf.queryId = text.longLongValue;
+			[weakSelf rebuildSections];
+		}];
+		return;
+	}
+	if ([action isEqualToString:@"requestId"]){
+		[self askText:@"Request ID" message:@"A web app query, passkey or file name"
+		  placeholder:@"abc" text:self.requestId action:@"Save"
+		   completion:^(NSString *text){
+			weakSelf.requestId = text;
+			[weakSelf rebuildSections];
+		}];
+		return;
+	}
+	if ([action isEqualToString:@"botChatId"]){
+		[self askText:@"Bot Chat ID" message:nil placeholder:@"123"
+				 text:(self.botChatId
+				 ? [NSString stringWithFormat:@"%lld", self.botChatId] : nil)
+			   action:@"Save" completion:^(NSString *text){
+			weakSelf.botChatId = text.longLongValue;
+			[weakSelf rebuildSections];
+		}];
+		return;
+	}
+	if ([action isEqualToString:@"payload"]){
+		[self askText:@"Text / Data" message:nil placeholder:@"text"
+				 text:self.payload action:@"Save" completion:^(NSString *text){
+			weakSelf.payload = text;
+			[weakSelf rebuildSections];
+		}];
+		return;
+	}
+	if ([action isEqualToString:@"passkeyClientData"] ||
+			[action isEqualToString:@"passkeyAttestation"]){
+		BOOL attestation = [action isEqualToString:@"passkeyAttestation"];
+		[self askText:(attestation ? @"Passkey Attestation" : @"Passkey Client Data")
+			  message:(attestation ? @"Base64 attestation object" : @"JSON client data")
+		  placeholder:@"base64" text:(attestation ? self.passkeyAttestation
+				  : self.passkeyClientData) action:@"Save"
+		   completion:^(NSString *text){
+			if (attestation) weakSelf.passkeyAttestation = text;
+			else weakSelf.passkeyClientData = text;
+			[weakSelf rebuildSections];
+		}];
+		return;
+	}
+	if ([action isEqualToString:@"pendingCount"]){
+		[self askText:@"Pending Update Count" message:nil placeholder:@"0"
+				 text:[NSString stringWithFormat:@"%d", (int)self.pendingUpdateCount]
+			   action:@"Save" completion:^(NSString *text){
+			weakSelf.pendingUpdateCount = text.intValue;
+			[weakSelf rebuildSections];
+		}];
+		return;
+	}
+	if ([action isEqualToString:@"commandScope"]){
+		[TGAlertSheet showChoices:@[@"Default", @"This Chat"]
+						   title:@"Command Scope" destructiveIndex:-1
+						   inView:self.view onChoice:^(NSInteger index){
+			weakSelf.commandScopeChat = (index == 1);
+			[weakSelf rebuildSections];
+		}];
+		return;
+	}
+	if ([action isEqualToString:@"webAppMode"]){
+		[TGAlertSheet showChoices:@[@"Compact", @"Full Size", @"Full Screen"]
+						   title:@"Web App Mode" destructiveIndex:-1
+						   inView:self.view onChoice:^(NSInteger index){
+			weakSelf.webAppMode = @[@"compact", @"fullSize", @"fullScreen"][
+					(NSUInteger)index];
+			[weakSelf rebuildSections];
+		}];
+		return;
+	}
+
+	if ([action isEqualToString:@"connectBot"]){
+		[[TGClient shared] checkAuthenticationBotToken:self.botToken
+											completion:^(BOOL ok, NSString *error){
+			[weakSelf finish:ok error:error title:@"Connect As Bot"];
+		}];
+	} else if ([action isEqualToString:@"getCommands"]){
+		[[TGClient shared] commandsForScope:(self.commandScopeChat ? @"chat" : @"default")
+									 chatId:self.botChatId language:self.language
+								   completion:^(NSDictionary *commands, NSString *error){
+			if (error){
+				[weakSelf finish:NO error:error title:@"Get Commands"];
+				return;
+			}
+			NSMutableArray *lines = [NSMutableArray array];
+			[lines addObject:[NSString stringWithFormat:@"Bot #%@",
+					commands[@"botUserId"] ?: @0]];
+			for (NSDictionary *command in commands[@"commands"]){
+				[lines addObject:[NSString stringWithFormat:@"/%@  %@",
+						command[@"command"] ?: @"", command[@"description"] ?: @""]];
+			}
+			[weakSelf showText:(lines.count ? [lines componentsJoinedByString:@"\n"]
+					: @"Telegram returned no commands.") title:@"Get Commands"];
+		}];
+	} else if ([action isEqualToString:@"setCommands"]){
+		if (!self.payload.length){
+			[self showMessage:@"Type a command name in Text / Data first."
+						title:@"Set Commands"];
+			return;
+		}
+		[[TGClient shared] setCommands:@[self.payload]
+								 scope:(self.commandScopeChat ? @"chat" : @"default")
+								chatId:self.botChatId language:self.language
+							  completion:^(BOOL ok, NSString *error){
+			[weakSelf finish:ok error:error title:@"Set Commands"];
+		}];
+	} else if ([action isEqualToString:@"deleteCommands"]){
+		[[TGClient shared] deleteCommandsForScope:(self.commandScopeChat ? @"chat" : @"default")
+										   chatId:self.botChatId
+										 language:self.language
+									   completion:^(BOOL ok, NSString *error){
+			[weakSelf finish:ok error:error title:@"Delete Commands"];
+		}];
+	} else if ([action isEqualToString:@"getMenuButton"]){
+		[[TGClient shared] menuButtonForBot:self.botUserId
+								 completion:^(NSDictionary *button, NSString *error){
+			if (error){
+				[weakSelf finish:NO error:error title:@"Menu Button"];
+				return;
+			}
+			[weakSelf showText:[NSString stringWithFormat:@"%@\n%@\n%@",
+					button[@"kind"] ?: @"?", button[@"text"] ?: @"",
+					button[@"url"] ?: @""] title:@"Menu Button"];
+		}];
+	} else if ([action isEqualToString:@"setMenuButton"]){
+		[self askText:@"Menu Button Text" message:nil placeholder:@"Open"
+				 text:self.payload action:@"Next" completion:^(NSString *text){
+			[weakSelf askText:@"Menu Button URL" message:nil placeholder:@"https://"
+					 text:self.requestId action:@"Save" completion:^(NSString *url){
+				[[TGClient shared] setMenuButtonForBot:weakSelf.botUserId text:text
+												   url:url
+											completion:^(BOOL ok, NSString *error){
+					[weakSelf finish:ok error:error title:@"Menu Button"];
+				}];
+			}];
+		}];
+	} else if ([action isEqualToString:@"managedToken"]){
+		[TGAlertSheet showChoices:@[@"Read The Token", @"Revoke And Read"]
+						   title:@"Managed Bot Token" destructiveIndex:1
+						   inView:self.view onChoice:^(NSInteger index){
+			[[TGClient shared] managedBotTokenForBot:weakSelf.botUserId
+											  revoke:(index == 1)
+										  completion:^(NSString *token, NSString *error){
+				if (error){
+					[weakSelf finish:NO error:error title:@"Managed Bot Token"];
+					return;
+				}
+				[weakSelf showText:token title:@"Managed Bot Token"];
+			}];
+		}];
+	} else if ([action isEqualToString:@"managedGet"]){
+		[[TGClient shared] managedBotAccessSettingsForBot:self.botUserId
+											   completion:^(NSDictionary *settings,
+															 NSString *error){
+			if (error){
+				[weakSelf finish:NO error:error title:@"Managed Bot Access"];
+				return;
+			}
+			[weakSelf showText:[NSString stringWithFormat:@"Restricted: %@\nAdded: %@",
+					[settings[@"restricted"] boolValue] ? @"yes" : @"no",
+					[settings[@"addedUserIds"] componentsJoinedByString:@", "]]
+						 title:@"Managed Bot Access"];
+		}];
+	} else if ([action isEqualToString:@"managedSet"]){
+		NSMutableArray *ids = [NSMutableArray array];
+		for (NSString *part in [self.payload componentsSeparatedByString:@","]){
+			NSString *trimmed = [part stringByTrimmingCharactersInSet:
+					[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+			if (trimmed.length) [ids addObject:@(trimmed.longLongValue)];
+		}
+		[TGAlertSheet showChoices:@[@"Everyone", @"Only The Added Users"]
+						   title:@"Managed Bot Access" destructiveIndex:-1
+						   inView:self.view onChoice:^(NSInteger index){
+			[[TGClient shared] setManagedBotAccessSettingsForBot:weakSelf.botUserId
+													 restricted:(index == 1)
+													 addedUserIds:ids
+													 completion:^(BOOL ok, NSString *error){
+				[weakSelf finish:ok error:error title:@"Managed Bot Access"];
+			}];
+		}];
+	} else if ([action isEqualToString:@"updatesStatus"]){
+		[[TGClient shared] setBotUpdatesStatus:self.pendingUpdateCount
+								  errorMessage:self.payload
+									completion:^(BOOL ok, NSString *error){
+			[weakSelf finish:ok error:error title:@"Bot Updates Status"];
+		}];
+	} else if ([action isEqualToString:@"answerInline"]){
+		[[TGClient shared] answerInlineQuery:self.queryId isPersonal:YES
+								 resultTitle:self.payload
+									resultId:self.requestId url:@"" cacheTime:0
+								  nextOffset:@""
+								  completion:^(BOOL ok, NSString *error){
+			[weakSelf finish:ok error:error title:@"Answer Inline Query"];
+		}];
+	} else if ([action isEqualToString:@"answerCallback"]){
+		[[TGClient shared] answerCallbackQuery:self.queryId text:self.payload
+									 showAlert:YES url:@"" cacheTime:0
+									completion:^(BOOL ok, NSString *error){
+			[weakSelf finish:ok error:error title:@"Answer Callback Query"];
+		}];
+	} else if ([action isEqualToString:@"answerCustom"]){
+		[[TGClient shared] answerCustomQuery:self.queryId data:self.payload
+								  completion:^(BOOL ok, NSString *error){
+			[weakSelf finish:ok error:error title:@"Answer Custom Query"];
+		}];
+	} else if ([action isEqualToString:@"answerGuest"]){
+		[[TGClient shared] answerGuestQuery:self.queryId resultTitle:self.payload
+								   resultId:self.requestId url:@""
+								 completion:^(NSString *inlineMessageId, NSString *error){
+			if (error){
+				[weakSelf finish:NO error:error title:@"Answer Guest Query"];
+				return;
+			}
+			[weakSelf showText:(inlineMessageId.length ? inlineMessageId
+					: @"Telegram accepted the answer.") title:@"Answer Guest Query"];
+		}];
+	} else if ([action isEqualToString:@"answerWebApp"]){
+		[[TGClient shared] answerWebAppQuery:self.requestId resultTitle:self.payload
+									resultId:self.requestId url:@""
+								  completion:^(NSString *inlineMessageId, NSString *error){
+			if (error){
+				[weakSelf finish:NO error:error title:@"Answer Web App Query"];
+				return;
+			}
+			[weakSelf showText:(inlineMessageId.length ? inlineMessageId
+					: @"Telegram accepted the answer.") title:@"Answer Web App Query"];
+		}];
+	} else if ([action isEqualToString:@"answerPreCheckout"]){
+		[[TGClient shared] answerPreCheckoutQuery:self.queryId
+									 errorMessage:self.payload
+									   completion:^(BOOL ok, NSString *error){
+			[weakSelf finish:ok error:error title:@"Answer PreCheckout Query"];
+		}];
+	} else if ([action isEqualToString:@"answerShipping"]){
+		[[TGClient shared] answerShippingQuery:self.queryId
+								  errorMessage:self.payload
+									completion:^(BOOL ok, NSString *error){
+			[weakSelf finish:ok error:error title:@"Answer Shipping Query"];
+		}];
+	} else if ([action isEqualToString:@"answerEphemeral"]){
+		[[TGClient shared] replyToCallbackQueryWithEphemeralMessage:self.queryId
+															 text:self.payload
+										   replaceCallbackMessage:NO
+													protectContent:NO
+													   completion:^(BOOL ok, NSString *error){
+			[weakSelf finish:ok error:error title:@"Ephemeral Reply"];
+		}];
+	} else if ([action isEqualToString:@"getPasskeys"]){
+		[[TGClient shared] loginPasskeysWithCompletion:^(NSArray *passkeys,
+														  NSString *error){
+			if (error){
+				[weakSelf finish:NO error:error title:@"Login Passkeys"];
+				return;
+			}
+			NSMutableArray *lines = [NSMutableArray array];
+			for (NSDictionary *passkey in passkeys){
+				[lines addObject:[NSString stringWithFormat:@"%@  %@",
+						passkey[@"name"] ?: @"", passkey[@"id"] ?: @""]];
+			}
+			[weakSelf showText:(lines.count ? [lines componentsJoinedByString:@"\n"]
+					: @"This account has no passkeys.") title:@"Login Passkeys"];
+		}];
+	} else if ([action isEqualToString:@"passkeyParameters"]){
+		[[TGClient shared] passkeyParametersWithCompletion:^(NSString *text,
+															 NSString *error){
+			if (error) [weakSelf finish:NO error:error title:@"Passkey Parameters"];
+			else [weakSelf showText:text title:@"Passkey Parameters"];
+		}];
+	} else if ([action isEqualToString:@"authPasskeyParameters"]){
+		[[TGClient shared] authenticationPasskeyParametersWithCompletion:
+				^(NSString *text, NSString *error){
+			if (error) [weakSelf finish:NO error:error
+								  title:@"Authentication Passkey Parameters"];
+			else [weakSelf showText:text
+							  title:@"Authentication Passkey Parameters"];
+		}];
+	} else if ([action isEqualToString:@"addPasskey"]){
+		[[TGClient shared] addLoginPasskey:self.passkeyClientData
+						 attestationObject:self.passkeyAttestation
+								completion:^(NSDictionary *passkey, NSString *error){
+			if (error){
+				[weakSelf finish:NO error:error title:@"Add Login Passkey"];
+				return;
+			}
+			[weakSelf showText:[NSString stringWithFormat:@"%@  %@",
+					passkey[@"name"] ?: @"", passkey[@"id"] ?: @""]
+						 title:@"Add Login Passkey"];
+		}];
+	} else if ([action isEqualToString:@"removePasskey"]){
+		[[TGClient shared] removeLoginPasskey:self.requestId
+								   completion:^(BOOL ok, NSString *error){
+			[weakSelf finish:ok error:error title:@"Remove Login Passkey"];
+		}];
+	} else if ([action isEqualToString:@"checkPasskey"]){
+		[[TGClient shared] checkAuthenticationPasskey:self.requestId
+										   clientData:self.passkeyClientData
+								  authenticatorData:self.passkeyAttestation
+										  signature:self.payload
+										 userHandle:@""
+										 completion:^(BOOL ok, NSString *error){
+			[weakSelf finish:ok error:error title:@"Authentication Passkey"];
+		}];
+	} else if ([action isEqualToString:@"openWebApp"]){
+		[[TGClient shared] openWebAppInChat:self.botChatId bot:self.botUserId
+										url:self.payload mode:self.webAppMode
+								 completion:^(NSDictionary *info, NSString *error){
+			if (error){
+				[weakSelf finish:NO error:error title:@"Open Web App"];
+				return;
+			}
+			[weakSelf showText:[NSString stringWithFormat:@"Launch %@\n%@",
+					info[@"launchId"] ?: @0, info[@"url"] ?: @""]
+						 title:@"Open Web App"];
+		}];
+	} else if ([action isEqualToString:@"closeWebApp"]){
+		[[TGClient shared] closeWebApp:self.queryId
+							completion:^(BOOL ok, NSString *error){
+			[weakSelf finish:ok error:error title:@"Close Web App"];
+		}];
+	} else if ([action isEqualToString:@"checkWebAppFile"]){
+		[[TGClient shared] checkWebAppFileDownload:self.botUserId
+										  fileName:self.requestId
+											   url:self.payload
+										completion:^(BOOL ok, NSString *error){
+			[weakSelf finish:ok error:error title:@"Check Web App File"];
+		}];
+	} else if ([action isEqualToString:@"guardWebApp"]){
+		[[TGClient shared] guardBotWebAppURLForQuery:self.queryId
+												mode:self.webAppMode
+										  completion:^(NSString *link, NSString *error){
+			if (error){
+				[weakSelf finish:NO error:error title:@"Guard Bot Web App URL"];
+				return;
+			}
+			[weakSelf showText:link title:@"Guard Bot Web App URL"];
+		}];
+	} else if ([action isEqualToString:@"sendWebData"]){
+		[[TGClient shared] sendWebAppData:self.botUserId buttonText:self.payload
+									 data:self.requestId
+							   completion:^(BOOL ok, NSString *error){
+			[weakSelf finish:ok error:error title:@"Send Web App Data"];
+		}];
+	} else if ([action isEqualToString:@"sendWebCustom"]){
+		[[TGClient shared] sendWebAppCustomRequest:self.botUserId
+											method:self.requestId
+										parameters:self.payload
+										completion:^(NSString *result, NSString *error){
+			if (error){
+				[weakSelf finish:NO error:error title:@"Web App Custom Request"];
+				return;
+			}
+			[weakSelf showText:result title:@"Web App Custom Request"];
+		}];
+	} else if ([action isEqualToString:@"botId"]){
 		[self askBotId:@"Bot User ID" action:^(int64_t botId){}];
 	} else if ([action isEqualToString:@"language"]){
 		[self askText:@"Language" message:@"Two-letter code, empty for all"

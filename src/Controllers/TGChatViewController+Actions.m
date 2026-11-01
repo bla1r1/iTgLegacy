@@ -11,6 +11,7 @@
 #import "TGMessageAudienceViewController.h"
 #import "TGMessageToolsViewController.h"
 #import "TGSponsoredMessagesViewController.h"
+#import "TGGameScoresViewController.h"
 #import <CoreImage/CoreImage.h>
 #import <QuartzCore/QuartzCore.h>
 
@@ -715,6 +716,12 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 	if ([m[@"kind"] isEqualToString:@"messageVideo"])
 		[items addObject:@{@"title" : @"Video Advertisements", @"icon" : @"data"}];
 
+	// A game message's score table belongs to the bot serving the game. The
+	// row is here because this is the message's own More menu, which is the
+	// place Telegram puts the table.
+	if ([m[@"kind"] isEqualToString:@"messageGame"])
+		[items addObject:@{@"title" : @"Game Scores", @"icon" : @"star"}];
+
 	// A live pin of your own stays on the map until you take it off.
 	if (mine && [m[@"kind"] isEqualToString:@"messageLiveLocation"]
 			 && [m[@"liveEditable"] boolValue])
@@ -1299,6 +1306,14 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 		ads.messageId = messageId;
 		ads.hidesBottomBarWhenPushed = YES;
 		[self.navigationController pushViewController:ads animated:YES];
+
+	} else if ([action isEqualToString:@"Game Scores"]){
+		TGGameScoresViewController *scores =
+				[[TGGameScoresViewController alloc] init];
+		scores.chatId = self.chatId;
+		scores.messageId = messageId;
+		scores.hidesBottomBarWhenPushed = YES;
+		[self.navigationController pushViewController:scores animated:YES];
 
 	} else if ([action isEqualToString:@"Copy Embed Code"]){
 		int64_t chatId = self.chatId;

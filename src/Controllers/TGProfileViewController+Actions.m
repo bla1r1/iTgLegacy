@@ -13,6 +13,7 @@
 #import "TGProfileViewController+Tier2.h"
 #import "TGSponsoredMessagesViewController.h"
 #import "TGBotConsoleViewController.h"
+#import "TGAffiliateProgramsViewController.h"
 
 /// The glyph on an action tile, over the word that names it.
 static const CGFloat kTileGlyph = TGMetricMenuGlyph;
@@ -277,6 +278,9 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 		if (self.isChannel)
 			[items addObject:@{@"title" : @"Sponsored Messages",
 							   @"icon" : @"data"}];
+		if (self.isChannel)
+			[items addObject:@{@"title" : @"Affiliate Program",
+							   @"icon" : @"star"}];
 		if (self.canInvite && !self.isChannel)
 			[items addObject:@{@"title" : @"Add Members", @"icon" : @"plus"}];
 		[items addObject:@{@"title" : @"Calls", @"icon" : @"call"}];
@@ -287,6 +291,8 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 	// person.
 	if (self.userId && [[TGClient shared] userIsBot:self.userId])
 		[items addObject:@{@"title" : @"Bot Settings", @"icon" : @"data"}];
+	if (self.userId && [[TGClient shared] userIsBot:self.userId])
+		[items addObject:@{@"title" : @"Affiliate Program", @"icon" : @"star"}];
 	// A note kept in the chat without being sent to anyone. It is the only
 	// way to make a message that never leaves this device.
 	[items addObject:@{@"title" : @"Add Local Note", @"icon" : @"edit"}];
@@ -535,6 +541,20 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 		ads.chatId = self.chatId;
 		ads.hidesBottomBarWhenPushed = YES;
 		TGPresentControllerFrom(ads, self);
+		return;
+	}
+	if ([title isEqualToString:@"Affiliate Program"]){
+		TGAffiliateProgramsViewController *affiliate =
+				[[TGAffiliateProgramsViewController alloc] init];
+		if (self.userId){
+			affiliate.kind = @"bot";
+			affiliate.botUserId = self.userId;
+		} else {
+			affiliate.kind = @"channel";
+			affiliate.chatId = self.chatId;
+		}
+		affiliate.hidesBottomBarWhenPushed = YES;
+		TGPresentControllerFrom(affiliate, self);
 		return;
 	}
 	if ([title isEqualToString:@"Bot Settings"]){

@@ -15,6 +15,9 @@
 #import "TGEnvironmentViewController.h"
 #import "TGBotConsoleViewController.h"
 #import "TGStarsGiftsViewController.h"
+#import "TGTestHarnessViewController.h"
+#import "TGAffiliateProgramsViewController.h"
+#import "TGSupportInfoViewController.h"
 
 /// A custom method's answer is a string the app has no schema for. When it is
 /// JSON, pretty-print it so the viewer reads like a response rather than one
@@ -210,6 +213,12 @@ static NSArray *TGCustomResultRows(NSString *result) {
 		TGSection(@"Help", nil, @[
 			TGIconRow(@"Ask a Question", @"chat", TGIconTileAmber(), ^{
 				[weakSelf openSupport];
+			}),
+			TGIconRow(@"Support Info", @"data", TGIconTileAmber(), ^{
+				TGSupportInfoViewController *support =
+						[[TGSupportInfoViewController alloc] init];
+				support.hidesBottomBarWhenPushed = YES;
+				[weakSelf.navigationController pushViewController:support animated:YES];
 			}),
 			TGIconRow(@"Telegram FAQ", @"faq", TGIconTileCyan(), ^{
 				[weakSelf openURL:@"https://telegram.org/faq"];
@@ -1218,6 +1227,18 @@ static NSString *TGOrderLines(NSDictionary *order) {
 				TGBotConsoleViewController *bots = [[TGBotConsoleViewController alloc] init];
 				bots.hidesBottomBarWhenPushed = YES;
 				[weakSelf.navigationController pushViewController:bots animated:YES];
+			}),
+			TGTapRow(@"TDLib Test Harness", @"The twelve td_api test calls", ^{
+				TGTestHarnessViewController *harness =
+						[[TGTestHarnessViewController alloc] init];
+				harness.hidesBottomBarWhenPushed = YES;
+				[weakSelf.navigationController pushViewController:harness animated:YES];
+			}),
+			TGTapRow(@"Affiliate Programs", @"Catalogue, connections and channel links", ^{
+				TGAffiliateProgramsViewController *affiliate =
+						[[TGAffiliateProgramsViewController alloc] init];
+				affiliate.hidesBottomBarWhenPushed = YES;
+				[weakSelf.navigationController pushViewController:affiliate animated:YES];
 			}),
 			TGTapRow(@"Premium, Stars and Gifts", @"Read-only", ^{
 				TGStarsGiftsViewController *stars = [[TGStarsGiftsViewController alloc] init];

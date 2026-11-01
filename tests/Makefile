@@ -109,6 +109,11 @@ CLIENT_OBJC_SRCS := \
     $(SRC)/Core/TGClient+Calls.m \
     $(SRC)/Core/TGClient+Websites.m \
     $(SRC)/Core/TGClient+BotTools.m \
+    $(SRC)/Core/TGClient+BotSession.m \
+    $(SRC)/Core/TGClient+Affiliate.m \
+    $(SRC)/Core/TGClient+GameScores.m \
+    $(SRC)/Core/TGClient+Support.m \
+    $(SRC)/Core/TGClient+TestHarness.m \
     $(SRC)/Core/TGClient+Language.m \
     $(SRC)/Core/TGClient+Search.m \
     $(SRC)/Core/TGClient+Stories.m \
@@ -195,6 +200,7 @@ CLIENT_TEST_SRCS := \
     $(TESTS)/TGClientStoriesTests.m \
     $(TESTS)/TGClientTier2Tests.m \
     $(TESTS)/TGClientTier3AuditTests.m \
+    $(TESTS)/TGClientTier3BotsTests.m \
     $(TESTS)/TGClientGroupCallsTests.m \
     $(TESTS)/TGClientBusinessTests.m \
     $(TESTS)/TGClientNotificationsForumTests.m \

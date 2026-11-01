@@ -20,7 +20,7 @@ As of 2026-11-01:
 
 | | declared | covered | gap | of it wanted | out of scope |
 |---|---|---|---|---|---|
-| functions | 1076 | 916 (85%) | 160 | 0 | 160 |
+| functions | 1076 | 972 (90%) | 104 | 0 | 104 |
 | updates | 197 | 136 (69%) | 61 | 0 | 61 |
 
 Functions are counted from string literals in `src/`, updates from the one list in `src/Core/TGUpdateType.h` — anything outside it is thrown away in the receive loop before a Foundation tree is built, so a dropped update leaves no trace in the log either. Both numbers are floors. Where this file and ROADMAP.md disagree, the roadmap wins — it knows the device.
@@ -33,9 +33,9 @@ The two halves are not comparable: 1076 functions include every bot, Stars, busi
 
 | Tier | Meaning | Functions |
 |---|---|---|
-| 1 | done: reachable from a screen (`--wired`) | 916 |
+| 1 | done: reachable from a screen (`--wired`) | 972 |
 | 2 | not done yet, but buildable: the wanted list plus the skipped-but-possible set (`--relevant` + `--tier2`) | 0 + 0 |
-| 3 | never for this client: bot-account-only, or needs a stack this iOS cannot carry (`--tier3`) | 160 |
+| 3 | never for this client: bot-account-only, or needs a stack this iOS cannot carry (`--tier3`) | 104 |
 
 The tier split is `scripts/tdlib_tiers.py`; it reads the same skip list the coverage
 script uses, so the two cannot disagree. Tier 2 is not one backlog: the wanted
@@ -215,21 +215,26 @@ The wanted half is empty: `--relevant` reads 0, and the skipped-but-buildable ha
 
 `python3 scripts/tdlib_tiers.py --tier2` prints nothing. Every group that used to live here is now on a screen: group and video calls, business accounts, emoji status, profile audio, text styles, direct message topics, dice and ephemeral content, anti-spam switches and the web proxy carrier. The communities/checklists/quick-replies group is reachable from the hub, the composer and Message Tools, and `scripts/tdlib_tiers.py` no longer counts it.
 
-## Tier 3 — audited, never for this client (160)
+## Tier 3 — audited, never for this client (104)
 
-Skipped by pattern in `scripts/tdlib_coverage.sh`; `python3 scripts/tdlib_tiers.py --tier3` lists them with their group and its reason. The count below is the audited remainder, not the old 301: 141 names that the first pass parked here were calls a user account can make, and they moved to Tier 1.
+Skipped by pattern in `scripts/tdlib_coverage.sh`; `python3 scripts/tdlib_tiers.py --tier3` lists them with their group and its reason. The count below is the audited remainder, not the old 301: 141 names that the first pass parked here were calls a user account can make, and 56 more got a diagnostic surface in the second wave.
 
 | Group | Count | Why it stays |
 |---|---|---|
 | TON wallet, on-ramp and NFT withdrawal | 43 | a TON wallet, an on-ramp provider and blockchain confirmation; no iOS 6–12 API and no wallet backend |
 | Gift, auction and paid-reaction spending | 38 | moves, spends, prices or manages a gift/Star balance this client cannot fund; the read-only catalogue is implemented |
-| Bot sessions, Web App host and passkeys | 30 | `answer*`, commands, menu button and managed bots need a bot session; Web App data needs a WebView bridge; passkeys need AuthenticationServices after iOS 12 |
 | StoreKit purchases and payment providers | 15 | builds a price or checkout record; charging needs StoreKit or a payment provider this build does not link |
 | Passport identity documents | 8 | needs document/selfie capture and a 2FA identity vault; a half-built Passport would send documents into an unverified flow |
-| Test harness | 12 | `test*` exercises the schema, it is not a user action |
-| Affiliate and ads monetization | 7 | attaches to an owned bot/channel and pays out through Fragment; no monetization backend |
-| Game score tables (bot-served) | 4 | the score table belongs to the bot that owns the game |
-| Support-staff plumbing | 3 | Telegram support staff only; a user session cannot call them |
+
+### Second wave — 56 diagnostic surfaces
+
+These groups are still not features this build can complete. What changed is that every request now goes out from a screen and Telegram's answer is shown: a refusal is a result, not a hidden row.
+
+- **Bot sessions, Web App host and passkeys — 30.** `TGBotConsoleViewController` grew a Bot Token field and the 30 calls: the `answer*` family, commands, menu button, managed-bot token/access, the six passkey calls and the six Web App host calls. `checkAuthenticationBotToken` is TDLib's bot sign-in; in a ready user session Telegram refuses it, and the answer section prints that sentence. No token is turned into a fake login.
+- **TDLib test harness — 12.** `TGTestHarnessViewController`, reached from Debug Menu, sends every `test*` method with typed inputs and prints the real answer. `testReturnError` prints the error object it asked for.
+- **Affiliate programs — 7.** `TGAffiliateProgramsViewController` and `TGChannelAffiliateViewController` read the catalogue and connections, connect/disconnect one, and set a channel's parameters. The URL Fragment pays through is shown; no wallet or withdrawal is drawn.
+- **Game score tables — 4.** `TGGameScoresViewController` opens from a game message's More menu, reads both tables and sends both writes. The score table belongs to the game's bot, so a user session usually gets the refusal.
+- **Support plumbing — 3.** Settings → Help → Support info reads `getSupportName` and one user's `UserSupportInfo`, and sends `setUserSupportInfo`; the refusal is printed when the account has no support rights.
 
 ### What the audit found — 141 functions moved to Tier 1
 

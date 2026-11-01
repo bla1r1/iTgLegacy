@@ -224,6 +224,11 @@ APP_SRC_M := \
 	src/Core/TGClient+TextStyles.m \
 	src/Core/TGClient+DirectMessages.m \
 	src/Core/TGClient+Dice.m \
+	src/Core/TGClient+Affiliate.m \
+	src/Core/TGClient+BotSession.m \
+	src/Core/TGClient+GameScores.m \
+	src/Core/TGClient+Support.m \
+	src/Core/TGClient+TestHarness.m \
 	src/Core/TGClient+Proxy.m \
 	src/Core/TGClient+Groups.m \
 	src/Core/TGClient+GroupCalls.m \
@@ -394,6 +399,10 @@ APP_SRC_M := \
 	src/Controllers/TGEnvironmentViewController.m \
 	src/Controllers/TGBotConsoleViewController.m \
 	src/Controllers/TGStarsGiftsViewController.m \
+	src/Controllers/TGTestHarnessViewController.m \
+	src/Controllers/TGAffiliateProgramsViewController.m \
+	src/Controllers/TGGameScoresViewController.m \
+	src/Controllers/TGSupportInfoViewController.m \
 	src/Audio/TGVoiceDecoder.m \
 	src/Audio/TGStreamingVoicePlayer.m \
 	src/Calls/TGCallIce.m \
