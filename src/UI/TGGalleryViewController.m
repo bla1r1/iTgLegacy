@@ -394,6 +394,13 @@ static const CGFloat kAvatarLargeSide = 60.0f;
 	[self layoutGallery];
 }
 
+- (void)viewDidLayoutSubviews {
+	[super viewDidLayoutSubviews];
+	// layoutGallery already writes every frame from the present bounds; the
+	// layout pass just has to call for it again.
+	[self layoutGallery];
+}
+
 - (void)layoutGallery {
 	CGFloat w = self.view.bounds.size.width;
 	CGFloat inset = TGMetricPadMedium;

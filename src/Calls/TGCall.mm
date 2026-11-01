@@ -1,4 +1,5 @@
 #import "TGCall.h"
+#import "TGBase64.h"
 #import "TGClient.h"
 #import "TGCallReflector.h"
 #import "TGCallMessages.h"
@@ -527,7 +528,7 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V8";
 	[[TGClient shared] send:@{
 		@"@type"   : @"sendCallSignalingData",
 		@"call_id" : @(self.callId),
-		@"data"    : [encrypted base64EncodedStringWithOptions:0],
+		@"data"    : TGBase64Encode(encrypted),
 	}];
 }
 
@@ -660,8 +661,7 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V8";
 	[session setActive:YES error:nil];
 
 
-	NSData *key = [[NSData alloc] initWithBase64EncodedString:state[@"encryption_key"]
-													  options:0];
+	NSData *key = TGBase64Decode(state[@"encryption_key"]);
 	if (key.length != 256){
 		NSLog(@"TGCall: encryption key is %lu bytes, expected 256",
 				(unsigned long)key.length);
@@ -700,8 +700,7 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V8";
 		if (![type[@"@type"] isEqualToString:@"callServerTypeTelegramReflector"])
 			continue;
 
-		NSData *peerTag = [[NSData alloc] initWithBase64EncodedString:type[@"peer_tag"]
-															 options:0];
+		NSData *peerTag = TGBase64Decode(type[@"peer_tag"]);
 		TGCallReflector *reflector = [[TGCallReflector alloc]
 				initWithHost:server[@"ip_address"]
 						port:(uint16_t)[server[@"port"] intValue]

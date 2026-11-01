@@ -184,6 +184,7 @@ APP_SRC_M := \
 	src/Core/TGClient+Auth.m \
 	src/Core/TGClient+Messages.m \
 	src/Core/TGStatusText.m \
+	src/Core/TGBase64.m \
 	src/Controllers/TGNavController.m \
 	src/Core/TGClient+Account.m \
 	src/Core/TGClient+Proxy.m \

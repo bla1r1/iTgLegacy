@@ -1,4 +1,5 @@
 #import "TGClientInternal.h"
+#import "TGBase64.h"
 #import "TGOptions.h"
 #import "TGCall.h"
 #import "TGJson.h"
@@ -845,7 +846,7 @@ NSDictionary *TGFormattedText(NSString *text) {
 	}
 
 	case TGUpdateNewCallSignalingData: {
-		NSData *data = [[NSData alloc] initWithBase64EncodedString:obj[@"data"] options:0];
+		NSData *data = TGBase64Decode(obj[@"data"]);
 		NSLog(@"TGClient: <<< updateNewCallSignalingData call_id=%@ len=%lu", obj[@"call_id"], (unsigned long)data.length);
 		[[TGCall shared] handleSignalingData:data];
 		return;

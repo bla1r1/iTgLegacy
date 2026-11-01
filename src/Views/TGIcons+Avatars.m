@@ -172,6 +172,8 @@ static UIImage *TGGlyphAvatar(CGFloat side, void (^draw)(CGContextRef ctx, CGFlo
 }
 
 /// Pre-decodes image onto offscreen bitmap context and scales to target size using ImageIO DCT downsampling.
+#define TGDECODE_MAX_PIXEL 1024.0f
+
 + (UIImage *)decodedImage:(UIImage *)image
 			  fittingSize:(CGSize)target
 					 fill:(BOOL)fill
@@ -213,6 +215,8 @@ static UIImage *TGGlyphAvatar(CGFloat side, void (^draw)(CGContextRef ctx, CGFlo
 					}
 
 					if (maxPixelSize < 1.0f) maxPixelSize = 1.0f;
+					// Same device cap as the from-file decode.
+					if (maxPixelSize > TGDECODE_MAX_PIXEL) maxPixelSize = TGDECODE_MAX_PIXEL;
 
 					NSDictionary *options = @{
 						(id)kCGImageSourceCreateThumbnailFromImageAlways : @YES,
@@ -288,83 +292,26 @@ static UIImage *TGGlyphAvatar(CGFloat side, void (^draw)(CGContextRef ctx, CGFlo
 	if (!path.length)
 		return nil;
 
-	NSURL *url = [NSURL fileURLWithPath:path];
-	CGImageSourceRef source = CGImageSourceCreateWithURL((__bridge CFURLRef)url, NULL);
-	if (!source || CGImageSourceGetCount(source) == 0) {
-		if (source) CFRelease(source);
-		return [self decodedImage:[UIImage imageWithContentsOfFile:path] fittingSize:target fill:fill scale:scale];
-	}
+	// Read the bytes first and decode through the data provider. The direct
+	// CGImageSource-from-URL branch that used to sit here died on the 4S:
+	// CopyPropertiesAtIndex/CreateThumbnail on a low-priority thread with a
+	// real profile photo crashed SIGSEGV 0x0 inside the image library (the
+	// crash that killed entering a profile, B15's second act). The data-backed
+	// path is the one that survived 117 chats of avatars on the same device.
+	UIImage *loaded = [UIImage imageWithContentsOfFile:path];
+	if (!loaded)
+		return nil;
+	return [self decodedImage:loaded fittingSize:target fill:fill scale:scale];
+}
 
-	CGFloat effectiveScale = (scale > 0.0f) ? scale : 1.0f;
-	CGFloat maxPixelSize = 0.0f;
-
-	CFDictionaryRef props = CGImageSourceCopyPropertiesAtIndex(source, 0, NULL);
-	CGFloat origW = 0, origH = 0;
-	if (props) {
-		CFNumberRef wNum = (CFNumberRef)CFDictionaryGetValue(props, kCGImagePropertyPixelWidth);
-		CFNumberRef hNum = (CFNumberRef)CFDictionaryGetValue(props, kCGImagePropertyPixelHeight);
-		if (wNum) CFNumberGetValue(wNum, kCFNumberCGFloatType, &origW);
-		if (hNum) CFNumberGetValue(hNum, kCFNumberCGFloatType, &origH);
-		CFRelease(props);
-	}
-
-	if (origW < 1 || origH < 1) {
-		CFRelease(source);
-		return [self decodedImage:[UIImage imageWithContentsOfFile:path] fittingSize:target fill:fill scale:scale];
-	}
-
-	if (target.width > 0 && target.height > 0) {
-		if (fill) {
-			CGFloat grow = MAX(target.width / origW, target.height / origH);
-			if (grow >= 1.0f)
-				maxPixelSize = MAX(origW, origH) * effectiveScale;
-			else
-				maxPixelSize = ceilf(MAX(origW * grow, origH * grow) * effectiveScale);
-		} else {
-			CGFloat shrink = MIN(target.width / origW, target.height / origH);
-			if (shrink < 1.0f)
-				maxPixelSize = ceilf(MAX(target.width, target.height) * effectiveScale);
-			else
-				maxPixelSize = MAX(origW, origH) * effectiveScale;
-		}
-	} else {
-		maxPixelSize = MAX(origW, origH) * effectiveScale;
-	}
-
-	if (maxPixelSize < 1.0f) maxPixelSize = 1.0f;
-
-	NSDictionary *options = @{
-		(id)kCGImageSourceCreateThumbnailFromImageAlways : @YES,
-		(id)kCGImageSourceThumbnailMaxPixelSize          : @((int)maxPixelSize),
-		(id)kCGImageSourceCreateThumbnailWithTransform   : @YES,
-		(id)kCGImageSourceShouldCacheImmediately        : @YES
-	};
-
-	CGImageRef thumb = CGImageSourceCreateThumbnailAtIndex(source, 0, (__bridge CFDictionaryRef)options);
-	CFRelease(source);
-
-	if (!thumb)
-		return [self decodedImage:[UIImage imageWithContentsOfFile:path] fittingSize:target fill:fill scale:scale];
-
-	if (fill && target.width > 0 && target.height > 0) {
-		size_t tw = CGImageGetWidth(thumb);
-		size_t th = CGImageGetHeight(thumb);
-		CGFloat reqW = target.width * effectiveScale;
-		CGFloat reqH = target.height * effectiveScale;
-		if (tw > reqW + 1 || th > reqH + 1) {
-			CGFloat cropW = MIN((CGFloat)tw, reqW);
-			CGFloat cropH = MIN((CGFloat)th, reqH);
-			CGFloat cropX = TGHalf((CGFloat)tw - cropW);
-			CGFloat cropY = TGHalf((CGFloat)th - cropH);
-			CGImageRef cropped = CGImageCreateWithImageInRect(thumb, CGRectMake(cropX, cropY, cropW, cropH));
-			CGImageRelease(thumb);
-			thumb = cropped;
-		}
-	}
-
-	UIImage *res = [UIImage imageWithCGImage:thumb scale:effectiveScale orientation:UIImageOrientationUp];
-	CGImageRelease(thumb);
-	return res;
+/// The decode semaphore: two decodes at a time, shared by every caller
+/// (chat list owns its own copy of the same idea; this one backs the
+/// profile, settings and edit-profile avatar loads).
+dispatch_semaphore_t TGIconsDecodeGate(void) {
+	static dispatch_semaphore_t gate = nil;
+	static dispatch_once_t once;
+	dispatch_once(&once, ^{ gate = dispatch_semaphore_create(2); });
+	return gate;
 }
 
 + (void)loadImageAtPath:(NSString *)path into:(UIImageView *)view {
@@ -374,12 +321,16 @@ static UIImage *TGGlyphAvatar(CGFloat side, void (^draw)(CGContextRef ctx, CGFlo
 	CGSize target = view.bounds.size;
 	CGFloat screenScale = [UIScreen mainScreen].scale;   // UIScreen is main-thread only
 	dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_LOW, 0), ^{
-		UIImage *decoded = [TGIcons decodedImageAtPath:path fittingSize:target fill:YES scale:screenScale];
-		if (!decoded)
-			return;
-		dispatch_async(dispatch_get_main_queue(), ^{
-			weakView.image = decoded;
-		});
+		dispatch_semaphore_wait(TGIconsDecodeGate(), DISPATCH_TIME_FOREVER);
+		@autoreleasepool {
+			UIImage *decoded = [TGIcons decodedImageAtPath:path fittingSize:target fill:YES scale:screenScale];
+			dispatch_semaphore_signal(TGIconsDecodeGate());
+			if (!decoded)
+				return;
+			dispatch_async(dispatch_get_main_queue(), ^{
+				weakView.image = decoded;
+			});
+		}
 	});
 }
 

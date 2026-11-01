@@ -11,6 +11,9 @@
 @property (nonatomic, strong) AVCaptureSession *session;
 @property (nonatomic, strong) AVCaptureVideoPreviewLayer *preview;
 @property (nonatomic, strong) UILabel *hint;
+@property (nonatomic, strong) UIView *wash;
+@property (nonatomic, strong) CAShapeLayer *maskLayer;
+@property (nonatomic, strong) UIView *outline;
 @property (nonatomic, assign) BOOL handled;
 @end
 
@@ -64,7 +67,10 @@ static const CGFloat kQRTextInset = 24.0f;
 	[self.session startRunning];
 }
 
-/// A window in a dark wash, which is what tells you where to aim.
+/// A window in a dark wash, which is what tells you where to aim. Called
+/// again on every layout pass: the wash, its cutout, the outline and the
+/// hint all follow the present bounds, so a rotated camera keeps aiming at
+/// a centred window.
 - (void)buildFrame {
 	CGRect b = self.view.bounds;
 	CGFloat side = MIN(b.size.width, b.size.height) * TGMetricQRViewfinderRatio;
@@ -72,36 +78,51 @@ static const CGFloat kQRTextInset = 24.0f;
 							   TGCenteredOrigin(b.size.height, side) - TGMetricPadWide,
 							   side, side);
 
-	UIView *wash = [[UIView alloc] initWithFrame:b];
-	wash.backgroundColor = [[TGTheme shared] scrimColour];
-	wash.userInteractionEnabled = NO;
+	if (!self.wash) {
+		self.wash = [[UIView alloc] initWithFrame:b];
+		self.wash.backgroundColor = [[TGTheme shared] scrimColour];
+		self.wash.userInteractionEnabled = NO;
 
-	// The hole is cut with an even-odd mask rather than four strips, so the
-	// edges stay exact when the frame moves.
-	CAShapeLayer *mask = [CAShapeLayer layer];
+		// The hole is cut with an even-odd mask rather than four strips, so
+		// the edges stay exact when the frame moves.
+		self.maskLayer = [CAShapeLayer layer];
+		self.maskLayer.fillRule = kCAFillRuleEvenOdd;
+		self.wash.layer.mask = self.maskLayer;
+		[self.view addSubview:self.wash];
+
+		self.outline = [[UIView alloc] initWithFrame:window];
+		self.outline.layer.borderColor = [UIColor whiteColor].CGColor;
+		self.outline.layer.borderWidth = TGMetricBorderThick;
+		self.outline.layer.cornerRadius = TGMetricCornerControl;
+		self.outline.userInteractionEnabled = NO;
+		[self.view addSubview:self.outline];
+
+		self.hint = [[UILabel alloc] initWithFrame:CGRectMake(
+				TGMetricPadWide, CGRectGetMaxY(window) + TGMetricPadWide, b.size.width - TGDoubled(TGMetricPadWide), TGDoubled(TGMetricPadWide))];
+		self.hint.text = @"Point the camera at a QR code";
+		self.hint.numberOfLines = 2;
+		self.hint.textAlignment = NSTextAlignmentCenter;
+		self.hint.font = TGFontBody();
+		self.hint.textColor = [UIColor whiteColor];
+		self.hint.backgroundColor = [UIColor clearColor];
+		[self.view addSubview:self.hint];
+	}
+
+	self.wash.frame = b;
 	UIBezierPath *path = [UIBezierPath bezierPathWithRect:b];
 	[path appendPath:[UIBezierPath bezierPathWithRoundedRect:window cornerRadius:TGMetricCornerControl]];
-	mask.path = path.CGPath;
-	mask.fillRule = kCAFillRuleEvenOdd;
-	wash.layer.mask = mask;
-	[self.view addSubview:wash];
+	self.maskLayer.path = path.CGPath;
+	self.outline.frame = window;
+	self.hint.frame = CGRectMake(
+			TGMetricPadWide, CGRectGetMaxY(window) + TGMetricPadWide,
+			b.size.width - TGDoubled(TGMetricPadWide), TGDoubled(TGMetricPadWide));
+}
 
-	UIView *outline = [[UIView alloc] initWithFrame:window];
-	outline.layer.borderColor = [UIColor whiteColor].CGColor;
-	outline.layer.borderWidth = TGMetricBorderThick;
-	outline.layer.cornerRadius = TGMetricCornerControl;
-	outline.userInteractionEnabled = NO;
-	[self.view addSubview:outline];
-
-	self.hint = [[UILabel alloc] initWithFrame:CGRectMake(
-			TGMetricPadWide, CGRectGetMaxY(window) + TGMetricPadWide, b.size.width - TGDoubled(TGMetricPadWide), TGDoubled(TGMetricPadWide))];
-	self.hint.text = @"Point the camera at a QR code";
-	self.hint.numberOfLines = 2;
-	self.hint.textAlignment = NSTextAlignmentCenter;
-	self.hint.font = TGFontBody();
-	self.hint.textColor = [UIColor whiteColor];
-	self.hint.backgroundColor = [UIColor clearColor];
-	[self.view addSubview:self.hint];
+- (void)viewDidLayoutSubviews {
+	[super viewDidLayoutSubviews];
+	if (self.preview)
+		self.preview.frame = self.view.bounds;
+	[self buildFrame];
 }
 
 - (void)showFailure:(NSString *)message {

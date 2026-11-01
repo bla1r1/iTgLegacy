@@ -32,6 +32,12 @@
                                              selector:@selector(keyboardWillHide:)
                                                  name:UIKeyboardWillHideNotification
                                                object:nil];
+    // viewDidLayoutSubviews carries most devices through a rotation; this
+    // notification catches the iOS 6 and 7 passes that once didn't call it.
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(layoutActiveStep)
+                                                 name:UIApplicationDidChangeStatusBarOrientationNotification
+                                               object:nil];
 }
 
 - (void)viewWillAppear:(BOOL)animated {
@@ -45,6 +51,11 @@
     [[NSNotificationCenter defaultCenter] removeObserver:self];
 }
 
+- (void)viewDidLayoutSubviews {
+    [super viewDidLayoutSubviews];
+    [self layoutActiveStep];
+}
+
 - (UIStatusBarStyle)preferredStatusBarStyle {
     return UIStatusBarStyleDefault;
 }
@@ -56,6 +67,8 @@
     self.view.backgroundColor = [[TGTheme shared] groupedBackgroundColour];
 
     self.scrollView = [[UIScrollView alloc] initWithFrame:CGRectMake(0, 0, width, height)];
+    self.scrollView.autoresizingMask = UIViewAutoresizingFlexibleWidth |
+                                       UIViewAutoresizingFlexibleHeight;
     self.scrollView.backgroundColor = [UIColor clearColor];
     self.scrollView.alwaysBounceVertical = YES;
     if ([self.scrollView respondsToSelector:@selector(setKeyboardDismissMode:)]) {

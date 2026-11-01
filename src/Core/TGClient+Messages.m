@@ -1,4 +1,5 @@
 #import "TGClientInternal.h"
+#import "TGBase64.h"
 
 /// Reactions as one short line: emoji and count, most used first. Custom
 /// emoji have no character to draw, so they are counted but not named.
@@ -246,8 +247,7 @@ NSDictionary *TGFlattenMessage(NSDictionary *m) {
 		duration  = content[@"voice_note"][@"duration"];
 		// Telegram sends the shape of the sound with the message: five bits
 		// per sample, which is what the bars in the bubble are drawn from.
-		waveform  = [[NSData alloc] initWithBase64EncodedString:
-				content[@"voice_note"][@"waveform"] ?: @"" options:0];
+		waveform  = TGBase64Decode(content[@"voice_note"][@"waveform"]);
 		extra = @"";
 
 	} else if ([ctype isEqualToString:@"messageAudio"]){

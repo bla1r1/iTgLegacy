@@ -4,13 +4,17 @@
 #import "TGStyle.h"
 
 /// Every step is the same vertical stack: instructions, a field, a button,
-/// maybe a link or two, then the theme picker. Each one used to carry its own
-/// column of offsets - 56/108/154/190/210 here, 64/116/162/196/230/250 next
-/// door - so the four steps drifted a few points apart from each other for
-/// no reason anybody chose.
+/// and maybe a link or two. Each one used to carry its own column of
+/// offsets - 56/108/154/190/210 here, 64/116/162/196/230/250 next door - so
+/// the four steps drifted a few points apart from each other for no reason
+/// anybody chose.
 ///
-/// These two put a thing where the cursor is and answer where the next thing
-/// goes, so the rhythm is one piece of code rather than four columns.
+/// The show* methods only *choose* a step - titles, secrets, timers,
+/// keyboards - and then land in layoutActiveStep, which writes every frame
+/// from the view's present bounds and again on every rotation. These two
+/// static helpers put a thing where the cursor is and answer where the next
+/// thing goes, so the rhythm stays one value for every step and every
+/// screen size.
 static CGFloat TGStackPlace(UIView *view, CGFloat y, CGFloat height,
                             CGFloat width, CGFloat gutter) {
     if (view)
@@ -27,6 +31,122 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
 }
 
 @implementation TGLoginViewController (Steps)
+
+#pragma mark - step geometry
+
+/// The current step's frames, written from the view's present bounds. Every
+/// show* method below ends here, and so does every rotation and layout pass:
+/// the phone step folds its prefix into one row on 320 pt and spreads on
+/// wider screens, the QR re-centres, the links re-stack under the button.
+/// This is the one place the answer to "where does a thing go" lives.
+- (void)layoutActiveStep {
+    if (!self.scrollView || !self.inputContainer)
+        return;
+    CGFloat width = self.view.bounds.size.width;
+
+    if (self.qrImageView && !self.qrImageView.hidden) {
+        [self layoutQRStepInWidth:width];
+        return;
+    }
+    switch (self.currentStep) {
+        case TGLoginStepPhone:
+            [self layoutPhoneStepInWidth:width];
+            break;
+        case TGLoginStepCode:
+            [self layoutCodeStepInWidth:width];
+            break;
+        case TGLoginStepRegister:
+        case TGLoginStepEmail:
+        case TGLoginStepEmailCode:
+        case TGLoginStepPassword:
+        case TGLoginStepRecoveryCode:
+            [self layoutFieldStepInWidth:width];
+            break;
+    }
+}
+
+- (void)layoutPhoneStepInWidth:(CGFloat)width {
+    CGFloat y = [self placeSubtitle] + TGMetricStackGroup;
+    y = TGStackPlace(self.inputContainer, y, TGMetricRow, width, TGMetricGutter);
+    y = TGStackPlace(self.actionButton, y, TGMetricRow, width, TGMetricGutter);
+    y = TGStackPlace(self.qrCodeButton, y, TGMetricLoginLinkHeight,
+                     width, TGMetricGutter);
+
+    CGFloat fieldX = TGMetricPadMedium + TGMetricLoginPrefixWidth + TGMetricPadMedium;
+    self.inputField.frame = CGRectMake(fieldX, 0,
+            width - TGDoubled(TGMetricGutter) - fieldX - TGMetricPadMedium,
+            TGMetricRow);
+
+    y += TGMetricStackGroup;
+    self.scrollView.contentSize = CGSizeMake(width,
+            y - TGMetricStackStep + TGMetricPadLarge);
+}
+
+- (void)layoutCodeStepInWidth:(CGFloat)width {
+    CGFloat y = [self placeSubtitle] + TGMetricStackGroup;
+    y = TGStackPlace(self.inputContainer, y, TGMetricRow, width, TGMetricGutter);
+    self.inputField.frame = CGRectMake(TGMetricPadMedium, 0,
+            width - TGDoubled(TGMetricGutter) - TGDoubled(TGMetricPadMedium),
+            TGMetricRow);
+    y = TGStackPlace(self.actionButton, y, TGMetricRow, width, TGMetricGutter);
+
+    y = [self placeGhostRow:self.resendButton atY:y width:width];
+    y = [self placeGhostRow:self.codeStepQrButton atY:y width:width];
+    y = [self placeStepLinksFromY:y width:width];
+
+    y += TGMetricStackGroup;
+    self.scrollView.contentSize = CGSizeMake(width,
+            y - TGMetricStackStep + TGMetricPadLarge);
+}
+
+/// The password, email, register and recovery steps are one field, one
+/// button, and whatever links the caller asked for under that button.
+- (void)layoutFieldStepInWidth:(CGFloat)width {
+    CGFloat y = [self placeSubtitle] + TGMetricStackGroup;
+    y = TGStackPlace(self.inputContainer, y, TGMetricRow, width, TGMetricGutter);
+    self.inputField.frame = CGRectMake(TGMetricPadMedium, 0,
+            width - TGDoubled(TGMetricGutter) - TGDoubled(TGMetricPadMedium),
+            TGMetricRow);
+
+    CGFloat buttonMaxY = y;
+    y = TGStackPlace(self.actionButton, y, TGMetricRow, width, TGMetricGutter);
+    CGFloat bottom = MAX(
+            y - TGMetricStackStep + TGMetricPadLarge,
+            [self placeStepLinksFromY:buttonMaxY + TGMetricPadSmall width:width]
+                    + TGMetricPadLarge);
+    self.scrollView.contentSize = CGSizeMake(width, bottom);
+}
+
+- (void)layoutQRStepInWidth:(CGFloat)width {
+    [self placeSubtitle];
+
+    CGFloat qrSize = MIN(width - 80, TGMetricLoginQRSize);
+    self.qrImageView.frame = CGRectMake(
+            TGCenteredOrigin(width, qrSize), TGMetricStackQRTop, qrSize, qrSize);
+
+    CGFloat qrY = TGStackPlaceGroup(nil, TGMetricStackQRTop + qrSize,
+                                    0, width, TGMetricPadWide);
+    self.scrollView.contentSize = CGSizeMake(width,
+            qrY - TGMetricStackStep + TGMetricPadLarge);
+}
+
+/// One full-width ghost row - the resend, the QR link - framed at `y`; the
+/// cursor answers where the next row starts.
+- (CGFloat)placeGhostRow:(UIView *)view atY:(CGFloat)y width:(CGFloat)width {
+    TGStackPlace(view, y, TGMetricLoginLinkHeight, width, TGMetricGutter);
+    return y + TGMetricLoginLinkHeight + TGMetricPadSmall;
+}
+
+/// Every step link the step carries, stacked from `y`; returns the cursor
+/// past the last one.
+- (CGFloat)placeStepLinksFromY:(CGFloat)y width:(CGFloat)width {
+    for (UIView *link in self.stepLinks) {
+        link.frame = CGRectMake(TGMetricGutter, y,
+                width - TGDoubled(TGMetricGutter), TGMetricLoginLinkHeight);
+        y += TGMetricLoginLinkHeight + TGMetricPadSmall;
+    }
+    return y;
+}
 
 - (void)showPhoneStep {
     [self clearStepLinks];
@@ -47,25 +167,15 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
         self.navigationItem.leftBarButtonItem = nil;
     }
 
-    CGFloat width = self.view.bounds.size.width;
     self.inputContainer.hidden = NO;
-    CGFloat y = [self placeSubtitle] + TGMetricStackGroup;
-    y = TGStackPlace(self.inputContainer, y, TGMetricRow, width, TGMetricGutter);
     self.actionButton.hidden = NO;
-    y = TGStackPlace(self.actionButton, y, TGMetricRow, width, TGMetricGutter);
     self.inputField.hidden = NO;
     self.qrCodeButton.hidden = NO;
-    y = TGStackPlace(self.qrCodeButton, y, TGMetricLoginLinkHeight,
-                     width, TGMetricGutter);
     if (self.qrImageView) {
         self.qrImageView.hidden = YES;
     }
     self.phonePrefixField.hidden = NO;
     self.prefixSeparator.hidden = NO;
-    CGFloat fieldX = TGMetricPadMedium + TGMetricLoginPrefixWidth + TGMetricPadMedium;
-    self.inputField.frame = CGRectMake(fieldX, 0,
-            width - TGDoubled(TGMetricGutter) - fieldX - TGMetricPadMedium,
-            TGMetricRow);
     self.inputField.textAlignment = NSTextAlignmentLeft;
     self.inputField.font = TGFontInput();
     self.inputField.placeholder = @"Phone number";
@@ -85,16 +195,12 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
         self.codeStepQrButton = nil;
     }
 
-    y += TGMetricStackGroup;
-
-    self.scrollView.contentSize = CGSizeMake(width,
-            y - TGMetricStackStep + TGMetricPadLarge);
+    [self layoutActiveStep];
     [self applyTheme];
     [self.inputField becomeFirstResponder];
 }
 
 - (void)useSingleFieldLayout {
-    CGFloat width = self.view.bounds.size.width;
     self.inputContainer.hidden = NO;
     self.actionButton.hidden = NO;
     self.inputField.hidden = NO;
@@ -104,9 +210,6 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
     if (self.qrImageView) {
         self.qrImageView.hidden = YES;
     }
-    self.inputField.frame = CGRectMake(TGMetricPadMedium, 0,
-            width - TGDoubled(TGMetricGutter) - TGDoubled(TGMetricPadMedium),
-            TGMetricRow);
     self.inputField.textAlignment = NSTextAlignmentCenter;
     // The phone field's size. 22 pt bold was larger than the bar's own title
     // and filled the row from edge to edge.
@@ -165,18 +268,12 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
         self.qrImageView.layer.borderWidth = TGMetricHairline;
         self.qrImageView.clipsToBounds = YES;
         [self.scrollView addSubview:self.qrImageView];
-    } else {
-        self.qrImageView.frame = CGRectMake(qrX, TGMetricStackQRTop, qrSize, qrSize);
     }
     self.qrImageView.layer.borderColor = [[TGTheme shared] separatorColour].CGColor;
     self.qrImageView.hidden = NO;
     self.qrImageView.image = [self generateQRCodeForString:link size:qrSize];
 
-    CGFloat qrY = TGStackPlaceGroup(nil, TGMetricStackQRTop + qrSize,
-                                    0, width, TGMetricPadWide);
-
-    self.scrollView.contentSize = CGSizeMake(width,
-            qrY - TGMetricStackStep + TGMetricPadLarge);
+    [self layoutActiveStep];
     [self applyTheme];
 }
 
@@ -237,16 +334,10 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
         self.subtitleLabel.text = [NSString stringWithFormat:@"We've sent a code to your other Telegram device or via SMS to\n%@", displayNumber];
     }
 
-    CGFloat width = self.view.bounds.size.width;
     [self useSingleFieldLayout];
-    CGFloat codeY = [self placeSubtitle] + TGMetricStackGroup;
-    codeY = TGStackPlace(self.inputContainer, codeY, TGMetricRow,
-                         width, TGMetricGutter);
     [self.inputField resignFirstResponder];   // or the number pad never shows
     self.inputField.placeholder = @"Code";
     self.inputField.keyboardType = UIKeyboardTypeNumberPad;
-    codeY = TGStackPlace(self.actionButton, codeY, TGMetricRow,
-                         width, TGMetricGutter);
     [self.actionButton setTitle:@"Submit Code" forState:UIControlStateNormal];
     self.nextItem.title = @"Done";
     self.navigationItem.rightBarButtonItem = self.nextItem;
@@ -257,38 +348,21 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
         target:self
         action:@selector(showPhoneStep)];
 
+    // The frames land in layoutActiveStep: resend under the button, the QR
+    // link under it, this link under both.
     if (!self.resendButton) {
         self.resendButton = [TGButton buttonWithTitle:@"Send code via SMS / Resend" variant:TGButtonVariantGhost size:TGButtonSizeSmall];
-        self.resendButton.frame = CGRectMake(TGMetricGutter, codeY,
-                width - TGDoubled(TGMetricGutter), TGMetricLoginLinkHeight);
         [self.resendButton addTarget:self action:@selector(resendButtonTapped) forControlEvents:UIControlEventTouchUpInside];
         [self.scrollView addSubview:self.resendButton];
-    } else {
-        self.resendButton.frame = CGRectMake(TGMetricGutter, codeY,
-                width - TGDoubled(TGMetricGutter), TGMetricLoginLinkHeight);
     }
-
     if (!self.codeStepQrButton) {
         self.codeStepQrButton = [TGButton buttonWithTitle:@"Log in with QR Code instead" variant:TGButtonVariantGhost size:TGButtonSizeSmall];
-        self.codeStepQrButton.frame = CGRectMake(TGMetricGutter,
-                codeY + TGMetricLoginLinkHeight + TGMetricPadSmall,
-                width - TGDoubled(TGMetricGutter), TGMetricLoginLinkHeight);
         [self.codeStepQrButton addTarget:self action:@selector(qrCodeButtonTapped) forControlEvents:UIControlEventTouchUpInside];
         [self.scrollView addSubview:self.codeStepQrButton];
-    } else {
-        self.codeStepQrButton.frame = CGRectMake(TGMetricGutter,
-                codeY + TGMetricLoginLinkHeight + TGMetricPadSmall,
-                width - TGDoubled(TGMetricGutter), TGMetricLoginLinkHeight);
     }
+    [self addStepLink:@"Didn't get the code?" action:@selector(codeMissingTapped) atY:0];
 
-    // Past the two links, whichever of them is showing.
-    codeY += TGDoubled(TGMetricLoginLinkHeight) + TGMetricPadSmall;
-    codeY = [self addStepLink:@"Didn't get the code?" action:@selector(codeMissingTapped)
-                          atY:codeY + TGMetricPadSmall];
-    codeY += TGMetricStackGroup;
-
-    self.scrollView.contentSize = CGSizeMake(width,
-            codeY - TGMetricStackStep + TGMetricPadLarge);
+    [self layoutActiveStep];
 
     [self.resendTimer invalidate];
     self.resendTimer = nil;
@@ -371,22 +445,17 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
     [self.resendTimer invalidate];
     self.resendTimer = nil;
 
-    CGFloat width = self.view.bounds.size.width;
-    [self useSingleFieldLayout];
     // The terms can run long, so the field sits under whatever they took.
-    CGFloat y = [self placeSubtitle] + TGMetricStackGroup;
-    y = TGStackPlace(self.inputContainer, y, TGMetricRow, width, TGMetricGutter);
+    [self useSingleFieldLayout];
     self.inputField.placeholder = @"First name";
     self.inputField.secureTextEntry = NO;
     self.inputField.keyboardType = UIKeyboardTypeDefault;
     self.inputField.autocapitalizationType = UITextAutocapitalizationTypeWords;
-    y = TGStackPlace(self.actionButton, y, TGMetricRow, width, TGMetricGutter);
     [self.actionButton setTitle:@"Create Account" forState:UIControlStateNormal];
     self.nextItem.title = @"Done";
     self.navigationItem.rightBarButtonItem = self.nextItem;
 
-    self.scrollView.contentSize = CGSizeMake(width,
-            y - TGMetricStackStep + TGMetricPadLarge);
+    [self layoutActiveStep];
 
     [self applyTheme];
     [self.inputField becomeFirstResponder];
@@ -484,7 +553,9 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
     [self.stepLinks removeAllObjects];
 }
 
-/// One ghost link at `y`; returns where the next one goes.
+/// One ghost link at `y`; returns where the next one goes. A step added after
+/// layoutActiveStep ran lands its own frame here; the same geometry pass
+/// places every link again from the step's anchor.
 - (CGFloat)addStepLink:(NSString *)title action:(SEL)action atY:(CGFloat)y {
     if (!self.stepLinks)
         self.stepLinks = [NSMutableArray array];
@@ -527,10 +598,7 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
     [self.resendTimer invalidate];
     self.resendTimer = nil;
 
-    CGFloat width = self.view.bounds.size.width;
     [self useSingleFieldLayout];
-    CGFloat y = [self placeSubtitle] + TGMetricStackGroup;
-    y = TGStackPlace(self.inputContainer, y, TGMetricRow, width, TGMetricGutter);
     // A keyboard type set on a field that already has focus is ignored until
     // it loses it: the code steps used to open on letters.
     [self.inputField resignFirstResponder];
@@ -540,12 +608,11 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
     self.inputField.keyboardType = keyboard;
     self.inputField.autocapitalizationType = UITextAutocapitalizationTypeNone;
     self.inputField.autocorrectionType = UITextAutocorrectionTypeNo;
-    y = TGStackPlace(self.actionButton, y, TGMetricRow, width, TGMetricGutter);
     [self.actionButton setTitle:button forState:UIControlStateNormal];
     self.nextItem.title = @"Done";
     self.navigationItem.rightBarButtonItem = self.nextItem;
 
-    self.scrollView.contentSize = CGSizeMake(width, y - TGMetricStackStep + TGMetricPadLarge);
+    [self layoutActiveStep];
 
     [self applyTheme];
     [self.inputField becomeFirstResponder];

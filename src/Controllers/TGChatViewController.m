@@ -204,6 +204,27 @@
 	}
 }
 
+- (void)viewDidLayoutSubviews {
+	[super viewDidLayoutSubviews];
+	// The table started framed under the input bar, and autoresizing holds
+	// only the width against a rotation - left alone the height would spread
+	// the rows under the composer. The bar's own top edge is the honest
+	// bottom: keyboard up or down, the table ends where the composer begins.
+	if (!self.inputBar || CGRectIsEmpty(self.inputBar.frame))
+		return;
+	CGFloat width = self.view.bounds.size.width;
+	CGFloat height = CGRectGetMinY(self.inputBar.frame);
+	if (CGRectEqualToRect(self.table.frame, CGRectMake(0, 0, width, height)))
+		return;
+	BOOL widthChanged = self.table.frame.size.width != width;
+	self.table.frame = CGRectMake(0, 0, width, height);
+	if (widthChanged) {
+		// Every bubble measured itself against the old width.
+		[self.layoutCache removeAllObjects];
+		[self.table reloadData];
+	}
+}
+
 /// A two-line header: the chat name with member count or status beneath it,
 /// which is what tells you where you are in a group.
 - (void)buildTitleView {

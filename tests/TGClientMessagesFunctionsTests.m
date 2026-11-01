@@ -8,6 +8,7 @@
 #import "TGTestRunner.h"
 #import "TGClient.h"
 #import "TGClientInternal.h"
+#import "TGBase64.h"
 
 @interface TGClientMessagesFunctionsTests : XCTestCase @end
 
@@ -535,4 +536,21 @@ static NSDictionary *plain(NSDictionary *d) {
 	XCTAssertEqual(wall.count, (NSUInteger)0);
 }
 
+- (void)testBase64Decode_RoundTripsBothPaths {
+	// The host runtime answers the iOS 7 spelling; on the 6.1.6 device the
+	// same call used to throw (NSConcreteData has no such selector, B14).
+	NSString *b64 = @"0gkAFgAASQEAAQAALQAALQAALQwAAAwAABQAABoAAAAA";
+	XCTAssertTrue([TGBase64Decode(b64) isKindOfClass:[NSData class]]);
+	XCTAssertEqual([TGBase64Decode(b64) length], (NSUInteger)33);
+
+	// Empty and nil are empty answers, not throws - a voice note without a
+	// waveform and a call without keys both land here.
+	XCTAssertEqualObjects(TGBase64Decode(@""), [NSData data]);
+	XCTAssertEqualObjects(TGBase64Decode(nil), [NSData data]);
+
+	// The encoder the call engine sends its payload with round-trips.
+	NSData *payload = TGBase64Decode(b64);
+	NSString *back = TGBase64Encode(payload);
+	XCTAssertTrue([TGBase64Decode(back) isEqual:payload]);
+}
 @end

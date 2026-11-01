@@ -329,14 +329,21 @@
 		[[TGClient shared] downloadFile:fileId.integerValue completion:^(NSString *path){
 			if (!path.length) return;
 			dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_LOW, 0), ^{
-				UIImage *photo = [TGIcons decodedImage:[UIImage imageWithContentsOfFile:path]
-										   fittingSize:CGSizeMake(kAvatarSide, kAvatarSide)
-												  fill:YES scale:screenScale];
+				// Same pooled-gated decode as every other avatar path: a busy
+				// group's flood used to ride this block pool-free (B15).
+				dispatch_semaphore_wait(TGIconsDecodeGate(), DISPATCH_TIME_FOREVER);
+				__block UIImage *photo = nil;
+				@autoreleasepool {
+					photo = [TGIcons decodedImage:[UIImage imageWithContentsOfFile:path]
+										  fittingSize:CGSizeMake(kAvatarSide, kAvatarSide)
+												 fill:YES scale:screenScale];
+				}
+				dispatch_semaphore_signal(TGIconsDecodeGate());
 				if (!photo) return;
 				dispatch_async(dispatch_get_main_queue(), ^{
 					weakSelf.senderAvatars[key] = photo;
-					// One reload per arriving avatar reloaded the whole table
-					// once per participant in a busy group.
+					// One reload per arriving avatar loaded the whole table once
+					// per participant in a busy group.
 					[weakSelf reloadTableDebounced];
 				});
 			});

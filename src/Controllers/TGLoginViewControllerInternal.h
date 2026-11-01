@@ -62,6 +62,11 @@ typedef NS_ENUM(NSInteger, TGLoginStep) {
 
 @interface TGLoginViewController (StepsInternal)
 
+/// Writes the current step's frames from the view's present bounds. The
+/// show methods only choose a step - titles, secrets, timers - and land
+/// here; this runs again on every layout pass and rotation, so nothing on
+/// the screen keeps the frame it got while the bounds were other.
+- (void)layoutActiveStep;
 - (void)qrCodeButtonTapped;
 - (void)useSingleFieldLayout;
 - (void)resendTick:(NSTimer *)timer;

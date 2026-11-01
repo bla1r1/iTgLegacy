@@ -223,7 +223,8 @@ static NSString *TGPlayerFormatTime(NSTimeInterval seconds) {
 @interface TGPlayerModalViewController () <UITableViewDataSource, UITableViewDelegate>
 @end
 
-@implementation TGPlayerModalViewController {
+@implementation TGPlayerModalViewController
+{
 	UIView *_navBarView;
 	UIButton *_dismissBtn;
 	UILabel *_navTitleLabel;
@@ -262,6 +263,17 @@ static NSString *TGPlayerFormatTime(NSTimeInterval seconds) {
 	nc.navigationBarHidden = YES;
 	nc.modalPresentationStyle = UIModalPresentationFullScreen;
 	[parent presentViewController:nc animated:animated completion:nil];
+}
+
+// The deck is a portrait composition - artwork, scrubber, transport - about
+// 460 pt of stack; landscape would need a second layout instead of a rotated
+// first one, and no music app of the era rotated its deck either.
+- (UIInterfaceOrientationMask)supportedInterfaceOrientations {
+	return UIInterfaceOrientationMaskPortrait;
+}
+
+- (BOOL)shouldAutorotate {
+	return YES;
 }
 
 - (void)viewDidLoad {

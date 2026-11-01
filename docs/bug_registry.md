@@ -55,6 +55,39 @@ which path they took. `TGMessageLayout.mm:388` stays as it is: that is
 NSAttributedString's `boundingRectWithSize:options:context:`, which is iOS
 6.0 and demonstrably works on the device.
 
+**B15.** The decode burst class, second act. Two crashes, both
+`SIGSEGV 0x0` on a background decode through `+[TGIcons decodedImage...]`:
+(1) chat-list avatars during a real-account load — 20 instant `downloadFile`
+requests decoded pool-free on one GCD thread until the process died
+mid-list; (2) entering a profile — the profile photo decodes through
+`decodedImageAtPath`'s `CGImageSourceCreateWithURL` branch
+(`CopyPropertiesAtIndex`/`CreateThumbnailByIdx`) and died there on a real
+photo. **fixed** — every decode goes through one gated, pooled entry
+(`TGChatListViewController`'s 2-slot semaphore and the shared
+`TGIconsDecodeGate` exported from `TGIcons.h`), `loadImageAtPath` and the
+chat-canvas avatar path are both pooled, and `decodedImageAtPath` no longer
+runs ImageIO-from-URL at all: it reads the file's bytes and decodes through
+the data-provider path that survived 117 chats, with the decode page capped
+at TGDECODE_MAX_PIXEL (1024) on a 256MB device. On the 4S: profile of a real
+chat loads — history 59/59, `getChatPostedToChatPageStories` acknowledged, no
+new crash report.
+
+**B14.** Entering a real chat killed the app on the iPod touch 4 (6.1.6):
+`TGFlattenMessage`'s voice-note branch called
+`[[NSData alloc] initWithBase64EncodedString:options:]`, an iOS 7 selector the
+6.1.6 runtime does not answer - `NSConcreteData` threw
+"unrecognized selector" on the receive thread and the exception was fatal
+(TGCall.mm's `base64EncodedStringWithOptions:` and key/tag decoders were
+three more copies of the same). **fixed** — `src/Core/TGBase64.{h,m}`
+gate both spellings on `instancesRespondToSelector:` and fall through to
+the iOS 4-era `initWithBase64Encoding:`/`base64Encoding:`
+(`TGBase64Decode`/`TGBase64Encode`). Every callsite uses them now:
+waveform, call keys, peer tags, signalling. Test:
+`testBase64Decode_RoundTripsBothPaths` (33-byte round trip, empty and nil
+decode as empty answers, and the encoder round-trips). On the device the
+message list of a voice-note-heavy chat loads clean — 59 messages,
+no exception.
+
 ## Shared root causes
 
 | Pair | Root | Fix order |

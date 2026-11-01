@@ -68,12 +68,14 @@ OBJC_SRCS := \
     $(SRC)/Calls/TGCall.mm \
     $(SRC)/Views/TGMessageLayout.mm \
     $(SRC)/Core/TGStyle.m \
+    $(SRC)/Core/TGBase64.m \
     $(SRC)/Core/TGPerf.m
 
 # Real TGClient sources, compiled only into the second binary: the main
 # binary links a test stub of TGClient instead, which the call tests need.
 CLIENT_OBJC_SRCS := \
     $(ROOT)/third_party/yyjson/yyjson.c \
+    $(SRC)/Core/TGBase64.m \
     $(SRC)/Core/TGUpdateType.c \
     $(SRC)/Core/TGSVGPath.c \
     $(SRC)/Views/TGIconPaths.m \

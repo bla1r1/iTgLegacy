@@ -91,15 +91,11 @@ static const CGFloat kRowGlyph     = 28.0f;
 		// The list title reads "Chats"/"Archived"/the folder while the
 		// connection is fine; the network names it otherwise. Before, READY
 		// reset the title to "Chats" and a chosen folder got erased (B4).
+		// The strip banner the states once drew over the rows is gone: the
+		// nav-bar title carries the state in the chat list and the open
+		// chat's header says its own line, the way the original Telegram
+		// coloured it - no strip over real rows.
 		weakSelf.title = line ?: [weakSelf titleForCurrentList];
-		if (state == TGConnectionStateConnecting || state == TGConnectionStateUpdating) {
-			[TGStatusBanner showInView:weakSelf.view
-			                      kind:(state == TGConnectionStateConnecting ? TGStatusBannerKindConnecting : TGStatusBannerKindUpdating)
-			                      text:line
-			                  animated:YES];
-		} else {
-			[TGStatusBanner hideFromView:weakSelf.view animated:YES];
-		}
 	};
 	[self reload];
 }
@@ -669,9 +665,23 @@ static const CGFloat kRowGlyph     = 28.0f;
 }
 
 /// Avatars are fetched once each and cached by file id.
+// The decode side of the avatar flood. Two at a time, one autorelease pool
+// each: the parallel burst once filled a GCD thread with no pool until the
+// thread's memory blew out mid-chat-load (a real-account crash, SIGSEGV 0x0
+// inside the icon decode - every avatar asked for the same thread).
+static dispatch_semaphore_t TGAvtDecodeGate(NSInteger cap) {
+	static dispatch_semaphore_t gate = nil;
+	static dispatch_once_t once;
+	dispatch_once(&once, ^{
+		gate = dispatch_semaphore_create((long)cap);
+	});
+	return gate;
+}
+
 - (void)fetchMissingAvatars {
 	__weak typeof(self) weakSelf = self;
 	CGFloat screenScale = [UIScreen mainScreen].scale;
+	dispatch_semaphore_t gate = TGAvtDecodeGate(2);
 	for (NSDictionary *c in self.chats){
 		NSNumber *fileId = c[@"photoFileId"];
 		if (!fileId || fileId.longLongValue < 0 || self.avatars[fileId] || [self.avatarsRequested containsObject:fileId])
@@ -691,17 +701,34 @@ static const CGFloat kRowGlyph     = 28.0f;
 				return;
 			}
 			dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_BACKGROUND, 0), ^{
-				CGSize avatarSize = CGSizeMake(TGMetricListAvatar, TGMetricListAvatar);
-				UIImage *img = [TGIcons decodedImageAtPath:path fittingSize:avatarSize fill:YES scale:screenScale];
-				if (!img)
-					img = [TGIcons decodedImage:[UIImage imageWithContentsOfFile:path] fittingSize:avatarSize fill:YES scale:screenScale];
-				if (!img) return;
-				dispatch_async(dispatch_get_main_queue(), ^{
-					TGChatListViewController *me = weakSelf;
-					if (!me) return;
-					me.avatars[fileId] = img;
-					[me reloadTableDebounced];
-				});
+				// The gate is taken inside the block, not before: an entry
+				// slot costs the wait, and the semaphore release happens in
+				// the same block that took it.
+				dispatch_semaphore_wait(gate, DISPATCH_TIME_FOREVER);
+				@autoreleasepool {
+					NSData *bytes = [NSData dataWithContentsOfFile:path];
+					UIImage *img = [TGIcons decodedImage:[UIImage imageWithData:bytes
+																  scale:screenScale]
+											  fittingSize:CGSizeMake(TGMetricListAvatar, TGMetricListAvatar)
+													fill:YES
+												   scale:screenScale];
+					if (!img && bytes.length)
+						img = [TGIcons decodedImage:[UIImage imageWithContentsOfFile:path]
+											fittingSize:CGSizeMake(TGMetricListAvatar, TGMetricListAvatar)
+											   fill:YES
+											  scale:screenScale];
+					if (img){
+						dispatch_async(dispatch_get_main_queue(), ^{
+							TGChatListViewController *me = weakSelf;
+							if (!me) { dispatch_semaphore_signal(gate); return; }
+							me.avatars[fileId] = img;
+							[me reloadTableDebounced];
+							dispatch_semaphore_signal(gate);
+						});
+						return;
+					}
+					dispatch_semaphore_signal(gate);
+				}
 			});
 		}];
 	}

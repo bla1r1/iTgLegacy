@@ -152,6 +152,13 @@ static const CGFloat kThumbStripH   = 54.0f;
 	self.window = [UIApplication sharedApplication].keyWindow;
 	CGRect bounds = self.window.bounds;
 
+	// A window-sized view and nobody owning it but itself: no layout pass
+	// comes through here, so a rotation is carried by this notification.
+	[[NSNotificationCenter defaultCenter] addObserver:self
+			selector:@selector(relayoutViewer)
+			name:UIApplicationDidChangeStatusBarOrientationNotification
+			object:nil];
+
 	self.backdrop = [[UIView alloc] initWithFrame:bounds];
 	self.backdrop.backgroundColor = [[TGTheme shared] mediaViewerBackdropColour];
 	self.backdrop.alpha = 0;
@@ -206,9 +213,45 @@ static const CGFloat kThumbStripH   = 54.0f;
 		[self.backdrop removeFromSuperview];
 		self.self_ = nil;       // and now it can go
 	}];
+	[[NSNotificationCenter defaultCenter] removeObserver:self];
 }
 
 #pragma mark - chrome
+
+/// The viewer lives in a backdrop nobody lays out, so chrome and pages are
+/// rebuilt from the window's present bounds whenever they change. The pages
+/// keep their pictures - a rotated album does not download again.
+- (void)relayoutViewer {
+	if (!self.backdrop)
+		return;
+	CGRect bounds = self.window.bounds;
+	self.backdrop.frame = bounds;
+	self.pager.frame = bounds;
+	self.pager.contentSize = CGSizeMake(bounds.size.width * self.items.count,
+										bounds.size.height);
+	self.pager.contentOffset = CGPointMake(bounds.size.width * self.index, 0);
+
+	for (NSNumber *key in self.pages) {
+		NSInteger i = key.integerValue;
+		UIScrollView *zoom = self.pages[key];
+		zoom.frame = CGRectMake(bounds.size.width * i, 0,
+				bounds.size.width, bounds.size.height);
+		zoom.zoomScale = TGMetricZoomMin;
+		UIImageView *picture = [zoom viewWithTag:kZoomTag + 1];
+		picture.frame = zoom.bounds;
+	}
+
+	[self.topBar removeFromSuperview];   self.topBar = nil;
+	self.counterLabel = nil;             self.dateLabel = nil;
+	[self.bottomBar removeFromSuperview]; self.bottomBar = nil;
+	self.captionLabel = nil;             self.playButton = nil;
+	self.scrubber = nil;                 self.timeLabel = nil;
+	[self.thumbStrip removeFromSuperview]; self.thumbStrip = nil;
+	self.thumbButtons = nil;
+	[self buildChrome];
+	[self buildThumbStrip];
+	[self refreshChrome];
+}
 
 - (void)buildChrome {
 	CGRect bounds = self.backdrop.bounds;

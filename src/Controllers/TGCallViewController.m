@@ -34,6 +34,10 @@
 @property (nonatomic, assign) BOOL speakerOn;
 @property (nonatomic, strong) UILabel *lastCreatedLabel;
 
+/// Which variant of the control row `updateLayoutForCallActive:` last built,
+/// so a rotation rebuilds the same one instead of guessing from the state.
+@property (nonatomic, assign) BOOL callRowActive;
+
 @property (nonatomic, strong) NSTimer *ticker;
 @end
 
@@ -84,7 +88,10 @@ static NSArray *TGCallGradient(NSArray *colours) {
     CGRect b = self.view.bounds;
     
     // Down the screen once, each thing under the last, so moving the avatar
-    // does not leave the name sitting where it used to be.
+    // does not leave the name sitting where it used to be. The placement
+    // lives in applyChromeLayout; this first build creates the views and
+    // every rotation lands on the same code again through the layout pass.
+
     CGFloat gutter = TGMetricPadMedium;
     CGFloat textWidth = b.size.width - TGDoubled(gutter);
     CGFloat y = TGMetricCallEmojiTop;
@@ -254,6 +261,41 @@ static NSArray *TGCallGradient(NSArray *colours) {
 // at both ends, each caption centred on the button above it. Every offset the
 // three old branches wrote out by hand - gap*4 + 180, x - 10, +35, -95 - was
 // this arithmetic done again, differently, and drifting.
+- (void)applyChromeLayout {
+    // The emoji key, avatar, name and status stack down the screen from the
+    // top; every rotation rewrites these frames from the present bounds so
+    // the name never stays where a wider screen once put it.
+    CGRect b = self.view.bounds;
+    CGFloat gutter = TGMetricPadMedium;
+    CGFloat textWidth = b.size.width - TGDoubled(gutter);
+    CGFloat y = TGMetricCallEmojiTop;
+    self.bgLayer.frame = b;
+
+    self.emojiLabel.frame = CGRectMake(gutter, y, textWidth, TGMetricCallEmojiHeight);
+    y += TGMetricCallEmojiHeight + TGMetricPadLarge;
+
+    CGFloat side = TGMetricCallAvatarSide;
+    self.avatarView.frame = CGRectMake(TGCenteredOrigin(b.size.width, side), y, side, side);
+    y += side + TGMetricPadLarge;
+
+    self.nameLabel.frame = CGRectMake(gutter, y, textWidth, TGMetricCallNameHeight);
+    y += TGMetricCallNameHeight + TGMetricPadTiny;
+    self.statusLabel.frame = CGRectMake(gutter, y, textWidth, TGMetricCallStatusHeight);
+}
+
+- (void)viewDidLayoutSubviews {
+    [super viewDidLayoutSubviews];
+    if (!self.emojiLabel)
+        return;
+    [self applyChromeLayout];
+    // The same row variant the call state chose, at the new width.
+    [self updateLayoutForCallActive:self.callRowActive];
+}
+
+// One row of round buttons, spread evenly across the width with the same air
+// at both ends, each caption centred on the button above it. Every offset the
+// three old branches wrote out by hand - gap*4 + 180, x - 10, +35, -95 - was
+// this arithmetic done again, differently, and drifting.
 - (void)placeRow:(NSArray *)buttons captions:(NSArray *)captions atY:(CGFloat)rowY {
     CGFloat width = self.view.bounds.size.width;
     CGFloat side = TGMetricCallButtonSide;
@@ -287,6 +329,7 @@ static NSArray *TGCallGradient(NSArray *colours) {
 }
 
 - (void)updateLayoutForCallActive:(BOOL)active {
+    self.callRowActive = active;
     CGRect b = self.view.bounds;
     CGFloat rowY = b.size.height - TGMetricCallTogglesBottom;
     BOOL ringing = (!self.outgoing && !active &&
@@ -328,7 +371,6 @@ static NSArray *TGCallGradient(NSArray *colours) {
 - (void)applyState:(TGCallState)state {
     BOOL isRinging = (!self.outgoing && state == TGCallStatePending);
     [self updateLayoutForCallActive:!isRinging];
-
     switch (state){
         case TGCallStatePending:
             self.statusLabel.text = self.outgoing ? @"Calling..." : @"Incoming...";

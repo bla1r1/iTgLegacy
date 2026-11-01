@@ -13,7 +13,6 @@
 #import "TGSearchViewController.h"
 #import "TGChatCell.h"
 #import "TGEmptyView.h"
-#import "TGStatusBanner.h"
 #import "TGImageLruCache.h"
 #import <QuartzCore/QuartzCore.h>
 

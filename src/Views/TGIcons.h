@@ -3,6 +3,8 @@
 //
 #import <UIKit/UIKit.h>
 
+FOUNDATION_EXPORT dispatch_semaphore_t TGIconsDecodeGate(void);
+
 @interface TGIcons : NSObject
 
 + (UIImage *)chats;        ///< tab bar
