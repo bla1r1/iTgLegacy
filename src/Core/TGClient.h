@@ -32,5 +32,6 @@
 #import "TGClient+Search.h"
 #import "TGClient+Secret.h"
 #import "TGClient+Stickers.h"
+#import "TGClient+Stories.h"
 #import "TGClient+Usernames.h"
 #import "TGClient+Websites.h"

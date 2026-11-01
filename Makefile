@@ -228,6 +228,7 @@ APP_SRC_M := \
 	src/Core/TGClient+BotTools.m \
 	src/Core/TGClient+Language.m \
 	src/Core/TGClient+Search.m \
+	src/Core/TGClient+Stories.m \
 	src/Core/TGClient+ChatTools.m \
 	src/Core/TGClient+Downloads.m \
 	src/Core/TGClient+Secret.m \
@@ -279,6 +280,7 @@ APP_SRC_M := \
 	src/Controllers/TGChatListViewController+Actions.m \
 	src/Controllers/TGChatListViewController+Search.m \
 	src/Views/TGChatCell.m \
+	src/Views/TGStoriesCell.m \
 	src/Views/TGEmojiData.m \
 	src/Views/TGEmojiPanel.m \
 	src/Views/TGAttachSheet.m \
@@ -300,6 +302,15 @@ APP_SRC_M := \
 	src/Controllers/TGChatViewController+Media.m \
 	src/Controllers/TGChatViewController+Chrome.m \
 	src/Controllers/TGMessageAudienceViewController.m \
+	src/Controllers/TGStoryViewerViewController.m \
+	src/Controllers/TGStoryComposerViewController.m \
+	src/Controllers/TGStoryInfoViewController.m \
+	src/Controllers/TGStoryAlbumsViewController.m \
+	src/Controllers/TGStoryArchiveViewController.m \
+	src/Controllers/TGStorySettingsViewController.m \
+	src/Controllers/TGStoriesMenuViewController.m \
+	src/Controllers/TGPublicStoriesViewController.m \
+	src/Controllers/TGLiveStoryViewController.m \
 	src/Controllers/TGContactsViewController.m \
 	src/Controllers/TGCloseFriendsViewController.m \
 	src/Controllers/TGNewContactViewController.m \

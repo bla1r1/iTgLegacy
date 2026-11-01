@@ -20,7 +20,7 @@ As of 2026-11-01:
 
 | | declared | covered | gap | of it wanted | out of scope |
 |---|---|---|---|---|---|
-| functions | 1076 | 581 (54%) | 495 | 0 | 495 |
+| functions | 1076 | 629 (58%) | 447 | 0 | 447 |
 | updates | 197 | 119 (60%) | 78 | 0 | 78 |
 
 Functions are counted from string literals in `src/`, updates from the one list in `src/Core/TGUpdateType.h` — anything outside it is thrown away in the receive loop before a Foundation tree is built, so a dropped update leaves no trace in the log either. Both numbers are floors. Where this file and ROADMAP.md disagree, the roadmap wins — it knows the device.
@@ -33,8 +33,8 @@ The two halves are not comparable: 1076 functions include every bot, Stars, busi
 
 | Tier | Meaning | Functions |
 |---|---|---|
-| 1 | done: reachable from a screen (`--wired`) | 581 |
-| 2 | not done yet, but buildable: the wanted list plus the skipped-but-possible set (`--relevant` + `--tier2`) | 0 + 194 |
+| 1 | done: reachable from a screen (`--wired`) | 629 |
+| 2 | not done yet, but buildable: the wanted list plus the skipped-but-possible set (`--relevant` + `--tier2`) | 0 + 146 |
 | 3 | never for this client: bot-account-only, or needs a stack this iOS cannot carry (`--tier3`) | 301 |
 
 The tier split is `scripts/tdlib_tiers.py`; it reads the same skip list the coverage
@@ -107,9 +107,8 @@ work was done in, not a second classification.
 
 28 functions in a long tail: notifications/sounds (6), forum topics (7), payments/orders (5), calls/sessions (4), connected websites (3), bot keyboards (2) and poll option properties (1). Run `--relevant` for the exact names and pick with the app in hand.
 
-That is the wanted half. The other half of Tier 2 is 194 functions skipped today because no screen wanted them yet, but they need no new stack:
+That is the wanted half. The other half of Tier 2 is 146 functions skipped today because no screen wanted them yet, but they need no new stack:
 
-- stories — 48
 - group and video calls — 42
 - communities, checklists and quick replies — 35
 - business accounts — 28
@@ -119,6 +118,15 @@ That is the wanted half. The other half of Tier 2 is 194 functions skipped today
 - group anti-spam switches and web proxy carrier — 4
 
 `python3 scripts/tdlib_tiers.py --tier2` lists the names. These are not promises: they are the part of the skip list that a screen and the existing client could carry later.
+
+**Stories — done as a wave.** Forty-eight functions, every one reachable from a screen:
+
+- **The strip and the viewer** — the chat list opens on a stories row fed by `loadActiveStories`; each chat's active list is read with `getChatActiveStories` behind it, and a held bubble moves that chat's stories between the main strip and the archive with `setChatActiveStoriesList`. Tapping a bubble opens `TGStoryViewerViewController`, which sends `openStory` and `closeStory`, scores progress per story, pauses on a hold, and draws the reaction rail from `getStoryAvailableReactions`; `setStoryReaction` sends or clears the chosen emoji. `getChatArchivedStories` is the archive screen, and `setChatPinnedStories` pins the open story to the chat page.
+- **Posting** — `TGStoryComposerViewController` checks `canPostStory`, offers targets from `getChatsToPostStories`, takes a photo or video plus a caption, privacy, 6/12/24/48-hour period, album ids and the two flags, and posts with `postStory`. `editStory`, `editStoryCover`, `deleteStory`, `toggleStoryIsPostedToChatPage` and `setStoryPrivacySettings` live in the same own-story menu. `deleteBusinessStory` and `editBusinessStory` sit below them: a user account sees Telegram's refusal rather than a missing row.
+- **Albums** — `TGStoryAlbumsViewController` lists `getChatStoryAlbums`, creates, renames, deletes and drags albums through `reorderStoryAlbums`, opens a real album with `getStoryAlbumStories`, adds from the archive and removes with `addStoryAlbumStories` / `removeStoryAlbumStories`, and reorders the album's own stories with `reorderStoryAlbumStories`.
+- **Interactions and statistics** — `TGStoryInfoViewController` reads `getStoryInteractions` for own-account stories and `getChatStoryInteractions` for chat stories, lists `getStoryPublicForwards`, draws both `getStoryStatistics` graphs as line rows, and runs the two-step `reportStory` (option list, then text).
+- **Notifications, stealth and discovery** — `getStoryNotificationSettingsExceptions` is Settings → Stories, with the per-chat story switch each row reports. `activateStoryStealthMode` is the stories menu's Stealth row, and its server answer is the sentence on screen. The search screen gains Public Stories, where `searchPublicStoriesByTag`, `searchPublicStoriesByLocation` and `searchPublicStoriesByVenue` return stories that open in the same viewer.
+- **Live stories** — `TGLiveStoryViewController` starts with `startLiveStory`, reads `getLiveStoryRtmpUrl` and replaces it with `replaceLiveStoryRtmpUrl`, joins through `joinLiveStory`, and shows the server's `getLiveStoryStreamer`, `getLiveStoryAvailableMessageSenders` (with `setLiveStoryMessageSender`), `getLiveStoryTopDonors` and the pending star reactions (`addPendingLiveStoryReaction`, `commitPendingLiveStoryReactions`, `removePendingLiveStoryReactions`). This client has no camera encoder: the screen says so and keeps every request and answer real rather than pretending to broadcast.
 
 **Usernames and supergroup administration — done as a wave.** Fifteen functions, every one on a screen:
 

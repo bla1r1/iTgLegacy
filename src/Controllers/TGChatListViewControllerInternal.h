@@ -12,6 +12,7 @@
 #import "TGSnackbar.h"
 #import "TGSearchViewController.h"
 #import "TGChatCell.h"
+#import "TGStoriesCell.h"
 #import "TGEmptyView.h"
 #import "TGImageLruCache.h"
 #import <QuartzCore/QuartzCore.h>
@@ -38,8 +39,20 @@
 @property (nonatomic, strong) NSArray *mergedChats;   // all chats: main + folders
 @property (nonatomic, copy) NSString *mergedSignature;
 @property (nonatomic, assign) BOOL mergeInFlight;
+/// The stories strip's rows, newest first. Loaded from -activeStoryRowsForList:
+/// and only re-read when the last read is a few seconds old, because the
+/// chat list reloads for every chat update and each strip read is up to 60
+/// getChatActiveStories calls.
+@property (nonatomic, strong) NSArray *storyRows;
+@property (nonatomic, strong) NSDate *storyRowsReadAt;
+@property (nonatomic, assign) BOOL storyRowsLoading;
 
 - (void)reload;
+- (void)reloadStoriesIfNeeded;
+- (void)showStoryRow:(NSDictionary *)row;
+- (void)runStoryRowMenu:(NSDictionary *)row;
+- (void)openStoryComposer;
+- (void)openStoriesMenu;
 - (void)mergeAllFolderChats;
 - (void)rebuildTableHeader;
 - (void)folderTabTapped:(UIButton *)pill;

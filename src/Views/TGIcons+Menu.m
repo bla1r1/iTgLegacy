@@ -27,6 +27,8 @@ void TGIconsClearSettingsIconCache(void) {
 				@"call", @"video", @"search", @"more",
 				// the call screen
 				@"endcall", @"recent", @"star", @"speakerOn",
+				// the stories strip's add bubble
+				@"plus",
 				// the dismiss cross and the record lock's arrow, which were
 				// drawn with characters in four places and came out as four
 				// different shapes
@@ -296,6 +298,14 @@ void TGIconsClearSettingsIconCache(void) {
 			for (int i = 0; i < 3; i++)
 				CGContextFillEllipseInRect(ctx, CGRectMake(
 						s * 0.24f + i * s * 0.20f - 1.5f, s / 2 - 1.5f, 3, 3));
+
+		} else if ([name isEqualToString:@"plus"]){
+			// the add control on the stories strip
+			CGContextMoveToPoint(ctx, s / 2, s * 0.26f);
+			CGContextAddLineToPoint(ctx, s / 2, s * 0.74f);
+			CGContextMoveToPoint(ctx, s * 0.26f, s / 2);
+			CGContextAddLineToPoint(ctx, s * 0.74f, s / 2);
+			CGContextStrokePath(ctx);
 
 		} else if ([name isEqualToString:@"notifications"]){
 			// a bell

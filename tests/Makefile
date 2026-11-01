@@ -110,6 +110,7 @@ CLIENT_OBJC_SRCS := \
     $(SRC)/Core/TGClient+BotTools.m \
     $(SRC)/Core/TGClient+Language.m \
     $(SRC)/Core/TGClient+Search.m \
+    $(SRC)/Core/TGClient+Stories.m \
     $(SRC)/Core/TGClient+Downloads.m \
     $(SRC)/Core/TGClient+Secret.m \
     $(SRC)/Core/TGClient+Account.m \
@@ -179,6 +180,7 @@ CLIENT_TEST_SRCS := \
     $(TESTS)/TGClientEmojiReactionsTests.m \
     $(TESTS)/TGClientAppearanceDiagnosticsTests.m \
     $(TESTS)/TGClientMiscTests.m \
+    $(TESTS)/TGClientStoriesTests.m \
     $(TESTS)/TGClientNotificationsForumTests.m \
     $(TESTS)/TGThemeFileTests.m \
     $(TESTS)/TGUpdatesTests.mm \

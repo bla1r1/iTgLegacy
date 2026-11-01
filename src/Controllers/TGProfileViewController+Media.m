@@ -1,14 +1,9 @@
 #import "TGProfileViewControllerInternal.h"
 #import "TGMediaViewer.h"
 #import "TGGiftViewer.h"
-#import <AVFoundation/AVFoundation.h>
 #import "TGStyle.h"
 #import "TGAlertSheet.h"
-
-/// Only one story is ever open, so the player it needs can live here rather
-/// than as state on a category that cannot hold any.
-static AVPlayer *sStoryPlayer = nil;
-static AVPlayerLayer *sStoryLayer = nil;
+#import "TGStoryViewerViewController.h"
 
 @implementation TGProfileViewController (Media)
 
@@ -469,128 +464,22 @@ static const CGFloat kVideoMarkInset = TGMetricPadWide;
 
 /// Displays full-screen view for the selected story.
 - (void)openStoryAtIndex:(NSInteger)index {
-	if (index >= (NSInteger)self.stories.count)
+	if (index < 0 || index >= (NSInteger)self.stories.count)
 		return;
-	NSDictionary *story = self.stories[index];
-	NSNumber *fileId = story[@"photoId"];
-	if (![fileId isKindOfClass:NSNumber.class]){
-		[TGAlertSheet showMessage:@"This story has nothing this app can show."
-							title:@"Story" inView:self.view];
-		return;
-	}
-
-	UIWindow *window = [UIApplication sharedApplication].keyWindow;
-	UIView *backdrop = [[UIView alloc] initWithFrame:window.bounds];
-	backdrop.backgroundColor = [UIColor blackColor];
-	backdrop.alpha = 0;
-
-	UIImageView *picture = [[UIImageView alloc] initWithFrame:
-			CGRectInset(window.bounds, 0, TGMetricListAvatar)];
-	picture.contentMode = UIViewContentModeScaleAspectFit;
-	[backdrop addSubview:picture];
-
-	NSString *caption = story[@"caption"];
-	if (caption.length){
-		UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(
-				TGMetricPadLarge, window.bounds.size.height - TGMetricStoryCaptionBottomOffset,
-				window.bounds.size.width - TGDoubled(TGMetricPadLarge), TGMetricStoryCaptionHeight)];
-		label.text = caption;
-		label.numberOfLines = 3;
-		label.font = TGFontSubhead();
-		label.textColor = [UIColor whiteColor];
-		label.backgroundColor = [UIColor clearColor];
-		[backdrop addSubview:label];
-	}
-
-	UILabel *note = nil;
-	if ([story[@"isVideo"] boolValue]){
-		note = [[UILabel alloc] initWithFrame:
-				CGRectMake(0, TGMetricBubbleDiscColumn, window.bounds.size.width,
-					TGMetricLineBody)];
-		note.text = story[@"videoId"] ? @"Loading video..."
-									  : @"Video story - showing the first frame";
-		note.font = TGFontMeta();
-		note.textAlignment = NSTextAlignmentCenter;
-		note.textColor = [[TGTheme shared] secondaryTextColour];
-		note.backgroundColor = [UIColor clearColor];
-		[backdrop addSubview:note];
-	}
-
-	backdrop.userInteractionEnabled = YES;
-	[backdrop addGestureRecognizer:[[UITapGestureRecognizer alloc]
-			initWithTarget:self action:@selector(closeStory:)]];
-	[window addSubview:backdrop];
-	[UIView animateWithDuration:TGAnimationDurationNormal animations:^{ backdrop.alpha = 1; }];
-
-	[[TGClient shared] downloadFile:fileId.integerValue completion:^(NSString *path){
-		[TGIcons loadImageAtPath:path into:picture];
-	}];
-
-	// The still is the poster frame; the video plays over it once it is here.
-	NSNumber *videoId = story[@"videoId"];
-	if (![videoId isKindOfClass:NSNumber.class] || videoId.integerValue <= 0)
-		return;
-	__weak UIView *weakBackdrop = backdrop;
-	__weak UILabel *weakNote = note;
-	[[TGClient shared] downloadFile:videoId.integerValue completion:^(NSString *path){
-		UIView *host = weakBackdrop;
-		if (!host || !host.superview || !path.length){
-			weakNote.text = @"Video story - showing the first frame";
-			return;
-		}
-		[self stopStoryPlayback];
-
-		// Without this the session is still whatever the last recorder left
-		// it as, and a story with sound plays silent.
-		NSError *sessionError = nil;
-		[[AVAudioSession sharedInstance] setCategory:AVAudioSessionCategoryPlayback
-											   error:&sessionError];
-		[[AVAudioSession sharedInstance] setActive:YES error:NULL];
-
-		AVPlayer *player = [AVPlayer playerWithURL:[NSURL fileURLWithPath:path]];
-		if (!player){
-			weakNote.text = @"Video story - showing the first frame";
-			return;
-		}
-		player.actionAtItemEnd = AVPlayerActionAtItemEndNone;
-		AVPlayerLayer *layer = [AVPlayerLayer playerLayerWithPlayer:player];
-		layer.videoGravity = AVLayerVideoGravityResizeAspect;
-		layer.frame = picture.frame;
-		[host.layer addSublayer:layer];
-
-		[[NSNotificationCenter defaultCenter] addObserver:self
-				selector:@selector(storyReachedEnd:)
-					name:AVPlayerItemDidPlayToEndTimeNotification
-				  object:player.currentItem];
-
-		sStoryPlayer = player;
-		sStoryLayer = layer;
-		weakNote.hidden = YES;
-		[player play];
-	}];
-}
-
-- (void)storyReachedEnd:(NSNotification *)note {
-	[sStoryPlayer seekToTime:kCMTimeZero];
-	[sStoryPlayer play];
-}
-
-- (void)stopStoryPlayback {
-	if (!sStoryPlayer && !sStoryLayer)
-		return;
-	[[NSNotificationCenter defaultCenter] removeObserver:self
-			name:AVPlayerItemDidPlayToEndTimeNotification object:nil];
-	[sStoryPlayer pause];
-	[sStoryLayer removeFromSuperlayer];
-	sStoryPlayer = nil;
-	sStoryLayer = nil;
-}
-
-- (void)closeStory:(UITapGestureRecognizer *)tap {
-	[self stopStoryPlayback];
-	UIView *backdrop = tap.view;
-	[UIView animateWithDuration:TGAnimationDurationNormal animations:^{ backdrop.alpha = 0; }
-					 completion:^(BOOL done){ [backdrop removeFromSuperview]; }];
+	// The profile grid and the chat list's strip open the same viewer. The
+	// old inline backdrop lived here and knew nothing about openStory,
+	// reactions or the own-story menu.
+	TGStoryViewerViewController *viewer = [[TGStoryViewerViewController alloc]
+			initWithChatId:self.chatId
+					 title:self.title ?: @"Stories"
+				   stories:self.stories
+				startIndex:index
+				 canManage:self.chatId == [[TGClient shared] savedMessagesChatId]];
+	UINavigationController *nav = [[UINavigationController alloc]
+			initWithRootViewController:viewer];
+	nav.navigationBar.barStyle = UIBarStyleBlack;
+	nav.navigationBar.translucent = YES;
+	[self presentViewController:nav animated:YES completion:nil];
 }
 
 - (void)loadMoreMediaForCurrentTab {

@@ -6,6 +6,9 @@
 #import "TGDevShowcase.h"
 #import "TGFastDate.h"
 #import "TGOptions.h"
+#import "TGStoryViewerViewController.h"
+#import "TGStoryComposerViewController.h"
+#import "TGStoriesMenuViewController.h"
 
 // Height of the folder pill strip above the chat list (official-style tabs).
 static const CGFloat kFolderTabRow = TGMetricFolderTabRow;
@@ -298,7 +301,11 @@ static const CGFloat kRowGlyph     = 28.0f;
 	// because the chat rows start exactly at the band's lower edge. A pull
 	// down walks both of them back into view.
 	BOOL archiveParked = [[self headerRows] containsObject:@"archive"];
-	self.parkOffset = 44 + (archiveParked ? kRowHeight : 0);
+	// The stories strip is the first row and has to stay reachable after the
+	// list loads; parking past it would hide Add Story behind a pull. So the
+	// archive strip rides below it at the same park instead of being hidden.
+	BOOL storiesFirst = [[[self headerRows] firstObject] isEqualToString:@"stories"];
+	self.parkOffset = 44 + (archiveParked && !storiesFirst ? kRowHeight : 0);
 	[self hideHeaderAboveFrom:wasHidingHeader];
 }
 
@@ -669,6 +676,7 @@ static const CGFloat kRowGlyph     = 28.0f;
 	}
 	[list addObjectsFromArray:baseChats];
 	self.chats = list;
+	[self reloadStoriesIfNeeded];
 	[self.tableView reloadData];
 	[self rebuildTableHeader];
 	[self fetchMissingAvatars];
@@ -701,13 +709,137 @@ static const CGFloat kRowGlyph     = 28.0f;
 - (NSArray *)headerRows {
 	if (self.searchResults || self.showsArchive || self.folderId != 0)
 		return @[];
+	NSMutableArray *rows = [NSMutableArray arrayWithObject:@"stories"];
 	if ([TGClient shared].archivedChats.count > 0 && self.chats.count > 9)
-		return @[@"archive"];
-	return @[];
+		[rows addObject:@"archive"];
+	return rows;
 }
 
 - (BOOL)hasArchiveRow {
 	return NO;
+}
+
+/// The strip is re-read at most once every half minute: the chat list reloads
+/// on every chat update, and each refresh here is one request per chat.
+- (void)reloadStoriesIfNeeded {
+	if (self.showsArchive || self.folderId != 0 || self.storyRowsLoading)
+		return;
+	if (self.storyRowsReadAt &&
+		-[self.storyRowsReadAt timeIntervalSinceNow] < 30.0)
+		return;
+	self.storyRowsLoading = YES;
+	__weak typeof(self) weakSelf = self;
+	[[TGClient shared] activeStoryRowsForList:@"main" completion:^(NSArray *rows){
+		TGChatListViewController *me = weakSelf;
+		if (!me)
+			return;
+		me.storyRows = rows ?: @[];
+		me.storyRowsReadAt = [NSDate date];
+		me.storyRowsLoading = NO;
+		[me.tableView reloadData];
+		[me fetchMissingAvatars];
+	}];
+}
+
+- (void)showStoryRow:(NSDictionary *)row {
+	NSArray *infos = row[@"stories"];
+	NSMutableArray *ids = [NSMutableArray array];
+	for (NSDictionary *info in infos)
+		if ([info[@"storyId"] isKindOfClass:NSNumber.class])
+			[ids addObject:info[@"storyId"]];
+	if (!ids.count){
+		[TGAlertSheet showMessage:@"This chat has no active stories right now."
+							title:@"Stories" inView:self.view];
+		return;
+	}
+	TGStoryViewerViewController *viewer = [[TGStoryViewerViewController alloc]
+			initWithChatId:[row[@"chatId"] longLongValue]
+					 title:row[@"title"] ?: @"Stories"
+				   stories:ids
+				startIndex:0
+				 canManage:[row[@"isOwn"] boolValue]];
+	__weak typeof(self) weakSelf = self;
+	viewer.onStoriesChanged = ^{
+		TGChatListViewController *me = weakSelf;
+		me.storyRowsReadAt = nil;
+		[me reloadStoriesIfNeeded];
+	};
+	UINavigationController *nav = [[UINavigationController alloc]
+			initWithRootViewController:viewer];
+	nav.navigationBar.barStyle = UIBarStyleBlack;
+	nav.navigationBar.translucent = YES;
+	[self presentViewController:nav animated:YES completion:nil];
+}
+
+/// Held stories bubble: move the chat's stories between the main strip and
+/// the archive, which is the hide Telegram offers for another account's
+/// stories. Own stories have no archive move; the row says so.
+- (void)runStoryRowMenu:(NSDictionary *)row {
+	BOOL archived = [row[@"list"] isEqualToString:@"archive"];
+	if ([row[@"isOwn"] boolValue] && !archived){
+		[TGAlertSheet showMessage:@"Your own stories stay on the strip. Use the "
+				@"story menu for the archive." title:@"Stories" inView:self.view];
+		return;
+	}
+	NSArray *choices = archived
+			? @[@"Move to Main Stories"] : @[@"Hide from Stories Row"];
+	__weak typeof(self) weakSelf = self;
+	[TGAlertSheet showChoices:choices title:row[@"title"] ?: @"Stories"
+				destructiveIndex:-1 inView:self.view onChoice:^(NSInteger choice){
+		TGChatListViewController *me = weakSelf;
+		if (!me)
+			return;
+		int64_t chatId = [row[@"chatId"] longLongValue];
+		[[TGClient shared] setActiveStoriesList:(archived ? @"main" : @"archive")
+										forChat:chatId
+									 completion:^(BOOL ok, NSString *error){
+			if (!ok){
+				[TGAlertSheet showMessage:error ?: @"Telegram refused that."
+									title:@"Stories" inView:me.view];
+				return;
+			}
+			me.storyRowsReadAt = nil;
+			[me reloadStoriesIfNeeded];
+		}];
+	}];
+}
+
+- (void)openStoryComposer {
+	int64_t savedId = [[TGClient shared] savedMessagesChatId];
+	if (!savedId){
+		[TGAlertSheet showMessage:@"Telegram has not sent the Saved Messages chat yet."
+							title:@"New Story" inView:self.view];
+		return;
+	}
+	TGStoryComposerViewController *composer = [[TGStoryComposerViewController alloc]
+			initWithChatId:savedId title:@"Your Story"];
+	__weak typeof(self) weakSelf = self;
+	composer.onPosted = ^{
+		TGChatListViewController *me = weakSelf;
+		me.storyRowsReadAt = nil;
+		[me reloadStoriesIfNeeded];
+	};
+	composer.hidesBottomBarWhenPushed = YES;
+	[self.navigationController pushViewController:composer animated:YES];
+}
+
+- (void)openStoriesMenu {
+	int64_t savedId = [[TGClient shared] savedMessagesChatId];
+	if (!savedId){
+		[TGAlertSheet showMessage:@"Telegram has not sent the Saved Messages chat yet."
+							title:@"Stories" inView:self.view];
+		return;
+	}
+	TGStoriesMenuViewController *menu = [[TGStoriesMenuViewController alloc]
+			initWithChatId:savedId title:@"Your Story"];
+	__weak typeof(self) weakSelf = self;
+	menu.onStoriesChanged = ^{
+		TGChatListViewController *me = weakSelf;
+		me.storyRowsReadAt = nil;
+		[me reloadStoriesIfNeeded];
+	};
+	menu.hidesBottomBarWhenPushed = YES;
+	[self.navigationController pushViewController:menu animated:YES];
 }
 
 - (void)openArchive {
@@ -740,7 +872,9 @@ static dispatch_semaphore_t TGAvtDecodeGate(NSInteger cap) {
 	__weak typeof(self) weakSelf = self;
 	CGFloat screenScale = [UIScreen mainScreen].scale;
 	dispatch_semaphore_t gate = TGAvtDecodeGate(2);
-	for (NSDictionary *c in self.chats){
+	NSMutableArray *rows = [NSMutableArray arrayWithArray:self.chats ?: @[]];
+	[rows addObjectsFromArray:self.storyRows ?: @[]];
+	for (NSDictionary *c in rows){
 		NSNumber *fileId = c[@"photoFileId"];
 		if (!fileId || fileId.longLongValue < 0 || self.avatars[fileId] || [self.avatarsRequested containsObject:fileId])
 			continue;
@@ -826,6 +960,14 @@ static NSString *TGChatDate(NSTimeInterval unix) {
 	return chats;
 }
 
+- (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
+	NSArray *header = [self headerRows];
+	if (indexPath.row < (NSInteger)header.count &&
+		[header[indexPath.row] isEqualToString:@"stories"])
+		return TGMetricStoryStripRow;
+	return kRowHeight;
+}
+
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
 	if (self.searchResults)
 		return self.searchResults.count;
@@ -861,6 +1003,28 @@ static NSString *TGChatDate(NSTimeInterval unix) {
 
 	NSArray *header = [self headerRows];
 	if (indexPath.row < (NSInteger)header.count){
+		if ([header[indexPath.row] isEqualToString:@"stories"]){
+			static NSString *storyReuse = @"TGStoriesCell";
+			TGStoriesCell *strip = [tableView dequeueReusableCellWithIdentifier:storyReuse];
+			if (!strip)
+				strip = [[TGStoriesCell alloc] initWithStyle:UITableViewCellStyleDefault
+											  reuseIdentifier:storyReuse];
+			NSMutableArray *display = [NSMutableArray array];
+			for (NSDictionary *row in self.storyRows){
+				NSMutableDictionary *copy = [row mutableCopy];
+				NSNumber *fileId = row[@"photoFileId"];
+				if (fileId && self.avatars[fileId])
+					copy[@"avatarImage"] = self.avatars[fileId];
+				[display addObject:copy];
+			}
+			strip.stories = display;
+			__weak typeof(self) weakSelf = self;
+			strip.onAddStory = ^{ [weakSelf openStoryComposer]; };
+			strip.onMore = ^{ [weakSelf openStoriesMenu]; };
+			strip.onStoryTapped = ^(NSDictionary *row){ [weakSelf showStoryRow:row]; };
+			strip.onStoryHeld = ^(NSDictionary *row){ [weakSelf runStoryRowMenu:row]; };
+			return strip;
+		}
 		BOOL isArchive = [header[indexPath.row] isEqualToString:@"archive"];
 		cell.titleLabel.text = isArchive ? @"Archived Chats" : @"Saved Messages";
 		cell.previewLabel.text = isArchive
@@ -959,6 +1123,8 @@ static NSString *TGChatDate(NSTimeInterval unix) {
 	if (indexPath.row < (NSInteger)header.count){
 		if ([header[indexPath.row] isEqualToString:@"archive"])
 			[self openArchive];
+		else if ([header[indexPath.row] isEqualToString:@"stories"])
+			return;
 		else
 			[self openSavedMessages];
 		return;

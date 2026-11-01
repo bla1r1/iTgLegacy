@@ -8,6 +8,7 @@
 #import "TGChatViewController.h"
 #import "TGDevShowcase.h"
 #import "TGStickerPacksViewController.h"
+#import "TGStorySettingsViewController.h"
 
 /// A custom method's answer is a string the app has no schema for. When it is
 /// JSON, pretty-print it so the viewer reads like a response rather than one
@@ -99,6 +100,12 @@ static NSArray *TGCustomResultRows(NSString *result) {
 						[[TGStickerPacksViewController alloc] init];
 				packs.hidesBottomBarWhenPushed = YES;
 				[weakSelf.navigationController pushViewController:packs animated:YES];
+			}),
+			TGIconRow(@"Stories", @"notifications", TGIconTileRed(), ^{
+				TGStorySettingsViewController *stories =
+						[[TGStorySettingsViewController alloc] init];
+				stories.hidesBottomBarWhenPushed = YES;
+				[weakSelf.navigationController pushViewController:stories animated:YES];
 			}),
 			TGIconRow(@"Recent Calls", @"call", TGIconTileGreen(), ^{
 				[weakSelf openPage:TGSettingsPageRecentCalls];

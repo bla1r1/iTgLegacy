@@ -9,6 +9,7 @@
 #import <QuartzCore/QuartzCore.h>
 #import "TGStyle.h"
 #import "TGAlertSheet.h"
+#import "TGPublicStoriesViewController.h"
 
 
 @interface TGSearchViewController () <UISearchBarDelegate>
@@ -490,7 +491,7 @@ static NSString *TGPublicPostText(NSDictionary *message) {
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
 	// Before a query: people, places, recently found, tags and links. While
 	// searching: suggestions, chats, contacts, messages, tags and posts.
-	return [self showsFrequent] ? 5 : 6;
+	return [self showsFrequent] ? 5 : 7;
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
@@ -508,6 +509,7 @@ static NSString *TGPublicPostText(NSDictionary *message) {
 	if (section == 2) return self.contactHits.count;
 	if (section == 3) return self.messageHits.count;
 	if (section == 4) return self.hashtagHits.count;
+	if (section == 6) return 1;
 	return self.publicHits.count +
 			((self.publicNextOffset.length && !self.publicLimitExceeded) ? 1 : 0);
 }
@@ -525,6 +527,7 @@ static NSString *TGPublicPostText(NSDictionary *message) {
 	if (section == 2) return self.contactHits.count ? @"Contacts" : nil;
 	if (section == 3) return self.messageHits.count ? @"Messages" : nil;
 	if (section == 4) return self.hashtagHits.count ? @"Hashtags" : nil;
+	if (section == 6) return @"Public Stories";
 	return self.publicHits.count ? @"Public Posts" : nil;
 }
 
@@ -680,7 +683,7 @@ static NSString *TGPublicPostText(NSDictionary *message) {
 		cell.textLabel.textColor = [theme primaryTextColour];
 		cell.detailTextLabel.text = @"Search public posts";
 		cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
-	} else {
+	} else if (indexPath.section == 5) {
 		if (indexPath.row >= (NSInteger)self.publicHits.count){
 			cell.textLabel.text = @"Load More Public Posts";
 			cell.textLabel.textColor = [theme accentColour];
@@ -695,6 +698,14 @@ static NSString *TGPublicPostText(NSDictionary *message) {
 		cell.textLabel.textColor = [theme primaryTextColour];
 		cell.detailTextLabel.text = TGPublicPostText(m);
 		cell.imageView.image = [self avatarForChat:chatId title:title fileId:nil];
+	} else {
+		cell.textLabel.text = @"Search Public Stories";
+		cell.textLabel.textColor = [theme accentColour];
+		cell.detailTextLabel.text = [NSString stringWithFormat:@"By tag, location or venue for %@",
+				self.bar.text ?: @""];
+		cell.imageView.image = [TGIcons avatarWithInitials:@"S"
+													 size:TGMetricListAvatar
+												 colourId:0];
 	}
 
 	return cell;
@@ -818,6 +829,14 @@ static NSString *TGPublicPostText(NSDictionary *message) {
 		NSString *tag = self.hashtagHits[indexPath.row];
 		self.bar.text = [NSString stringWithFormat:@"#%@", tag];
 		[self searchBar:self.bar textDidChange:self.bar.text];
+		return;
+	}
+
+	if (!fromFrequent && indexPath.section == 6){
+		TGPublicStoriesViewController *stories = [[TGPublicStoriesViewController alloc]
+				initWithTag:self.bar.text ?: @""];
+		stories.hidesBottomBarWhenPushed = YES;
+		[self.navigationController pushViewController:stories animated:YES];
 		return;
 	}
 

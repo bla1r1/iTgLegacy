@@ -153,6 +153,33 @@ static const CGFloat TGMetricToastBottomOffset = 70.0f;
 static const CGFloat TGMetricStoryCaptionBottomOffset = 76.0f;
 static const CGFloat TGMetricStoryCaptionHeight       = 60.0f;
 
+#pragma mark - stories
+
+/// The strip at the top of the chat list: one bubble, its ring and its name.
+static const CGFloat TGMetricStoryStripRow      = 112.0f;
+static const CGFloat TGMetricStoryStripTop      = 6.0f;
+static const CGFloat TGMetricStoryBubble         = 68.0f;
+static const CGFloat TGMetricStoryAvatar         = 58.0f;
+static const CGFloat TGMetricStoryRing           = 3.0f;
+static const CGFloat TGMetricStoryBubbleGap      = 10.0f;
+static const CGFloat TGMetricStoryLabelHeight    = 16.0f;
+static const CGFloat TGMetricStoryLabelTopGap    = 4.0f;
+static const CGFloat TGMetricStoryThumb          = 54.0f;
+static const CGFloat TGMetricStoryListRow        = 64.0f;
+/// The viewer's segmented progress bars, close button and reaction rail.
+static const CGFloat TGMetricStoryProgressTop    = 6.0f;
+static const CGFloat TGMetricStoryProgressHeight = 3.0f;
+static const CGFloat TGMetricStoryProgressGap    = 3.0f;
+static const CGFloat TGMetricStoryCloseSide      = 32.0f;
+static const CGFloat TGMetricStoryCloseInset     = 10.0f;
+static const CGFloat TGMetricStoryReactionRow    = 44.0f;
+static const CGFloat TGMetricStoryReactionButton = 36.0f;
+static const CGFloat TGMetricStoryReactionGap    = 6.0f;
+static const CGFloat TGMetricStoryViewerNameHeight = 18.0f;
+static const CGFloat TGMetricStoryViewerNameTop  = 14.0f;
+static const CGFloat TGMetricStoryViewerBottom   = 18.0f;
+static const CGFloat TGMetricStoryInputHeight    = 110.0f;
+
 #pragma mark - popup, sheet, and alert tokens
 
 static const CGFloat TGMetricMenuGlyph          = 22.0f;
