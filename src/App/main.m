@@ -6,7 +6,13 @@
 #import <UIKit/UIKit.h>
 #import "AppDelegate.h"
 
+static void TGLegacyExceptionHandler(NSException *exception) {
+	NSLog(@"UNCAUGHT %@: %@\n%@", exception.name, exception.reason,
+		  [exception.callStackSymbols componentsJoinedByString:@"\n"]);
+}
+
 int main(int argc, char *argv[]) {
+	NSSetUncaughtExceptionHandler(&TGLegacyExceptionHandler);
 	@autoreleasepool {
 		return UIApplicationMain(argc, argv, nil, NSStringFromClass([AppDelegate class]));
 	}

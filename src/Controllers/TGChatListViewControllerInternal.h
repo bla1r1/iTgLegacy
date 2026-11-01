@@ -9,7 +9,6 @@
 #import "TGContactsViewController.h"
 #import "TGTopicsViewController.h"
 #import "TGPopupMenu.h"
-#import "TGNewContactViewController.h"
 #import "TGSnackbar.h"
 #import "TGSearchViewController.h"
 #import "TGChatCell.h"
@@ -38,6 +37,12 @@
 /// name, so a chosen folder was forgotten by the next reconnect.
 @property (nonatomic, strong) UIView *listTitleView;
 @property (nonatomic, strong) UILabel *listTitleLabel;
+@property (nonatomic, strong) UILabel *listChevron;
+@property (nonatomic, strong) UIButton *listStoryAvatar;
+/// The story strip is a pull-down sheet: collapsed into the title avatar,
+/// expanded above the search field only while somebody else has a story.
+@property (nonatomic, assign) BOOL storiesExpanded;
+@property (nonatomic, strong) TGStoriesCell *headerStoriesCell;
 @property (nonatomic, strong) UILabel *listSubtitleLabel;
 @property (nonatomic, copy) NSString *connectionLine;
 - (void)buildListTitleView;

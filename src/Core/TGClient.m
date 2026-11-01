@@ -74,6 +74,7 @@ NSString *const TGActiveNotificationsChangedNotification = @"TGActiveNotificatio
 NSString *const TGAutosaveSettingsChangedNotification = @"TGAutosaveSettingsChangedNotification";
 NSString *const TGLanguagePackStringsChangedNotification = @"TGLanguagePackStringsChangedNotification";
 NSString *const TGCommunitiesChangedNotification = @"TGCommunitiesChangedNotification";
+NSString *const TGStoriesChangedNotification = @"TGStoriesChangedNotification";
 NSString *const TGQuickRepliesChangedNotification = @"TGQuickRepliesChangedNotification";
 NSString *const TGSuggestedActionsChangedNotification = @"TGSuggestedActionsChangedNotification";
 
@@ -1001,6 +1002,10 @@ NSDictionary *TGFormattedText(NSString *text) {
 		[[NSNotificationCenter defaultCenter]
 				postNotificationName:TGChatDraftStoppedNotification object:self
 							userInfo:state];
+		return;
+	}
+	case TGUpdateChatActiveStories: {
+		[self applyChatActiveStoriesUpdate:obj];
 		return;
 	}
 	case TGUpdateVideoPublished: {

@@ -346,6 +346,89 @@ static NSArray *TGStoryFlattenStoryList(NSDictionary *result) {
 	}];
 }
 
+/// updateChatActiveStories is the strip's real feed: loadActiveStories turns
+/// the cache on, and every chat with something to watch then arrives here.
+/// Reading only the first sixty chats missed a contact whose story sat below
+/// them, which is why the strip could look empty while Telegram had stories.
+- (void)applyChatActiveStoriesUpdate:(NSDictionary *)update {
+	NSDictionary *active = [update[@"active_stories"] isKindOfClass:NSDictionary.class]
+			? update[@"active_stories"] : nil;
+	if (!active)
+		return;
+	int64_t chatId = [active[@"chat_id"] longLongValue];
+	if (!chatId)
+		return;
+	NSArray *infos = [active[@"stories"] isKindOfClass:NSArray.class]
+			? active[@"stories"] : @[];
+	NSString *listType = TGStoryDict(active[@"list"])[@"@type"];
+	if (!infos.count){
+		if ([listType isEqualToString:@"storyListMain"])
+			[[NSNotificationCenter defaultCenter]
+					postNotificationName:TGStoriesChangedNotification object:self
+								userInfo:@{@"chatId" : @(chatId), @"remove" : @YES}];
+		return;
+	}
+	if (![listType isEqualToString:@"storyListMain"])
+		return;
+
+	NSMutableArray *stories = [NSMutableArray array];
+	BOOL live = NO;
+	int32_t maxRead = [active[@"max_read_story_id"] intValue];
+	int32_t newest = 0;
+	for (NSDictionary *info in infos){
+		[stories addObject:TGStoryFlattenInfo(info, active)];
+		int32_t storyId = [info[@"story_id"] intValue];
+		if (storyId > newest)
+			newest = storyId;
+		if ([info[@"is_live"] boolValue])
+			live = YES;
+	}
+	NSDictionary *chat = nil;
+	for (NSDictionary *candidate in self.chats)
+		if ([candidate[@"id"] longLongValue] == chatId){
+			chat = candidate;
+			break;
+		}
+	NSNumber *photoId = chat[@"photoFileId"] ?: TGStoryChatPhotoFileId(chat);
+	NSMutableDictionary *row = [@{
+		@"chatId"        : @(chatId),
+		@"title"         : [[TGClient shared] titleForChat:chatId]
+				?: chat[@"title"] ?: @"",
+		@"isOwn"         : @(chatId == [[TGClient shared] savedMessagesChatId]),
+		@"unread"        : @(newest > maxRead),
+		@"isLive"        : @(live),
+		@"maxReadStoryId": @(maxRead),
+		@"order"         : active[@"order"] ?: @(0),
+		@"canBeArchived" : active[@"can_be_archived"] ?: @NO,
+		@"list"          : @"main",
+		@"stories"       : stories,
+	} mutableCopy];
+	if ([photoId isKindOfClass:NSNumber.class])
+		row[@"photoFileId"] = photoId;
+	[[NSNotificationCenter defaultCenter] postNotificationName:TGStoriesChangedNotification
+			object:self userInfo:@{@"row" : row}];
+
+	// The update can arrive before the chat or the user behind a private
+	// chat has been described, leaving a row with no name to draw. Ask for
+	// the record once and post the row again when it lands.
+	if (![row[@"title"] isKindOfClass:NSString.class] || ![row[@"title"] length]){
+		[[TGClient shared] chatRecordForChat:chatId completion:^(NSDictionary *chat){
+			if (!chat)
+				return;
+			NSMutableDictionary *fixed = [row mutableCopy];
+			NSString *title = chat[@"title"];
+			if ([title isKindOfClass:NSString.class] && title.length)
+				fixed[@"title"] = title;
+			NSNumber *photo = chat[@"photo"][@"small"][@"id"];
+			if (photo)
+				fixed[@"photoFileId"] = photo;
+			[[NSNotificationCenter defaultCenter]
+					postNotificationName:TGStoriesChangedNotification object:self
+								userInfo:@{@"row" : fixed}];
+		}];
+	}
+}
+
 - (void)activeStoryRowForChat:(int64_t)chatId
 				   completion:(void (^)(NSDictionary *))completion {
 	if (!chatId){

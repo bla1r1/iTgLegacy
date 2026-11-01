@@ -234,6 +234,9 @@ extern double TGFileWaiterTimeoutSeconds;
 - (void)applyQuickReplyShortcutsUpdate:(NSDictionary *)update;
 - (void)applyQuickReplyShortcutMessagesUpdate:(NSDictionary *)update;
 - (void)applySuggestedActionsUpdate:(NSDictionary *)update;
+/// updateChatActiveStories: the strip row for one chat. Kept in
+/// TGClient+Stories beside the per-chat read it replaces.
+- (void)applyChatActiveStoriesUpdate:(NSDictionary *)update;
 /// One field on one chat row changed, so the list is stale but nothing is
 /// waiting on it this instant. Updates that arrive in floods - a typing
 /// storm, the presence burst at login, a forum flag landing on twenty chats

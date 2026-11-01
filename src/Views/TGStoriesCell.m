@@ -2,6 +2,7 @@
 #import "TGTheme.h"
 #import "TGStyle.h"
 #import "TGIcons.h"
+#import "TGMemberAvatarStore.h"
 #import <QuartzCore/QuartzCore.h>
 
 /// The strip scrolls; the cell does not. Ten bubbles fit the first screen and
@@ -59,7 +60,8 @@
 		[view removeFromSuperview];
 
 	CGFloat x = TGMetricStoryBubbleGap;
-	NSString *ownTitle = self.ownStory[@"title"];
+	NSString *ownTitle = [self.ownStory[@"title"] isKindOfClass:NSString.class]
+			? self.ownStory[@"title"] : @"My Story";
 	UIImage *ownImage = self.ownStory[@"avatarImage"];
 	if (!ownImage){
 		NSString *first = ownTitle.length
@@ -73,7 +75,8 @@
 
 	for (NSInteger i = 0; i < (NSInteger)self.stories.count; i++){
 		NSDictionary *row = self.stories[i];
-		NSString *title = row[@"title"] ?: @"";
+		NSString *title = [row[@"title"] isKindOfClass:NSString.class]
+				? row[@"title"] : @"";
 		UIImage *image = row[@"avatarImage"];
 		if (!image){
 			NSString *first = title.length
@@ -104,6 +107,18 @@
 	picture.layer.cornerRadius = TGHalf(TGMetricStoryBubble);
 	picture.backgroundColor = [[TGTheme shared] fileTileColour];
 	[bubble addSubview:picture];
+	int64_t userId = [self.ownStory[@"userId"] longLongValue];
+	if (!self.ownStory[@"avatarImage"] && userId){
+		[[TGMemberAvatarStore shared] loadAvatarForUser:userId
+												   side:TGMetricStoryAvatar
+											 completion:^(UIImage *image){
+			if (!image)
+				return;
+			dispatch_async(dispatch_get_main_queue(), ^{
+				picture.image = image;
+			});
+		}];
+	}
 
 	CGFloat badge = TGMetricStoryBubble * 0.34f;
 	UIView *plate = [[UIView alloc] initWithFrame:CGRectMake(
@@ -188,6 +203,18 @@
 	picture.layer.cornerRadius = TGHalf(TGMetricStoryAvatar);
 	picture.backgroundColor = [[TGTheme shared] fileTileColour];
 	[bubble addSubview:picture];
+	int64_t userId = [self.ownStory[@"userId"] longLongValue];
+	if (!self.ownStory[@"avatarImage"] && userId){
+		[[TGMemberAvatarStore shared] loadAvatarForUser:userId
+												   side:TGMetricStoryAvatar
+											 completion:^(UIImage *image){
+			if (!image)
+				return;
+			dispatch_async(dispatch_get_main_queue(), ^{
+				picture.image = image;
+			});
+		}];
+	}
 
 	UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(
 			x, TGMetricStoryStripTop + TGMetricStoryBubble +

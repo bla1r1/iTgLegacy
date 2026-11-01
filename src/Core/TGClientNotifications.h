@@ -141,6 +141,10 @@ extern NSString *const TGChatVideoPublishedNotification;
 /// community list and the open detail screen re-read the client's cache.
 extern NSString *const TGCommunitiesChangedNotification;
 
+/// updateChatActiveStories: one chat gained, changed or lost its active
+/// stories. userInfo carries the rebuilt strip row ("row") for the main list.
+extern NSString *const TGStoriesChangedNotification;
+
 /// A quick-reply shortcut or one of its messages changed. No payload; the
 /// manager and the open shortcut re-read the cache.
 extern NSString *const TGQuickRepliesChangedNotification;

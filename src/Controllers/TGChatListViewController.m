@@ -21,6 +21,10 @@ static const CGFloat kRowGlyph     = 28.0f;
 /// loses its target to a long folder name.
 static const CGFloat kListTitleWidth  = 150.0f;
 static const CGFloat kListTitleHeight = TGMetricRow;
+static const CGFloat kListChevronWidth = 12.0f;
+static const CGFloat kListChevronGap   = 2.0f;
+static const CGFloat kListStorySide    = 24.0f;
+static const CGFloat kListStoryGap     = 4.0f;
 /// The chat-list bar controls: the Edit pill, the circled add and the blue
 /// compose button. Named here because only this header stacks them.
 static const CGFloat kBarEditWidth    = 66.0f;
@@ -175,6 +179,39 @@ static NSDictionary *TGChatSnapshotRow(NSDictionary *chat) {
 				selector:@selector(reload) object:nil];
 		[weakSelf performSelector:@selector(reload) withObject:nil afterDelay:0.3];
 	};
+	[[NSNotificationCenter defaultCenter] addObserverForName:TGStoriesChangedNotification
+			object:nil queue:[NSOperationQueue mainQueue]
+		usingBlock:^(NSNotification *note){
+		TGChatListViewController *me = weakSelf;
+		if (!me)
+			return;
+		NSNumber *chatId = note.userInfo[@"chatId"];
+		if (!chatId)
+			chatId = note.userInfo[@"row"][@"chatId"];
+		if (note.userInfo[@"remove"]){
+			NSMutableArray *kept = [NSMutableArray array];
+			for (NSDictionary *row in me.storyRows)
+				if ([row[@"chatId"] longLongValue] != [chatId longLongValue])
+					[kept addObject:row];
+			me.storyRows = kept;
+		} else if (note.userInfo[@"row"]){
+			NSMutableArray *rows = [me.storyRows mutableCopy] ?: [NSMutableArray array];
+			NSMutableArray *kept = [NSMutableArray array];
+			for (NSDictionary *row in rows)
+				if ([row[@"chatId"] longLongValue] != [chatId longLongValue])
+					[kept addObject:row];
+			[kept addObject:note.userInfo[@"row"]];
+			[kept sortUsingComparator:^NSComparisonResult(NSDictionary *a, NSDictionary *b){
+				return [b[@"order"] compare:a[@"order"]];
+			}];
+			rows = kept;
+			me.storyRows = rows;
+		}
+		[me rebuildTableHeader];
+		[me refreshListTitleView];
+		[me fetchMissingAvatars];
+	}];
+
 	[TGClient shared].onArchiveChanged = ^{
 		[weakSelf.tableView reloadData];
 	};
@@ -186,6 +223,16 @@ static NSDictionary *TGChatSnapshotRow(NSDictionary *chat) {
 		[weakSelf refreshListTitleView];
 	};
 	[self reload];
+}
+
+- (void)viewDidAppear:(BOOL)animated {
+	[super viewDidAppear:animated];
+	// The header cannot be parked inside viewDidLoad: the table has no
+	// height yet there, so the first layout left the search field on screen.
+	if (!self.userRevealed && !self.searchResults && !self.showsArchive &&
+			self.folderId == 0 && self.tableView.contentOffset.y < self.parkOffset - 1.0f &&
+			self.tableView.contentSize.height > self.tableView.bounds.size.height)
+		self.tableView.contentOffset = CGPointMake(TGMetricZero, self.parkOffset);
 }
 
 /// The two lines at the top of the list. The name is always there; the
@@ -206,6 +253,32 @@ static NSDictionary *TGChatSnapshotRow(NSDictionary *chat) {
 	name.shadowColor = [[TGTheme shared] navBarTextShadowColour];
 	name.shadowOffset = TGMetricShadowOffsetNav;
 	[box addSubview:name];
+
+	// Telegram puts the folder switcher on the title itself, not on a second
+	// row of pills: a chevron after the name opens the list of folders.
+	UILabel *chevron = [[UILabel alloc] initWithFrame:CGRectZero];
+	chevron.font = TGFontCaptionStrong();
+	chevron.text = @"\u25BE";
+	chevron.textColor = [[TGTheme shared] barTitleColour];
+	chevron.backgroundColor = [UIColor clearColor];
+	chevron.userInteractionEnabled = YES;
+	[chevron addGestureRecognizer:[[UITapGestureRecognizer alloc]
+			initWithTarget:self action:@selector(foldersTapped)]];
+	[box addSubview:chevron];
+	self.listChevron = chevron;
+
+	// The collapsed story: an active peer's face appears beside the title
+	// once the strip is scrolled away, and tapping it opens that story.
+	UIButton *story = [UIButton buttonWithType:UIButtonTypeCustom];
+	story.frame = CGRectMake(TGMetricZero, TGCenteredOrigin(kListTitleHeight,
+			kListStorySide), kListStorySide, kListStorySide);
+	story.layer.cornerRadius = TGHalf(kListStorySide);
+	story.clipsToBounds = YES;
+	story.hidden = YES;
+	[story addTarget:self action:@selector(openCollapsedStory)
+   forControlEvents:UIControlEventTouchUpInside];
+	[box addSubview:story];
+	self.listStoryAvatar = story;
 
 	UILabel *subtitle = [[UILabel alloc] initWithFrame:CGRectMake(TGMetricZero,
 			TGMetricBorderWidth + TGMetricLineRow, kListTitleWidth,
@@ -229,6 +302,8 @@ static NSDictionary *TGChatSnapshotRow(NSDictionary *chat) {
 		[self buildListTitleView];
 
 	NSString *name = [self titleForCurrentList];
+	if (![name isKindOfClass:NSString.class])
+		name = @"Chats";
 	BOOL hasLine = self.connectionLine.length > 0;
 	self.title = name;
 	self.listTitleLabel.text = name;
@@ -243,12 +318,68 @@ static NSDictionary *TGChatSnapshotRow(NSDictionary *chat) {
 	self.listTitleLabel.textColor = [[TGTheme shared] barTitleColour];
 	self.listTitleLabel.shadowColor = [[TGTheme shared] navBarTextShadowColour];
 	self.listSubtitleLabel.textColor = [[TGTheme shared] barSubtitleColour];
+
+	BOOL hasFolders = [TGClient shared].folders.count > 0 && !self.showsArchive;
+	NSDictionary *story = [self collapsedStoryRow];
+	BOOL showStory = story != nil && !hasLine && !self.storiesExpanded;
+	self.listStoryAvatar.hidden = !showStory;
+	self.listChevron.hidden = !hasFolders;
+
+	CGSize text = [name sizeWithFont:self.listTitleLabel.font];
+	CGFloat total = text.width;
+	if (showStory)
+		total += kListStorySide + kListStoryGap;
+	if (hasFolders)
+		total += kListChevronGap + kListChevronWidth;
+	CGFloat x = TGHalf(kListTitleWidth) - TGHalf(total);
+	CGFloat top = CGRectGetMinY(self.listTitleLabel.frame);
+
+	if (showStory){
+		self.listStoryAvatar.frame = CGRectMake(x, TGCenteredOrigin(kListTitleHeight,
+				kListStorySide), kListStorySide, kListStorySide);
+		UIImage *image = story[@"avatarImage"];
+		if (!image){
+			NSString *title = [story[@"title"] isKindOfClass:NSString.class]
+					? story[@"title"] : @"?";
+			NSString *first = title.length
+					? [title substringToIndex:1].uppercaseString : @"?";
+			image = [TGIcons avatarWithInitials:first size:kListStorySide
+									 colourId:[story[@"chatId"] longLongValue]];
+		}
+		[self.listStoryAvatar setImage:image forState:UIControlStateNormal];
+		x += kListStorySide + kListStoryGap;
+	}
+	self.listTitleLabel.frame = CGRectMake(x, top, text.width, TGMetricLineRow);
+	if (hasFolders){
+		self.listChevron.frame = CGRectMake(x + text.width + kListChevronGap,
+				top, kListChevronWidth, TGMetricLineRow);
+	}
+}
+
+/// The peer whose story collapses into the title when the strip is off
+/// screen. Own stories stay in the strip; this is the first other account
+/// with something to watch.
+- (NSDictionary *)collapsedStoryRow {
+	for (NSDictionary *row in self.storyRows){
+		if ([row[@"isOwn"] boolValue])
+			continue;
+		if ([row[@"stories"] count])
+			return row;
+	}
+	return nil;
+}
+
+- (void)openCollapsedStory {
+	if (![self collapsedStoryRow])
+		return;
+	self.storiesExpanded = YES;
+	[self rebuildTableHeader];
+	[self.tableView reloadData];
 }
 
 /// Telegram's chat list bar: a pill-shaped Edit on the left, and on the right
-/// a circled add-contact control beside the blue compose button. The stock
-/// compose item is a grey glyph; the official screen draws both controls as
-/// circles, so they are custom views with their own hit areas.
+/// the dashed add-story circle beside the blue compose button. Both are
+/// custom views because the stock bar items cannot carry those shapes.
 - (void)buildHeaderButtons {
 	if (self.showsArchive || self.folderId != 0)
 		return;
@@ -272,13 +403,19 @@ static NSDictionary *TGChatSnapshotRow(NSDictionary *chat) {
 	UIButton *add = [UIButton buttonWithType:UIButtonTypeCustom];
 	add.frame = CGRectMake(TGMetricZero, kBarControlTop, kBarControlSide, kBarControlSide);
 	add.layer.cornerRadius = TGHalf(kBarControlSide);
-	add.layer.borderWidth = TGMetricHairline;
-	add.layer.borderColor = [[TGTheme shared] separatorColour].CGColor;
+	CAShapeLayer *ring = [CAShapeLayer layer];
+	ring.frame = add.bounds;
+	ring.path = CGPathCreateWithEllipseInRect(add.bounds, NULL);
+	ring.fillColor = [UIColor clearColor].CGColor;
+	ring.strokeColor = [[TGTheme shared] barTitleColour].CGColor;
+	ring.lineWidth = TGMetricHairline;
+	ring.lineDashPattern = @[@3, @3];
+	[add.layer addSublayer:ring];
 	[add setImage:[TGIcons glyphNamed:@"plus"
 							   colour:[[TGTheme shared] barTitleColour]
 								 side:TGMetricMenuGlyph]
 		 forState:UIControlStateNormal];
-	[add addTarget:self action:@selector(addContactTapped)
+	[add addTarget:self action:@selector(openStoryComposer)
   forControlEvents:UIControlEventTouchUpInside];
 	[right addSubview:add];
 
@@ -296,12 +433,6 @@ static NSDictionary *TGChatSnapshotRow(NSDictionary *chat) {
 
 	self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc]
 			initWithCustomView:right];
-}
-
-- (void)addContactTapped {
-	TGNewContactViewController *contact = [[TGNewContactViewController alloc] init];
-	contact.hidesBottomBarWhenPushed = YES;
-	[self.navigationController pushViewController:contact animated:YES];
 }
 
 /// Telegram's Edit is multi-select, not a settings mode: check the chats,
@@ -575,48 +706,52 @@ static NSDictionary *TGChatSnapshotRow(NSDictionary *chat) {
 /// hideHeaderAboveFrom still parks the big header above the fold, as it
 /// always has, and the pills are no longer riding along with it.
 - (CGFloat)tableView:(UITableView *)tableView heightForHeaderInSection:(NSInteger)section {
-	if (self.showsArchive || [TGClient shared].folders.count == 0)
-		return 0;
-	return kFolderTabRow;
+	// Folders live on the title's chevron now. Keeping a second sticky row
+	// would put the old pill strip back above the stories every time.
+	return 0;
 }
 
 - (UIView *)tableView:(UITableView *)tableView viewForHeaderInSection:(NSInteger)section {
-	if (self.showsArchive || [TGClient shared].folders.count == 0)
-		return nil;
-	UIView *strip = [[UIView alloc] initWithFrame:CGRectMake(0, 0,
-			tableView.bounds.size.width ?: TGMetricScreenWidth, kFolderTabRow)];
-	strip.backgroundColor = [[TGTheme shared] listBackgroundColour];
-	[self buildFolderTabsInto:strip atY:0 width:strip.bounds.size.width
-			folders:[TGClient shared].folders];
-	return strip;
+	return nil;
 }
 
 - (void)rebuildTableHeader {
-	// Search alone in the collapsing header now; the archive strip lives in
-	// the table as the first row (see headerRows) and hides behind the
-	// pinned pills on load - hideHeaderAboveFrom parks both of them.
+	// Telegram stacks the header in this order: the expanded story row,
+	// the search field, then the folder pills. The story row is a pull-down
+	// sheet that is normally collapsed into the title avatar.
 	CGFloat width = self.tableView.bounds.size.width ?: 320;
 	UIColor *bg = [[TGTheme shared] listBackgroundColour];
+	BOOL hasStories = self.storiesExpanded && [self collapsedStoryRow] != nil;
+	CGFloat storyH = hasStories ? TGMetricStoryStripRow : TGMetricZero;
+	CGFloat searchH = TGMetricRow;
+	BOOL hasFolders = !self.showsArchive && [TGClient shared].folders.count > 0;
+	CGFloat folderH = hasFolders ? kFolderTabRow : TGMetricZero;
+	CGFloat height = storyH + searchH + folderH;
 
-	UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0, 0, width, TGMetricRow)];
+	UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0, 0, width, height)];
 	header.backgroundColor = bg;
-	self.searchBar.frame = CGRectMake(0, 0, width, TGMetricRow);
+
+	if (hasStories){
+		if (!self.headerStoriesCell)
+			self.headerStoriesCell = [[TGStoriesCell alloc] initWithStyle:
+					UITableViewCellStyleDefault reuseIdentifier:nil];
+		self.headerStoriesCell.frame = CGRectMake(0, 0, width, storyH);
+		self.headerStoriesCell.backgroundColor = bg;
+		self.headerStoriesCell.contentView.backgroundColor = bg;
+		[self configureStoriesCell:self.headerStoriesCell];
+		[header addSubview:self.headerStoriesCell];
+	}
+	self.searchBar.frame = CGRectMake(0, storyH, width, searchH);
 	[header addSubview:self.searchBar];
 
-	CGFloat wasHidingHeader = self.headerHeight;
+	if (hasFolders)
+		[self buildFolderTabsInto:header atY:(storyH + searchH) width:width
+				folders:[TGClient shared].folders];
+
 	self.tableView.tableHeaderView = header;
-	self.headerHeight = 44;
-	// Once the chats load the park jumps past the search bar AND the archive
-	// strip: scroll past both and the pinned pills sit alone over the rows,
-	// because the chat rows start exactly at the band's lower edge. A pull
-	// down walks both of them back into view.
-	BOOL archiveParked = [[self headerRows] containsObject:@"archive"];
-	// The stories strip is the first row and has to stay reachable after the
-	// list loads; parking past it would hide Add Story behind a pull. So the
-	// archive strip rides below it at the same park instead of being hidden.
-	BOOL storiesFirst = [[[self headerRows] firstObject] isEqualToString:@"stories"];
-	self.parkOffset = 44 + (archiveParked && !storiesFirst ? kRowHeight : 0);
-	[self hideHeaderAboveFrom:wasHidingHeader];
+	self.headerHeight = height;
+	self.parkOffset = TGMetricZero;
+	[self refreshListTitleView];
 }
 
 /// "All chats" is the union of the main list and every folder's chats.
@@ -761,6 +896,25 @@ static NSDictionary *TGChatSnapshotRow(NSDictionary *chat) {
 	if (y > TGMetricHairline && fabs(y - previousHeight) > TGMetricHairline)
 		return;
 	self.tableView.contentOffset = CGPointMake(0, self.parkOffset);
+}
+
+- (void)scrollViewDidScroll:(UIScrollView *)scrollView {
+	if (scrollView != self.tableView)
+		return;
+	// Pulling the list down unfolds the stories; walking the list collapses
+	// them again, which is the header's compact state.
+	if (!self.storiesExpanded && scrollView.contentOffset.y < -TGMetricRow &&
+			[self collapsedStoryRow]){
+		self.storiesExpanded = YES;
+		[self rebuildTableHeader];
+		return;
+	}
+	if (self.storiesExpanded && scrollView.contentOffset.y > TGMetricStoryStripRow){
+		self.storiesExpanded = NO;
+		[self rebuildTableHeader];
+		return;
+	}
+	[self refreshListTitleView];
 }
 
 /// Returning to the top after the archive strip has been scrolled away
@@ -996,6 +1150,15 @@ static NSDictionary *TGChatSnapshotRow(NSDictionary *chat) {
 	[self reloadStoriesIfNeeded];
 	[self.tableView reloadData];
 	[self rebuildTableHeader];
+	// The search field is a pull-down: Telegram opens on the stories row,
+	// not on a search bar. Park past the header once the table has a real
+	// height; a deliberate pull brings it back (scrollViewWillEndDragging).
+	if (!self.userRevealed && !self.searchResults && !self.showsArchive &&
+			self.folderId == 0 && self.tableView.contentOffset.y < self.parkOffset - 1.0f){
+		[self.tableView layoutIfNeeded];
+		if (self.tableView.contentSize.height > self.tableView.bounds.size.height)
+			self.tableView.contentOffset = CGPointMake(TGMetricZero, self.parkOffset);
+	}
 	[self fetchMissingAvatars];
 	if ([TGClient shared].chats.count)
 		[self saveChatSnapshot:baseChats];
@@ -1028,7 +1191,7 @@ static NSDictionary *TGChatSnapshotRow(NSDictionary *chat) {
 - (NSArray *)headerRows {
 	if (self.searchResults || self.showsArchive || self.folderId != 0)
 		return @[];
-	NSMutableArray *rows = [NSMutableArray arrayWithObject:@"stories"];
+	NSMutableArray *rows = [NSMutableArray array];
 	if ([TGClient shared].archivedChats.count > 0)
 		[rows addObject:@"archive"];
 	return rows;
@@ -1052,10 +1215,28 @@ static NSDictionary *TGChatSnapshotRow(NSDictionary *chat) {
 		TGChatListViewController *me = weakSelf;
 		if (!me)
 			return;
-		me.storyRows = rows ?: @[];
-		me.storyRowsReadAt = [NSDate date];
+		// The per-chat read is a first pass; updateChatActiveStories may
+		// already have delivered a row for a chat outside its sixty. Keep
+		// both, with the fresh read winning for the ids it knows.
+		NSMutableArray *merged = [rows mutableCopy] ?: [NSMutableArray array];
+		NSMutableSet *seen = [NSMutableSet set];
+		for (NSDictionary *row in merged)
+			[seen addObject:[NSString stringWithFormat:@"%@", row[@"chatId"]]];
+		for (NSDictionary *row in me.storyRows){
+			NSString *key = [NSString stringWithFormat:@"%@", row[@"chatId"]];
+			if (![seen containsObject:key])
+				[merged addObject:row];
+		}
+		me.storyRows = merged;
+		if (![me collapsedStoryRow])
+			me.storiesExpanded = NO;
+		// An empty answer often means the chat list had not loaded yet, not
+		// that nobody has a story. Only a real answer earns the cooldown;
+		// otherwise the strip stayed empty for thirty seconds after launch.
+		me.storyRowsReadAt = merged.count ? [NSDate date] : nil;
 		me.storyRowsLoading = NO;
-		[me.tableView reloadData];
+		[me rebuildTableHeader];
+		[me refreshListTitleView];
 		[me fetchMissingAvatars];
 	}];
 }
@@ -1284,11 +1465,54 @@ static NSString *TGChatDate(NSTimeInterval unix) {
 	return chats;
 }
 
+/// Fills the strip whether it is the header's expanded row or a table cell.
+- (void)configureStoriesCell:(TGStoriesCell *)strip {
+	NSMutableArray *display = [NSMutableArray array];
+	NSDictionary *own = nil;
+	for (NSDictionary *row in self.storyRows){
+		if ([row[@"isOwn"] boolValue]){
+			own = row;
+			continue;
+		}
+		NSMutableDictionary *copy = [row mutableCopy];
+		NSNumber *fileId = row[@"photoFileId"];
+		if (fileId && self.avatars[fileId])
+			copy[@"avatarImage"] = self.avatars[fileId];
+		[display addObject:copy];
+	}
+	int64_t myId = [[TGClient shared].me[@"id"] longLongValue];
+	NSMutableDictionary *mine = [own mutableCopy] ?: [NSMutableDictionary dictionary];
+	mine[@"title"] = @"My Story";
+	mine[@"isOwn"] = @YES;
+	mine[@"userId"] = @(myId);
+	if (!mine[@"chatId"])
+		mine[@"chatId"] = @([[TGClient shared] savedMessagesChatId] ?: myId);
+	NSNumber *ownPhoto = [TGClient shared].me[@"profile_photo"][@"small"][@"id"]
+			?: [[TGClient shared] photoFileIdForUserId:myId]
+			?: mine[@"photoFileId"];
+	if (ownPhoto)
+		mine[@"photoFileId"] = ownPhoto;
+	if (ownPhoto && self.avatars[ownPhoto])
+		mine[@"avatarImage"] = self.avatars[ownPhoto];
+	strip.stories = display;
+	strip.ownStory = mine;
+	__weak typeof(self) weakSelf = self;
+	strip.onAddStory = ^{ [weakSelf openStoryComposer]; };
+	strip.onMore = ^{ [weakSelf openStoriesMenu]; };
+	strip.onMyStoryTapped = ^{
+		TGChatListViewController *me = weakSelf;
+		if (!me) return;
+		if ([own[@"stories"] count])
+			[me showStoryRow:own];
+		else
+			[me openStoryComposer];
+	};
+	strip.onMyStoryHeld = ^{ [weakSelf openStoriesMenu]; };
+	strip.onStoryTapped = ^(NSDictionary *row){ [weakSelf showStoryRow:row]; };
+	strip.onStoryHeld = ^(NSDictionary *row){ [weakSelf runStoryRowMenu:row]; };
+}
+
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
-	NSArray *header = [self headerRows];
-	if (indexPath.row < (NSInteger)header.count &&
-		[header[indexPath.row] isEqualToString:@"stories"])
-		return TGMetricStoryStripRow;
 	return kRowHeight;
 }
 
@@ -1327,56 +1551,7 @@ static NSString *TGChatDate(NSTimeInterval unix) {
 
 	NSArray *header = [self headerRows];
 	if (indexPath.row < (NSInteger)header.count){
-		if ([header[indexPath.row] isEqualToString:@"stories"]){
-			static NSString *storyReuse = @"TGStoriesCell";
-			TGStoriesCell *strip = [tableView dequeueReusableCellWithIdentifier:storyReuse];
-			if (!strip)
-				strip = [[TGStoriesCell alloc] initWithStyle:UITableViewCellStyleDefault
-											  reuseIdentifier:storyReuse];
-			NSMutableArray *display = [NSMutableArray array];
-			NSDictionary *own = nil;
-			for (NSDictionary *row in self.storyRows){
-				if ([row[@"isOwn"] boolValue]){
-					own = row;
-					continue;
-				}
-				NSMutableDictionary *copy = [row mutableCopy];
-				NSNumber *fileId = row[@"photoFileId"];
-				if (fileId && self.avatars[fileId])
-					copy[@"avatarImage"] = self.avatars[fileId];
-				[display addObject:copy];
-			}
-			int64_t myId = [[TGClient shared].me[@"id"] longLongValue];
-			NSMutableDictionary *mine = [own mutableCopy] ?: [NSMutableDictionary dictionary];
-			mine[@"title"] = @"My Story";
-			mine[@"isOwn"] = @YES;
-			if (!mine[@"chatId"])
-				mine[@"chatId"] = @([[TGClient shared] savedMessagesChatId] ?: myId);
-			NSNumber *ownPhoto = mine[@"photoFileId"]
-					?: [TGClient shared].me[@"profile_photo"][@"small"][@"id"]
-					?: [[TGClient shared] photoFileIdForUserId:myId];
-			if (ownPhoto)
-				mine[@"photoFileId"] = ownPhoto;
-			if (ownPhoto && self.avatars[ownPhoto])
-				mine[@"avatarImage"] = self.avatars[ownPhoto];
-			strip.stories = display;
-			strip.ownStory = mine;
-			__weak typeof(self) weakSelf = self;
-			strip.onAddStory = ^{ [weakSelf openStoryComposer]; };
-			strip.onMore = ^{ [weakSelf openStoriesMenu]; };
-			strip.onMyStoryTapped = ^{
-				TGChatListViewController *me = weakSelf;
-				if (!me) return;
-				if ([own[@"stories"] count])
-					[me showStoryRow:own];
-				else
-					[me openStoryComposer];
-			};
-			strip.onMyStoryHeld = ^{ [weakSelf openStoriesMenu]; };
-			strip.onStoryTapped = ^(NSDictionary *row){ [weakSelf showStoryRow:row]; };
-			strip.onStoryHeld = ^(NSDictionary *row){ [weakSelf runStoryRowMenu:row]; };
-			return strip;
-		}
+
 		BOOL isArchive = [header[indexPath.row] isEqualToString:@"archive"];
 		cell.titleLabel.text = isArchive ? @"Archived Chats" : @"Saved Messages";
 		NSUInteger archived = [TGClient shared].archivedChats.count;
@@ -1474,6 +1649,59 @@ static NSString *TGChatDate(NSTimeInterval unix) {
 	return indexPath.row >= (NSInteger)[self headerRows].count;
 }
 
+/// Edit also reorders the pinned chats: only a pinned row gets the move
+/// handle, and the result is written as Telegram's whole pinned list.
+- (BOOL)tableView:(UITableView *)tableView canMoveRowAtIndexPath:(NSIndexPath *)indexPath {
+	if (!self.editingChats)
+		return NO;
+	NSInteger index = indexPath.row - (NSInteger)[self headerRows].count;
+	NSArray *chats = [self visibleChats];
+	return index >= 0 && index < (NSInteger)chats.count &&
+			[chats[(NSUInteger)index][@"isPinned"] boolValue];
+}
+
+- (void)tableView:(UITableView *)tableView
+		moveRowAtIndexPath:(NSIndexPath *)sourceIndexPath
+			  toIndexPath:(NSIndexPath *)destinationIndexPath {
+	NSInteger header = [self headerRows].count;
+	NSArray *chats = [self visibleChats];
+	NSInteger from = sourceIndexPath.row - header;
+	NSInteger to = destinationIndexPath.row - header;
+	if (from < 0 || from >= (NSInteger)chats.count || to < 0)
+		return;
+	NSMutableArray *pinned = [NSMutableArray array];
+	for (NSDictionary *chat in chats)
+		if ([chat[@"isPinned"] boolValue])
+			[pinned addObject:chat];
+	if (to >= (NSInteger)chats.count)
+		to = (NSInteger)chats.count - 1;
+	NSInteger pinnedTo = 0;
+	for (NSInteger i = 0; i <= to && i < (NSInteger)chats.count; i++)
+		if ([chats[(NSUInteger)i][@"isPinned"] boolValue])
+			pinnedTo++;
+	NSInteger pinnedFrom = [pinned indexOfObjectIdenticalTo:chats[(NSUInteger)from]];
+	if (pinnedFrom == NSNotFound)
+		return;
+	if (pinnedTo > pinnedFrom)
+		pinnedTo--;
+	if (pinnedTo < 0)
+		pinnedTo = 0;
+	if (pinnedTo >= (NSInteger)pinned.count)
+		pinnedTo = (NSInteger)pinned.count - 1;
+	if (pinnedFrom == pinnedTo)
+		return;
+	NSDictionary *moved = pinned[(NSUInteger)pinnedFrom];
+	[pinned removeObjectAtIndex:(NSUInteger)pinnedFrom];
+	[pinned insertObject:moved atIndex:(NSUInteger)pinnedTo];
+	NSMutableArray *ids = [NSMutableArray array];
+	for (NSDictionary *chat in pinned)
+		[ids addObject:chat[@"id"]];
+	[[TGClient shared] setPinnedChatIds:ids];
+	__weak typeof(self) weakSelf = self;
+	dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.4 * NSEC_PER_SEC)),
+			dispatch_get_main_queue(), ^{ [weakSelf reload]; });
+}
+
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
 	if (self.editingChats)
 		return;
@@ -1483,8 +1711,6 @@ static NSString *TGChatDate(NSTimeInterval unix) {
 	if (indexPath.row < (NSInteger)header.count){
 		if ([header[indexPath.row] isEqualToString:@"archive"])
 			[self openArchive];
-		else if ([header[indexPath.row] isEqualToString:@"stories"])
-			return;
 		else
 			[self openSavedMessages];
 		return;

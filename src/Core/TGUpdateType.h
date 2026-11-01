@@ -153,7 +153,8 @@
 	X(TGUpdateSuggestedActions,           "updateSuggestedActions") \
 	X(TGUpdateDirectMessagesChatTopic,    "updateDirectMessagesChatTopic") \
 	X(TGUpdateTextCompositionStyles,      "updateTextCompositionStyles") \
-	X(TGUpdateStakeDiceState,             "updateStakeDiceState")
+	X(TGUpdateStakeDiceState,             "updateStakeDiceState") \
+	X(TGUpdateChatActiveStories,          "updateChatActiveStories")
 
 // The scaffold: updates the filter lets through and the dispatch marks
 // as read, but no branch acts on yet. Each is one screen this client has
