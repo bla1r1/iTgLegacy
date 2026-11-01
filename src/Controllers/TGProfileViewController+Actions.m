@@ -184,11 +184,13 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 				theyAreAdmin = YES;
 		}
 
-		NSMutableArray *choices = [NSMutableArray arrayWithObject:@"Send Message"];
+		NSMutableArray *choices = [NSMutableArray arrayWithObject:@"Member Info"];
+		[choices addObject:@"Send Message"];
 		if (iCanEdit){
 			[choices addObject:theyAreAdmin ? @"Dismiss as Admin"
 											: @"Promote to Admin"];
 			[choices addObject:@"Clear Their Reactions"];
+			[choices addObject:@"Clear Their Messages"];
 			[choices addObject:@"Remove from Group"];
 			[choices addObject:@"Ban"];
 			if (iAmOwner)
@@ -197,11 +199,143 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 
 		[TGAlertSheet showChoices:choices
 							title:name.length ? name : @"Member"
-				 destructiveIndex:(iCanEdit ? (NSInteger)choices.count - 1 : -1)
+				 destructiveIndex:(iCanEdit
+						 ? (NSInteger)[choices indexOfObject:@"Ban"] : -1)
 						   inView:me.view
 						 onChoice:^(NSInteger index){
 			[me runMemberAction:choices[(NSUInteger)index]
 						 onUser:userId named:name];
+		}];
+	}];
+}
+
+/// One member's own record, which the aggregate list does not carry: the
+/// status word, the title this group gave them, and when a restriction lifts.
+/// getChatMember is the only request that answers for one person.
+- (void)showMemberRecordFor:(int64_t)userId named:(NSString *)name {
+	int64_t chatId = self.chatId;
+	__weak typeof(self) weakSelf = self;
+	[[TGClient shared] chatMember:userId inChat:chatId completion:^(NSDictionary *member){
+		TGProfileViewController *me = weakSelf;
+		if (!me)
+			return;
+		NSString *sheetTitle = name.length ? name : @"Member";
+		if (!member){
+			[TGAlertSheet showMessage:@"Telegram keeps no record of them here."
+								  title:sheetTitle inView:me.view];
+			return;
+		}
+
+		NSDictionary *status = [member[@"status"] isKindOfClass:NSDictionary.class]
+				? member[@"status"] : @{};
+		NSMutableArray *lines = [NSMutableArray array];
+		[lines addObject:[NSString stringWithFormat:@"Status: %@",
+						  TGMemberStatusName(status)]];
+		if ([member[@"tag"] length])
+			[lines addObject:[NSString stringWithFormat:@"Title: %@", member[@"tag"]]];
+
+		double until = [status[@"restricted_until_date"] doubleValue];
+		if (until > 0)
+			[lines addObject:[NSString stringWithFormat:@"Restricted until %@",
+					[NSDateFormatter localizedStringFromDate:
+							[NSDate dateWithTimeIntervalSince1970:until]
+							dateStyle:NSDateFormatterMediumStyle
+							timeStyle:NSDateFormatterNoStyle]]];
+
+		NSDictionary *permissions =
+				[status[@"permissions"] isKindOfClass:NSDictionary.class]
+				? status[@"permissions"] : nil;
+		id send = permissions[@"can_send_basic_messages"]
+				?: permissions[@"can_send_messages"];
+		if (send)
+			[lines addObject:[NSString stringWithFormat:@"Can send messages: %@",
+							  [send boolValue] ? @"yes" : @"no"]];
+
+		[TGAlertSheet showMessage:[lines componentsJoinedByString:@"\n"]
+							 title:sheetTitle inView:me.view];
+	}];
+}
+
+/// Find Member: getChatMembers is a page, not a search; searchChatMembers
+/// answers the query server-side, which is the only way a group of a few
+/// thousand is usable from a phone at all.
+- (void)showFindMemberSheet {
+	int64_t chatId = self.chatId;
+	__weak typeof(self) weakSelf = self;
+	[TGAlertSheet showInput:@"Find Member"
+					message:nil
+				placeholder:@"Name or @username"
+					   text:nil
+					 action:@"Find"
+					 inView:self.view
+				 onSubmit:^(NSString *query){
+		[[TGClient shared] searchMembersInChat:chatId query:query
+									completion:^(NSArray *members){
+			TGProfileViewController *me = weakSelf;
+			if (!me)
+				return;
+			if (!members.count){
+				[TGAlertSheet showMessage:@"Nobody here answers to that."
+									  title:@"Find Member" inView:me.view];
+				return;
+			}
+			NSMutableArray *names = [NSMutableArray array];
+			for (NSDictionary *member in members)
+				[names addObject:[member[@"name"] length]
+						? member[@"name"] : @"Member"];
+			[TGAlertSheet showChoices:names
+								title:@"Find Member"
+					 destructiveIndex:-1
+							   inView:me.view
+							 onChoice:^(NSInteger index){
+				NSDictionary *member = members[(NSUInteger)index];
+				int64_t userId = [member[@"id"] longLongValue];
+				if (!userId)
+					return;
+				TGProfileViewController *profile = [[TGProfileViewController alloc]
+						initWithChatId:userId
+								userId:userId
+								 title:[member[@"name"] length] ? member[@"name"] : @""];
+				profile.hidesBottomBarWhenPushed = YES;
+				[me.navigationController pushViewController:profile animated:YES];
+			}];
+		}];
+	}];
+}
+
+/// A basic group has a ceiling of two hundred, and no username. Past that it
+/// has to become a supergroup, which TDLib does in one request - and which
+/// changes the chat id, so the screen behind this one is now stale.
+- (void)confirmUpgradeToSupergroup {
+	int64_t chatId = self.chatId;
+	__weak typeof(self) weakSelf = self;
+	[TGAlertSheet showConfirm:@"A basic group becomes a supergroup: it gets a "
+			@"link of its own, room past two hundred members, and a new chat "
+			@"id. This screen closes with the old one."
+						 title:@"Upgrade"
+						action:@"Upgrade"
+				   destructive:NO
+						inView:self.view
+					 onConfirm:^{
+		[[TGClient shared] upgradeGroupToSupergroup:chatId
+										 completion:^(int64_t newChatId){
+			TGProfileViewController *me = weakSelf;
+			if (!me)
+				return;
+			if (!newChatId){
+				[TGAlertSheet showMessage:@"Telegram refused the upgrade - a "
+						@"supergroup or a channel is already one."
+										  title:@"Upgrade" inView:me.view];
+				return;
+			}
+			// The chat behind this screen still wears the old id, which the
+			// upgrade retired; the list is the first screen that can open the
+			// new one.
+			UINavigationController *nav = me.navigationController;
+			[nav popToRootViewControllerAnimated:YES];
+			[TGAlertSheet showMessage:@"The group is now a supergroup."
+								  title:@"Upgraded"
+								 inView:(nav.view ?: me.view)];
 		}];
 	}];
 }
@@ -219,7 +353,11 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 		[me loadDetails];
 	};
 
-	if ([action isEqualToString:@"Send Message"]){
+	if ([action isEqualToString:@"Member Info"]){
+		[self showMemberRecordFor:userId named:name];
+		return;
+
+	} else if ([action isEqualToString:@"Send Message"]){
 		// The check before the push: a user who takes no messages from
 		// non-contacts turns the composer into a doomed one. Telegram's own
 		// answer names which of the four refusals this is.
@@ -272,6 +410,21 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 						   inView:self.view
 						onConfirm:^{
 			[[TGClient shared] deleteAllReactionsOfSender:sender inChat:chatId];
+		}];
+
+	} else if ([action isEqualToString:@"Clear Their Messages"]){
+		NSDictionary *sender = @{@"@type" : @"messageSenderUser", @"user_id" : @(userId)};
+		[TGAlertSheet showConfirm:
+				@"Every message they sent in this chat is deleted for everyone, "
+				@"including the copies already delivered."
+					title:(name.length ? name : @"Member")
+						   action:@"Clear"
+					  destructive:YES
+						   inView:self.view
+						onConfirm:^{
+			[[TGClient shared] deleteChatMessagesBySender:sender
+												   inChat:chatId
+												   revoke:YES];
 		}];
 
 	} else if ([action isEqualToString:@"Remove from Group"]){
@@ -345,6 +498,8 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 	// A group's own management, which was not reachable from anywhere.
 	if (!self.userId){
 		[items addObject:@{@"title" : @"Add Members", @"icon" : @"select"}];
+		[items addObject:@{@"title" : @"Find Member", @"icon" : @"search"}];
+		[items addObject:@{@"title" : @"Upgrade to Supergroup", @"icon" : @"folder"}];
 		[items addObject:@{@"title" : @"Group Name", @"icon" : @"edit"}];
 		[items addObject:@{@"title" : @"Group Photo", @"icon" : @"react"}];
 		[items addObject:@{@"title" : @"Group Description", @"icon" : @"edit"}];
@@ -354,6 +509,7 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 		[items addObject:@{@"title" : @"View with Topics", @"icon" : @"folder"}];
 		[items addObject:@{@"title" : @"Sign Messages", @"icon" : @"edit"}];
 		[items addObject:@{@"title" : @"Join to Send", @"icon" : @"select"}];
+		[items addObject:@{@"title" : @"All History", @"icon" : @"folder"}];
 		[items addObject:@{@"title" : @"Welcome Messages", @"icon" : @"edit"}];
 		[items addObject:@{@"title" : @"Clear by Date", @"icon" : @"delete",
 						   @"destructive" : @YES}];
@@ -736,6 +892,16 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 		return;
 	}
 
+	if ([title isEqualToString:@"Find Member"]){
+		[self showFindMemberSheet];
+		return;
+	}
+
+	if ([title isEqualToString:@"Upgrade to Supergroup"]){
+		[self confirmUpgradeToSupergroup];
+		return;
+	}
+
 	if ([title isEqualToString:@"Group Name"]){
 		int64_t chatId = self.chatId;
 		__weak typeof(self) weakSelf = self;
@@ -814,16 +980,20 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 	}
 
 	if ([title isEqualToString:@"Sign Messages"] ||
-			[title isEqualToString:@"Join to Send"]){
+			[title isEqualToString:@"Join to Send"] ||
+			[title isEqualToString:@"All History"]){
 		int64_t chatId = self.chatId;
 		NSString *chatTitle = self.name;
 		BOOL isSign = [title isEqualToString:@"Sign Messages"];
-		NSString *flagName = isSign ? @"Signed Messages" : @"Join to Send";
+		BOOL isJoin = [title isEqualToString:@"Join to Send"];
+		NSString *flagName = isSign ? @"Signed Messages"
+				: (isJoin ? @"Join to Send" : @"All History");
 		__weak typeof(self) weakSelf = self;
 		// What the switch sits on now is asked for, so the sheet names the
 		// move rather than a state it has already made.
 		[[TGClient shared] supergroupFlagsForChat:chatId
-				completion:^(BOOL signMessages, BOOL joinToSend, BOOL ok){
+				completion:^(BOOL signMessages, BOOL joinToSend,
+							 BOOL allHistory, BOOL ok){
 			TGProfileViewController *me = weakSelf;
 			if (!me)
 				return;
@@ -841,12 +1011,19 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 						? @"Members' names stop showing on their messages."
 						: @"Every member's post carries their name on it.";
 				action = signMessages ? @"Hide Names" : @"Sign Messages";
-			} else {
+			} else if (isJoin){
 				say = joinToSend
 						? @"Members go back to posting without joining this group."
 						: @"Members are added to the group before their composer "
 						  @"unlocks.";
 				action = joinToSend ? @"Turn Off" : @"Turn On";
+			} else {
+				say = allHistory
+						? @"New members start seeing only what was posted after "
+						  @"they joined."
+						: @"New members see the whole history, back to the first "
+						  @"message.";
+				action = allHistory ? @"Hide Old History" : @"Show All History";
 			}
 			[TGAlertSheet showConfirm:say
 								title:(chatTitle ?: flagName)
@@ -865,10 +1042,14 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 					[[TGClient shared] setChatSignMessages:chatId
 														on:!signMessages
 												completion:mark];
-				else
+				else if (isJoin)
 					[[TGClient shared] setChatJoinToSendMessages:chatId
 															  on:!joinToSend
 													  completion:mark];
+				else
+					[[TGClient shared] setSupergroupAllHistoryAvailable:chatId
+																	 on:!allHistory
+															 completion:mark];
 			}];
 		}];
 		return;
@@ -1113,13 +1294,15 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 			[ids addObject:w[@"id"]];
 		}
 		[rows addObject:@"Add"];
+		if (welcomes.count)
+			[rows addObject:@"Delete One..."];
 		[rows addObject:@"Delete All"];
 
 		NSMutableArray *choices = rows;
 		NSString *say = welcomes.count
 				? @"The first one a joiner sees."
 				: @"None yet. A new joiner sees the highest one first.";
-		NSInteger destructive = (NSInteger)choices.count - 1;
+		NSInteger destructive = (NSInteger)[choices indexOfObject:@"Delete All"];
 		NSString *header = (groupTitle ?: @"Welcome Messages");
 		[TGAlertSheet showChoices:choices
 							title:header
@@ -1145,6 +1328,30 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 								   inView:weakSelf.view
 								onConfirm:^{
 					[[TGClient shared] clearAllWelcomeMessagesInChat:chatId];
+				}];
+				return;
+			}
+			if ([what isEqualToString:@"Delete One..."]){
+				NSMutableArray *previews = [NSMutableArray array];
+				for (NSUInteger i = 0; i < welcomes.count; i++){
+					NSString *text = welcomes[i][@"text"];
+					NSString *preview = text.length
+							? [text substringToIndex:MIN(30, text.length)]
+							: @"(not text)";
+					[previews addObject:[NSString stringWithFormat:@"%lu. %@",
+							(unsigned long)(i + 1), preview]];
+				}
+				[TGAlertSheet showChoices:previews
+									title:(groupTitle ?: @"Welcome Messages")
+								 message:@"Which welcome goes?"
+						 destructiveIndex:0
+								   inView:weakSelf.view
+								 onChoice:^(NSInteger which){
+					NSString *wid = [ids[(NSUInteger)which] isKindOfClass:NSString.class]
+							? ids[(NSUInteger)which]
+							: [ids[(NSUInteger)which] stringValue];
+					[[TGClient shared] deleteWelcomeMessage:[wid longLongValue]
+													 inChat:chatId];
 				}];
 				return;
 			}

@@ -23,6 +23,23 @@ extern NSString *const TGUnreadTotalChangedNotification;
 /// re-reads; loadSavedMessagesTopics starts the stream.
 extern NSString *const TGSavedTopicsChangedNotification;
 
+/// Telegram sent a service notification, which the protocol says to show as
+/// a popup: it belongs to no chat. userInfo carries "text".
+extern NSString *const TGServiceNotificationReceivedNotification;
+
+/// Telegram sent terms of service that have to be accepted before the
+/// account can go on. userInfo carries "id" and "text"; the screen accepting
+/// them calls -acceptTermsOfService:completion:.
+extern NSString *const TGTermsOfServiceReceivedNotification;
+
+/// The account's own privacy rules changed, here or on another client. The
+/// privacy page re-reads its switches while it is open.
+extern NSString *const TGPrivacyRulesChangedNotification;
+
+/// A session was added, confirmed or removed. The devices list re-reads;
+/// updateUnconfirmedSession is what brings a new login to its attention.
+extern NSString *const TGSessionsChangedNotification;
+
 /// The download list changed: a file was added, finished, paused or removed.
 /// Carries no payload - the list is short and is re-read whole.
 extern NSString *const TGDownloadsChangedNotification;

@@ -1,5 +1,8 @@
 #import "TGMediaViewer.h"
 #import "TGMediaStore.h"
+#import "TGClient.h"
+#import "TGStickerStore.h"
+#import "TGSnackbar.h"
 #import "TGTheme.h"
 #import "TGIcons.h"
 #import "UIImage+WebP.h"
@@ -198,6 +201,13 @@ static const CGFloat kThumbStripH   = 54.0f;
 			initWithTarget:self action:@selector(dragged:)];
 	drag.delegate = self;
 	[self.backdrop addGestureRecognizer:drag];
+
+	// The file's own lot - the download list, the copy on this device - is
+	// not a message action: it follows the picture, whichever page is up.
+	UILongPressGestureRecognizer *hold = [[UILongPressGestureRecognizer alloc]
+			initWithTarget:self action:@selector(mediaHeld:)];
+	hold.minimumPressDuration = 0.5;
+	[self.backdrop addGestureRecognizer:hold];
 
 	[self loadPagesAround:self.index];
 	[self refreshChrome];
@@ -922,6 +932,100 @@ static const CGFloat kThumbStripH   = 54.0f;
 }
 
 #pragma mark - saving
+
+/// The flattened message on screen, or nil past the ends of the album.
+- (NSDictionary *)currentItem {
+	if (self.index < 0 || self.index >= (NSInteger)self.items.count)
+		return nil;
+	return self.items[self.index];
+}
+
+/// The file behind the page: a document for a video, the largest photo
+/// otherwise. Fixture ids are negative and have no file to act on.
+- (NSNumber *)currentFileId {
+	NSDictionary *m = [self currentItem];
+	NSNumber *fileId = m[@"docId"] ?: m[@"photoId"];
+	if (![fileId isKindOfClass:NSNumber.class] || fileId.longLongValue <= 0)
+		return nil;
+	return fileId;
+}
+
+/// Holding the picture offers what belongs to the file rather than to the
+/// message: a place in the download list their Download Manager reads, and
+/// the local copy going away. Both have to name the chat and the message, so
+/// the viewer is the only place that has all three.
+- (void)mediaHeld:(UILongPressGestureRecognizer *)hold {
+	if (hold.state != UIGestureRecognizerStateBegan)
+		return;
+	NSNumber *fileId = [self currentFileId];
+	if (!fileId)
+		return;
+	NSDictionary *m = [self currentItem];
+
+	NSMutableArray *choices = [NSMutableArray arrayWithObjects:@"Add to Downloads",
+							   @"Delete from Device", nil];
+	// Media that other stickers were attached to knows which packs they came
+	// from; TDLib answers that by the media file's own id.
+	if ([m[@"hasStickers"] boolValue])
+		[choices addObject:@"Sticker Packs..."];
+
+	__weak typeof(self) weakSelf = self;
+	[TGAlertSheet showChoices:choices
+						title:@"File"
+			 destructiveIndex:1
+					   inView:self.backdrop
+					 onChoice:^(NSInteger index){
+		TGMediaViewer *me = weakSelf;
+		UIView *host = me.backdrop ?: [UIApplication sharedApplication].keyWindow;
+		NSString *what = choices[(NSUInteger)index];
+		if ([what isEqualToString:@"Sticker Packs..."]){
+			[me showStickerPacksOfFile:fileId.integerValue];
+			return;
+		}
+		if ([what isEqualToString:@"Add to Downloads"]){
+			[[TGClient shared] addFileToDownloads:fileId.integerValue
+											inChat:me.chatId
+										   message:[m[@"id"] longLongValue]];
+			[TGSnackbar showInView:host text:@"Added to Downloads" seconds:2 onCommit:nil];
+			return;
+		}
+		[[TGClient shared] deleteLocalFile:fileId.integerValue];
+		[TGSnackbar showInView:host text:@"Deleted from this device" seconds:2 onCommit:nil];
+	}];
+}
+
+/// The packs the stickers on this media belong to, with the packs this
+/// account does not have offered for install.
+- (void)showStickerPacksOfFile:(NSInteger)fileId {
+	__weak typeof(self) weakSelf = self;
+	[[TGStickerStore shared] attachedStickerSetsOfFile:fileId completion:^(NSArray *sets){
+		TGMediaViewer *me = weakSelf;
+		UIView *host = me.backdrop ?: [UIApplication sharedApplication].keyWindow;
+		NSArray *list = [sets isKindOfClass:NSArray.class] ? sets : @[];
+		if (!list.count){
+			[TGAlertSheet showMessage:@"This media carries no sticker packs."
+								  title:@"Sticker Packs" inView:host];
+			return;
+		}
+		NSMutableArray *rows = [NSMutableArray array];
+		for (NSDictionary *set in list){
+			NSString *title = [set[@"title"] length] ? set[@"title"] : @"Pack";
+			NSString *state = [set[@"installed"] boolValue] ? @"" : @"  ·  tap to add";
+			[rows addObject:[NSString stringWithFormat:@"%@%@", title, state]];
+		}
+		[TGAlertSheet showChoices:rows
+							title:@"Sticker Packs"
+				   destructiveIndex:-1
+						   inView:host
+						 onChoice:^(NSInteger index){
+			NSDictionary *set = list[(NSUInteger)index];
+			if ([set[@"installed"] boolValue])
+				return;
+			[[TGStickerStore shared] setStickerSet:set[@"id"] installed:YES archived:NO];
+			[TGSnackbar showInView:host text:@"Sticker pack added" seconds:2 onCommit:nil];
+		}];
+	}];
+}
 
 - (void)saveCurrent {
 	UIImage *image = self.originals[@(self.index)];

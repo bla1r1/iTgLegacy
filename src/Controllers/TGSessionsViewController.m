@@ -28,6 +28,13 @@
 		[weakSelf applyTheme];
 		[weakSelf.tableView reloadData];
 	}];
+	// A new login waiting to be confirmed arrives as updateUnconfirmedSession
+	// while this list is open; re-reading is how the row gets its Confirm.
+	[[NSNotificationCenter defaultCenter] addObserverForName:TGSessionsChangedNotification
+			object:nil queue:[NSOperationQueue mainQueue]
+		 usingBlock:^(NSNotification *note) {
+		[weakSelf refresh];
+	}];
 }
 
 - (void)dealloc {
@@ -119,8 +126,11 @@
 			? [self currentSession] : [self othersOnly][indexPath.row];
 	cell.textLabel.text = session[@"name"];
 	[[TGTheme shared] styleCell:cell];
-	cell.detailTextLabel.text = [NSString stringWithFormat:@"%@ - %@",
-			session[@"platform"], session[@"ip"]];
+	cell.detailTextLabel.text = [session[@"isUnconfirmed"] boolValue]
+			? [NSString stringWithFormat:@"%@ - %@ · confirmation needed",
+					session[@"platform"], session[@"ip"]]
+			: [NSString stringWithFormat:@"%@ - %@",
+					session[@"platform"], session[@"ip"]];
 	cell.textLabel.textColor = [[TGTheme shared] primaryTextColour];
 	cell.detailTextLabel.textColor = [[TGTheme shared] secondaryTextColour];
 	cell.selectionStyle = indexPath.section == 0
@@ -163,16 +173,38 @@
 		return;
 
 	__weak typeof(self) weakSelf = self;
-	[TGAlertSheet showConfirm:[NSString stringWithFormat:
-					@"Sign %@ out of this account?", session[@"name"]]
-						title:@"Sign out"
-					   action:@"Sign out"
-				  destructive:YES
+	void (^signOut)(void) = ^{
+		[TGAlertSheet showConfirm:[NSString stringWithFormat:
+						@"Sign %@ out of this account?", session[@"name"]]
+							title:@"Sign out"
+						   action:@"Sign out"
+					  destructive:YES
+						   inView:weakSelf.view
+						onConfirm:^{
+			[[TGClient shared] terminateSession:sessionId];
+			// The server needs a moment before the list reflects it.
+			[weakSelf performSelector:@selector(refresh) withObject:nil afterDelay:1.0];
+		}];
+	};
+
+	// A login Telegram has not seen confirmed is the one thing this list can
+	// act on besides signing out; the update that announced it is what put
+	// the word on the row.
+	if (![session[@"isUnconfirmed"] boolValue]){
+		signOut();
+		return;
+	}
+	[TGAlertSheet showChoices:@[@"Confirm This Device", @"Sign Out"]
+						title:session[@"name"]
+			 destructiveIndex:1
 					   inView:self.view
-					onConfirm:^{
-		[[TGClient shared] terminateSession:sessionId];
-		// The server needs a moment before the list reflects it.
-		[weakSelf performSelector:@selector(refresh) withObject:nil afterDelay:1.0];
+					 onChoice:^(NSInteger index){
+		if (index == 0){
+			[[TGClient shared] confirmSession:sessionId];
+			[weakSelf performSelector:@selector(refresh) withObject:nil afterDelay:1.0];
+			return;
+		}
+		signOut();
 	}];
 }
 

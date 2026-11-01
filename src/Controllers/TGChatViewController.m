@@ -859,13 +859,26 @@
 									endDate:(NSInteger)end
 								completion:^(int64_t messageId, NSInteger total){
 		TGChatViewController *me = weakSelf;
-		if (!me || !messageId){
-			[TGSnackbar showInView:me.view
-							  text:@"Nothing that old in this chat"
-						   seconds:2 onCommit:nil];
+		if (!me)
+			return;
+		if (messageId){
+			[me showMessageId:messageId gone:@"That message is gone"];
 			return;
 		}
-		[me showMessageId:messageId gone:@"That message is gone"];
+		// The calendar query is a search and can answer nothing while the
+		// day still holds a message; getChatMessageByDate is the direct
+		// lookup for exactly that day.
+		[[TGClient shared] messageAtDate:end inChat:me.chatId
+							  completion:^(NSDictionary *found){
+			int64_t foundId = [found[@"id"] longLongValue];
+			if (!foundId){
+				[TGSnackbar showInView:me.view
+								  text:@"Nothing that old in this chat"
+							   seconds:2 onCommit:nil];
+				return;
+			}
+			[me showMessageId:foundId gone:@"That message is gone"];
+		}];
 	}];
 }
 

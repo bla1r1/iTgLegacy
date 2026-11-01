@@ -36,12 +36,28 @@ extern NSString *const TGStickerListsChangedNotification;
 /// Sets by name, shaped as -installedStickerSetsWithCompletion: answers.
 - (void)searchStickerSetsNamed:(NSString *)query
 					completion:(void (^)(NSArray *sets))completion;
+/// The same search over the sets this account already has, which is how a
+/// pack that is installed is told apart from one that is not.
+- (void)installedStickerSetsNamed:(NSString *)query
+					   completion:(void (^)(NSArray *sets))completion;
+/// What is popular now; the other half of finding a new set.
+- (void)trendingStickerSetsWithCompletion:(void (^)(NSArray *sets))completion;
+/// The shelf a removed pack lands on, from which it can be put back.
+- (void)archivedStickerSetsWithCompletion:(void (^)(NSArray *sets))completion;
+/// The packs a piece of media carries, by the media file's id - what a photo
+/// with stickers on it can offer.
+- (void)attachedStickerSetsOfFile:(NSInteger)fileId
+					   completion:(void (^)(NSArray *sets))completion;
 /// Saved GIFs, shaped as "fileId", "width", "height", "duration", "thumbId".
 - (void)savedAnimationsWithCompletion:(void (^)(NSArray *animations))completion;
 /// GIF search; the @gif bot answers per chat.
 - (void)searchAnimations:(NSString *)query
 				  inChat:(int64_t)chatId
 			  completion:(void (^)(NSArray *animations))completion;
+
+/// Emoji Telegram suggests for GIF search, from the search-parameters update.
+/// Empty until it arrives.
+- (NSArray *)animationSearchEmojis;
 
 #pragma mark - commands
 

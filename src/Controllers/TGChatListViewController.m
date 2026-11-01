@@ -488,13 +488,40 @@ static const CGFloat kRowGlyph     = 28.0f;
 
 - (void)composeTapped {
 	__weak typeof(self) weakSelf = self;
-	[TGAlertSheet showChoices:@[@"New Message", @"New Group", @"Join by Invite Link"]
+	[TGAlertSheet showChoices:@[@"New Message", @"New Group", @"New Channel",
+								@"Join by Invite Link"]
 						title:nil
 			 destructiveIndex:-1
 					   inView:self.navigationController.view ?: self.view
 					 onChoice:^(NSInteger index){
 		TGChatListViewController *me = weakSelf;
-		if (index != 2){
+		if (index == 2){
+			// A channel is a supergroup with one voice: TDLib names both with
+			// one request, and the is_channel flag is the whole difference.
+			[TGAlertSheet showInput:@"New Channel"
+							message:@"A channel posts to subscribers. Anyone "
+									@"with the link can read; only admins write."
+						placeholder:@"Channel name"
+							   text:nil
+							 action:@"Create"
+							 inView:me.view
+						 onSubmit:^(NSString *title){
+				[[TGClient shared] createSupergroupNamed:title
+											description:@""
+											  isChannel:YES
+											 completion:^(int64_t chatId){
+					if (!chatId)
+						return;
+					TGChatViewController *vc = [[TGChatViewController alloc] init];
+					vc.chatId = chatId;
+					vc.chatTitle = title;
+					vc.hidesBottomBarWhenPushed = YES;
+					[me.navigationController pushViewController:vc animated:YES];
+				}];
+			}];
+			return;
+		}
+		if (index != 3){
 			TGContactsViewController *contacts = [[TGContactsViewController alloc] init];
 			if (index == 1)
 				contacts.picksGroupMembers = YES;

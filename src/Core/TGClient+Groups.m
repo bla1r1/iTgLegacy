@@ -116,6 +116,15 @@ static NSDictionary *TGFlattenInviteLink(NSDictionary *link) {
 		@"is_forum"                 : @NO,
 		@"is_channel"               : @(isChannel),
 		@"description"              : description ?: @"",
+		// A chat that is not tied to a place sends the origin with an empty
+		// address; TDLib wants the field whether or not there is a pin.
+		@"location"                 : @{
+			@"@type"   : @"chatLocation",
+			@"location": @{@"@type" : @"location",
+						   @"latitude" : @0, @"longitude" : @0,
+						   @"horizontal_accuracy" : @0},
+			@"address" : @"",
+		},
 		@"message_auto_delete_time" : @(0),
 		@"for_import"               : @NO,
 	} completion:^(NSDictionary *result){
@@ -449,26 +458,50 @@ static NSDictionary *TGFlattenInviteLink(NSDictionary *link) {
 	}];
 }
 
-/// What the two toggles above sit on right now, read off the supergroup's
+/// What the three toggles above sit on right now, read off the supergroup's
 /// full record, so a menu row can say what the flip is about to do.
 - (void)supergroupFlagsForChat:(int64_t)chatId
-					completion:(void (^)(BOOL signMessages, BOOL joinToSend, BOOL ok))completion {
+					completion:(void (^)(BOOL signMessages, BOOL joinToSend,
+										 BOOL allHistory, BOOL ok))completion {
 	__weak typeof(self) weakSelf = self;
 	[self supergroupIdForChat:chatId completion:^(int64_t supergroupId){
 		if (!supergroupId){
-			if (completion) completion(NO, NO, NO);
+			if (completion) completion(NO, NO, NO, NO);
 			return;
 		}
 		[weakSelf request:@{@"@type" : @"getSupergroupFullInfo",
 							@"supergroup_id" : @(supergroupId)}
 			 completion:^(NSDictionary *full){
 			if ([full[@"@type"] isEqualToString:@"error"]){
-				if (completion) completion(NO, NO, NO);
+				if (completion) completion(NO, NO, NO, NO);
 				return;
 			}
 			if (completion)
 				completion([full[@"sign_messages"] boolValue],
-						   [full[@"join_to_send"] boolValue], YES);
+						   [full[@"join_to_send"] boolValue],
+						   [full[@"is_all_history_available"] boolValue], YES);
+		}];
+	}];
+}
+
+/// Whether the history before a member joined is visible to them. Their
+/// client exposes this as a switch on a group that already has some.
+- (void)setSupergroupAllHistoryAvailable:(int64_t)chatId
+									  on:(BOOL)on
+							  completion:(void (^)(BOOL ok))completion {
+	__weak typeof(self) weakSelf = self;
+	[self supergroupIdForChat:chatId completion:^(int64_t supergroupId){
+		if (!supergroupId){
+			if (completion) completion(NO);
+			return;
+		}
+		[weakSelf request:@{
+			@"@type"                    : @"toggleSupergroupIsAllHistoryAvailable",
+			@"supergroup_id"            : @(supergroupId),
+			@"is_all_history_available" : @(on),
+		} completion:^(NSDictionary *result){
+			if (completion)
+				completion(![result[@"@type"] isEqualToString:@"error"]);
 		}];
 	}];
 }

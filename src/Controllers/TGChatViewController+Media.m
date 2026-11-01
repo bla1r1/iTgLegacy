@@ -148,7 +148,7 @@
 /// A reply shows what it answers. TDLib only inlines the quote sometimes, so
 /// the original is fetched when it does not.
 - (void)fetchMissingQuotes {
-	__weak typeof(self) weakSelf = self;
+	NSMutableArray *wanted = [NSMutableArray array];
 	for (NSDictionary *m in self.messages){
 		NSNumber *replyId = m[@"replyId"];
 		if (![replyId isKindOfClass:NSNumber.class])
@@ -157,23 +157,38 @@
 			[self.quotesRequested containsObject:replyId])
 			continue;
 		[self.quotesRequested addObject:replyId];
+		[wanted addObject:replyId];
+	}
+	if (!wanted.count)
+		return;
 
-		[[TGClient shared] messageWithId:replyId.longLongValue
-								  inChat:self.chatId
-							  completion:^(NSDictionary *m){
-			TGChatViewController *me = weakSelf;
-			if (!me || !m)
-				return;
-			me.quotes[replyId] = m;
-			for (NSDictionary *msg in me.messages) {
-				if ([msg[@"replyId"] isEqual:replyId]) {
+	__weak typeof(self) weakSelf = self;
+	// One getMessages for the whole window. A chat with a dozen replies in
+	// view used to send a dozen separate getMessage requests for the same
+	// screen, which is most of what a slow connection noticed.
+	[[TGClient shared] messagesInChat:self.chatId messageIds:wanted
+						   completion:^(NSArray *messages){
+		TGChatViewController *me = weakSelf;
+		if (!me)
+			return;
+		BOOL any = NO;
+		for (NSUInteger i = 0; i < wanted.count && i < messages.count; i++){
+			id found = messages[i];
+			if (![found isKindOfClass:NSDictionary.class])
+				continue;
+			NSNumber *replyId = wanted[i];
+			me.quotes[replyId] = found;
+			any = YES;
+			for (NSDictionary *msg in me.messages){
+				if ([msg[@"replyId"] isEqual:replyId]){
 					NSNumber *msgId = msg[@"id"];
 					if (msgId) [me.layoutCache removeObjectForKey:msgId];
 				}
 			}
+		}
+		if (any)
 			[me reloadTableDebounced];
-		}];
-	}
+	}];
 }
 
 - (void)fetchMissingImages {
@@ -396,6 +411,13 @@
 		bar.tag = kHUDBarTag;
 		[plate addSubview:bar];
 
+		// The plate is the Cancel button too: a download that began with a
+		// tap should stop with one, and the plate already sits where the
+		// finger is. Nothing else on the screen is that tap's to take.
+		UITapGestureRecognizer *cancel = [[UITapGestureRecognizer alloc]
+				initWithTarget:self action:@selector(cancelDownloadHUDTapped)];
+		[plate addGestureRecognizer:cancel];
+
 		self.downloadHUD = plate;
 		self.downloadHUD.center = CGPointMake(TGHalf(self.view.bounds.size.width),
 											  TGHalf(self.view.bounds.size.height));
@@ -420,6 +442,20 @@
 	self.downloadingFileId = 0;
 	self.downloadHUD.hidden = YES;
 	[self.downloadHUD removeFromSuperview];
+	self.downloadHUD = nil;
+}
+
+/// Tapping the progress plate stops the download where it is. TDLib is told
+/// so it stops fetching, and the waiters are released so nothing keeps the
+/// file's record alive; the completion then simply never fires, which is
+/// what cancel means for the screen that asked.
+- (void)cancelDownloadHUDTapped {
+	NSInteger fileId = self.downloadingFileId;
+	if (!fileId)
+		return;
+	[self endDownloadHUD];
+	[[TGClient shared] cancelDownloadOfFile:fileId onlyIfPending:NO];
+	[TGSnackbar showInView:self.view text:@"Download cancelled" seconds:2 onCommit:nil];
 }
 
 /// Copy the received file into Documents first: TDLib owns its cache and can

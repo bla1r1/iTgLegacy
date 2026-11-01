@@ -109,6 +109,20 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 	[self showActionsForRow:row atPoint:CGPointZero];
 }
 
+/// The reaction Telegram names as the default leads their bar; the rest keep
+/// the app's order. A default the message does not offer is left where it is,
+/// because reacting with it would be refused.
+- (NSArray *)reactionsWithDefaultFirst:(NSArray *)reactions {
+	NSString *first = [TGClient shared].defaultReactionEmoji;
+	if (!first.length || ![reactions containsObject:first])
+		return reactions;
+	NSMutableArray *out = [NSMutableArray arrayWithObject:first];
+	for (NSString *emoji in reactions)
+		if (![emoji isEqualToString:first])
+			[out addObject:emoji];
+	return out;
+}
+
 /// `point` is where the finger is, in this view's coordinates, and the menu
 /// opens there. CGPointZero means there was no finger - a URL asked for this
 /// - and the bubble's own corner stands in.
@@ -142,6 +156,11 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 	// edited before: media with a caption got no Edit row at all.
 	if (mine && ([m[@"text"] length] || [m[@"photoId"] isKindOfClass:NSNumber.class]))
 		[items addObject:@{@"title" : @"Edit", @"icon" : @"edit"}];
+
+	// A caption is not the picture: replacing the picture itself is
+	// editMessageMedia, and only the sender may.
+	if (mine && [m[@"photoId"] isKindOfClass:NSNumber.class])
+		[items addObject:@{@"title" : @"Replace Photo", @"icon" : @"react"}];
 
 	if (![m[@"service"] boolValue])
 		[items addObject:@{@"title" : (heldId == self.pinnedMessageId ? @"Unpin" : @"Pin"),
@@ -185,8 +204,9 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 	// reacted, whether Telegram names the hand behind "Channel Admin".
 	// Rows over-reach on purpose: the server refuses what the chat is not,
 	// and the refusal is one honest sheet line.
-	if (mine && self.isGroup)
+	if (mine && ![[TGClient shared] chatIsSavedMessages:self.chatId])
 		[items addObject:@{@"title" : @"Who Read This", @"icon" : @"select"}];
+	[items addObject:@{@"title" : @"Public Forwards", @"icon" : @"forward"}];
 	[items addObject:@{@"title" : @"Reactions", @"icon" : @"react"}];
 	if (!mine)
 		[items addObject:@{@"title" : @"Author", @"icon" : @"select"}];
@@ -233,7 +253,7 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 				CGRectGetMidY(rect)) toView:self.view];
 	}
 
-	NSArray *reactions = [TGReactionPicker defaultReactions];
+	NSArray *reactions = [self reactionsWithDefaultFirst:[TGReactionPicker defaultReactions]];
 	__weak typeof(self) weakSelf = self;
 	[TGPopupMenu showItems:items
 				   atPoint:where
@@ -261,12 +281,30 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 		return;
 
 	if ([action isEqualToString:@"Reply"]){
-		self.replyToId = messageId;
-		self.editingId = 0;
-		NSString *who = [m[@"outgoing"] boolValue] ? @"You"
-				: ([[TGClient shared] nameForUserId:[m[@"senderId"] longLongValue]] ?: @"Reply");
-		[self showComposeBanner:who subtitle:TGComposePreview(m)];
-		[self.input becomeFirstResponder];
+		// A chat can forbid replies to this particular message; can_be_replied
+		// is the server's word on it, and opening a composer that would be
+		// refused is worse than one line saying so.
+		__weak typeof(self) weakSelf = self;
+		[[TGClient shared] messagePropertiesForChat:self.chatId
+										  messageId:messageId
+										 completion:^(NSDictionary *properties){
+			TGChatViewController *me = weakSelf;
+			if (!me)
+				return;
+			id allowed = properties[@"can_be_replied"];
+			if (allowed && ![allowed boolValue]){
+				[TGAlertSheet showMessage:@"Telegram does not allow a reply "
+							@"to this message." title:@"Reply" inView:me.view];
+				return;
+			}
+			me.replyToId = messageId;
+			me.editingId = 0;
+			NSString *who = [m[@"outgoing"] boolValue] ? @"You"
+					: ([[TGClient shared] nameForUserId:
+							[m[@"senderId"] longLongValue]] ?: @"Reply");
+			[me showComposeBanner:who subtitle:TGComposePreview(m)];
+			[me.input becomeFirstResponder];
+		}];
 
 	} else if ([action isEqualToString:@"Forward"]){
 		TGForwardPicker *picker = [[TGForwardPicker alloc] init];
@@ -566,6 +604,9 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 	} else if ([action isEqualToString:@"Who Read This"]){
 		[self showViewersOfActionMessage];
 
+	} else if ([action isEqualToString:@"Public Forwards"]){
+		[self showPublicForwardsOfActionMessage];
+
 	} else if ([action isEqualToString:@"Reactions"]){
 		[self showReactorsOfActionMessage];
 
@@ -605,6 +646,13 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 			[UIPasteboard generalPasteboard].string = code;
 			[TGSnackbar showInView:me.view text:@"Embed copied" seconds:2 onCommit:nil];
 		}];
+
+	} else if ([action isEqualToString:@"Replace Photo"]){
+		self.editingId = messageId;
+		self.editingIsCaption = NO;
+		self.replacingPhoto = YES;
+		self.replacingPhotoCaption = m[@"text"] ?: @"";
+		[self pickReplacementPhoto];
 
 	} else if ([action isEqualToString:@"Edit"]){
 		self.editingId = messageId;
@@ -647,17 +695,28 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 /// Their six, in their order. One reaction at a time is all this screen
 /// offers; picking a second replaces the first on Telegram's side.
 - (void)askReactionForMessage:(int64_t)messageId {
-	NSArray *emoji = @[@"\U0001F44D", @"\U0001F44E", @"\U00002764",
-					   @"\U0001F525", @"\U0001F389", @"\U0001F62D"];
+	NSArray *fallback = @[@"\U0001F44D", @"\U0001F44E", @"\U00002764",
+						  @"\U0001F525", @"\U0001F389", @"\U0001F62D"];
 	__weak typeof(self) weakSelf = self;
-	[TGAlertSheet showChoices:emoji
-						title:@"React"
-			 destructiveIndex:-1
-					   inView:self.view
-					 onChoice:^(NSInteger index){
+	// The chat sets what may be reacted with, and getMessageAvailableReactions
+	// says which of those this message itself offers; the fixed six are only
+	// what answers a chat that allows everything.
+	[[TGClient shared] availableReactionsForMessage:messageId
+											 inChat:self.chatId
+										 completion:^(NSArray *offered){
 		TGChatViewController *me = weakSelf;
-		[[TGClient shared] reactTo:messageId inChat:me.chatId emoji:emoji[index]];
-		[me reload];
+		if (!me)
+			return;
+		NSArray *emoji = [me reactionsWithDefaultFirst:
+				(offered.count ? offered : fallback)];
+		[TGAlertSheet showChoices:emoji
+							title:@"React"
+				 destructiveIndex:-1
+						   inView:me.view
+						 onChoice:^(NSInteger index){
+			[[TGClient shared] reactTo:messageId inChat:me.chatId emoji:emoji[index]];
+			[me reload];
+		}];
 	}];
 }
 
@@ -672,6 +731,20 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 	picker.sourceType = UIImagePickerControllerSourceTypePhotoLibrary;
 	// Without this the library shows photos only, and video cannot be sent.
 	picker.mediaTypes = @[(NSString *)kUTTypeImage, (NSString *)kUTTypeMovie];
+	picker.delegate = (id<UIImagePickerControllerDelegate, UINavigationControllerDelegate>)self;
+	[self presentViewController:picker animated:YES completion:nil];
+}
+
+/// A replacement picture, not a new one: the library is opened for an image
+/// and the pick goes back into the message it came from.
+- (void)pickReplacementPhoto {
+	if (![UIImagePickerController isSourceTypeAvailable:
+			UIImagePickerControllerSourceTypePhotoLibrary])
+		return;
+
+	UIImagePickerController *picker = [[UIImagePickerController alloc] init];
+	picker.sourceType = UIImagePickerControllerSourceTypePhotoLibrary;
+	picker.mediaTypes = @[(NSString *)kUTTypeImage];
 	picker.delegate = (id<UIImagePickerControllerDelegate, UINavigationControllerDelegate>)self;
 	[self presentViewController:picker animated:YES completion:nil];
 }
@@ -816,8 +889,47 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 	}
 
 	UIImage *image = info[UIImagePickerControllerOriginalImage];
+	if (image && self.replacingPhoto){
+		int64_t messageId = self.editingId;
+		self.replacingPhoto = NO;
+		self.editingId = 0;
+		[self replacePhotoOfMessage:messageId withImage:image];
+		return;
+	}
 	if (image)
 		[self sendImage:image];
+}
+
+/// The picked picture replaces the one already on Telegram: the same message
+/// id, the same place in the history, the same caption. Leaving the caption
+/// out would clear it, since editMessageMedia takes the whole content.
+- (void)replacePhotoOfMessage:(int64_t)messageId withImage:(UIImage *)image {
+	if (!messageId || !image)
+		return;
+	CFUUIDRef uuid = CFUUIDCreate(NULL);
+	NSString *name = (__bridge_transfer NSString *)CFUUIDCreateString(NULL, uuid);
+	CFRelease(uuid);
+	NSString *path = [NSTemporaryDirectory() stringByAppendingPathComponent:
+			[NSString stringWithFormat:@"replacement-%@.jpg", name]];
+	if (![UIImageJPEGRepresentation(image, TGCompressionQualityHigh) writeToFile:path atomically:YES]){
+		NSLog(@"cannot stage the replacement image");
+		return;
+	}
+	NSString *caption = self.replacingPhotoCaption ?: @"";
+	self.replacingPhotoCaption = nil;
+	__weak typeof(self) weakSelf = self;
+	[[TGClient shared] editPhotoAtPath:path
+							   caption:caption
+							 ofMessage:messageId
+								inChat:self.chatId
+							completion:^(BOOL ok){
+		TGChatViewController *me = weakSelf;
+		if (!me)
+			return;
+		[TGSnackbar showInView:me.view
+						  text:(ok ? @"Photo replaced" : @"Telegram refused that photo")
+					   seconds:2 onCommit:nil];
+	}];
 }
 
 /// TDLib wants a path, so the picture is written to a temporary file first -
@@ -1312,10 +1424,20 @@ static NSString *TGSheetDate(NSTimeInterval unix) {
 			TGChatViewController *me = weakSelf;
 			if (!me) return;
 			if (!viewers.count){
-				[TGAlertSheet showMessage:@"Only a recent message of your own in a "
-										  @"group says who read it."
-									 title:@"Who Read This"
-									inView:me.view];
+				// A one-to-one chat has no viewer list; Telegram still knows
+				// when the message was read, and that is the whole answer
+				// there. The reason words come from TDLib, not guessed.
+				[[TGClient shared] readDateOfMessage:messageId inChat:chatId
+										  completion:^(NSTimeInterval date, NSString *reason){
+					TGChatViewController *me = weakSelf;
+					if (!me)
+						return;
+					NSString *say = date > 0
+							? [NSString stringWithFormat:@"Read %@.",
+									TGSheetDate(date)]
+							: (reason ?: @"Telegram cannot say.");
+					[TGAlertSheet showMessage:say title:@"Who Read This" inView:me.view];
+				}];
 				return;
 			}
 			NSMutableArray *names = [NSMutableArray array];
@@ -1340,6 +1462,55 @@ static NSString *TGSheetDate(NSTimeInterval unix) {
 /// The sheet's first page lists what is on the message per emoji (the
 /// interaction info a flattened message already carries); a tap lists that
 /// reaction's adders, where an administrator takes one person's set off.
+/// Every public copy of this message TDLib knows about: channels and open
+/// groups that forwarded it. A copy opens where it was posted, at the same
+/// message id the forward carries.
+- (void)showPublicForwardsOfActionMessage {
+	__weak typeof(self) weakSelf = self;
+	[self withActionMessage:^(int64_t messageId, int64_t chatId, NSDictionary *m){
+		[[TGClient shared] publicForwardsOfMessage:messageId
+											 inChat:chatId
+										 completion:^(NSArray *forwards){
+			TGChatViewController *me = weakSelf;
+			if (!me)
+				return;
+			if (!forwards.count){
+				[TGAlertSheet showMessage:@"Telegram knows no public copies "
+							@"of this message." title:@"Public Forwards"
+										inView:me.view];
+				return;
+			}
+			NSMutableArray *rows = [NSMutableArray array];
+			for (NSDictionary *copy in forwards){
+				int64_t where = [copy[@"chat_id"] longLongValue];
+				NSString *title = where
+						? ([[TGClient shared] titleForChat:where] ?: @"A chat")
+						: @"Unknown chat";
+				[rows addObject:[NSString stringWithFormat:@"%@  ·  #%@",
+						title, copy[@"message_id"] ?: @""]];
+			}
+			[TGAlertSheet showChoices:rows
+								title:@"Public Forwards"
+					 destructiveIndex:-1
+							   inView:me.view
+							 onChoice:^(NSInteger index){
+				NSDictionary *copy = forwards[(NSUInteger)index];
+				int64_t where = [copy[@"chat_id"] longLongValue];
+				int64_t copyId = [copy[@"message_id"] longLongValue];
+				if (!where || !copyId)
+					return;
+				TGChatViewController *vc = [[TGChatViewController alloc] init];
+				vc.chatId = where;
+				vc.chatTitle = [[TGClient shared] titleForChat:where] ?: @"";
+				vc.isGroup = YES;
+				vc.initialMessageId = copyId;
+				vc.hidesBottomBarWhenPushed = YES;
+				[me.navigationController pushViewController:vc animated:YES];
+			}];
+		}];
+	}];
+}
+
 - (void)showReactorsOfActionMessage {
 	__weak typeof(self) weakSelf = self;
 	[self withActionMessage:^(int64_t messageId, int64_t chatId, NSDictionary *m){

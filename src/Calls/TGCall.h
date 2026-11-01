@@ -19,6 +19,9 @@ typedef NS_ENUM(NSInteger, TGCallState) {
 
 @property (nonatomic, readonly) TGCallState state;
 @property (nonatomic, readonly) int32_t callId;
+/// The id the last call wore, kept after teardown so a rating can still name
+/// the call it is about.
+@property (nonatomic, readonly) int32_t lastCallId;
 @property (nonatomic, readonly) int64_t peerUserId;
 @property (nonatomic, readonly) BOOL outgoing;
 @property (nonatomic, readonly) BOOL muted;

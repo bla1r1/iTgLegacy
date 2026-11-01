@@ -171,10 +171,14 @@
 - (void)userForPhone:(NSString *)phone completion:(void (^)(NSDictionary *user))completion;
 
 /// Other devices signed into this account: "id", "name", "platform", "ip",
-/// "isCurrent", "lastActive".
+/// "isCurrent", "isUnconfirmed", "lastActive".
 - (void)sessionsWithCompletion:(void (^)(NSArray *sessions))completion;
 
 - (void)terminateSession:(long long)sessionId;
+
+/// Confirms a login Telegram flagged as unconfirmed, which is what the
+/// updateUnconfirmedSession row in Devices is for.
+- (void)confirmSession:(long long)sessionId;
 
 /// Change the signed-in user's own name and bio.
 - (void)setName:(NSString *)firstName last:(NSString *)lastName;

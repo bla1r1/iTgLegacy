@@ -265,6 +265,23 @@ static NSString *TGContactName(NSDictionary *u) {
 	__weak typeof(self) weakSelf = self;
 	if (self.addingToChatId){
 		int64_t chatId = self.addingToChatId;
+		// One person is addChatMember, the request their own client sends
+		// when a profile's "Add to Group" names a single user; the batch
+		// form is for the picker's many. Same answer either way.
+		if (userIds.count == 1){
+			NSNumber *only = userIds.firstObject;
+			[[TGClient shared] addUser:only.longLongValue
+								toChat:chatId
+							completion:^(BOOL ok, NSArray *refused){
+				TGContactsViewController *me = weakSelf;
+				if (!ok)
+					[TGAlertSheet showMessage:@"Telegram refused - their "
+							@"privacy settings keep them out of new groups."
+										  title:@"Add Members" inView:me.view];
+				[me.navigationController popViewControllerAnimated:YES];
+			}];
+			return;
+		}
 		// One request for the whole pick: the N-request loop this replaced
 		// answered the server once per contact and could strand half of the
 		// batch on a slow connection.

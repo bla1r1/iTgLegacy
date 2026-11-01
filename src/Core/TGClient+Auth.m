@@ -1,6 +1,20 @@
 #import "TGClientInternal.h"
+#import <objc/runtime.h>
+
+@interface TGClient (AuthPrivate)
+- (void)setPushReceiverId:(int64_t)receiverId;
+@end
 
 @implementation TGClient (Auth)
+
+- (int64_t)pushReceiverId {
+	return [objc_getAssociatedObject(self, @selector(pushReceiverId)) longLongValue];
+}
+
+- (void)setPushReceiverId:(int64_t)receiverId {
+	objc_setAssociatedObject(self, @selector(pushReceiverId), @(receiverId),
+							 OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
 
 #pragma mark - authorization steps
 
@@ -222,8 +236,11 @@ static NSString *TGAuthError(NSDictionary *result) {
 							@"is_app_sandbox" : @(sandbox)},
 		@"other_user_ids" : @[],
 	} completion:^(NSDictionary *result){
+		BOOL ok = [result[@"@type"] isEqualToString:@"pushReceiverId"];
+		if (ok)
+			[self setPushReceiverId:[result[@"id"] longLongValue]];
 		if (completion)
-			completion([result[@"@type"] isEqualToString:@"pushReceiverId"]);
+			completion(ok);
 	}];
 }
 
@@ -247,15 +264,14 @@ static NSString *TGAuthError(NSDictionary *result) {
 												   encoding:NSUTF8StringEncoding]}];
 }
 
-/// What a push names, told by TDLib itself: works even while the certificate
-/// is still on its way, because the blob sent over the wire is all the
-/// answer needs. "ok" matched nothing - the payload TDLib could not read,
-/// rather than one it merely could not deliver.
+/// What account a push belongs to, told by TDLib itself: works even while
+/// the certificate is still on its way, because the blob sent over the wire
+/// is all the answer needs. `ok` is NO for a payload TDLib cannot read.
 - (void)pushReceiverOfPayload:(NSDictionary *)payload
-				   completion:(void (^)(BOOL ok, int64_t chatId, int64_t messageId))completion {
+				   completion:(void (^)(BOOL ok, int64_t receiverId))completion {
 	NSString *blob = payload[@"p"];
 	if (![blob isKindOfClass:NSString.class] || !blob.length){
-		if (completion) completion(NO, 0, 0);
+		if (completion) completion(NO, 0);
 		return;
 	}
 	[self request:@{@"@type" : @"getPushReceiverId", @"payload" : blob}
@@ -263,14 +279,26 @@ static NSString *TGAuthError(NSDictionary *result) {
 			if (!completion)
 				return;
 			BOOL ok = [result[@"@type"] isEqualToString:@"pushReceiverId"];
-			completion(ok,
-					   [result[@"chat_id"] longLongValue],
-					   [result[@"message_id"] longLongValue]);
+			completion(ok, [result[@"id"] longLongValue]);
 		}];
+}
+
+/// Accepts the terms the update named, which is what lifts the restriction
+/// the server put on the account until it happens.
+- (void)acceptTermsOfService:(NSString *)termsId
+				  completion:(void (^)(BOOL ok))completion {
+	if (!termsId.length){
+		if (completion) completion(NO);
+		return;
+	}
+	[self request:@{@"@type" : @"acceptTermsOfService",
+					@"terms_of_service_id" : termsId}
+	   completion:^(NSDictionary *result){
+		if (completion)
+			completion(![result[@"@type"] isEqualToString:@"error"]);
+	}];
 }
 
 - (void)logOut {
 	[self send:@{@"@type" : @"logOut"}];
-}
-
-@end
+}@end

@@ -150,11 +150,12 @@
 						 inChat:(int64_t)chatId
 					 completion:(void (^)(NSArray *messages))completion {
 	[self request:@{@"@type" : @"getMessagePublicForwards",
-					@"chat_id" : @(chatId), @"message_id" : @(messageId)}
+					@"chat_id" : @(chatId), @"message_id" : @(messageId),
+					@"offset" : @"", @"limit" : @(50)}
 	   completion:^(NSDictionary *result){
 		if (!completion)
 			return;
-		if (![result[@"@type"] isEqualToString:@"foundMessages"]){
+		if (![result[@"@type"] isEqualToString:@"publicForwards"]){
 			completion(nil);
 			return;
 		}
@@ -176,14 +177,16 @@
 		if (!completion)
 			return;
 		if (![result[@"@type"] isEqualToString:@"availableReactions"] ||
-				[result[@"unavailability_reason"][@"@type"] boolValue]){
+				[result[@"unavailability_reason"] isKindOfClass:NSDictionary.class]){
 			completion(nil);
 			return;
 		}
 		NSArray *top = result[@"top_reactions"];
 		NSMutableArray *out = [NSMutableArray array];
 		for (NSDictionary *r in top){
-			NSString *emoji = r[@"emoji"];
+			// Live TDLib nests the glyph under reactionTypeEmoji; the flat
+			// spelling is what older fixtures answer, and both are read.
+			NSString *emoji = r[@"type"][@"emoji"] ?: r[@"emoji"];
 			if (emoji.length)
 				[out addObject:emoji];
 		}

@@ -274,6 +274,7 @@ static NSArray *TGPacksFrom(NSDictionary *target) {
 						session[@"platform"] ?: @"", session[@"system_version"] ?: @""],
 				@"ip"         : session[@"ip_address"] ?: session[@"ip"] ?: @"",
 				@"isCurrent"  : session[@"is_current"] ?: @NO,
+				@"isUnconfirmed" : session[@"is_unconfirmed"] ?: @NO,
 				@"lastActive" : session[@"last_active_date"] ?: @0,
 			}];
 		}
@@ -283,6 +284,10 @@ static NSArray *TGPacksFrom(NSDictionary *target) {
 
 - (void)terminateSession:(long long)sessionId {
 	[self send:@{@"@type" : @"terminateSession", @"session_id" : @(sessionId)}];
+}
+
+- (void)confirmSession:(long long)sessionId {
+	[self send:@{@"@type" : @"confirmSession", @"session_id" : @(sessionId)}];
 }
 
 - (void)setName:(NSString *)firstName last:(NSString *)lastName {

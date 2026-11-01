@@ -586,4 +586,105 @@ static NSMutableDictionary *info(TGClient *c, int64_t chatId) {
 	XCTAssertEqualObjects(chats, (@[@(60)]));
 }
 
+// ─── server defaults the screens now read ───────────────────────────────────
+
+- (void)testDefaultReactionType_LeadsThePicker {
+	TGClient *c = U();
+	XCTAssertNil(c.defaultReactionEmoji);
+
+	[c handleUpdate:@{@"@type" : @"updateDefaultReactionType",
+					  @"reaction_type" : @{@"@type" : @"reactionTypeEmoji",
+										   @"emoji" : @"🔥"}}];
+
+	XCTAssertEqualObjects(c.defaultReactionEmoji, @"🔥");
+}
+
+- (void)testAnimationSearch_NamesTheProviderAndItsEmoji {
+	TGClient *c = U();
+	XCTAssertEqualObjects(c.animationSearchProvider, @"gif");
+	XCTAssertEqual(c.animationSearchEmojis.count, (NSUInteger)0);
+
+	[c handleUpdate:@{@"@type"    : @"updateAnimationSearchParameters",
+					  @"provider" : @"gifbot",
+					  @"emojis"   : @[@"👍", @"😂"]}];
+
+	XCTAssertEqualObjects(c.animationSearchProvider, @"gifbot");
+	XCTAssertEqualObjects(c.animationSearchEmojis, (@[@"👍", @"😂"]));
+}
+
+/// The protocol asks for a popup: these belong to no chat, so the window is
+/// the only surface that can show them.
+- (void)testServiceNotification_ArrivesWithItsText {
+	TGClient *c = U();
+	__block NSString *text = nil;
+	id token = [[NSNotificationCenter defaultCenter]
+			addObserverForName:TGServiceNotificationReceivedNotification
+						object:nil queue:nil
+			usingBlock:^(NSNotification *n){ text = n.userInfo[@"text"]; }];
+
+	[c handleUpdate:@{@"@type" : @"updateServiceNotification",
+					  @"type"  : @"AUTH_KEY_UNREGISTERED",
+					  @"content" : @{@"@type" : @"messageText",
+									 @"text" : @{@"@type" : @"formattedText",
+												 @"text" : @"Sign in again."}}}];
+
+	[[NSNotificationCenter defaultCenter] removeObserver:token];
+	XCTAssertEqualObjects(text, @"Sign in again.");
+}
+
+- (void)testTermsOfService_ArrivesWithItsIdAndText {
+	TGClient *c = U();
+	__block NSDictionary *info = nil;
+	id token = [[NSNotificationCenter defaultCenter]
+			addObserverForName:TGTermsOfServiceReceivedNotification
+						object:nil queue:nil
+			usingBlock:^(NSNotification *n){ info = n.userInfo; }];
+
+	[c handleUpdate:@{@"@type" : @"updateTermsOfService",
+					  @"terms_of_service_id" : @"tos-1",
+					  @"terms_of_service" : @{
+						  @"@type" : @"termsOfService",
+						  @"text" : @{@"@type" : @"formattedText",
+									  @"text" : @"Read this."},
+						  @"min_user_age" : @(13),
+						  @"show_popup" : @YES}}];
+
+	[[NSNotificationCenter defaultCenter] removeObserver:token];
+	XCTAssertEqualObjects(info[@"id"], @"tos-1");
+	XCTAssertEqualObjects(info[@"text"], @"Read this.");
+}
+
+- (void)testPrivacyRulesChange_TellsThePrivacyPage {
+	TGClient *c = U();
+	__block BOOL told = NO;
+	id token = [[NSNotificationCenter defaultCenter]
+			addObserverForName:TGPrivacyRulesChangedNotification
+						object:nil queue:nil
+			usingBlock:^(NSNotification *n){ told = YES; }];
+
+	[c handleUpdate:@{@"@type" : @"updateUserPrivacySettingRules",
+					  @"setting" : @{@"@type" : @"userPrivacySettingShowStatus"},
+					  @"rules" : @{@"@type" : @"userPrivacySettingRules"}}];
+
+	[[NSNotificationCenter defaultCenter] removeObserver:token];
+	XCTAssertTrue(told);
+}
+
+- (void)testUnconfirmedSession_TellsTheDevicesList {
+	TGClient *c = U();
+	__block BOOL told = NO;
+	id token = [[NSNotificationCenter defaultCenter]
+			addObserverForName:TGSessionsChangedNotification
+						object:nil queue:nil
+			usingBlock:^(NSNotification *n){ told = YES; }];
+
+	[c handleUpdate:@{@"@type" : @"updateUnconfirmedSession",
+					  @"session" : @{@"@type" : @"unconfirmedSession",
+									 @"date" : @(1)},
+					  @"unconfirmed_session_count" : @(1)}];
+
+	[[NSNotificationCenter defaultCenter] removeObserver:token];
+	XCTAssertTrue(told);
+}
+
 @end

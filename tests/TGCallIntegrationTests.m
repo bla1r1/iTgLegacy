@@ -462,9 +462,32 @@
     NSDictionary *request = [TGClient sentRequests].firstObject;
     XCTAssertNotNil(request);
     XCTAssertTrue([request[@"@type"] isEqualToString:@"sendCallRating"]);
-    XCTAssertEqual([request[@"call_id"] intValue], 15);
+    XCTAssertEqualObjects(request[@"call_id"][@"@type"], @"inputCallDiscarded");
+    XCTAssertEqual([request[@"call_id"][@"call_id"] intValue], 15);
     XCTAssertEqual([request[@"rating"] intValue], 5);
     XCTAssertTrue([request[@"comment"] isEqualToString:@"Great audio"]);
+}
+
+/// The rating is asked for after the screen closes, when teardown has already
+/// zeroed the live id; the one the call wore has to survive for it.
+- (void)testSendRatingAfterHangupStillNamesTheCall {
+    [[TGCall shared] handleUpdate:@{
+        @"@type"      : @"call",
+        @"id"         : @(21),
+        @"user_id"    : @(42LL),
+        @"is_outgoing": @YES,
+        @"state"      : @{ @"@type": @"callStatePending" },
+    }];
+    [[TGCall shared] hangUp];
+    [TGClient resetSentRequests];
+
+    [[TGCall shared] sendRating:4 comment:@"Fine" problems:@[]];
+
+    NSDictionary *request = [TGClient sentRequests].firstObject;
+    XCTAssertNotNil(request);
+    XCTAssertTrue([request[@"@type"] isEqualToString:@"sendCallRating"]);
+    XCTAssertEqual([request[@"call_id"][@"call_id"] intValue], 21);
+    XCTAssertEqual([request[@"rating"] intValue], 4);
 }
 
 - (void)testSetSpeakerDoesNotCrash {

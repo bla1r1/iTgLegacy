@@ -158,6 +158,12 @@
 /// True while the composer is editing a caption rather than a message's
 /// text, which is a different request.
 @property (nonatomic, assign) BOOL editingIsCaption;
+/// True while the photo picker is choosing a replacement for an already
+/// sent picture; the pick is an editMessageMedia, not a new message.
+@property (nonatomic, assign) BOOL replacingPhoto;
+/// The caption the replaced picture has to keep, since the picker may come
+/// back long after the menu that named the message closed.
+@property (nonatomic, copy) NSString *replacingPhotoCaption;
 /// The link the composer has already asked Telegram about, so a second
 /// keystroke on the same one does not ask again.
 @property (nonatomic, copy) NSString *previewedLink;

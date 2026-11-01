@@ -149,6 +149,7 @@ CLIENT_TEST_SRCS := \
     $(TESTS)/TGMessageParserTests.m \
     $(TESTS)/TGClientAccountTests.m \
     $(TESTS)/TGClientComposeTests.m \
+    $(TESTS)/TGClientBareTests.m \
     $(TESTS)/TGClientThreadsTests.m \
     $(TESTS)/TGThemeFileTests.m \
     $(TESTS)/TGUpdatesTests.mm \

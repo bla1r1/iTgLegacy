@@ -174,13 +174,13 @@ static NSDictionary *plain(NSDictionary *d) {
 	XCTAssertEqual([r[@"auto_delete_seconds"] integerValue], 0);
 }
 
-// ─── the two supergroup switches ─────────────────────────────────────────────
+// ─── the three supergroup switches ───────────────────────────────────────────
 
 - (void)testSupergroupFlags_FullInfoCarriesBothSwitches {
 	TGClient *c = M();
-	__block BOOL sign = NO, join = NO, ok = NO;
-	[c supergroupFlagsForChat:77 completion:^(BOOL s, BOOL j, BOOL o){
-		sign = s; join = j; ok = o;
+	__block BOOL sign = NO, join = NO, all = NO, ok = NO;
+	[c supergroupFlagsForChat:77 completion:^(BOOL s, BOOL j, BOOL a, BOOL o){
+		sign = s; join = j; all = a; ok = o;
 	}];
 	NSDictionary *chat = lastM(c, @"getChat");
 	XCTAssertEqual([chat[@"chat_id"] longLongValue], 77LL);
@@ -189,22 +189,34 @@ static NSDictionary *plain(NSDictionary *d) {
 	NSDictionary *full = lastM(c, @"getSupergroupFullInfo");
 	XCTAssertEqualObjects(full[@"supergroup_id"], @(9001));
 	answerM(c, @{@"@type" : @"supergroupFullInfo",
-				 @"sign_messages" : @YES, @"join_to_send" : @NO});
+				 @"sign_messages" : @YES, @"join_to_send" : @NO,
+				 @"is_all_history_available" : @YES});
 	XCTAssertTrue(ok);
 	XCTAssertTrue(sign);
 	XCTAssertFalse(join);
+	XCTAssertTrue(all);
 }
 
 - (void)testSupergroupFlags_ABasicGroupIsNotASupergroup {
 	TGClient *c = M();
 	[c.chatsById removeObjectForKey:@(77)];
 	__block BOOL ok = YES;
-	[c supergroupFlagsForChat:77 completion:^(BOOL s, BOOL j, BOOL o){ ok = o; }];
+	[c supergroupFlagsForChat:77 completion:^(BOOL s, BOOL j, BOOL a, BOOL o){ ok = o; }];
 	answerM(c, @{@"@type" : @"chat",
 				 @"type" : @{@"@type" : @"chatTypeBasicGroup", @"basic_group_id" : @"17"}});
 	XCTAssertFalse(ok);
 	// No toggle was named for a chat that has no such switch.
 	XCTAssertNil(lastM(c, @"getSupergroupFullInfo"));
+}
+
+- (void)testAllHistory_TheToggleNamesTheSupergroupAndTheFlag {
+	TGClient *c = M();
+	[c setSupergroupAllHistoryAvailable:77 on:NO completion:nil];
+	answerM(c, @{@"@type" : @"chat",
+				 @"type" : @{@"@type" : @"chatTypeSupergroup", @"supergroup_id" : @"9001"}});
+	NSDictionary *r = lastM(c, @"toggleSupergroupIsAllHistoryAvailable");
+	XCTAssertEqualObjects(r[@"supergroup_id"], @(9001));
+	XCTAssertFalse([r[@"is_all_history_available"] boolValue]);
 }
 
 - (void)testSignMessages_TheToggleNamesTheSupergroupNotTheChat {

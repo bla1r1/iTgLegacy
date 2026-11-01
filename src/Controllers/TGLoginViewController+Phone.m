@@ -1,6 +1,67 @@
 #import "TGLoginViewControllerInternal.h"
+#import "TGAlertSheet.h"
+#import "TGClient.h"
 
 @implementation TGLoginViewController (Phone)
+
+/// The country behind the prefix, when the network's guess is wrong or the
+/// number is foreign. getCountries carries the calling code and the name in
+/// every language TDLib has; the query matches either.
+- (void)countryPickerTapped {
+    if (self.currentStep != TGLoginStepPhone)
+        return;
+    __weak typeof(self) weakSelf = self;
+    [[TGClient shared] countriesWithCompletion:^(NSArray *countries){
+        TGLoginViewController *me = weakSelf;
+        if (!me || me.currentStep != TGLoginStepPhone)
+            return;
+        if (!countries.count){
+            [TGAlertSheet showMessage:@"Telegram sent no country list."
+                                  title:@"Country" inView:me.view];
+            return;
+        }
+        [TGAlertSheet showInput:@"Country"
+                        message:@"Type part of a name, or a calling code."
+                    placeholder:@"Ukraine or +380"
+                           text:nil
+                         action:@"Find"
+                         inView:me.view
+                     onSubmit:^(NSString *query){
+            NSString *needle = [query lowercaseString];
+            NSMutableArray *matches = [NSMutableArray array];
+            for (NSDictionary *country in countries){
+                NSString *name = [country[@"name"] lowercaseString];
+                NSString *prefix = country[@"prefix"] ?: @"";
+                if ([name rangeOfString:needle].location != NSNotFound ||
+                        [prefix rangeOfString:needle].location != NSNotFound){
+                    [matches addObject:country];
+                    if (matches.count >= 20)
+                        break;
+                }
+            }
+            if (!matches.count){
+                [TGAlertSheet showMessage:@"No country answers to that."
+                                      title:@"Country" inView:me.view];
+                return;
+            }
+            NSMutableArray *rows = [NSMutableArray array];
+            for (NSDictionary *country in matches)
+                [rows addObject:[NSString stringWithFormat:@"%@  %@  %@",
+                        country[@"flag"] ?: @"", country[@"name"],
+                        country[@"prefix"] ?: @""]];
+            [TGAlertSheet showChoices:rows
+                                title:@"Country"
+                     destructiveIndex:-1
+                               inView:me.view
+                             onChoice:^(NSInteger index){
+                NSDictionary *country = matches[(NSUInteger)index];
+                me.phonePrefixField.text = country[@"prefix"];
+                me.prefixEdited = YES;
+                [me.inputField becomeFirstResponder];
+            }];
+        }];
+    }];
+}
 
 - (void)inputFieldChanged:(UITextField *)sender {
     if (self.currentStep != TGLoginStepPhone) return;
@@ -12,6 +73,7 @@
 
 - (void)prefixFieldChanged:(UITextField *)sender {
     if (self.currentStep != TGLoginStepPhone) return;
+    self.prefixEdited = YES;
     NSString *text = sender.text;
     if (![text hasPrefix:@"+"]) {
         text = [@"+" stringByAppendingString:[text stringByReplacingOccurrencesOfString:@"+" withString:@""]];
@@ -125,6 +187,7 @@
     }
 
     self.phonePrefixField.text = [NSString stringWithFormat:@"+%@", prefix];
+    self.prefixEdited = YES;
     self.inputField.text = rest;
     [self.inputField becomeFirstResponder];
 }

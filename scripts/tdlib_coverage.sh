@@ -10,10 +10,18 @@
 #   sh scripts/tdlib_coverage.sh --used     every function called
 #   sh scripts/tdlib_coverage.sh --relevant what is missing and worth having
 #   sh scripts/tdlib_coverage.sh --skipped   what is missing and deliberately so
+#   sh scripts/tdlib_coverage.sh --wired    called names a screen can reach
+#   sh scripts/tdlib_coverage.sh --bare     called names with no caller
 #   sh scripts/tdlib_coverage.sh --updates  every update the receive loop drops
+#   sh scripts/tdlib_coverage.sh --ignored  updates let through but not acted on
 #
 # The count reads literal @"@type" : @"name" pairs, so a request whose type is
 # assembled from a string at runtime is missed. Treat it as a floor.
+#
+# A named name is not yet a feature: it can sit inside a method no screen
+# calls. --wired/--bare split that gap. scripts/tdlib_wired.py walks the
+# method bodies and asks whether src calls the method; tests do not count,
+# because a test driving a dead method is false confidence.
 set -u
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -43,6 +51,17 @@ awk '/^---functions---/{exit} /^update[a-zA-Z0-9_]* /{print $1}' "$TL" \
     | grep -v '^updates$' | sort -u > "$TMP/upd_all"
 grep -oE '"update[a-zA-Z0-9]+"' "$ROOT/src/Core/TGUpdateType.h" \
     | tr -d '"' | sort -u > "$TMP/upd_used"
+# TG_IGNORED_UPDATES names the rows the dispatch lets through but does not
+# act on: markers for screens that do not exist yet. They are on the record
+# so filter and dispatch agree, but counting them as handled overstates the
+# number, so they are subtracted and reported on their own.
+awk '
+    /^#define TG_IGNORED_UPDATES\(X\)/ { on = 1 }
+    on { print }
+    on && $0 !~ /\\$/ { exit }
+' "$ROOT/src/Core/TGUpdateType.h" \
+    | grep -oE '"update[a-zA-Z0-9]+"' | tr -d '"' | sort -u > "$TMP/upd_ignored"
+comm -23 "$TMP/upd_used" "$TMP/upd_ignored" > "$TMP/upd_read"
 comm -23 "$TMP/upd_all" "$TMP/upd_used" > "$TMP/upd_gap"
 
 # updatePoll and updatePollAnswer are in here for the same reason as the
@@ -68,20 +87,39 @@ comm -23 "$TMP/upd_all" "$TMP/upd_used" > "$TMP/upd_gap"
 # helpers need a document picker this OS barely has, and
 # setChatDirectMessagesGroup pairs with directMessagesChatTopic, already
 # skipped as the channel dialog it belongs to.
-SKIP='[Tt]on[CW]|TonConnect|updateActiveEmojiReactions|updateFileGeneration|updateMessageSendAcknowledged|updatePendingMessage|editInlineMessage[A-Z]|editMessageReplyMarkup|getCallbackQueryMessage|getPreparedInlineMessage|savePreparedInlineMessage|sendTextMessageDraft|stopPendingMessage|getMessageFileType|getMessageImportConfirmationText|^importMessages|setChatDirectMessagesGroup|TonCenter|TonTransaction|tonWallet|[Ww]allet|[Ss]tory|[Ss]tories|[Bb]usiness|[Bb]ot|WebApp|[Ww]ebApp|webBrowser|BrowserSettings|[Pp]assport|[Pp]remium|[Bb]oost|[Gg]iveaway|[Aa]ffiliate|[Ss]tar[A-Z]|[Ss]tars|[Pp]aidMedia|[Pp]aidMessage|[Gg]ift|[Cc]hecklist|[Cc]ommunity|[Cc]ommunities|[Gg]roupCall|[Vv]ideoChat|[Ll]iveStory|LiveStream|[Ss]creenSharing|Rtmp|[Aa]i$|WithAi|[Oo]nRamp|[Pp]ayment|[Ii]nvoice|[Gg]ame[A-Z]|[Gg]ameHigh|InlineGame|[Ss]ponsored|[Aa]dvertisement|[Aa]dAccount|[Ll]og[A-Z]|[Jj]son|[Dd]ice|[Aa]larm|[Cc]ollectible|[Ee]phemeral|[Pp]asskey|[Oo]auth|[Ss]uggestedAction|[Ff]actCheck|[Aa]ntiSpam|[Ss]upportInfo|[Ss]upportName|[Tt]imeZone|[Cc]urrentWeather|CurrencyExchange|[Nn]ft|^test[A-Z]|^testNetwork|answerCallbackQuery|answerInlineQuery|answerPreCheckoutQuery|answerShippingQuery|answerCustomQuery|answerGuestQuery|[Rr]evenue|[Ww]ithdrawal|[Gg]ram[A-Z]|[Ss]uggestedPost|[Ss]ummarize|[Rr]ichMessage|[Ss]peech|listenToAudio|[Pp]rofileAudio|[Ee]mojiStatus|[Tt]extCompositionStyle|[Qq]uickReply|[Dd]irectMessagesChatTopic|[Ww]ebProxyCarrier|StoreTransaction|PurchaseFromStore|[Mm]enuButton|[Cc]ommands$|^deleteCommands|^setCommands|^getCommands|^updateNew(Callback|Chosen|Custom|Guest|Inline|PreCheckout|Shipping)|[Pp]aidReaction|^updatePoll$|^updatePollAnswer$'
+#
+# The three History-by-topic calls are the older spellings of getChatHistory
+# with a message_thread_id or saved-messages topic id, which is what
+# historyForChat:thread: already sends; getPersonalChatHistory is for bots
+# only. They are named here rather than left to the Story pattern, which
+# used to swallow every name containing "History" by accident.
+#
+# Updates whose screen is still missing are not out of scope: they stay in
+# TG_HANDLED_UPDATES and are listed in TG_IGNORED_UPDATES, which is what
+# --ignored reads and what keeps the number honest. Only an update whose
+# feature this client will not draw belongs in the skip pattern.
+SKIP='[Tt]on[CW]|TonConnect|updateActiveEmojiReactions|updateFileGeneration|updateMessageSendAcknowledged|updatePendingMessage|editInlineMessage[A-Z]|editMessageReplyMarkup|getCallbackQueryMessage|getPreparedInlineMessage|savePreparedInlineMessage|sendTextMessageDraft|stopPendingMessage|getSavedMessagesTopicHistory|getForumTopicHistory|deleteSavedMessagesTopicHistory|getPersonalChatHistory|getMessageFileType|getMessageImportConfirmationText|^importMessages|setChatDirectMessagesGroup|TonCenter|TonTransaction|tonWallet|[Ww]allet|Stor(y|ies)|[Bb]usiness|[Bb]ot|WebApp|[Ww]ebApp|webBrowser|BrowserSettings|[Pp]assport|[Pp]remium|[Bb]oost|[Gg]iveaway|[Aa]ffiliate|[Ss]tar[A-Z]|[Ss]tars|[Pp]aidMedia|[Pp]aidMessage|[Gg]ift|[Cc]hecklist|[Cc]ommunity|[Cc]ommunities|[Gg]roupCall|[Vv]ideoChat|[Ll]iveStory|LiveStream|[Ss]creenSharing|Rtmp|[Aa]i$|WithAi|[Oo]nRamp|[Pp]ayment|[Ii]nvoice|[Gg]ame[A-Z]|[Gg]ameHigh|InlineGame|[Ss]ponsored|[Aa]dvertisement|[Aa]dAccount|[Ll]og[A-Z]|[Jj]son|[Dd]ice|[Aa]larm|[Cc]ollectible|[Ee]phemeral|[Pp]asskey|[Oo]auth|[Ss]uggestedAction|[Ff]actCheck|[Aa]ntiSpam|[Ss]upportInfo|[Ss]upportName|[Tt]imeZone|[Cc]urrentWeather|CurrencyExchange|[Nn]ft|^test[A-Z]|^testNetwork|answerCallbackQuery|answerInlineQuery|answerPreCheckoutQuery|answerShippingQuery|answerCustomQuery|answerGuestQuery|[Rr]evenue|[Ww]ithdrawal|[Gg]ram[A-Z]|[Ss]uggestedPost|[Ss]ummarize|[Rr]ichMessage|[Ss]peech|listenToAudio|[Pp]rofileAudio|[Ee]mojiStatus|[Tt]extCompositionStyle|[Qq]uickReply|[Dd]irectMessagesChatTopic|[Ww]ebProxyCarrier|StoreTransaction|PurchaseFromStore|[Mm]enuButton|[Cc]ommands$|^deleteCommands|^setCommands|^getCommands|^updateNew(Callback|Chosen|Custom|Guest|Inline|PreCheckout|Shipping)|[Pp]aidReaction|^updatePoll$|^updatePollAnswer$'
 
 case "${1:-}" in
     --list)     cat "$TMP/gap"; exit 0 ;;
     --used)     cat "$TMP/used"; exit 0 ;;
     --relevant) grep -vE "$SKIP" "$TMP/gap"; exit 0 ;;
     --skipped)  grep -E  "$SKIP" "$TMP/gap"; exit 0 ;;
+    --wired)    python3 "$ROOT/scripts/tdlib_wired.py" --wired; exit 0 ;;
+    --bare)     python3 "$ROOT/scripts/tdlib_wired.py" --bare; exit 0 ;;
     --updates)  grep -vE "$SKIP" "$TMP/upd_gap"; exit 0 ;;
+    --ignored)  cat "$TMP/upd_ignored"; exit 0 ;;
 esac
 
 total=$(wc -l < "$TMP/all"  | tr -d ' ')
 used=$(wc -l < "$TMP/used" | tr -d ' ')
+wired_bare=$(python3 "$ROOT/scripts/tdlib_wired.py" --counts)
+wired=${wired_bare% *}
+bare=${wired_bare#* }
 printf 'td_api functions:  %s\n' "$total"
 printf 'called by the app: %s (%s%%)\n' "$used" "$((used * 100 / total))"
+printf '  reachable:       %s   (a screen calls the method)\n' "$wired"
+printf '  bare:            %s   (name added, nothing calls it)\n' "$bare"
 printf 'never called:      %s\n' "$((total - used))"
 relevant=$(grep -vcE "$SKIP" "$TMP/gap")
 printf '  of which wanted: %s   (see docs/feature_backlog.md)\n' "$relevant"
@@ -89,9 +127,13 @@ printf '  out of scope:    %s\n\n' "$((total - used - relevant))"
 
 upd_total=$(wc -l < "$TMP/upd_all" | tr -d ' ')
 upd_used=$(wc -l < "$TMP/upd_used" | tr -d ' ')
+upd_read=$(wc -l < "$TMP/upd_read" | tr -d ' ')
+upd_ignored=$(wc -l < "$TMP/upd_ignored" | tr -d ' ')
 upd_rel=$(grep -vcE "$SKIP" "$TMP/upd_gap")
 printf 'td_api updates:    %s\n' "$upd_total"
-printf 'handled:           %s (%s%%)\n' "$upd_used" "$((upd_used * 100 / upd_total))"
+printf 'let through:       %s (%s%%)\n' "$upd_used" "$((upd_used * 100 / upd_total))"
+printf '  acted on:        %s   (a branch changes state or tells a screen)\n' "$upd_read"
+printf '  ignored markers: %s   (let through, no screen yet - see --ignored)\n' "$upd_ignored"
 printf 'dropped:           %s\n' "$((upd_total - upd_used))"
 printf '  of which wanted: %s\n' "$upd_rel"
 printf '  out of scope:    %s\n\n' "$((upd_total - upd_used - upd_rel))"

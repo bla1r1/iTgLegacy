@@ -7,6 +7,7 @@
 #import <QuartzCore/QuartzCore.h>
 #import <CommonCrypto/CommonDigest.h>
 #import "TGStyle.h"
+#import "TGAlertSheet.h"
 
 @interface TGCallViewController ()
 @property (nonatomic, assign) int64_t userId;
@@ -39,6 +40,10 @@
 @property (nonatomic, assign) BOOL callRowActive;
 
 @property (nonatomic, strong) NSTimer *ticker;
+/// When the call was answered, for the rating prompt after it; TGCall's own
+/// duration is gone by then, teardown having cleared its start time.
+@property (nonatomic, strong) NSDate *connectedAt;
+@property (nonatomic, assign) BOOL ratedCall;
 @end
 
 // A gradient layer wants CGColorRefs; the palette hands out UIColors.
@@ -383,6 +388,8 @@ static NSArray *TGCallGradient(NSArray *colours) {
             break;
         case TGCallStateEstablished:
             [self setStatusPulsing:NO];
+            if (!self.connectedAt)
+                self.connectedAt = [NSDate date];
             self.bgLayer.colors = TGCallGradient([[TGTheme shared] callGradientColoursConnected]);
             [self setupEmojis];
             break;
@@ -594,7 +601,56 @@ static NSArray *TGCallGradient(NSArray *colours) {
 
 - (void)dismissNow {
     [TGCall shared].onStateChanged = nil;
-    [self dismissViewControllerAnimated:YES completion:nil];
+    // A call that lasted a moment is not worth asking about, and asking
+    // about a call nobody answered is worse than not asking. The controller
+    // is kept alive by this block only until the prompt is on screen.
+    NSTimeInterval talked = self.connectedAt ? -[self.connectedAt timeIntervalSinceNow] : 0;
+    TGCallViewController *me = self;
+    [self dismissViewControllerAnimated:YES completion:^{
+        if (talked >= 10)
+            [me askForCallRatingAfter:talked];
+    }];
+}
+
+/// Telegram asks five stars and, for a poor score, what went wrong; that is
+/// the whole shape of sendCallRating. The sheet belongs to the window, since
+/// this screen is already gone when it appears.
+- (void)askForCallRatingAfter:(NSTimeInterval)seconds {
+    if (self.ratedCall || ![TGCall shared].lastCallId)
+        return;
+    UIWindow *window = [UIApplication sharedApplication].keyWindow;
+    if (!window)
+        return;
+    NSArray *stars = @[@"★★★★★", @"★★★★", @"★★★", @"★★", @"★"];
+    NSString *name = self.peerName.length ? self.peerName : @"this call";
+    __weak typeof(self) weakSelf = self;
+    [TGAlertSheet showChoices:stars
+                        title:@"Rate the call"
+                      message:[NSString stringWithFormat:
+                              @"How did %@ go? Your score goes to Telegram, not "
+                              @"to the other side.", name]
+             destructiveIndex:-1
+                       inView:window
+                     onChoice:^(NSInteger index){
+        TGCallViewController *me = weakSelf;
+        if (!me)
+            return;
+        int rating = (int)(5 - index);
+        me.ratedCall = YES;
+        if (rating <= 3){
+            [TGAlertSheet showInput:@"What went wrong?"
+                            message:@"Optional - it is read by Telegram."
+                        placeholder:@"Sound, connection, ..."
+                               text:nil
+                             action:@"Send"
+                             inView:window
+                         onSubmit:^(NSString *comment){
+                [[TGCall shared] sendRating:rating comment:comment problems:@[]];
+            }];
+            return;
+        }
+        [[TGCall shared] sendRating:rating comment:@"" problems:@[]];
+    }];
 }
 
 @end

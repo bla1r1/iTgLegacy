@@ -85,6 +85,11 @@
 		 usingBlock:^(NSNotification *note){
 		[weakSelf repaint];
 	}];
+	[[NSNotificationCenter defaultCenter] addObserverForName:TGPrivacyRulesChangedNotification
+			object:nil queue:[NSOperationQueue mainQueue]
+		 usingBlock:^(NSNotification *note){
+		[weakSelf privacyRulesChanged];
+	}];
 }
 
 - (void)dealloc {
@@ -224,6 +229,16 @@
 /// Three scopes arrive as three updates when they are reset at once.
 - (void)notificationSettingsChanged {
 	if (self.page != TGSettingsPageNotifications)
+		return;
+	[NSObject cancelPreviousPerformRequestsWithTarget:self
+			selector:@selector(loadForPage) object:nil];
+	[self performSelector:@selector(loadForPage) withObject:nil afterDelay:0.3];
+}
+
+/// A privacy rule flipped here or on another client; a reset moves several
+/// at once, so the re-read waits out the burst like the one above.
+- (void)privacyRulesChanged {
+	if (self.page != TGSettingsPagePrivacy)
 		return;
 	[NSObject cancelPreviousPerformRequestsWithTarget:self
 			selector:@selector(loadForPage) object:nil];

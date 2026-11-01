@@ -563,6 +563,7 @@ static void answerTyped(TGClient *c, NSString *type, NSDictionary *answer) {
 	[c registerPushToken:@"deadbeef" sandbox:NO completion:^(BOOL good){ ok = good; }];
 	answerTyped(c, @"registerDevice", @{@"@type" : @"pushReceiverId", @"id" : @"7"});
 	XCTAssertTrue(ok);
+	XCTAssertEqual(c.pushReceiverId, (int64_t)7);
 
 	[c registerPushToken:@"deadbeef" sandbox:NO completion:^(BOOL good){ ok = good; }];
 	answerTyped(c, @"registerDevice",

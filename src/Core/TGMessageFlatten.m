@@ -161,8 +161,10 @@ NSDictionary *TGFlattenMessage(NSDictionary *m) {
 
 	NSNumber *bigPhotoFileId = nil;
 	int mediaWidth = 0, mediaHeight = 0;
+	BOOL hasStickers = NO;   // media other stickers were attached to
 
 	if ([ctype isEqualToString:@"messagePhoto"]){
+		hasStickers = [content[@"photo"][@"has_stickers"] boolValue];
 		NSArray *sizes = content[@"photo"][@"sizes"];
 		if (sizes.count){
 			bigPhotoFileId = [sizes lastObject][@"photo"][@"id"];
@@ -188,6 +190,7 @@ NSDictionary *TGFlattenMessage(NSDictionary *m) {
 		}
 
 	} else if ([ctype isEqualToString:@"messageVideo"]){
+		hasStickers = [content[@"video"][@"has_stickers"] boolValue];
 		photoFileId = content[@"video"][@"thumbnail"][@"file"][@"id"];
 		docFileId   = content[@"video"][@"video"][@"id"];
 		docName     = content[@"video"][@"file_name"];
@@ -204,6 +207,7 @@ NSDictionary *TGFlattenMessage(NSDictionary *m) {
 		if (!duration) duration = content[@"video_note"][@"duration"];
 
 	} else if ([ctype isEqualToString:@"messageAnimation"]){
+		hasStickers = [content[@"animation"][@"has_stickers"] boolValue];
 		// Telegram GIFs are MP4, so they play like any video.
 		photoFileId = content[@"animation"][@"thumbnail"][@"file"][@"id"];
 		docFileId   = content[@"animation"][@"animation"][@"id"];
@@ -554,6 +558,7 @@ NSDictionary *TGFlattenMessage(NSDictionary *m) {
 		@"outgoing"  : m[@"is_outgoing"] ?: @NO,
 		@"photoId"   : photoFileId ?: [NSNull null],
 		@"bigPhotoId": bigPhotoFileId ?: (photoFileId ?: [NSNull null]),
+		@"hasStickers" : @(hasStickers),
 		@"mediaWidth": @(mediaWidth),
 		@"mediaHeight": @(mediaHeight),
 		@"docId"     : docFileId   ?: [NSNull null],

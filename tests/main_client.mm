@@ -20,6 +20,7 @@
 #import "TGMessageParserTests.m"
 #import "TGClientAccountTests.m"
 #import "TGClientComposeTests.m"
+#import "TGClientBareTests.m"
 #import "TGClientThreadsTests.m"
 #import "TGMessageStreamStoreTests.m"
 #import "TGThemeFileTests.m"

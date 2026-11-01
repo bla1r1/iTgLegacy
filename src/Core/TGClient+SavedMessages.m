@@ -188,8 +188,12 @@
 - (void)labelSavedTag:(NSDictionary *)tag label:(NSString *)label {
 	if (!tag)
 		return;
+	// The row from getSavedMessagesTags wraps the ReactionType under "tag";
+	// a bare type is taken as-is so both shapes label the same tag.
+	NSDictionary *type = [tag[@"tag"] isKindOfClass:NSDictionary.class]
+			? tag[@"tag"] : tag;
 	[self request:@{@"@type" : @"setSavedMessagesTagLabel",
-					@"tag"   : tag,
+					@"tag"   : type,
 					@"label" : label ?: @""}
 		 completion:nil];
 }

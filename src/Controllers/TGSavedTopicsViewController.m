@@ -103,43 +103,156 @@
 		return;
 
 	BOOL pinned = [t[@"pinned"] boolValue];
-	NSMutableArray *items = [@[pinned ? @"Unpin" : @"Pin"] mutableCopy];
+	NSMutableArray *items = [@[pinned ? @"Unpin" : @"Pin", @"Jump to Date",
+							   @"Tags...", @"Unpin All"] mutableCopy];
 	[items addObjectsFromArray:@[@"Clear Before Today", @"Clear Before Week",
 								 @"Clear Before Month"]];
 
 	__weak typeof(self) weakSelf = self;
 	[TGAlertSheet showChoices:items
 						title:name
-			 destructiveIndex:(pinned ? -1 : (NSInteger)items.count - 1)
+			 destructiveIndex:(NSInteger)[items indexOfObject:@"Clear Before Month"]
 					   inView:self.view
 					 onChoice:^(NSInteger index){
-		if (index == 0){
+		NSString *what = items[(NSUInteger)index];
+		if ([what isEqualToString:@"Pin"] || [what isEqualToString:@"Unpin"]){
 			[[TGClient shared] toggleSavedTopicPinned:topicId pinned:!pinned];
 			[weakSelf reloadRows];
 			return;
 		}
+		if ([what isEqualToString:@"Jump to Date"]){
+			[weakSelf jumpToDateInTopic:topicId named:name];
+			return;
+		}
+		if ([what isEqualToString:@"Tags..."]){
+			[weakSelf showTagsOfTopic:topicId named:name];
+			return;
+		}
+		if ([what isEqualToString:@"Unpin All"]){
+			// One request takes the whole list down at once; toggling each
+			// row would leave a half-pinned list if the screen closed.
+			[TGAlertSheet showConfirm:@"Every topic leaves the top of the list."
+								title:@"Unpin All"
+							   action:@"Unpin"
+						  destructive:NO
+							   inView:weakSelf.view
+							onConfirm:^{
+				[[TGClient shared] setPinnedSavedTopics:@[]];
+				[weakSelf reloadRows];
+			}];
+			return;
+		}
 		// Clearing "before when" is a whole date range - days ago - and
 		// every deletion keeps what came after it.
-		NSString *which = items[index];
 		NSString *say = [NSString stringWithFormat:
 				@"Everything in %@ before that is deleted, on every device.",
 				(name.length ? name : @"this topic")];
 		[TGAlertSheet showConfirm:say
 							title:@"Clear Saved Messages"
-						   action:which
+						   action:what
 					  destructive:YES
 						   inView:weakSelf.view
 						onConfirm:^{
 			NSTimeInterval now = [[NSDate date] timeIntervalSince1970];
 			// From the start of the boundary day: "before today" keeps today.
-			NSInteger days = index == 1 ? 1 : (index == 2 ? 7 : 30);
-			NSString *which = items[index];
+			NSInteger days = [what isEqualToString:@"Clear Before Today"] ? 1
+					: ([what isEqualToString:@"Clear Before Week"] ? 7 : 30);
 			[[TGClient shared] clearSavedTopicMessagesBefore:topicId
 													minDate:(NSInteger)(now - days * 86400)
 													maxDate:(NSInteger)now];
 			[weakSelf reloadRows];
 		}];
 	}];
+}
+
+/// The topic's own jump: getSavedMessagesTopicMessageByDate answers the last
+/// message on or before a day, which is what the chat's date picker looks up
+/// for an ordinary chat.
+- (void)jumpToDateInTopic:(int64_t)topicId named:(NSString *)name {
+	NSArray *days = @[@"Today", @"A Week Ago", @"A Month Ago", @"A Year Ago"];
+	__weak typeof(self) weakSelf = self;
+	[TGAlertSheet showChoices:days
+						title:(name.length ? name : @"Topic")
+					  message:@"The last message saved on or before that day."
+			 destructiveIndex:-1
+					   inView:self.view
+					 onChoice:^(NSInteger index){
+		NSInteger ago = index == 0 ? 0 : (index == 1 ? 7 : (index == 2 ? 30 : 365));
+		NSInteger when = (NSInteger)[[NSDate date] timeIntervalSince1970]
+				- ago * 86400;
+		[[TGClient shared] savedTopicMessageAtDate:topicId
+											 date:when
+									   completion:^(NSDictionary *message){
+			TGSavedTopicsViewController *me = weakSelf;
+			if (!me)
+				return;
+			int64_t messageId = [message[@"id"] longLongValue];
+			if (!messageId){
+				[TGAlertSheet showMessage:@"Nothing was saved on or before "
+										  @"that day."
+									  title:(name.length ? name : @"Topic")
+									 inView:me.view];
+				return;
+			}
+			TGChatViewController *vc = [[TGChatViewController alloc] init];
+			vc.chatId = [TGClient shared].savedMessagesChatId;
+			vc.threadId = topicId;
+			vc.chatTitle = name.length ? name : @"Saved";
+			vc.isGroup = NO;
+			vc.initialMessageId = messageId;
+			[me.navigationController pushViewController:vc animated:YES];
+		}];
+	}];
+}
+
+/// A topic's tags: the emoji is the tag and the label is what this account
+/// wrote over it. setSavedMessagesTagLabel is how a label is changed, and it
+/// is the only writable half.
+- (void)showTagsOfTopic:(int64_t)topicId named:(NSString *)name {
+	__weak typeof(self) weakSelf = self;
+	[[TGClient shared] savedTopicsTags:topicId completion:^(NSArray *tags){
+		TGSavedTopicsViewController *me = weakSelf;
+		if (!me)
+			return;
+		NSArray *list = [tags isKindOfClass:NSArray.class] ? tags : @[];
+		if (!list.count){
+			[TGAlertSheet showMessage:@"Nothing in here is tagged yet."
+								  title:(name.length ? name : @"Topic")
+								 inView:me.view];
+			return;
+		}
+		NSMutableArray *rows = [NSMutableArray array];
+		for (NSDictionary *tag in list){
+			NSString *label = [me labelForSavedTag:tag];
+			[rows addObject:[NSString stringWithFormat:@"%@  ×%@", label,
+							 tag[@"count"] ?: @(0)]];
+		}
+		[TGAlertSheet showChoices:rows
+							title:(name.length ? name : @"Topic")
+						  message:@"Pick a tag to give it a label of its own."
+				   destructiveIndex:-1
+						   inView:me.view
+						 onChoice:^(NSInteger index){
+			NSDictionary *tag = list[(NSUInteger)index];
+			[TGAlertSheet showInput:@"Tag Label"
+							message:nil
+						placeholder:[me labelForSavedTag:tag]
+							   text:tag[@"label"]
+							 action:@"Save"
+							 inView:me.view
+						 onSubmit:^(NSString *typed){
+				[[TGClient shared] labelSavedTag:tag label:typed];
+			}];
+		}];
+	}];
+}
+
+- (NSString *)labelForSavedTag:(NSDictionary *)tag {
+	NSString *label = tag[@"label"];
+	if (label.length)
+		return label;
+	NSString *emoji = tag[@"tag"][@"emoji"];
+	return emoji.length ? emoji : @"Tag";
 }
 
 #pragma mark - the table

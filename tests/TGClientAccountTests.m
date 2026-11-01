@@ -528,30 +528,28 @@ static void answerA(TGClient *c, NSDictionary *answer) {
 	XCTAssertEqualObjects(chats[0][@"title"], @"Pat");
 }
 
-- (void)testPushReceiver_TheBlobNamesItsChatAndMessage {
+- (void)testPushReceiver_TheBlobNamesItsAccount {
 	TGClient *c = A();
 	c.td_exec = NULL;
 	__block BOOL ok = NO;
-	__block int64_t chatId = 0, messageId = 0;
+	__block int64_t receiverId = 0;
 	[c pushReceiverOfPayload:@{@"p" : @"AoP1c2k1"}
-				  completion:^(BOOL o, int64_t chat, int64_t msg){
-		ok = o; chatId = chat; messageId = msg;
+				  completion:^(BOOL o, int64_t receiver){
+		ok = o; receiverId = receiver;
 	}];
 	NSDictionary *sent = lastA(c, @"getPushReceiverId");
 	XCTAssertEqualObjects(sent[@"payload"], @"AoP1c2k1");
 	answerA(c, @{@"@type" : @"pushReceiverId",
-				 @"chat_id" : @(9009),
-				 @"message_id" : @(17)});
+				 @"id" : @(9009)});
 	XCTAssertTrue(ok);
-	XCTAssertEqual(chatId, (int64_t)9009);
-	XCTAssertEqual(messageId, (int64_t)17);
+	XCTAssertEqual(receiverId, (int64_t)9009);
 }
 
 - (void)testPushReceiver_NoBlobIsNoAnswerAtAll {
 	TGClient *c = A();
 	__block BOOL asked = NO;
 	[c pushReceiverOfPayload:@{@"aps" : @{@"alert" : @"x"}}
-				  completion:^(BOOL ok, int64_t chatId, int64_t messageId){
+				  completion:^(BOOL ok, int64_t receiverId){
 		asked = YES;
 	}];
 	XCTAssertTrue(asked);
@@ -675,6 +673,46 @@ static void answerA(TGClient *c, NSDictionary *answer) {
 	[c pauseForBackground:^{ done = YES; }];
 	XCTAssertTrue(done);
 	XCTAssertEqual(countA(c, @"close"), (NSUInteger)0);
+}
+
+// ─── terms and sessions ──────────────────────────────────────────────────────
+
+- (void)testAcceptTerms_SendsTheIdTelegramNamed {
+	TGClient *c = A();
+	__block BOOL ok = NO;
+	[c acceptTermsOfService:@"tos-7" completion:^(BOOL done){ ok = done; }];
+	NSDictionary *r = lastA(c, @"acceptTermsOfService");
+	XCTAssertEqualObjects(r[@"terms_of_service_id"], @"tos-7");
+	answerA(c, @{@"@type" : @"ok"});
+	XCTAssertTrue(ok);
+}
+
+- (void)testAcceptTerms_AnEmptyIdIsNoRequest {
+	TGClient *c = A();
+	__block BOOL ok = YES;
+	[c acceptTermsOfService:@"" completion:^(BOOL done){ ok = done; }];
+	XCTAssertEqual(countA(c, @"acceptTermsOfService"), (NSUInteger)0);
+	XCTAssertFalse(ok);
+}
+
+- (void)testSessions_UnconfirmedIsReadFromTheRecord {
+	TGClient *c = A();
+	__block NSArray *got = nil;
+	[c sessionsWithCompletion:^(NSArray *sessions){ got = sessions; }];
+	answerA(c, @{@"@type" : @"sessions", @"sessions" : @[
+			@{@"@type" : @"session", @"id" : @"5", @"application_name" : @"Phone",
+			  @"platform" : @"iOS", @"system_version" : @"9.3",
+			  @"ip_address" : @"1.2.3.4", @"is_current" : @NO,
+			  @"is_unconfirmed" : @YES}]});
+	XCTAssertEqual(got.count, (NSUInteger)1);
+	XCTAssertTrue([got[0][@"isUnconfirmed"] boolValue]);
+}
+
+- (void)testConfirmSession_NamesTheSession {
+	TGClient *c = A();
+	[c confirmSession:5];
+	NSDictionary *r = lastA(c, @"confirmSession");
+	XCTAssertEqualObjects(r[@"session_id"], @(5));
 }
 
 @end

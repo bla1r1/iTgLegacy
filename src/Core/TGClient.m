@@ -38,11 +38,31 @@ NSString *const TGNotificationSettingsChangedNotification = @"TGNotificationSett
 NSString *const TGForumTopicsChangedNotification = @"TGForumTopicsChangedNotification";
 NSString *const TGChatActionBarChangedNotification = @"TGChatActionBarChangedNotification";
 NSString *const TGSavedTopicsChangedNotification = @"TGSavedTopicsChangedNotification";
+NSString *const TGServiceNotificationReceivedNotification = @"TGServiceNotificationReceivedNotification";
+NSString *const TGTermsOfServiceReceivedNotification = @"TGTermsOfServiceReceivedNotification";
+NSString *const TGPrivacyRulesChangedNotification = @"TGPrivacyRulesChangedNotification";
+NSString *const TGSessionsChangedNotification = @"TGSessionsChangedNotification";
 
 @implementation TGClient
 
 - (NSUInteger)chatsCached {
 	return self.chatsById.count;
+}
+
+/// The update's emoji, or nil while it has not arrived; the picker keeps its
+/// own order then.
+- (NSString *)defaultReactionEmoji {
+	return self.reactionDefaultEmoji;
+}
+
+/// "gif" is the provider every client ships with, and the one the update
+/// starts from until Telegram names another.
+- (NSString *)animationSearchProvider {
+	return self.gifSearchProvider ?: @"gif";
+}
+
+- (NSArray *)animationSearchEmojis {
+	return self.gifSearchEmojis ?: @[];
 }
 
 // The Saved Messages topics, array-shaped the way the screen reads them:
@@ -627,35 +647,107 @@ NSDictionary *TGFormattedText(NSString *text) {
 				postNotificationName:TGSavedTopicsChangedNotification object:self];
 		return;
 	}
-	// Arriving read by nobody: each one is a marker for a screen the app
-	// does not draw yet, kept on the record rather than dropped so the
-	// dispatch and the filter agree. Letting them through costs one parse;
-	// every one here is rare. docs/feature_backlog.md says what each waits for.
+	// Three that used to sit in the marker block and now have somewhere to go.
+	case TGUpdateDefaultReactionType: {
+		// The reaction their bar leads with. Kept here so the picker can put
+		// it first without asking the server again.
+		NSString *emoji = obj[@"reaction_type"][@"emoji"];
+		if ([emoji isKindOfClass:NSString.class] && emoji.length)
+			self.reactionDefaultEmoji = emoji;
+		return;
+	}
+	case TGUpdateAnimationSearchParameters: {
+		// Which bot answers GIF search, and the emoji it suggests for it.
+		NSString *provider = obj[@"provider"];
+		if ([provider isKindOfClass:NSString.class] && provider.length)
+			self.gifSearchProvider = provider;
+		NSArray *emojis = obj[@"emojis"];
+		if ([emojis isKindOfClass:NSArray.class])
+			self.gifSearchEmojis = emojis;
+		return;
+	}
+	case TGUpdateServiceNotification: {
+		// The protocol says to show these as a popup: there is no chat they
+		// belong to, so the window is the only place they can land.
+		NSString *text = nil;
+		id content = obj[@"content"];
+		if ([content isKindOfClass:NSDictionary.class]){
+			id body = content[@"text"];
+			if ([body isKindOfClass:NSDictionary.class])
+				text = body[@"text"];
+			else if ([body isKindOfClass:NSString.class])
+				text = body;
+		}
+		if (!text.length)
+			text = obj[@"type"];
+		if ([text isKindOfClass:NSString.class] && text.length)
+			[[NSNotificationCenter defaultCenter]
+					postNotificationName:TGServiceNotificationReceivedNotification
+								object:self userInfo:@{@"text" : text}];
+		return;
+	}
+	case TGUpdateTermsOfService: {
+		// The protocol wants these shown before the account goes on. A
+		// terms object that does not ask for a popup is accepted silently;
+		// the rest go to the window, which is the only surface with no chat
+		// to belong to.
+		NSString *termsId = obj[@"terms_of_service_id"];
+		NSDictionary *terms = [obj[@"terms_of_service"] isKindOfClass:NSDictionary.class]
+				? obj[@"terms_of_service"] : @{};
+		id body = terms[@"text"];
+		NSString *text = [body isKindOfClass:NSDictionary.class] ? body[@"text"] : nil;
+		if (![text isKindOfClass:NSString.class])
+			text = @"";
+		BOOL popup = [terms[@"show_popup"] boolValue];
+		if (![termsId isKindOfClass:NSString.class] || !termsId.length)
+			return;
+		if (popup){
+			[[NSNotificationCenter defaultCenter]
+					postNotificationName:TGTermsOfServiceReceivedNotification
+								object:self
+							userInfo:@{@"id" : termsId, @"text" : text ?: @""}];
+		} else {
+			[self acceptTermsOfService:termsId completion:nil];
+		}
+		return;
+	}
+	case TGUpdateUserPrivacySettingRules: {
+		// A rule flipped here or on another client; the privacy page holds
+		// the copy, so it re-reads rather than guessing which row moved.
+		[[NSNotificationCenter defaultCenter]
+				postNotificationName:TGPrivacyRulesChangedNotification object:self];
+		return;
+	}
+	case TGUpdateUnconfirmedSession: {
+		// A login waiting to be confirmed. The devices list is where it can
+		// be confirmed or signed out, so it re-reads while it is open.
+		[[NSNotificationCenter defaultCenter]
+				postNotificationName:TGSessionsChangedNotification object:self];
+		return;
+	}
+	// The scaffold: let through so the filter and the dispatch agree, marked
+	// here so the update has one named place, and reported by the coverage
+	// tool apart from the ones that act. Each waits for the screen named
+	// beside it; docs/feature_backlog.md says what that screen is.
 	case TGUpdateActiveNotifications:      // local notification drawing is APNs for now
 	case TGUpdateNotification:
 	case TGUpdateNotificationGroup:
 	case TGUpdateHavePendingNotifications:
-	case TGUpdateServiceNotification:      // Telegram's service posts, no sheet to show them in
-	case TGUpdateTermsOfService:           // acceptance through the signup screen, no review sheet
-	case TGUpdateUnconfirmedSession:       // Settings > devices re-reads per open
-	case TGUpdateFreezeState:
-	case TGUpdateUserPrivacySettingRules:  // privacy settings re-read per open
+	case TGUpdateFreezeState:              // no freeze banner
 	case TGUpdateAgeVerificationParameters:
 	case TGUpdateApplicationVerificationRequired:
-	case TGUpdateApplicationRecaptchaVerificationRequired:
-	case TGUpdateUserSubscription:
-	case TGUpdateAutosaveSettings:         // no auto-delete presets screen
+	case TGUpdateApplicationRecaptchaVerificationRequired:  // no verification screen
+	case TGUpdateUserSubscription:         // no Premium surface
+	case TGUpdateAutosaveSettings:         // no gallery autosave
 	case TGUpdateLanguagePackStrings:      // one language ships so far
-	case TGUpdateAccentColors:             // accent colours have no UI
+	case TGUpdateAccentColors:             // the app's theme is its own
 	case TGUpdateProfileAccentColors:
 	case TGUpdateDefaultBackground:        // chat backgrounds are not drawn
-	case TGUpdateDefaultReactionType:
 	case TGUpdateEmojiChatThemes:
-	case TGUpdateAnimationSearchParameters:
 	case TGUpdateAvailableMessageEffects:  // message effects are not rendered
 	case TGUpdateContactCloseBirthdays:    // no birthday strip to land them on
-	case TGUpdateStopMessageDraft:         // where the draft was stopped, nothing was drawn
-	case TGUpdateVideoPublished:
+	case TGUpdateStopMessageDraft:         // no bot draft streaming to draw
+	case TGUpdateVideoPublished:           // no scheduled video
 		return;
 	case TGUpdateMessageContainsUnreadPollVotes: {
 		// The badge on a poll whose votes you have not looked at. Same storm

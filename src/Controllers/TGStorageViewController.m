@@ -18,6 +18,7 @@ static const CGFloat kRingTotalLine  = TGMetricVoicePillWidth;
 @interface TGStorageViewController ()
 @property (nonatomic, strong) NSArray *categories;   // name / bytes / kinds
 @property (nonatomic, assign) long long total;
+@property (nonatomic, assign) NSInteger fileCount;
 @property (nonatomic, assign) BOOL working;
 @property (nonatomic, assign) BOOL loaded;
 @end
@@ -64,6 +65,15 @@ static const CGFloat kRingTotalLine  = TGMetricVoicePillWidth;
 
 - (void)refresh {
 	__weak typeof(self) weakSelf = self;
+	// The fast count is the one TDLib keeps in memory: it answers at once,
+	// so the ring has a figure in it while the per-type walk - which reads
+	// the database - is still going. On this hardware that walk is seconds.
+	[[TGClient shared] storageStatsWithCompletion:^(long long bytes, NSInteger files){
+		weakSelf.total = bytes;
+		weakSelf.fileCount = files;
+		weakSelf.loaded = YES;
+		[weakSelf.tableView reloadData];
+	}];
 	[[TGClient shared] storageBreakdownWithCompletion:^(NSArray *categories,
 														long long total){
 		weakSelf.categories = categories;
@@ -148,7 +158,10 @@ static UIColor *TGSliceColour(NSUInteger index) {
 			CGRectMake(TGMetricPadMedium, kRingSide + TGMetricPadLarge,
 					width - TGDoubled(TGMetricPadMedium), TGMetricLineRow)];
 	caption.text = self.loaded
-			? @"Telegram's cache on this device."
+			? (self.fileCount
+					? [NSString stringWithFormat:@"%ld files - Telegram's cache on this device.",
+							(long)self.fileCount]
+					: @"Telegram's cache on this device.")
 			: @"Reading the database...";
 	caption.font = TGFontCaption();
 	caption.textAlignment = NSTextAlignmentCenter;

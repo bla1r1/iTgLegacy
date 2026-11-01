@@ -5,6 +5,10 @@
 
 @interface TGClient (MessageMeta)
 
+/// The reaction Telegram names as the default. nil until
+/// updateDefaultReactionType has arrived; the picker keeps its own order then.
+@property (nonatomic, readonly) NSString *defaultReactionEmoji;
+
 /// The chat and the exact message a "message"-kind link resolves to: a
 /// t.me/name/12345 landed on. The chat id is 0 when Telegram refused.
 - (void)messageLinkInfo:(NSString *)link
@@ -40,6 +44,12 @@
 - (void)publicForwardsOfMessage:(int64_t)messageId
 						 inChat:(int64_t)chatId
 					 completion:(void (^)(NSArray *messages))completion;
+
+/// The reactions this message offers, top row first. nil when the message
+/// cannot be reacted to or has no explicit top list.
+- (void)availableReactionsForMessage:(int64_t)messageId
+							  inChat:(int64_t)chatId
+						  completion:(void (^)(NSArray *emojis))completion;
 
 - (void)addedReactionsOfMessage:(int64_t)messageId
 						 inChat:(int64_t)chatId

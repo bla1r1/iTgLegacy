@@ -296,6 +296,7 @@ APP_SRC_M := \
 	src/Controllers/TGDeviceViewController.m \
 	src/Controllers/TGStorageViewController.m \
 	src/Controllers/TGSessionsViewController.m \
+	src/Controllers/TGTermsViewController.m \
 	src/Controllers/TGProfilePhotosViewController.m \
 	src/Controllers/TGSettingsViewController.m \
 	src/Controllers/TGSettingsViewController+Pages.m \

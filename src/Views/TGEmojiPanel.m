@@ -21,6 +21,29 @@ static inline id TGGetButtonItemData(UIButton *button) {
 	return objc_getAssociatedObject(button, &kTGItemDataKey);
 }
 
+/// A set row as the search feed draws it: the tile carries the whole record
+/// so the install sheet has the id and the count, and a cover to show.
+static NSArray *TGPackSearchTiles(NSArray *sets) {
+	NSMutableArray *found = [NSMutableArray array];
+	for (NSDictionary *set in (sets ?: @[])){
+		if (![set isKindOfClass:NSDictionary.class] || !set[@"id"])
+			continue;
+		NSMutableDictionary *tile = [NSMutableDictionary dictionary];
+		tile[@"pack"] = set;
+		NSDictionary *cover = set[@"cover"];
+		NSString *icon = cover[@"emoji"];
+		if ([icon length])
+			tile[@"emoji"] = icon;
+		else if ([set[@"title"] length])
+			tile[@"emoji"] = [set[@"title"] substringToIndex:1];
+		NSNumber *thumbId = cover[@"thumbId"];
+		if ([thumbId isKindOfClass:NSNumber.class])
+			tile[@"thumbId"] = thumbId;
+		[found addObject:tile];
+	}
+	return found;
+}
+
 static const CGFloat kStripHeight = TGMetricEmojiStripHeight;   // categories / sets along the top
 static const CGFloat kTabsHeight  = TGMetricEmojiTabsHeight;   // Emoji | Stickers | GIFs
 static const CGFloat kEmojiCell   = TGMetricEmojiCell;
@@ -582,7 +605,9 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 	__block NSArray *mine = @[];
 	__block NSArray *everywhere = @[];
 	__block NSArray *packs = @[];
-	__block NSUInteger left = 3;
+	__block NSArray *minePacks = @[];
+	__block NSArray *trending = @[];
+	__block NSUInteger left = 5;
 
 	void (^show)(void) = ^{
 		TGEmojiPanel *me = weakSelf;
@@ -593,15 +618,18 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 		NSMutableArray *sections = [NSMutableArray array];
 		// A pack tile carries a pack, not a sticker: it is its own section,
 		// and strip -9 is no strip's slot, so the highlight stays on the pill
-		// already lit.
-		NSArray *parts = @[mine, everywhere, packs];
-		NSArray *titles = @[@"Yours", @"All stickers", @"Packs"];
+		// already lit. A query that finds no pack at all falls back to what
+		// is popular, which is the only way the shelf advertises anything.
+		NSArray *packRows = packs.count ? packs : trending;
+		NSString *packTitle = packs.count ? @"Packs" : @"Trending";
+		NSArray *parts = @[mine, everywhere, minePacks, packRows];
+		NSArray *titles = @[@"Yours", @"All stickers", @"Your packs", packTitle];
 		for (NSUInteger i = 0; i < parts.count; i++){
 			NSArray *part = parts[i];
 			if (!part.count)
 				continue;
 			[sections addObject:[@{@"title"    : titles[i],
-								   @"strip"    : (i == 2 ? @(-9) : @(0)),
+								   @"strip"    : (i >= 2 ? @(-9) : @(0)),
 								   @"location" : @(flat.count),
 								   @"length"   : @(part.count)} mutableCopy]];
 			[flat addObjectsFromArray:part];
@@ -635,24 +663,19 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 	// takes. Each entry carries the whole record the install sheet needs -
 	// id, count, covers, and whether it is already installed.
 	[[TGStickerStore shared] searchStickerSetsNamed:query completion:^(NSArray *sets){
-		NSMutableArray *found = [NSMutableArray array];
-		for (NSDictionary *set in (sets ?: @[])){
-			if (![set isKindOfClass:NSDictionary.class] || !set[@"id"])
-				continue;
-			NSMutableDictionary *tile = [NSMutableDictionary dictionary];
-			tile[@"pack"] = set;
-			NSDictionary *cover = set[@"cover"];
-			NSString *icon = cover[@"emoji"];
-			if ([icon length])
-				tile[@"emoji"] = icon;
-			else if ([set[@"title"] length])
-				tile[@"emoji"] = [set[@"title"] substringToIndex:1];
-			NSNumber *thumbId = cover[@"thumbId"];
-			if ([thumbId isKindOfClass:NSNumber.class])
-				tile[@"thumbId"] = thumbId;
-			[found addObject:tile];
-		}
-		packs = found;
+		packs = TGPackSearchTiles(sets);
+		show();
+	}];
+
+	// The half of the search that answers "I already have this": the same
+	// query over the installed shelf, shown before the public results.
+	[[TGStickerStore shared] installedStickerSetsNamed:query completion:^(NSArray *sets){
+		minePacks = TGPackSearchTiles(sets);
+		show();
+	}];
+
+	[[TGStickerStore shared] trendingStickerSetsWithCompletion:^(NSArray *sets){
+		trending = TGPackSearchTiles(sets);
 		show();
 	}];
 }
@@ -1101,6 +1124,8 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 			[items addObject:@{@"title" : @"Remove Sticker Pack", @"icon" : @"delete",
 							   @"destructive" : @YES}];
 			[actions addObject:@"unset"];
+			[items addObject:@{@"title" : @"Archived Packs...", @"icon" : @"folder"}];
+			[actions addObject:@"archived"];
 		}
 	}
 
@@ -1175,6 +1200,10 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 			[[TGStickerStore shared] removeRecentSticker:fileId];
 		else if ([action isEqualToString:@"unset"])
 			[[TGStickerStore shared] setStickerSet:setId installed:NO archived:NO];
+		else if ([action isEqualToString:@"archived"]){
+			[weakSelf showArchivedPacks];
+			return;
+		}
 		else if ([action isEqualToString:@"savegif"])
 			[[TGStickerStore shared] saveAnimationFileId:fileId saved:YES];
 		else if ([action isEqualToString:@"unsavegif"])
@@ -1215,6 +1244,45 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 				dispatch_get_main_queue(), ^{
 			[weakSelf selectTab:TGEmojiPanelTabStickers];
 		});
+	}];
+}
+
+/// The shelf a removed pack lands on. A pack comes back by installing it
+/// again from here; that is the whole reason the list is kept.
+- (void)showArchivedPacks {
+	__weak typeof(self) weakSelf = self;
+	[[TGStickerStore shared] archivedStickerSetsWithCompletion:^(NSArray *sets){
+		TGEmojiPanel *me = weakSelf;
+		if (!me)
+			return;
+		NSArray *list = [sets isKindOfClass:NSArray.class] ? sets : @[];
+		if (!list.count){
+			[TGAlertSheet showMessage:@"No packs are archived."
+								  title:@"Archived Packs"
+								 inView:(me.window ?: me)];
+			return;
+		}
+		NSMutableArray *rows = [NSMutableArray array];
+		for (NSDictionary *set in list){
+			NSString *title = [set[@"title"] length] ? set[@"title"] : @"Pack";
+			[rows addObject:[NSString stringWithFormat:@"%@  ·  %lu stickers",
+					title, (unsigned long)[set[@"count"] unsignedIntegerValue]]];
+		}
+		UIView *host = me.window ?: me;
+		[TGAlertSheet showChoices:rows
+							title:@"Archived Packs"
+						  message:@"Restoring one puts it back on the shelf."
+				   destructiveIndex:-1
+						   inView:host
+						 onChoice:^(NSInteger index){
+			NSDictionary *set = list[(NSUInteger)index];
+			[[TGStickerStore shared] setStickerSet:set[@"id"] installed:YES archived:NO];
+			dispatch_after(dispatch_time(DISPATCH_TIME_NOW,
+					(int64_t)(TGAnimationDurationHighlight * NSEC_PER_SEC)),
+					dispatch_get_main_queue(), ^{
+				[weakSelf selectTab:TGEmojiPanelTabStickers];
+			});
+		}];
 	}];
 }
 
@@ -1284,9 +1352,14 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 /// A text field inside the panel would raise the keyboard the panel is
 /// standing in for, so the query is asked for in a sheet of its own.
 - (void)askForGifSearch {
+	NSArray *suggested = [[TGStickerStore shared] animationSearchEmojis];
+	NSString *hint = suggested.count
+			? [NSString stringWithFormat:@"Try %@, or type a word.",
+					[suggested componentsJoinedByString:@" "]]
+			: nil;
 	__weak typeof(self) weakSelf = self;
 	[TGAlertSheet showInput:@"Search GIFs"
-					message:nil
+					message:hint
 				placeholder:@"GIF"
 					   text:self.gifQuery
 					 action:@"Search"

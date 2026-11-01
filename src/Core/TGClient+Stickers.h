@@ -5,6 +5,12 @@
 
 @interface TGClient (Stickers)
 
+/// The inline bot GIF search uses. "gif" until updateAnimationSearchParameters
+/// names another, which is what keeps the tab working if Telegram moves it.
+@property (nonatomic, readonly) NSString *animationSearchProvider;
+/// The emoji Telegram suggests for GIF search; empty until that update.
+@property (nonatomic, readonly) NSArray *animationSearchEmojis;
+
 /// Installed sets: "id" (pass back as is), "title", and "cover" - a sticker
 /// in the same shape recentStickers gives.
 - (void)installedStickerSetsWithCompletion:(void (^)(NSArray *sets))completion;
@@ -37,10 +43,10 @@
 /// The archived shelf, which is where a set removed by accident survives.
 - (void)archivedStickerSetsWithCompletion:(void (^)(NSArray *sets))completion;
 
-/// The sets that used to be attached in a chat - what their client shows
-/// when you send media there.
-- (void)attachedStickerSetsInChat:(int64_t)chatId
-                       completion:(void (^)(NSArray *sets))completion;
+/// The sets attached to one media file - a picture or a video that carries
+/// stickers. TDLib answers by file id, the same id the bubble draws.
+- (void)attachedStickerSetsOfFile:(NSInteger)fileId
+					   completion:(void (^)(NSArray *sets))completion;
 
 /// The installed order after a move. `setIds` is the whole list, the
 /// first id becoming the first strip slot.

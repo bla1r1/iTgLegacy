@@ -133,6 +133,7 @@ static void TGInstallCrypto(void) {
 @interface TGCall ()
 @property (nonatomic, assign) TGCallState state;
 @property (nonatomic, assign) int32_t callId;
+@property (nonatomic, assign) int32_t lastCallId;
 @property (nonatomic, assign) int64_t peerUserId;
 @property (nonatomic, assign) BOOL outgoing;
 @property (nonatomic, assign) BOOL muted;
@@ -569,15 +570,22 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V8";
 }
 
 - (void)sendRating:(int)rating comment:(NSString *)comment problems:(NSArray *)problems {
-	if (!self.callId)
+	// The screen asks after it has closed, when the live id is already zero;
+	// the one the call wore is what the rating is about.
+	int32_t target = self.callId ? self.callId : self.lastCallId;
+	if (!target)
 		return;
 	[[TGClient shared] send:@{
 		@"@type"    : @"sendCallRating",
-		@"call_id"  : @(self.callId),
+		// The request names the call as an InputCall, and the one thing this
+		// screen knows about a finished call is that it was discarded.
+		@"call_id"  : @{@"@type" : @"inputCallDiscarded",
+						@"call_id" : @(target)},
 		@"rating"   : @(rating),
 		@"comment"  : comment ?: @"",
 		@"problems" : problems ?: @[],
 	}];
+	self.lastCallId = 0;   // one rating per call
 }
 
 // Supported call protocol versions
@@ -1344,6 +1352,7 @@ static inline BOOL TGLooksLikeStun(const uint8_t *bytes) {
 	_mediaPacketsIn = 0;
 	_mediaPacketsParsed = 0;
 	self.establishedAt = nil;
+	self.lastCallId = self.callId;
 	self.callId = 0;
 	self.emojis = nil;
 	[[AVAudioSession sharedInstance] setActive:NO error:nil];

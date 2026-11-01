@@ -55,6 +55,13 @@ NSDictionary *TGStickerInfo(NSDictionary *sticker);
 @property (nonatomic, strong) NSMutableDictionary *forumSupergroups;
 @property (nonatomic, strong) NSArray *archivedChats;
 @property (nonatomic, strong) NSMutableDictionary *savedTopicsById; // topic id -> row
+/// The reaction Telegram names as the default, when updateDefaultReactionType
+/// has said; the picker leads with it.
+@property (nonatomic, copy) NSString *reactionDefaultEmoji;
+/// The GIF provider and the emoji it suggests, from
+/// updateAnimationSearchParameters. "gif" is the bot every client ships with.
+@property (nonatomic, copy) NSString *gifSearchProvider;
+@property (nonatomic, strong) NSArray *gifSearchEmojis;
 @property (nonatomic, strong) NSArray *folders;
 @property (nonatomic, strong) NSDictionary *archiveSettings;
 @property (nonatomic, strong) NSArray *chats;

@@ -3,12 +3,17 @@
 //
 #import "TGClient+Base.h"
 
+/// A chatMemberStatus dictionary as the one word a row shows:
+/// "owner", "admin", "restricted", "banned", "left" or "member".
+FOUNDATION_EXPORT NSString *TGMemberStatusName(NSDictionary *status);
+
 @interface TGClient (Groups)
 
-/// What two supergroup switches sit on right now, so a row can name the
-/// flip rather than the state. NO/NO/NO when the chat is not a supergroup.
+/// What three supergroup switches sit on right now, so a row can name the
+/// flip rather than the state. NO/NO/NO/NO when the chat is not a supergroup.
 - (void)supergroupFlagsForChat:(int64_t)chatId
-					completion:(void (^)(BOOL signMessages, BOOL joinToSend, BOOL ok))completion;
+					completion:(void (^)(BOOL signMessages, BOOL joinToSend,
+										 BOOL allHistory, BOOL ok))completion;
 
 - (void)setChatSignMessages:(int64_t)chatId
 						 on:(BOOL)on
@@ -17,6 +22,12 @@
 - (void)setChatJoinToSendMessages:(int64_t)chatId
 							   on:(BOOL)on
 					   completion:(void (^)(BOOL ok))completion;
+
+/// Whether new members see the history before they joined. A supergroup or a
+/// channel only, and an administrator's switch.
+- (void)setSupergroupAllHistoryAvailable:(int64_t)chatId
+									  on:(BOOL)on
+							  completion:(void (^)(BOOL ok))completion;
 
 /// Join or leave a channel or supergroup.
 - (void)setChat:(int64_t)chatId joined:(BOOL)joined;

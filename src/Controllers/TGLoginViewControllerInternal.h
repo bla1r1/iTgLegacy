@@ -26,6 +26,9 @@ typedef NS_ENUM(NSInteger, TGLoginStep) {
 /// The last name typed on the registration step, which is optional and so
 /// cannot live in the one input field the step shares with every other.
 @property (nonatomic, copy) NSString *registrationLastName;
+/// True once the prefix has been typed or pasted, so the network's country
+/// guess does not overwrite a number that is not local.
+@property (nonatomic, assign) BOOL prefixEdited;
 @property (nonatomic, strong) UIScrollView *scrollView;
 @property (nonatomic, strong) UILabel *subtitleLabel;
 @property (nonatomic, strong) UIView *inputContainer;
@@ -57,6 +60,7 @@ typedef NS_ENUM(NSInteger, TGLoginStep) {
 - (void)processPastedPhoneNumber:(NSString *)raw;
 - (void)inputFieldChanged:(UITextField *)sender;
 - (void)prefixFieldChanged:(UITextField *)sender;
+- (void)countryPickerTapped;
 
 @end
 

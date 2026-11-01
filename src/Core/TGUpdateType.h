@@ -8,9 +8,11 @@
 // cannot be dispatched without also being let through the filter.
 //
 // The list grew a second wave: chat fields kept true in the row,
-// message-level nudges, the global unread total, and the no-op markers each
-// named in the dispatch below TGClient.m's handleUpdate - every one points
-// at a screen the app does not draw yet.
+// message-level nudges, the global unread total, and the service, terms and
+// session traffic that asks for a screen of its own. The updates whose
+// screen is still missing are named again in TG_IGNORED_UPDATES, the
+// scaffold: the filter and the dispatch keep them, and the coverage tool
+// reports them apart from the ones that change something.
 //
 #pragma once
 #include <stddef.h>
@@ -105,34 +107,61 @@
 	X(TGUpdateSavedNotificationSounds, "updateSavedNotificationSounds") \
 	X(TGUpdateSpeedLimitNotification, "updateSpeedLimitNotification") \
 	X(TGUpdateUnreadMessageCount,     "updateUnreadMessageCount") \
-	X(TGUpdateActiveNotifications,    "updateActiveNotifications") \
-	X(TGUpdateNotification,           "updateNotification") \
-	X(TGUpdateNotificationGroup,      "updateNotificationGroup") \
-	X(TGUpdateHavePendingNotifications, "updateHavePendingNotifications") \
 	X(TGUpdateServiceNotification,    "updateServiceNotification") \
 	X(TGUpdateTermsOfService,         "updateTermsOfService") \
 	X(TGUpdateUnconfirmedSession,     "updateUnconfirmedSession") \
-	X(TGUpdateFreezeState,            "updateFreezeState") \
 	X(TGUpdateUserPrivacySettingRules, "updateUserPrivacySettingRules") \
-	X(TGUpdateAgeVerificationParameters, "updateAgeVerificationParameters") \
-	X(TGUpdateApplicationVerificationRequired, "updateApplicationVerificationRequired") \
-	X(TGUpdateApplicationRecaptchaVerificationRequired, "updateApplicationRecaptchaVerificationRequired") \
-	X(TGUpdateUserSubscription,       "updateUserSubscription") \
-	X(TGUpdateAutosaveSettings,       "updateAutosaveSettings") \
-	X(TGUpdateLanguagePackStrings,    "updateLanguagePackStrings") \
-	X(TGUpdateAccentColors,           "updateAccentColors") \
-	X(TGUpdateProfileAccentColors,    "updateProfileAccentColors") \
-	X(TGUpdateDefaultBackground,      "updateDefaultBackground") \
 	X(TGUpdateDefaultReactionType,    "updateDefaultReactionType") \
-	X(TGUpdateEmojiChatThemes,        "updateEmojiChatThemes") \
 	X(TGUpdateAnimationSearchParameters, "updateAnimationSearchParameters") \
-	X(TGUpdateAvailableMessageEffects, "updateAvailableMessageEffects") \
-	X(TGUpdateContactCloseBirthdays,  "updateContactCloseBirthdays") \
 	X(TGUpdateSavedMessagesTopic,     "updateSavedMessagesTopic") \
 	X(TGUpdateSavedMessagesTopicCount, "updateSavedMessagesTopicCount") \
 	X(TGUpdateSavedMessagesTags,      "updateSavedMessagesTags") \
-	X(TGUpdateStopMessageDraft,       "updateStopMessageDraft") \
-	X(TGUpdateVideoPublished,         "updateVideoPublished")
+	X(TGUpdateActiveNotifications,         "updateActiveNotifications") \
+	X(TGUpdateNotification,                "updateNotification") \
+	X(TGUpdateNotificationGroup,           "updateNotificationGroup") \
+	X(TGUpdateHavePendingNotifications,    "updateHavePendingNotifications") \
+	X(TGUpdateFreezeState,                 "updateFreezeState") \
+	X(TGUpdateAgeVerificationParameters,   "updateAgeVerificationParameters") \
+	X(TGUpdateApplicationVerificationRequired, "updateApplicationVerificationRequired") \
+	X(TGUpdateApplicationRecaptchaVerificationRequired, "updateApplicationRecaptchaVerificationRequired") \
+	X(TGUpdateUserSubscription,            "updateUserSubscription") \
+	X(TGUpdateAutosaveSettings,            "updateAutosaveSettings") \
+	X(TGUpdateLanguagePackStrings,         "updateLanguagePackStrings") \
+	X(TGUpdateAccentColors,                "updateAccentColors") \
+	X(TGUpdateProfileAccentColors,         "updateProfileAccentColors") \
+	X(TGUpdateDefaultBackground,           "updateDefaultBackground") \
+	X(TGUpdateEmojiChatThemes,             "updateEmojiChatThemes") \
+	X(TGUpdateAvailableMessageEffects,     "updateAvailableMessageEffects") \
+	X(TGUpdateContactCloseBirthdays,       "updateContactCloseBirthdays") \
+	X(TGUpdateStopMessageDraft,            "updateStopMessageDraft") \
+	X(TGUpdateVideoPublished,              "updateVideoPublished")
+
+// The scaffold: updates the filter lets through and the dispatch marks
+// as read, but no branch acts on yet. Each is one screen this client has
+// not drawn; keeping the name here means the filter, the dispatch and the
+// coverage tool agree on it, and filling it in later is one case and one
+// screen - not a hunt for the string. scripts/tdlib_coverage.sh reports
+// these apart from the updates that change something (--ignored).
+#define TG_IGNORED_UPDATES(X) \
+	X(TGUpdateActiveNotifications,         "updateActiveNotifications") \
+	X(TGUpdateNotification,                "updateNotification") \
+	X(TGUpdateNotificationGroup,           "updateNotificationGroup") \
+	X(TGUpdateHavePendingNotifications,    "updateHavePendingNotifications") \
+	X(TGUpdateFreezeState,                 "updateFreezeState") \
+	X(TGUpdateAgeVerificationParameters,   "updateAgeVerificationParameters") \
+	X(TGUpdateApplicationVerificationRequired, "updateApplicationVerificationRequired") \
+	X(TGUpdateApplicationRecaptchaVerificationRequired, "updateApplicationRecaptchaVerificationRequired") \
+	X(TGUpdateUserSubscription,            "updateUserSubscription") \
+	X(TGUpdateAutosaveSettings,            "updateAutosaveSettings") \
+	X(TGUpdateLanguagePackStrings,         "updateLanguagePackStrings") \
+	X(TGUpdateAccentColors,                "updateAccentColors") \
+	X(TGUpdateProfileAccentColors,         "updateProfileAccentColors") \
+	X(TGUpdateDefaultBackground,           "updateDefaultBackground") \
+	X(TGUpdateEmojiChatThemes,             "updateEmojiChatThemes") \
+	X(TGUpdateAvailableMessageEffects,     "updateAvailableMessageEffects") \
+	X(TGUpdateContactCloseBirthdays,       "updateContactCloseBirthdays") \
+	X(TGUpdateStopMessageDraft,            "updateStopMessageDraft") \
+	X(TGUpdateVideoPublished,              "updateVideoPublished")
 
 typedef enum {
 	TGUpdateUnknown = 0,

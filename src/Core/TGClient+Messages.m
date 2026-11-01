@@ -464,6 +464,10 @@
 		@"@type"      : @"editMessageMedia",
 		@"chat_id"    : @(chatId),
 		@"message_id" : @(messageId),
+		// No keyboard of its own; the one the message had is not ours to
+		// rebuild from here, and an empty one is the honest answer.
+		@"reply_markup" : @{@"@type" : @"replyMarkupInlineKeyboard",
+							@"rows" : @[]},
 		@"input_message_content": @{
 			@"@type"   : @"inputMessagePhoto",
 			@"photo"   : @{@"@type" : @"inputFileLocal", @"path" : path},

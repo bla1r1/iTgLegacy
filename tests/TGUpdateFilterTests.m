@@ -89,4 +89,13 @@ static NSString *TGBigEmojiUpdate(NSUInteger count) {
 	XCTAssertEqual(TGUpdateTypeIsUpdateName("user", 4), 0);
 }
 
+/// The scaffold is a subset of the filter's list, not a second table: every
+/// marker the coverage tool subtracts is still case-labelled by the enum.
+- (void)testIgnoredUpdatesAreStillOnTheRecord {
+#define TG_CHECK_IGNORED(sym, name) \
+	XCTAssertNotEqual(TGUpdateTypeFor(name, strlen(name)), TGUpdateUnknown, @"%s", name);
+	TG_IGNORED_UPDATES(TG_CHECK_IGNORED)
+#undef TG_CHECK_IGNORED
+}
+
 @end

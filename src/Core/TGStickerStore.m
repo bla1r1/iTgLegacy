@@ -48,6 +48,24 @@
 	[[TGClient shared] searchStickerSetsNamed:query completion:completion];
 }
 
+- (void)installedStickerSetsNamed:(NSString *)query
+					   completion:(void (^)(NSArray *sets))completion {
+	[[TGClient shared] installedStickerSetsNamed:query completion:completion];
+}
+
+- (void)trendingStickerSetsWithCompletion:(void (^)(NSArray *sets))completion {
+	[[TGClient shared] trendingStickerSetsWithCompletion:completion];
+}
+
+- (void)archivedStickerSetsWithCompletion:(void (^)(NSArray *sets))completion {
+	[[TGClient shared] archivedStickerSetsWithCompletion:completion];
+}
+
+- (void)attachedStickerSetsOfFile:(NSInteger)fileId
+					   completion:(void (^)(NSArray *sets))completion {
+	[[TGClient shared] attachedStickerSetsOfFile:fileId completion:completion];
+}
+
 - (void)savedAnimationsWithCompletion:(void (^)(NSArray *animations))completion {
 	[[TGClient shared] savedAnimationsWithCompletion:completion];
 }
@@ -56,6 +74,10 @@
 				  inChat:(int64_t)chatId
 			  completion:(void (^)(NSArray *animations))completion {
 	[[TGClient shared] searchAnimations:query inChat:chatId completion:completion];
+}
+
+- (NSArray *)animationSearchEmojis {
+	return [[TGClient shared] animationSearchEmojis];
 }
 
 #pragma mark - commands

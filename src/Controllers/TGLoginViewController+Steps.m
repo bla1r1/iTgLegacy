@@ -77,6 +77,8 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
             width - TGDoubled(TGMetricGutter) - fieldX - TGMetricPadMedium,
             TGMetricRow);
 
+    y = [self placeStepLinksFromY:y width:width];
+
     y += TGMetricStackGroup;
     self.scrollView.contentSize = CGSizeMake(width,
             y - TGMetricStackStep + TGMetricPadLarge);
@@ -194,6 +196,22 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
         [self.codeStepQrButton removeFromSuperview];
         self.codeStepQrButton = nil;
     }
+
+    // A pasted number answers its own prefix; a typed one needs the country
+    // this phone is in, which Telegram guesses from the network. The picker
+    // is there for when the guess is wrong or the number is not local.
+    if (!self.prefixEdited) {
+        __weak typeof(self) weakSelf = self;
+        [[TGClient shared] countryCodeWithCompletion:^(NSString *code){
+            TGLoginViewController *me = weakSelf;
+            if (!me || me.currentStep != TGLoginStepPhone || !code.length)
+                return;
+            if (me.prefixEdited)
+                return;
+            me.phonePrefixField.text = [@"+" stringByAppendingString:code];
+        }];
+    }
+    [self addStepLink:@"Choose a Country" action:@selector(countryPickerTapped) atY:0];
 
     [self layoutActiveStep];
     [self applyTheme];

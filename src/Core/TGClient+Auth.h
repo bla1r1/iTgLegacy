@@ -43,16 +43,25 @@
 				  sandbox:(BOOL)sandbox
 			   completion:(void (^)(BOOL ok))completion;
 
+/// The id registerDevice answered with: this account's push identity, which
+/// every notification addressed to it carries.
+@property (nonatomic, readonly) int64_t pushReceiverId;
+
 /// A notification that arrived while the app was running: TDLib turns it
 /// into the ordinary updates.
 - (void)processPushPayload:(NSDictionary *)payload;
 
-/// What a push belongs to, decoded on Telegram's side: whether it went
-/// through ("ok") and the chat and message it names. Answered even when the
-/// push is undeliverable, which is how the half-configured certificate gets
-/// told apart from a payload TDLib cannot read.
+/// Which account a push belongs to, decoded on Telegram's side. `ok` is NO
+/// when TDLib cannot read the payload at all; the id is the same one
+/// registerDevice answered with, so a push for another account on the same
+/// phone can be told apart before anything is processed.
 - (void)pushReceiverOfPayload:(NSDictionary *)payload
-				   completion:(void (^)(BOOL ok, int64_t chatId, int64_t messageId))completion;
+				   completion:(void (^)(BOOL ok, int64_t receiverId))completion;
+
+/// Terms Telegram sent post-login have to be accepted before the account can
+/// go on; the update names the id to accept.
+- (void)acceptTermsOfService:(NSString *)termsId
+				  completion:(void (^)(BOOL ok))completion;
 
 - (void)destroySession;
 

@@ -624,18 +624,19 @@ static void answerG(TGClient *c, NSDictionary *answer) {
 	XCTAssertEqualObjects(sets[0][@"title"], @"Archived cats");
 }
 
-/// A set is attached to a chat, and nothing answers for the absent one.
-- (void)testStickerSets_AttachedBelongsToAChat {
+/// The sets ride on a media file; a file id is what names them, and nothing
+/// is asked for the absent one.
+- (void)testStickerSets_AttachedBelongsToAFile {
 	TGClient *c = G();
 	__block NSInteger calls = 0;
-	[c attachedStickerSetsInChat:0 completion:^(NSArray *sets){
+	[c attachedStickerSetsOfFile:0 completion:^(NSArray *sets){
 		calls++; XCTAssertEqual(sets.count, (NSUInteger)0);
 	}];
 	XCTAssertEqual(countG(c, @"getAttachedStickerSets"), (NSUInteger)0);
 
-	[c attachedStickerSetsInChat:-70 completion:nil];
+	[c attachedStickerSetsOfFile:99 completion:nil];
 	NSDictionary *r = lastG(c, @"getAttachedStickerSets");
-	XCTAssertEqual([r[@"chat_id"] longLongValue], -70LL);
+	XCTAssertEqual([r[@"file_id"] longLongValue], 99LL);
 }
 
 /// One set has nothing to be ordered against, so the request is never made.

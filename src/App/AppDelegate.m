@@ -12,6 +12,7 @@
 #import "TGCall.h"
 #import "TGCallViewController.h"
 #import "TGLoginViewController.h"
+#import "TGTermsViewController.h"
 #import <QuartzCore/QuartzCore.h>
 #import "TGStyle.h"
 #import "TGAlertSheet.h"
@@ -83,6 +84,32 @@ static void TGDevCommandNotifyCallback(CFNotificationCenterRef center, void *obs
 		int count = [n.userInfo[@"count"] intValue];
 		dispatch_async(dispatch_get_main_queue(), ^{
 			[UIApplication sharedApplication].applicationIconBadgeNumber = count;
+		});
+	}];
+
+	// Service notifications belong to no chat: TDLib asks for a popup, and
+	// the window is the only surface that is not somebody's conversation.
+	__weak AppDelegate *weakSelf = self;
+	[[NSNotificationCenter defaultCenter]
+			addObserverForName:TGServiceNotificationReceivedNotification
+						object:nil queue:nil
+			usingBlock:^(NSNotification *n){
+		NSString *text = n.userInfo[@"text"];
+		if (!text.length)
+			return;
+		dispatch_async(dispatch_get_main_queue(), ^{
+			[weakSelf showMessage:text];
+		});
+	}];
+
+	// Terms that arrive after sign-in have to be accepted before the account
+	// goes on; the screen owns that and the id comes with it.
+	[[NSNotificationCenter defaultCenter]
+			addObserverForName:TGTermsOfServiceReceivedNotification
+						object:nil queue:nil
+			usingBlock:^(NSNotification *n){
+		dispatch_async(dispatch_get_main_queue(), ^{
+			[weakSelf showTermsOfService:n.userInfo];
 		});
 	}];
 
@@ -340,7 +367,18 @@ static void TGDevCommandNotifyCallback(CFNotificationCenterRef center, void *obs
 /// instead of waiting for the next poll.
 - (void)application:(UIApplication *)application
 		didReceiveRemoteNotification:(NSDictionary *)userInfo {
-	[[TGClient shared] processPushPayload:userInfo];
+	// The blob names the account it was addressed to. One signed in on this
+	// phone handles the notification; a payload for another account is not
+	// this client's to process, and the id says so before the updates land.
+	[[TGClient shared] pushReceiverOfPayload:userInfo
+								  completion:^(BOOL ok, int64_t receiverId){
+		int64_t mine = [TGClient shared].pushReceiverId;
+		// Only a definite answer for a different account skips the payload;
+		// an id TDLib could not read is still worth handing over.
+		if (ok && mine && receiverId && mine != receiverId)
+			return;
+		[[TGClient shared] processPushPayload:userInfo];
+	}];
 }
 
 - (void)showMessage:(NSString *)msg {
@@ -348,6 +386,42 @@ static void TGDevCommandNotifyCallback(CFNotificationCenterRef center, void *obs
 	dispatch_async(dispatch_get_main_queue(), ^{
 		[TGAlertSheet showMessage:msg title:@"LegacyTG" inView:self.window];
 	});
+}
+
+/// The terms popup: one screen, one Accept, and the id Telegram sent goes
+/// back so the restriction lifts.
+- (void)showTermsOfService:(NSDictionary *)info {
+	NSString *termsId = info[@"id"];
+	if (![termsId isKindOfClass:NSString.class] || !termsId.length)
+		return;
+	// The update can beat the window by a moment at launch; one retry is
+	// enough, and dropping the terms would leave the account restricted.
+	if (!self.window){
+		dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)NSEC_PER_SEC),
+				dispatch_get_main_queue(), ^{
+			[[AppDelegate sharedDelegate] showTermsOfService:info];
+		});
+		return;
+	}
+	UIViewController *top = self.window.rootViewController;
+	while (top.presentedViewController)
+		top = top.presentedViewController;
+	if (!top)
+		return;
+	// A second update while the sheet is up must not stack another one.
+	if ([top isKindOfClass:[UINavigationController class]] &&
+		[((UINavigationController *)top).topViewController
+				isKindOfClass:[TGTermsViewController class]])
+		return;
+
+	TGTermsViewController *terms = [[TGTermsViewController alloc] init];
+	terms.termsText = info[@"text"] ?: @"";
+	terms.onAccept = ^{
+		[[TGClient shared] acceptTermsOfService:termsId completion:nil];
+	};
+	UINavigationController *nav = [[UINavigationController alloc]
+			initWithRootViewController:terms];
+	[top presentViewController:nav animated:YES completion:nil];
 }
 
 @end

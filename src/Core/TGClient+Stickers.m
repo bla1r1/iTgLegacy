@@ -292,24 +292,24 @@ NSArray *TGFlattenStickerSets(NSArray *sets) {
 - (void)archivedStickerSetsWithCompletion:(void (^)(NSArray *sets))completion {
 	[self request:@{@"@type"        : @"getArchivedStickerSets",
 					@"sticker_type" : @{@"@type" : @"stickerTypeRegular"},
-					@"offset"       : @(0),
+					@"offset_sticker_set_id" : @(0),
 					@"limit"        : @(100)}
 	   completion:^(NSDictionary *result){
 		if (completion) completion(TGFlattenStickerSets(result[@"sets"]));
 	}];
 }
 
-/// Sets that were attached in a chat. Their client feeds this into the
-/// media composer; here it answers with the same rows as the installed list.
-- (void)attachedStickerSetsInChat:(int64_t)chatId
+/// The sticker sets a piece of media carries. TDLib names them by the media
+/// file's own id, which is what a bubble already has; this is how a photo
+/// with stickers on it says which packs they came from.
+- (void)attachedStickerSetsOfFile:(NSInteger)fileId
                        completion:(void (^)(NSArray *sets))completion {
-	if (!chatId){
+	if (fileId <= 0){
 		if (completion) completion(@[]);
 		return;
 	}
 	[self request:@{@"@type"   : @"getAttachedStickerSets",
-					@"chat_id" : @(chatId),
-					@"sticker_type" : @{@"@type" : @"stickerTypeRegular"}}
+					@"file_id" : @(fileId)}
 	   completion:^(NSDictionary *result){
 		if (completion) completion(TGFlattenStickerSets(result[@"sets"]));
 	}];
@@ -359,7 +359,10 @@ NSArray *TGFlattenStickerSets(NSArray *sets) {
 				  inChat:(int64_t)chatId
 			  completion:(void (^)(NSArray *))completion {
 	void (^fail)(void) = ^{ if (completion) completion(@[]); };
-	[self request:@{@"@type" : @"searchPublicChat", @"username" : @"gif"}
+	// The provider is Telegram's to move; updateAnimationSearchParameters is
+	// what says where, and "gif" is only the name it starts at.
+	NSString *provider = self.animationSearchProvider;
+	[self request:@{@"@type" : @"searchPublicChat", @"username" : provider}
 	   completion:^(NSDictionary *bot){
 		NSNumber *botUserId = bot[@"type"][@"user_id"];
 		if (!botUserId){
