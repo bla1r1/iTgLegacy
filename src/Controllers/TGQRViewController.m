@@ -7,14 +7,51 @@
 #import "TGStyle.h"
 #import "TGAlertSheet.h"
 
+/// The four corner brackets Telegram draws around the aiming window. A full
+/// border rectangle reads as a frame; the broken one reads as a target.
+@interface TGQRFinderView : UIView
+@end
+
+@implementation TGQRFinderView
+
+- (void)drawRect:(CGRect)rect {
+	CGFloat arm = TGMetricPadLarge;
+	CGFloat width = TGMetricBorderThick;
+	CGRect b = self.bounds;
+	UIBezierPath *path = [UIBezierPath bezierPath];
+	[path moveToPoint:CGPointMake(0, arm)];
+	[path addLineToPoint:CGPointMake(0, 0)];
+	[path addLineToPoint:CGPointMake(arm, 0)];
+	[path moveToPoint:CGPointMake(CGRectGetMaxX(b) - arm, 0)];
+	[path addLineToPoint:CGPointMake(CGRectGetMaxX(b), 0)];
+	[path addLineToPoint:CGPointMake(CGRectGetMaxX(b), arm)];
+	[path moveToPoint:CGPointMake(CGRectGetMaxX(b), CGRectGetMaxY(b) - arm)];
+	[path addLineToPoint:CGPointMake(CGRectGetMaxX(b), CGRectGetMaxY(b))];
+	[path addLineToPoint:CGPointMake(CGRectGetMaxX(b) - arm, CGRectGetMaxY(b))];
+	[path moveToPoint:CGPointMake(arm, CGRectGetMaxY(b))];
+	[path addLineToPoint:CGPointMake(0, CGRectGetMaxY(b))];
+	[path addLineToPoint:CGPointMake(0, CGRectGetMaxY(b) - arm)];
+	path.lineWidth = width;
+	path.lineCapStyle = kCGLineCapRound;
+	[[UIColor whiteColor] setStroke];
+	[path stroke];
+}
+
+@end
+
 @interface TGQRViewController () <AVCaptureMetadataOutputObjectsDelegate>
 @property (nonatomic, strong) AVCaptureSession *session;
+@property (nonatomic, strong) AVCaptureDevice *camera;
 @property (nonatomic, strong) AVCaptureVideoPreviewLayer *preview;
 @property (nonatomic, strong) UILabel *hint;
 @property (nonatomic, strong) UIView *wash;
 @property (nonatomic, strong) CAShapeLayer *maskLayer;
-@property (nonatomic, strong) UIView *outline;
+@property (nonatomic, strong) TGQRFinderView *outline;
+@property (nonatomic, strong) UIButton *manualButton;
+@property (nonatomic, strong) UILabel *failureLabel;
+@property (nonatomic, strong) UIBarButtonItem *torchItem;
 @property (nonatomic, assign) BOOL handled;
+@property (nonatomic, assign) BOOL torchOn;
 @end
 
 /// The hint under the viewfinder keeps further in from the sides than the
@@ -30,12 +67,28 @@ static const CGFloat kQRTextInset = 24.0f;
 	if ([self respondsToSelector:@selector(setEdgesForExtendedLayout:)])
 		self.edgesForExtendedLayout = UIRectEdgeNone;
 
+	self.torchItem = [[UIBarButtonItem alloc] initWithTitle:@"Light"
+			style:UIBarButtonItemStylePlain target:self action:@selector(toggleTorch)];
+	self.navigationItem.rightBarButtonItem = self.torchItem;
+
 	[self startCamera];
 	[self buildFrame];
 }
 
 - (void)startCamera {
 	AVCaptureDevice *camera = [AVCaptureDevice defaultDeviceWithMediaType:AVMediaTypeVideo];
+	self.camera = camera;
+	if (!camera) {
+		[self showFailure:@"This device has no camera to scan with."];
+		return;
+	}
+	if ([AVCaptureDevice respondsToSelector:@selector(authorizationStatusForMediaType:)]) {
+		AVAuthorizationStatus status = [AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeVideo];
+		if (status == AVAuthorizationStatusDenied || status == AVAuthorizationStatusRestricted) {
+			[self showFailure:@"Camera access is off for LegacyTG. Allow it in Settings, or enter a link below."];
+			return;
+		}
+	}
 	NSError *error = nil;
 	AVCaptureDeviceInput *input = camera
 			? [AVCaptureDeviceInput deviceInputWithDevice:camera error:&error] : nil;
@@ -90,10 +143,8 @@ static const CGFloat kQRTextInset = 24.0f;
 		self.wash.layer.mask = self.maskLayer;
 		[self.view addSubview:self.wash];
 
-		self.outline = [[UIView alloc] initWithFrame:window];
-		self.outline.layer.borderColor = [UIColor whiteColor].CGColor;
-		self.outline.layer.borderWidth = TGMetricBorderThick;
-		self.outline.layer.cornerRadius = TGMetricCornerControl;
+		self.outline = [[TGQRFinderView alloc] initWithFrame:window];
+		self.outline.backgroundColor = [UIColor clearColor];
 		self.outline.userInteractionEnabled = NO;
 		[self.view addSubview:self.outline];
 
@@ -106,6 +157,21 @@ static const CGFloat kQRTextInset = 24.0f;
 		self.hint.textColor = [UIColor whiteColor];
 		self.hint.backgroundColor = [UIColor clearColor];
 		[self.view addSubview:self.hint];
+
+		self.manualButton = [UIButton buttonWithType:UIButtonTypeCustom];
+		self.manualButton.frame = CGRectMake(
+				TGCenteredOrigin(b.size.width, TGMetricQRManualWidth),
+				CGRectGetMaxY(self.hint.frame) + TGMetricPad,
+				TGMetricQRManualWidth, TGMetricRow);
+		[self.manualButton setTitle:@"Enter a Link" forState:UIControlStateNormal];
+		[self.manualButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+		self.manualButton.titleLabel.font = TGFontBody();
+		self.manualButton.layer.borderColor = [UIColor whiteColor].CGColor;
+		self.manualButton.layer.borderWidth = TGMetricHairline;
+		self.manualButton.layer.cornerRadius = TGMetricCornerControl;
+		[self.manualButton addTarget:self action:@selector(manualLinkTapped)
+					forControlEvents:UIControlEventTouchUpInside];
+		[self.view addSubview:self.manualButton];
 	}
 
 	self.wash.frame = b;
@@ -116,6 +182,12 @@ static const CGFloat kQRTextInset = 24.0f;
 	self.hint.frame = CGRectMake(
 			TGMetricPadWide, CGRectGetMaxY(window) + TGMetricPadWide,
 			b.size.width - TGDoubled(TGMetricPadWide), TGDoubled(TGMetricPadWide));
+	self.manualButton.frame = CGRectMake(
+			TGCenteredOrigin(b.size.width, TGMetricQRManualWidth),
+			CGRectGetMaxY(self.hint.frame) + TGMetricPad,
+			TGMetricQRManualWidth, TGMetricRow);
+	if (self.failureLabel)
+		[self.view bringSubviewToFront:self.failureLabel];
 }
 
 - (void)viewDidLayoutSubviews {
@@ -133,12 +205,62 @@ static const CGFloat kQRTextInset = 24.0f;
 	label.textAlignment = NSTextAlignmentCenter;
 	label.textColor = [UIColor whiteColor];
 	label.backgroundColor = [UIColor clearColor];
+	self.failureLabel = label;
 	[self.view addSubview:label];
+	[self.view bringSubviewToFront:label];
+	if (self.manualButton)
+		[self.view bringSubviewToFront:self.manualButton];
+	self.torchItem.enabled = NO;
+}
+
+- (void)toggleTorch {
+	if (!self.camera || ![self.camera hasTorch])
+		return;
+	NSError *error = nil;
+	if (![self.camera lockForConfiguration:&error]) {
+		[TGAlertSheet showMessage:@"This camera will not change its light."
+							  title:@"Light" inView:self.view];
+		return;
+	}
+	self.torchOn = !self.torchOn;
+	[self.camera setTorchMode:self.torchOn ? AVCaptureTorchModeOn : AVCaptureTorchModeOff];
+	[self.camera unlockForConfiguration];
+	self.torchItem.title = self.torchOn ? @"Light On" : @"Light";
+}
+
+/// A QR the camera cannot see, or a phone whose camera is broken, still has
+/// the link the code stands for: the other direction Telegram offers.
+- (void)manualLinkTapped {
+	__weak typeof(self) weakSelf = self;
+	[TGAlertSheet showInput:@"Enter a Link"
+					message:@"Paste a t.me address or the link a QR code stands for."
+				placeholder:@"t.me/name"
+					   text:nil
+					 action:@"Open"
+					 inView:self.view
+				   onSubmit:^(NSString *link){
+		TGQRViewController *me = weakSelf;
+		if (!me)
+			return;
+		NSString *trimmed = [link stringByTrimmingCharactersInSet:
+				[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+		if (!trimmed.length)
+			return;
+		[me actOn:trimmed];
+	}];
 }
 
 - (void)viewWillDisappear:(BOOL)animated {
 	[super viewWillDisappear:animated];
 	[self.session stopRunning];
+	if (self.torchOn && self.camera) {
+		NSError *error = nil;
+		if ([self.camera lockForConfiguration:&error]) {
+			[self.camera setTorchMode:AVCaptureTorchModeOff];
+			[self.camera unlockForConfiguration];
+		}
+		self.torchOn = NO;
+	}
 }
 
 #pragma mark - reading

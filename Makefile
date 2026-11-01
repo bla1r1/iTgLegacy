@@ -281,6 +281,7 @@ APP_SRC_M := \
 	src/Controllers/TGGalleryViewController.m \
 	src/Controllers/TGPlaceholderViewController.m \
 	src/Controllers/TGQRViewController.m \
+	src/Controllers/TGUIFormat.m \
 	src/Controllers/TGLoginViewController.m \
 	src/Controllers/TGLoginViewController+Phone.m \
 	src/Controllers/TGLoginViewController+Steps.m \

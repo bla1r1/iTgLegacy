@@ -8,8 +8,11 @@
 #import "TGScheduledViewController.h"
 #import "TGAlertSheet.h"
 #import "TGClient.h"
+#import "TGEmptyView.h"
+#import "TGIcons.h"
 #import "TGSheet.h"
 #import "TGTheme.h"
+#import "TGUIFormat.h"
 #import "TGStyle.h"
 
 @interface TGScheduledViewController ()
@@ -17,6 +20,7 @@
 @property (nonatomic, strong) UIDatePicker *picker;
 @property (nonatomic, strong) TGSheet *pickerSheet;
 @property (nonatomic, assign) int64_t pickerMessageId;
+@property (nonatomic, strong) TGEmptyView *emptyView;
 @end
 
 @implementation TGScheduledViewController
@@ -31,6 +35,12 @@
 	self.messages = @[];
 	self.tableView.rowHeight = TGMetricPersonRow;
 	[self applyTheme];
+
+	UIRefreshControl *refresh = [[UIRefreshControl alloc] init];
+	[refresh addTarget:self action:@selector(refreshPulled)
+	  forControlEvents:UIControlEventValueChanged];
+	self.refreshControl = refresh;
+
 	[self reload];
 
 	__weak typeof(self) weakSelf = self;
@@ -38,6 +48,9 @@
 			object:nil queue:[NSOperationQueue mainQueue]
 		 usingBlock:^(NSNotification *note) {
 		[weakSelf applyTheme];
+		weakSelf.emptyView = nil;
+		weakSelf.tableView.backgroundView = nil;
+		[weakSelf updateEmptyView];
 		[weakSelf.tableView reloadData];
 	}];
 }
@@ -52,6 +65,10 @@
 	[self reload];
 }
 
+- (void)refreshPulled {
+	[self reload];
+}
+
 - (void)reload {
 	__weak typeof(self) weakSelf = self;
 	[[TGClient shared] scheduledMessagesInChat:self.chatId completion:^(NSArray *messages){
@@ -59,6 +76,8 @@
 		if (!me)
 			return;
 		me.messages = messages ?: @[];
+		[me.refreshControl endRefreshing];
+		[me updateEmptyView];
 		[me.tableView reloadData];
 		NSLog(@"TDLIB SCHEDULED: %lu", (unsigned long)messages.count);
 	}];
@@ -71,34 +90,41 @@
 	[theme styleNavigationBar:self.navigationController.navigationBar];
 }
 
-/// Seconds into "in 2 h 15 m" - the only phrasing that means something
-/// while the numbers move, and the server's stamp is what answers with it.
-static NSString *TGTimeUntil(NSTimeInterval sendDate) {
-	if (sendDate <= 0)
-		return @"";
-	NSInteger gap = (NSInteger)(sendDate - [[NSDate date] timeIntervalSince1970]);
-	if (gap < 0)
-		gap = 0;
-	if (gap < 60)
-		return @"in less than a minute";
-	NSInteger minutes = gap / 60;
-	if (minutes < 60)
-		return [NSString stringWithFormat:@"in %ld min", (long)minutes];
-	NSInteger hours = minutes / 60;
-	minutes -= hours * 60;
-	if (hours < 24)
-		return minutes > 0
-				? [NSString stringWithFormat:@"in %ld h %ld min", (long)hours, (long)minutes]
-				: [NSString stringWithFormat:@"in %ld h", (long)hours];
-	NSInteger days = hours / 24;
-	hours -= days * 24;
-	return hours > 0
-			? [NSString stringWithFormat:@"in %ld d %ld h", (long)days, (long)hours]
-			: [NSString stringWithFormat:@"in %ld d", (long)days];
+- (void)updateEmptyView {
+	if (self.messages.count) {
+		self.tableView.backgroundView = nil;
+		self.emptyView = nil;
+		return;
+	}
+	if (!self.emptyView) {
+		self.emptyView = [TGEmptyView emptyViewWithFrame:self.tableView.bounds
+				image:[TGIcons emptySearchIllustration]
+				title:@"No scheduled messages"
+				subtitle:@"Messages you schedule to send later appear here."
+				buttonTitle:nil
+				target:nil
+				action:nil];
+	}
+	self.tableView.backgroundView = self.emptyView;
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
 	return self.messages.count;
+}
+
+- (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
+	if (!self.messages.count)
+		return nil;
+	return @"Tap a message to send it now, move it, or delete it.";
+}
+
+- (void)tableView:(UITableView *)tableView willDisplayFooterView:(UIView *)view forSection:(NSInteger)section {
+	if ([view isKindOfClass:[UITableViewHeaderFooterView class]]) {
+		UITableViewHeaderFooterView *footer = (UITableViewHeaderFooterView *)view;
+		footer.textLabel.font = TGFontCaption();
+		footer.textLabel.textColor = [[TGTheme shared] sectionHeaderColour];
+		footer.contentView.backgroundColor = [[TGTheme shared] listBackgroundColour];
+	}
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
@@ -113,13 +139,21 @@ static NSString *TGTimeUntil(NSTimeInterval sendDate) {
 	cell.contentView.backgroundColor = [theme listBackgroundColour];
 
 	NSDictionary *m = self.messages[indexPath.row];
-	cell.textLabel.text = m[@"text"] ?: @"...";
+	NSString *text = m[@"text"];
+	cell.textLabel.text = text.length ? text : @"Message";
 	cell.textLabel.font = TGFontRowStrong();
 	cell.textLabel.textColor = [theme primaryTextColour];
 	cell.textLabel.backgroundColor = [theme listBackgroundColour];
 
-	// The clock it is waiting for, not the date it was written.
-	cell.detailTextLabel.text = TGTimeUntil([m[@"date"] doubleValue]);
+	// Telegram names the day and the clock first, then how long that is.
+	// "in 2 h 15 min" alone never says when it lands.
+	NSTimeInterval stamp = [m[@"date"] doubleValue];
+	NSTimeInterval now = [[NSDate date] timeIntervalSince1970];
+	NSString *when = TGUIFormatScheduledWhen(stamp, now);
+	NSString *until = TGUIFormatScheduledRelative(stamp, now);
+	cell.detailTextLabel.text = when.length
+			? (until.length ? [NSString stringWithFormat:@"%@  ·  %@", when, until] : when)
+			: until;
 	cell.detailTextLabel.textColor = [theme secondaryTextColour];
 	cell.detailTextLabel.backgroundColor = [theme listBackgroundColour];
 
@@ -129,10 +163,12 @@ static NSString *TGTimeUntil(NSTimeInterval sendDate) {
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
 	[tableView deselectRowAtIndexPath:indexPath animated:YES];
+	if (indexPath.row >= (NSInteger)self.messages.count)
+		return;
 
 	NSDictionary *m = self.messages[indexPath.row];
 	int64_t messageId = [m[@"id"] longLongValue];
-	NSString *what = m[@"text"] ?: @"";
+	NSString *what = m[@"text"] ?: @"Message";
 	__weak typeof(self) weakSelf = self;
 
 	NSString *whenOnline = @"Send When Online";
@@ -169,6 +205,33 @@ static NSString *TGTimeUntil(NSTimeInterval sendDate) {
 				[weakSelf reload];
 			}];
 		}
+	}];
+}
+
+/// Swipe-to-delete is the same removal the hold menu offers, so the queue can
+/// be emptied without opening a sheet for every row.
+- (BOOL)tableView:(UITableView *)tableView canEditRowAtIndexPath:(NSIndexPath *)indexPath {
+	return self.messages.count > 0;
+}
+
+- (void)tableView:(UITableView *)tableView
+		commitEditingStyle:(UITableViewCellEditingStyle)editingStyle
+		 forRowAtIndexPath:(NSIndexPath *)indexPath {
+	if (editingStyle != UITableViewCellEditingStyleDelete)
+		return;
+	if (indexPath.row >= (NSInteger)self.messages.count)
+		return;
+	int64_t messageId = [self.messages[(NSUInteger)indexPath.row][@"id"] longLongValue];
+	__weak typeof(self) weakSelf = self;
+	[TGAlertSheet showConfirm:@"The message is taken out of the queue and "
+							  @"does not go to the chat."
+						title:@"Delete"
+					   action:@"Delete"
+				  destructive:YES
+					   inView:self.navigationController.view ?: self.view
+				   onConfirm:^{
+		[[TGClient shared] deleteMessages:@[@(messageId)] inChat:weakSelf.chatId];
+		[weakSelf reload];
 	}];
 }
 
@@ -226,9 +289,6 @@ static NSString *TGTimeUntil(NSTimeInterval sendDate) {
 		[weakSelf reload];
 	}];
 }
-
-/// The system's caption is grey on grey over a dark list, which is what
-/// this screen had: every other list styles its own.
 
 @end
 

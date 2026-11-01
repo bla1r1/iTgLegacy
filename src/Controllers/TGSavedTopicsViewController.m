@@ -10,8 +10,116 @@
 #import "TGChatViewController.h"
 #import "TGClient.h"
 #import "TGClientInternal.h"
+#import "TGEmptyView.h"
+#import "TGFastDate.h"
+#import "TGIcons.h"
 #import "TGTheme.h"
 #import "TGStyle.h"
+
+static NSString *TGSavedTopicDateText(NSNumber *stamp) {
+	if (![stamp isKindOfClass:NSNumber.class] || ![stamp longLongValue])
+		return @"";
+	char buf[TGFastDateBufferSize + 1] = {0};
+	size_t len = TGFastChatDate((time_t)[stamp doubleValue],
+			(time_t)[[NSDate date] timeIntervalSince1970], buf,
+			TGFastDateBufferSize);
+	return len ? [[NSString alloc] initWithBytes:buf length:len
+									   encoding:NSUTF8StringEncoding] : @"";
+}
+
+@interface TGSavedTopicCell : UITableViewCell
+- (void)applyTopic:(NSDictionary *)topic;
+@end
+
+@implementation TGSavedTopicCell {
+	UIImageView *_iconView;
+	UILabel *_titleLabel;
+	UILabel *_previewLabel;
+	UILabel *_dateLabel;
+	UIImageView *_pinView;
+}
+
+- (instancetype)initWithStyle:(UITableViewCellStyle)style
+			   reuseIdentifier:(NSString *)reuseIdentifier {
+	self = [super initWithStyle:style reuseIdentifier:reuseIdentifier];
+	if (!self)
+		return nil;
+	_iconView = [[UIImageView alloc] initWithFrame:CGRectZero];
+	[self.contentView addSubview:_iconView];
+
+	_titleLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+	_titleLabel.font = TGFontRowStrong();
+	_titleLabel.backgroundColor = [UIColor clearColor];
+	[self.contentView addSubview:_titleLabel];
+
+	_previewLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+	_previewLabel.font = TGFontCaption();
+	_previewLabel.backgroundColor = [UIColor clearColor];
+	[self.contentView addSubview:_previewLabel];
+
+	_dateLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+	_dateLabel.font = TGFontCaption();
+	_dateLabel.textAlignment = NSTextAlignmentRight;
+	_dateLabel.backgroundColor = [UIColor clearColor];
+	[self.contentView addSubview:_dateLabel];
+
+	_pinView = [[UIImageView alloc] initWithFrame:CGRectZero];
+	_pinView.contentMode = UIViewContentModeScaleAspectFit;
+	[self.contentView addSubview:_pinView];
+	return self;
+}
+
+- (void)layoutSubviews {
+	[super layoutSubviews];
+	CGRect b = self.contentView.bounds;
+	CGFloat iconSide = TGMetricTopicIcon;
+	_iconView.frame = CGRectMake(TGMetricPad,
+			TGCenteredOrigin(b.size.height, iconSide), iconSide, iconSide);
+
+	CGFloat dateWidth = TGMetricCallLabelWidth;
+	CGFloat right = b.size.width - TGMetricGutter;
+	_dateLabel.frame = CGRectMake(right - dateWidth, TGMetricPad,
+			dateWidth, TGMetricLineCaption);
+
+	CGFloat x = TGMetricPad + iconSide + TGMetricPadMedium;
+	CGFloat maxX = right - dateWidth - TGMetricPad;
+	CGFloat titleX = x;
+	if (!_pinView.hidden) {
+		_pinView.frame = CGRectMake(x, TGMetricPad + TGMetricPadTiny,
+				TGMetricLineCaption, TGMetricLineCaption);
+		titleX = CGRectGetMaxX(_pinView.frame) + TGMetricPadSmall;
+	}
+	_titleLabel.frame = CGRectMake(titleX, TGMetricPad,
+			MAX(0, maxX - titleX), TGMetricLineRow);
+	_previewLabel.frame = CGRectMake(x, TGMetricPad + TGMetricLineRow + TGMetricPadTiny,
+			MAX(0, maxX - x), TGMetricLineCaption);
+}
+
+- (void)applyTopic:(NSDictionary *)topic {
+	TGTheme *theme = [TGTheme shared];
+	_iconView.image = [TGIcons savedMessagesAvatarOfSide:TGMetricTopicIcon];
+	_titleLabel.text = topic[@"title"] ?: @"Saved";
+	_titleLabel.textColor = [theme primaryTextColour];
+	_previewLabel.text = [topic[@"text"] length] ? topic[@"text"] : @"No messages yet";
+	_previewLabel.textColor = [theme secondaryTextColour];
+	_dateLabel.text = TGSavedTopicDateText(topic[@"date"]);
+	_dateLabel.textColor = [theme listDateColour];
+	_pinView.hidden = ![topic[@"pinned"] boolValue];
+	_pinView.image = [TGIcons glyphNamed:@"pin"
+								  colour:[theme secondaryTextColour]
+									side:TGMetricLineCaption];
+	self.backgroundColor = [theme listBackgroundColour];
+	self.contentView.backgroundColor = [theme listBackgroundColour];
+	[self setNeedsLayout];
+}
+
+@end
+
+@interface TGSavedTopicsViewController ()
+@property (nonatomic, strong) TGEmptyView *emptyView;
+@property (nonatomic, assign) BOOL loaded;
+- (void)updateEmptyView;
+@end
 
 @implementation TGSavedTopicsViewController
 
@@ -22,8 +130,13 @@
 		self.edgesForExtendedLayout = UIRectEdgeNone;
 
 	self.title = @"Saved Topics";
-	self.tableView.rowHeight = TGMetricPersonRow;
+	self.tableView.rowHeight = TGMetricTopicRow;
 	[self applyTheme];
+
+	UIRefreshControl *refresh = [[UIRefreshControl alloc] init];
+	[refresh addTarget:self action:@selector(reloadRows)
+	  forControlEvents:UIControlEventValueChanged];
+	self.refreshControl = refresh;
 
 	// A topic's lot holds in the row, and rows are not controls: the hold
 	// reaches what a tap cannot.
@@ -46,6 +159,9 @@
 		   usingBlock:^(NSNotification *note){
 		__weak typeof(self) weakSelf = self;
 		[weakSelf applyTheme];
+		weakSelf.emptyView = nil;
+		weakSelf.tableView.backgroundView = nil;
+		[weakSelf updateEmptyView];
 		[weakSelf.tableView reloadData];
 	}];
 }
@@ -56,6 +172,7 @@
 }
 
 - (void)topicsChanged:(NSNotification *)note {
+	self.loaded = YES;
 	[NSObject cancelPreviousPerformRequestsWithTarget:self
 			selector:@selector(reloadRows) object:nil];
 	[self performSelector:@selector(reloadRows) withObject:nil afterDelay:0.3];
@@ -66,13 +183,46 @@
 	[self applyTheme];
 	[[TGClient shared] loadSavedMessagesTopics];
 	[self reloadRows];
+	// TDLib answers through updates, not a completion, so an account with no
+	// topics is only known to be empty after the first stream had a moment.
+	__weak typeof(self) weakSelf = self;
+	dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.8 * NSEC_PER_SEC)),
+			dispatch_get_main_queue(), ^{
+		TGSavedTopicsViewController *me = weakSelf;
+		if (!me || me.topics.count)
+			return;
+		me.loaded = YES;
+		[me updateEmptyView];
+	});
 }
 
 - (void)reloadRows {
 	__weak typeof(self) weakSelf = self;
 	dispatch_async(dispatch_get_main_queue(), ^{
+		if (weakSelf.topics.count)
+			weakSelf.loaded = YES;
+		[weakSelf.refreshControl endRefreshing];
+		[weakSelf updateEmptyView];
 		[weakSelf.tableView reloadData];
 	});
+}
+
+- (void)updateEmptyView {
+	if (!self.loaded || self.topics.count) {
+		self.tableView.backgroundView = nil;
+		self.emptyView = nil;
+		return;
+	}
+	if (!self.emptyView) {
+		self.emptyView = [TGEmptyView emptyViewWithFrame:self.tableView.bounds
+				image:[TGIcons emptySearchIllustration]
+				title:@"No saved topics"
+				subtitle:@"Messages you forward to Saved Messages are grouped here."
+				buttonTitle:nil
+				target:nil
+				action:nil];
+	}
+	self.tableView.backgroundView = self.emptyView;
 }
 
 - (void)applyTheme {
@@ -279,29 +429,12 @@
 - (UITableViewCell *)tableView:(UITableView *)tableView
 		 cellForRowAtIndexPath:(NSIndexPath *)indexPath {
 	static NSString *reuse = @"TGSavedTopicCell";
-	UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:reuse];
+	TGSavedTopicCell *cell = [tableView dequeueReusableCellWithIdentifier:reuse];
 	if (!cell)
-		cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle
-									  reuseIdentifier:reuse];
-
-	TGTheme *theme = [TGTheme shared];
-	cell.backgroundColor = [theme listBackgroundColour];
-	cell.contentView.backgroundColor = [theme listBackgroundColour];
-
-	NSDictionary *t = self.topics[indexPath.row];
-	NSString *name = [t[@"pinned"] boolValue]
-			? [NSString stringWithFormat:@"📌 %@", t[@"title"]]
-			: t[@"title"];
-	cell.textLabel.text = name;
-	cell.textLabel.font = TGFontRowStrong();
-	cell.textLabel.textColor = [theme primaryTextColour];
-	cell.textLabel.backgroundColor = [theme listBackgroundColour];
-
-	cell.detailTextLabel.text = t[@"text"];
-	cell.detailTextLabel.textColor = [theme secondaryTextColour];
-	cell.detailTextLabel.backgroundColor = [theme listBackgroundColour];
-
-	cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+		cell = [[TGSavedTopicCell alloc] initWithStyle:UITableViewCellStyleDefault
+									   reuseIdentifier:reuse];
+	[cell applyTopic:self.topics[indexPath.row]];
+	cell.accessoryType = UITableViewCellAccessoryNone;
 	return cell;
 }
 

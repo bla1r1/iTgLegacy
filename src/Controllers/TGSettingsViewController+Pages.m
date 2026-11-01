@@ -9,6 +9,7 @@
 #import "TGDevShowcase.h"
 #import "TGStickerPacksViewController.h"
 #import "TGStorySettingsViewController.h"
+#import "TGStoriesMenuViewController.h"
 #import "TGSettingsViewController+Tier2.h"
 
 /// A custom method's answer is a string the app has no schema for. When it is
@@ -132,8 +133,14 @@ static NSArray *TGCustomResultRows(NSString *result) {
 				[weakSelf openPage:TGSettingsPageFolders];
 			}),
 			TGIconRow(@"Stories", @"notifications", TGIconTileRed(), ^{
-				TGStorySettingsViewController *stories =
-						[[TGStorySettingsViewController alloc] init];
+				// Telegram keeps the story archive, albums, live story and the
+				// per-chat notification exceptions together. This row used to
+				// land on the exception list alone, so archive management was
+				// reachable only by holding the strip.
+				TGStoriesMenuViewController *stories =
+						[[TGStoriesMenuViewController alloc] initWithChatId:
+								[[TGClient shared] savedMessagesChatId]
+								title:@"My Story"];
 				stories.hidesBottomBarWhenPushed = YES;
 				[weakSelf.navigationController pushViewController:stories animated:YES];
 			}),

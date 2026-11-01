@@ -131,6 +131,7 @@ CLIENT_OBJC_SRCS := \
     $(SRC)/Core/TGImageLruCache.mm \
     $(SRC)/Core/TGStickerBudget.m \
     $(SRC)/Core/TGPerf.m \
+    $(SRC)/Controllers/TGUIFormat.m \
     $(SRC)/Views/TGChatListRowGeometry.m
 
 # Test helper ObjC sources. TGClientStub and TGCallAudioEngineStub stand in
@@ -200,7 +201,8 @@ CLIENT_TEST_SRCS := \
     $(TESTS)/TGP1MigrationTests.mm \
     $(TESTS)/TGStickerBudgetTests.m \
     $(TESTS)/TGStickerImageTests.m \
-    $(TESTS)/TGChatListRowGeometryTests.m
+    $(TESTS)/TGChatListRowGeometryTests.m \
+    $(TESTS)/TGUIFormatTests.m
 
 TEST_BINARY := $(BUILD)/TGCallTests
 CLIENT_BINARY := $(BUILD)/TGClientTests

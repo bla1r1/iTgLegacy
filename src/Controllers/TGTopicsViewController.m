@@ -2,12 +2,177 @@
 #import "TGAlertSheet.h"
 #import "TGChatViewController.h"
 #import "TGClient.h"
+#import "TGEmptyView.h"
+#import "TGFastDate.h"
+#import "TGIcons.h"
 #import "TGListViewController.h"
+#import "TGBadge.h"
 #import "TGTheme.h"
 #import "TGStyle.h"
 
+/// A topic row is a chat row in miniature: a coloured icon made from the
+/// topic's own id, the name, the last message, the time and the unread count.
+/// The stock subtitle cell could not carry the icon and the badge without
+/// the two fighting for the same 40 pt.
+static NSString *TGTopicDateText(NSNumber *stamp) {
+	if (![stamp isKindOfClass:NSNumber.class] || ![stamp longLongValue])
+		return @"";
+	char buf[TGFastDateBufferSize + 1] = {0};
+	size_t len = TGFastChatDate((time_t)[stamp doubleValue],
+			(time_t)[[NSDate date] timeIntervalSince1970], buf,
+			TGFastDateBufferSize);
+	return len ? [[NSString alloc] initWithBytes:buf length:len
+									   encoding:NSUTF8StringEncoding] : @"";
+}
+
+@interface TGTopicCell : UITableViewCell
+- (void)applyTopic:(NSDictionary *)topic;
+@end
+
+@implementation TGTopicCell {
+	UIImageView *_iconView;
+	UILabel *_titleLabel;
+	UILabel *_previewLabel;
+	UILabel *_dateLabel;
+	UIImageView *_pinView;
+	TGBadge *_badge;
+}
+
+- (instancetype)initWithStyle:(UITableViewCellStyle)style
+			   reuseIdentifier:(NSString *)reuseIdentifier {
+	self = [super initWithStyle:style reuseIdentifier:reuseIdentifier];
+	if (!self)
+		return nil;
+	_iconView = [[UIImageView alloc] initWithFrame:CGRectZero];
+	_iconView.contentMode = UIViewContentModeScaleAspectFill;
+	[self.contentView addSubview:_iconView];
+
+	_titleLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+	_titleLabel.font = TGFontRowStrong();
+	_titleLabel.backgroundColor = [UIColor clearColor];
+	_titleLabel.lineBreakMode = NSLineBreakByTruncatingTail;
+	[self.contentView addSubview:_titleLabel];
+
+	_previewLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+	_previewLabel.font = TGFontCaption();
+	_previewLabel.backgroundColor = [UIColor clearColor];
+	_previewLabel.lineBreakMode = NSLineBreakByTruncatingTail;
+	[self.contentView addSubview:_previewLabel];
+
+	_dateLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+	_dateLabel.font = TGFontCaption();
+	_dateLabel.textAlignment = NSTextAlignmentRight;
+	_dateLabel.backgroundColor = [UIColor clearColor];
+	[self.contentView addSubview:_dateLabel];
+
+	_pinView = [[UIImageView alloc] initWithFrame:CGRectZero];
+	_pinView.contentMode = UIViewContentModeScaleAspectFit;
+	[self.contentView addSubview:_pinView];
+
+	_badge = [TGBadge badgeWithCount:0];
+	[self.contentView addSubview:_badge];
+	return self;
+}
+
+- (void)layoutSubviews {
+	[super layoutSubviews];
+	CGRect b = self.contentView.bounds;
+	CGFloat iconSide = TGMetricTopicIcon;
+
+	_iconView.frame = CGRectMake(TGMetricPad,
+			TGCenteredOrigin(b.size.height, iconSide), iconSide, iconSide);
+
+	CGFloat dateWidth = TGMetricCallLabelWidth;
+	CGFloat right = b.size.width - TGMetricGutter;
+	_dateLabel.frame = CGRectMake(right - dateWidth, TGMetricPad,
+			dateWidth, TGMetricLineCaption);
+	CGSize badgeSize = [_badge sizeThatFits:CGSizeZero];
+	_badge.frame = CGRectMake(right - badgeSize.width,
+			TGMetricPad + TGMetricLineCaption + TGMetricPadTiny,
+			badgeSize.width, badgeSize.height);
+
+	CGFloat x = TGMetricPad + iconSide + TGMetricPadMedium;
+	CGFloat maxX = right - dateWidth - TGMetricPad;
+	CGFloat titleX = x;
+	if (!_pinView.hidden) {
+		_pinView.frame = CGRectMake(x, TGMetricPad + TGMetricPadTiny,
+				TGMetricLineCaption, TGMetricLineCaption);
+		titleX = CGRectGetMaxX(_pinView.frame) + TGMetricPadSmall;
+	}
+	_titleLabel.frame = CGRectMake(titleX, TGMetricPad,
+			MAX(0, maxX - titleX), TGMetricLineRow);
+	_previewLabel.frame = CGRectMake(x, TGMetricPad + TGMetricLineRow + TGMetricPadTiny,
+			MAX(0, maxX - x), TGMetricLineCaption);
+}
+
+- (void)applyTopic:(NSDictionary *)topic {
+	TGTheme *theme = [TGTheme shared];
+	NSString *name = topic[@"name"] ?: @"Topic";
+	NSString *initials = [TGIcons initialsForTitle:name];
+	if (!initials.length)
+		initials = [topic[@"general"] boolValue] ? @"G" : @"?";
+	_iconView.image = [TGIcons avatarWithInitials:initials
+			size:TGMetricTopicIcon
+			colourId:[topic[@"threadId"] longLongValue]];
+	_iconView.layer.cornerRadius = TGHalf(TGMetricTopicIcon);
+	_iconView.clipsToBounds = YES;
+
+	_titleLabel.text = name;
+	_titleLabel.textColor = [theme primaryTextColour];
+	_dateLabel.text = TGTopicDateText(topic[@"date"]);
+	_dateLabel.textColor = [theme listDateColour];
+
+	NSMutableArray *marks = [NSMutableArray array];
+	NSInteger mentions = [topic[@"unreadMentions"] integerValue];
+	NSInteger polls = [topic[@"unreadPollVotes"] integerValue];
+	NSInteger reactions = [topic[@"unreadReactions"] integerValue];
+	if (mentions > 0)
+		[marks addObject:[NSString stringWithFormat:@"@ %ld", (long)mentions]];
+	if (polls > 0)
+		[marks addObject:[NSString stringWithFormat:@"%ld poll vote%@",
+				(long)polls, polls == 1 ? @"" : @"s"]];
+	if (reactions > 0)
+		[marks addObject:[NSString stringWithFormat:@"%ld reaction%@",
+				(long)reactions, reactions == 1 ? @"" : @"s"]];
+
+	NSString *preview = topic[@"text"] ?: @"";
+	if ([topic[@"closed"] boolValue])
+		preview = preview.length
+				? [NSString stringWithFormat:@"Closed · %@", preview]
+				: @"Closed";
+	if (marks.count) {
+		NSString *line = [marks componentsJoinedByString:@" · "];
+		preview = preview.length
+				? [NSString stringWithFormat:@"%@ · %@", line, preview] : line;
+	}
+	_previewLabel.text = preview.length ? preview : @"No messages yet";
+	_previewLabel.textColor = [theme secondaryTextColour];
+
+	_pinView.hidden = ![topic[@"pinned"] boolValue];
+	_pinView.image = [TGIcons glyphNamed:@"pin"
+								  colour:[theme secondaryTextColour]
+									side:TGMetricLineCaption];
+
+	NSInteger unread = [topic[@"unread"] integerValue];
+	NSDictionary *settings = topic[@"notificationSettings"];
+	BOOL muted = [settings isKindOfClass:NSDictionary.class] &&
+			![settings[@"use_default_mute_for"] boolValue] &&
+			[settings[@"mute_for"] integerValue] > 0;
+	_badge.variant = muted ? TGBadgeVariantMuted : TGBadgeVariantNotification;
+	_badge.count = unread;
+	_badge.hidden = unread <= 0;
+
+	self.backgroundColor = [theme listBackgroundColour];
+	self.contentView.backgroundColor = [theme listBackgroundColour];
+	[self setNeedsLayout];
+}
+
+@end
+
 @interface TGTopicsViewController ()
 @property (nonatomic, strong) NSArray *topics;
+@property (nonatomic, strong) TGEmptyView *emptyView;
+@property (nonatomic, assign) BOOL loaded;
 
 - (void)plusTapped;
 - (void)createTopicTapped;
@@ -27,6 +192,8 @@
 				  pinnings:(NSArray *)topics
 			   completion:(void (^)(void))completion;
 - (void)showRefusal:(NSString *)error title:(NSString *)title;
+- (void)updateEmptyView;
+- (void)refreshPulled;
 @end
 
 @implementation TGTopicsViewController
@@ -41,8 +208,14 @@
 
 	self.title = self.chatTitle ?: @"Topics";
 	self.topics = @[];
-	self.tableView.rowHeight = TGMetricPersonRow;
+	self.tableView.rowHeight = TGMetricTopicRow;
+	self.tableView.separatorColor = [[TGTheme shared] separatorColour];
 	[self applyTheme];
+
+	UIRefreshControl *refresh = [[UIRefreshControl alloc] init];
+	[refresh addTarget:self action:@selector(refreshPulled)
+	  forControlEvents:UIControlEventValueChanged];
+	self.refreshControl = refresh;
 
 	// Making a topic is the one thing the list needs beyond its rows; the
 	// plus sits where a mail folder's compose sits.
@@ -64,6 +237,9 @@
 		if (!me)
 			return;
 		me.topics = topics;
+		me.loaded = YES;
+		[me.refreshControl endRefreshing];
+		[me updateEmptyView];
 		[me.tableView reloadData];
 		NSLog(@"TDLIB TOPICS: %lu", (unsigned long)topics.count);
 	}];
@@ -78,6 +254,9 @@
 			object:nil queue:[NSOperationQueue mainQueue]
 		 usingBlock:^(NSNotification *note) {
 		[weakSelf applyTheme];
+		weakSelf.emptyView = nil;
+		weakSelf.tableView.backgroundView = nil;
+		[weakSelf updateEmptyView];
 		[weakSelf.tableView reloadData];
 	}];
 }
@@ -104,6 +283,10 @@
 	[self reloadTopics];
 }
 
+- (void)refreshPulled {
+	[self reloadTopics];
+}
+
 - (void)reloadTopics {
 	__weak typeof(self) weakSelf = self;
 	[[TGClient shared] forumTopicsForChat:self.chatId completion:^(NSArray *topics){
@@ -111,8 +294,31 @@
 		if (!me)
 			return;
 		me.topics = topics;
+		me.loaded = YES;
+		[me.refreshControl endRefreshing];
+		[me updateEmptyView];
 		[me.tableView reloadData];
 	}];
+}
+
+/// A forum with no topics is a real state, not a broken list: say what to do
+/// and put the same New Topic action the plus runs under it.
+- (void)updateEmptyView {
+	if (!self.loaded || self.topics.count) {
+		self.tableView.backgroundView = nil;
+		self.emptyView = nil;
+		return;
+	}
+	if (!self.emptyView) {
+		self.emptyView = [TGEmptyView emptyViewWithFrame:self.tableView.bounds
+				image:[TGIcons emptyChatsIllustration]
+				title:@"No topics yet"
+				subtitle:@"Create a topic to keep this group's discussions apart."
+				buttonTitle:@"New Topic"
+				target:self
+				action:@selector(createTopicTapped)];
+	}
+	self.tableView.backgroundView = self.emptyView;
 }
 
 - (void)applyTheme {
@@ -361,47 +567,12 @@
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
 	static NSString *reuse = @"TGTopicCell";
-	UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:reuse];
+	TGTopicCell *cell = [tableView dequeueReusableCellWithIdentifier:reuse];
 	if (!cell)
-		cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle
-									  reuseIdentifier:reuse];
-
-	TGTheme *theme = [TGTheme shared];
-	cell.backgroundColor = [theme listBackgroundColour];
-	cell.contentView.backgroundColor = [theme listBackgroundColour];
-
-	NSDictionary *t = self.topics[indexPath.row];
-	NSInteger unread = [t[@"unread"] integerValue];
-	NSInteger reactions = [t[@"unreadReactions"] integerValue];
-	NSInteger mentions = [t[@"unreadMentions"] integerValue];
-	NSInteger polls = [t[@"unreadPollVotes"] integerValue];
-
-	cell.textLabel.text = unread > 0
-		? [NSString stringWithFormat:@"%@  (%ld)", t[@"name"], (long)unread]
-		: t[@"name"];
-	cell.textLabel.font = TGFontRowStrong();
-	cell.textLabel.textColor = [theme primaryTextColour];
-	cell.textLabel.backgroundColor = [theme listBackgroundColour];
-
-	NSMutableArray *badges = [NSMutableArray array];
-	if (mentions > 0)
-		[badges addObject:[NSString stringWithFormat:@"@ %ld", (long)mentions]];
-	if (polls > 0)
-		[badges addObject:[NSString stringWithFormat:@"%ld poll vote%@",
-				(long)polls, polls == 1 ? @"" : @"s"]];
-	if (reactions > 0)
-		[badges addObject:[NSString stringWithFormat:@"%ld reaction%@",
-				(long)reactions, reactions == 1 ? @"" : @"s"]];
-	NSString *line = t[@"text"] ?: @"";
-	if (badges.count){
-		NSString *marks = [badges componentsJoinedByString:@" · "];
-		line = line.length ? [NSString stringWithFormat:@"%@ · %@", marks, line] : marks;
-	}
-	cell.detailTextLabel.text = line;
-	cell.detailTextLabel.textColor = [theme secondaryTextColour];
-	cell.detailTextLabel.backgroundColor = [theme listBackgroundColour];
-
-	cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+		cell = [[TGTopicCell alloc] initWithStyle:UITableViewCellStyleDefault
+								  reuseIdentifier:reuse];
+	[cell applyTopic:self.topics[indexPath.row]];
+	cell.accessoryType = UITableViewCellAccessoryNone;
 	return cell;
 }
 

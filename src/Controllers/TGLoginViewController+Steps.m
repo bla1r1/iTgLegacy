@@ -2,6 +2,7 @@
 #import "TGLoginViewControllerInternal.h"
 #import "TGClient.h"
 #import "TGStyle.h"
+#import "TGUIFormat.h"
 
 /// Every step is the same vertical stack: instructions, a field, a button,
 /// and maybe a link or two. Each one used to carry its own column of
@@ -44,6 +45,15 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
         return;
     CGFloat width = self.view.bounds.size.width;
 
+    // Only the first step is the app's front door; the code, password and
+    // email steps are about the one thing they ask for and start at the top.
+    BOOL showsBrand = (self.currentStep == TGLoginStepPhone) &&
+            (!self.qrImageView || self.qrImageView.hidden);
+    self.brandLogoView.hidden = !showsBrand;
+    self.brandLabel.hidden = !showsBrand;
+    if (!showsBrand || !self.countryLabel.text.length)
+        self.countryLabel.hidden = YES;
+
     if (self.qrImageView && !self.qrImageView.hidden) {
         [self layoutQRStepInWidth:width];
         return;
@@ -66,8 +76,26 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
 }
 
 - (void)layoutPhoneStepInWidth:(CGFloat)width {
-    CGFloat y = [self placeSubtitle] + TGMetricStackGroup;
+    CGFloat y = TGMetricStackTop;
+    if (!self.brandLogoView.hidden) {
+        self.brandLogoView.frame = CGRectMake(
+                TGCenteredOrigin(width, TGMetricLoginBrandLogo), y,
+                TGMetricLoginBrandLogo, TGMetricLoginBrandLogo);
+        y += TGMetricLoginBrandLogo + TGMetricPad;
+        self.brandLabel.frame = CGRectMake(TGMetricPadWide, y,
+                width - TGDoubled(TGMetricPadWide), TGMetricLoginBrandLabel);
+        y += TGMetricLoginBrandLabel + TGMetricStackGroup;
+    }
+    y = [self placeSubtitleAtY:y] + TGMetricStackGroup;
+
+    if (!self.countryLabel.hidden) {
+        self.countryLabel.frame = CGRectMake(TGMetricPadWide, y,
+                width - TGDoubled(TGMetricPadWide), TGMetricLoginCountryLine);
+        y += TGMetricLoginCountryLine + TGMetricStackStep;
+    }
+
     y = TGStackPlace(self.inputContainer, y, TGMetricRow, width, TGMetricGutter);
+    y = [self placeErrorAtY:y width:width];
     y = TGStackPlace(self.actionButton, y, TGMetricRow, width, TGMetricGutter);
     y = TGStackPlace(self.qrCodeButton, y, TGMetricLoginLinkHeight,
                      width, TGMetricGutter);
@@ -87,6 +115,7 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
 - (void)layoutCodeStepInWidth:(CGFloat)width {
     CGFloat y = [self placeSubtitle] + TGMetricStackGroup;
     y = TGStackPlace(self.inputContainer, y, TGMetricRow, width, TGMetricGutter);
+    y = [self placeErrorAtY:y width:width];
     self.inputField.frame = CGRectMake(TGMetricPadMedium, 0,
             width - TGDoubled(TGMetricGutter) - TGDoubled(TGMetricPadMedium),
             TGMetricRow);
@@ -106,6 +135,7 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
 - (void)layoutFieldStepInWidth:(CGFloat)width {
     CGFloat y = [self placeSubtitle] + TGMetricStackGroup;
     y = TGStackPlace(self.inputContainer, y, TGMetricRow, width, TGMetricGutter);
+    y = [self placeErrorAtY:y width:width];
     self.inputField.frame = CGRectMake(TGMetricPadMedium, 0,
             width - TGDoubled(TGMetricGutter) - TGDoubled(TGMetricPadMedium),
             TGMetricRow);
@@ -156,6 +186,8 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
     [self.resendTimer invalidate];
     self.resendTimer = nil;
     [self setBusy:NO];
+    self.errorLabel.text = nil;
+    self.errorLabel.hidden = YES;
     self.currentStep = TGLoginStepPhone;
     self.title = @"Your Phone";
     self.subtitleLabel.text = @"Please confirm your country code\nand enter your phone number.";
@@ -177,11 +209,19 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
     if (self.qrImageView) {
         self.qrImageView.hidden = YES;
     }
+    // A field that is already first responder ignores a new secure flag and
+    // keyboard type; the password screen's Cancel used to return to a phone
+    // field still wearing its dots.
+    [self.inputField resignFirstResponder];
     self.phonePrefixField.hidden = NO;
     self.prefixSeparator.hidden = NO;
+    self.countryLabel.text = nil;
+    self.countryLabel.hidden = YES;
+    self.expectedCodeLength = 0;
     self.inputField.textAlignment = NSTextAlignmentLeft;
     self.inputField.font = TGFontInput();
     self.inputField.placeholder = @"Phone number";
+    self.inputField.text = self.savedNationalNumber ?: @"";
     self.inputField.secureTextEntry = NO;
     self.inputField.keyboardType = UIKeyboardTypePhonePad;
     self.inputField.returnKeyType = UIReturnKeyGo;
@@ -219,6 +259,7 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
 
     [self layoutActiveStep];
     [self applyTheme];
+    [self updateActionEnabled];
     [self.inputField becomeFirstResponder];
 }
 
@@ -250,6 +291,8 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
 - (void)showQRCodeStepWithLink:(NSString *)link {
     [self clearStepLinks];
     [self setBusy:NO];
+    self.errorLabel.text = nil;
+    self.errorLabel.hidden = YES;
     self.title = @"Scan QR Code";
     self.subtitleLabel.text = @"Open Telegram on another device:\nSettings > Devices > Link Desktop Device";
 
@@ -344,6 +387,8 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
 - (void)showCodeStepWithPhoneNumber:(NSString *)phoneNumber {
     [self clearStepLinks];
     [self setBusy:NO];
+    self.errorLabel.text = nil;
+    self.errorLabel.hidden = YES;
     self.currentStep = TGLoginStepCode;
     self.title = @"Enter Code";
     if (phoneNumber.length > 0) {
@@ -354,13 +399,17 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
     NSDictionary *info = [TGClient shared].codeInfo;
     NSString *codeType = info[@"type"][@"@type"];
     if ([codeType isEqualToString:@"authenticationCodeTypeTelegramMessage"]) {
-        self.subtitleLabel.text = [NSString stringWithFormat:@"We've sent a code to the Telegram app on your other device for\n%@\nPlease check your other Telegram client.", displayNumber];
+        self.subtitleLabel.text = [NSString stringWithFormat:@"We've sent the code to your Telegram app\non another device for\n%@", displayNumber];
     } else if ([codeType isEqualToString:@"authenticationCodeTypeSms"]) {
-        self.subtitleLabel.text = [NSString stringWithFormat:@"We've sent an SMS with a confirmation code to\n%@", displayNumber];
+        self.subtitleLabel.text = [NSString stringWithFormat:@"We've sent an SMS with the code to\n%@", displayNumber];
+    } else if ([codeType isEqualToString:@"authenticationCodeTypeCall"]) {
+        self.subtitleLabel.text = [NSString stringWithFormat:@"Telegram is calling %@\nwith the code.", displayNumber];
     } else {
-        self.subtitleLabel.text = [NSString stringWithFormat:@"We've sent a code to your other Telegram device or via SMS to\n%@", displayNumber];
+        self.subtitleLabel.text = [NSString stringWithFormat:@"We've sent a code to your other Telegram device or by SMS to\n%@", displayNumber];
     }
 
+    self.countryLabel.hidden = YES;
+    self.expectedCodeLength = [info[@"length"] integerValue];
     [self useSingleFieldLayout];
     [self.inputField resignFirstResponder];   // or the number pad never shows
     self.inputField.placeholder = @"Code";
@@ -402,16 +451,22 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
     int timeout = [info[@"timeout"] intValue];
     if (timeout > 0) {
         self.resendCountdown = timeout;
-        self.resendButton.enabled = NO;
-        [self.resendButton setTitle:[NSString stringWithFormat:@"Send code via SMS in %lds", (long)self.resendCountdown] forState:UIControlStateDisabled];
+        [self.resendButton setTitle:[self resendTitleForCountdown:self.resendCountdown]
+                          forState:UIControlStateDisabled];
         self.resendTimer = [NSTimer scheduledTimerWithTimeInterval:1.0 target:self selector:@selector(resendTick:) userInfo:nil repeats:YES];
     } else {
-        self.resendButton.enabled = YES;
-        [self.resendButton setTitle:@"Send code via SMS / Resend" forState:UIControlStateNormal];
+        self.resendCountdown = 0;
+        [self.resendButton setTitle:@"Resend code" forState:UIControlStateNormal];
     }
 
     [self applyTheme];
+    [self updateActionEnabled];
     [self.inputField becomeFirstResponder];
+}
+
+- (NSString *)resendTitleForCountdown:(NSInteger)seconds {
+    NSString *clock = TGUIFormatCallDuration(MAX(0, seconds));
+    return [NSString stringWithFormat:@"Resend code in %@", clock];
 }
 
 - (void)resendTick:(NSTimer *)timer {
@@ -419,28 +474,33 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
     if (self.resendCountdown <= 0) {
         [self.resendTimer invalidate];
         self.resendTimer = nil;
-        self.resendButton.enabled = YES;
-        [self.resendButton setTitle:@"Send code via SMS / Resend" forState:UIControlStateNormal];
+        self.resendCountdown = 0;
+        [self.resendButton setTitle:@"Resend code" forState:UIControlStateNormal];
     } else {
-        [self.resendButton setTitle:[NSString stringWithFormat:@"Send code via SMS in %lds", (long)self.resendCountdown] forState:UIControlStateDisabled];
+        [self.resendButton setTitle:[self resendTitleForCountdown:self.resendCountdown]
+                          forState:UIControlStateDisabled];
     }
+    [self updateActionEnabled];
 }
 
 - (void)resendButtonTapped {
     if (self.onResendCode) {
         self.onResendCode();
     }
-    self.resendButton.enabled = NO;
     self.resendCountdown = 60;
-    [self.resendButton setTitle:[NSString stringWithFormat:@"Send code via SMS in %lds", (long)self.resendCountdown] forState:UIControlStateDisabled];
+    [self.resendButton setTitle:[self resendTitleForCountdown:self.resendCountdown]
+                      forState:UIControlStateDisabled];
     [self.resendTimer invalidate];
     self.resendTimer = [NSTimer scheduledTimerWithTimeInterval:1.0 target:self selector:@selector(resendTick:) userInfo:nil repeats:YES];
+    [self updateActionEnabled];
 }
 
 - (void)resetSessionTapped {
     if (self.onResetSession) {
         self.onResetSession();
     }
+    self.savedNationalNumber = nil;
+    self.savedPhoneNumber = nil;
     self.inputField.text = @"";
     [self showPhoneStep];
 }
@@ -490,6 +550,7 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
     [self layoutActiveStep];
 
     [self applyTheme];
+    [self updateActionEnabled];
     [self.inputField becomeFirstResponder];
 }
 
@@ -551,6 +612,8 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
     [self showFieldStep:TGLoginStepEmailCode title:@"Check Your Email" subtitle:subtitle
             placeholder:@"Code" secure:NO keyboard:UIKeyboardTypeNumberPad
                  button:@"Submit Code"];
+    self.expectedCodeLength = [info[@"code_info"][@"length"] integerValue];
+    [self updateActionEnabled];
     if ([info[@"can_reset_email_address"] boolValue])
         [self addStepLink:@"Can't access this email?" action:@selector(resetEmailTapped)
                       atY:CGRectGetMaxY(self.actionButton.frame) + TGMetricPadSmall];
@@ -559,6 +622,7 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
 - (void)resetEmailTapped {
     [self setBusy:YES];
     [[TGClient shared] resetAuthenticationEmailAddress];
+    [self releaseBusyIfStepIsStill:self.currentStep];
 }
 
 - (void)codeMissingTapped {
@@ -660,12 +724,33 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
 /// lines high whatever it said, so "...via SMS to" lost the phone number on
 /// the code step, the one line that says where the code went.
 - (CGFloat)placeSubtitle {
+    return [self placeSubtitleAtY:TGMetricStackTop];
+}
+
+- (CGFloat)placeSubtitleAtY:(CGFloat)y {
     CGFloat width = self.view.bounds.size.width - TGDoubled(TGMetricPadWide);
     self.subtitleLabel.numberOfLines = 0;
     CGFloat height = MAX(TGTextHeight(self.subtitleLabel.text, self.subtitleLabel.font, width),
                          TGMetricLoginSubtitleHeight);
-    self.subtitleLabel.frame = CGRectMake(TGMetricPadWide, TGMetricStackTop, width, height);
-    return TGMetricStackTop + height;
+    self.subtitleLabel.frame = CGRectMake(TGMetricPadWide, y, width, height);
+    return y + height;
+}
+
+- (CGFloat)placeErrorAtY:(CGFloat)y width:(CGFloat)width {
+    if (self.errorLabel.hidden)
+        return y;
+    CGFloat height = TGDoubled(TGMetricLineCaption);
+    self.errorLabel.frame = CGRectMake(TGMetricGutter, y,
+            width - TGDoubled(TGMetricGutter), height);
+    return y + height + TGMetricStackStep;
+}
+
+- (void)clearError {
+    if (self.errorLabel.hidden && !self.errorLabel.text.length)
+        return;
+    self.errorLabel.text = nil;
+    self.errorLabel.hidden = YES;
+    [self layoutActiveStep];
 }
 
 - (void)clearStepLinks {
@@ -697,6 +782,8 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
           placeholder:(NSString *)placeholder secure:(BOOL)secure
              keyboard:(UIKeyboardType)keyboard button:(NSString *)button {
     [self setBusy:NO];
+    self.errorLabel.text = nil;
+    self.errorLabel.hidden = YES;
     [self clearStepLinks];
     self.currentStep = step;
     self.title = title;
@@ -732,10 +819,13 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
     [self.actionButton setTitle:button forState:UIControlStateNormal];
     self.nextItem.title = @"Done";
     self.navigationItem.rightBarButtonItem = self.nextItem;
+    self.countryLabel.hidden = YES;
+    self.expectedCodeLength = 0;
 
     [self layoutActiveStep];
 
     [self applyTheme];
+    [self updateActionEnabled];
     [self.inputField becomeFirstResponder];
 }
 

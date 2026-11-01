@@ -30,7 +30,17 @@ typedef NS_ENUM(NSInteger, TGLoginStep) {
 /// guess does not overwrite a number that is not local.
 @property (nonatomic, assign) BOOL prefixEdited;
 @property (nonatomic, strong) UIScrollView *scrollView;
+@property (nonatomic, strong) UIImageView *brandLogoView;
+@property (nonatomic, strong) UILabel *brandLabel;
 @property (nonatomic, strong) UILabel *subtitleLabel;
+/// The country and the number Telegram would write under the instructions.
+/// It is its own line so the instructions do not grow to four lines as a
+/// number is typed.
+@property (nonatomic, strong) UILabel *countryLabel;
+/// The sentence under the field when a code or password did not take. TDLib
+/// keeps the same authorization state on a wrong code, so this is where the
+/// screen says what happened instead of a spinner that never ends.
+@property (nonatomic, strong) UILabel *errorLabel;
 @property (nonatomic, strong) UIView *inputContainer;
 @property (nonatomic, strong) UITextField *phonePrefixField;
 @property (nonatomic, strong) UIView *prefixSeparator;
@@ -43,14 +53,26 @@ typedef NS_ENUM(NSInteger, TGLoginStep) {
 @property (nonatomic, strong) UIButton *codeStepQrButton;
 @property (nonatomic, strong) UIImageView *qrImageView;
 @property (nonatomic, copy) NSString *savedPhoneNumber;
+/// The part after the country code, kept so Edit on the code step returns
+/// the number that was typed rather than the code that replaced it.
+@property (nonatomic, copy) NSString *savedNationalNumber;
 @property (nonatomic, strong) NSTimer *resendTimer;
 @property (nonatomic, assign) NSInteger resendCountdown;
+/// The length Telegram says a code has; zero when the answer did not name it.
+/// A code that reaches it is submitted without a second tap, as Telegram does.
+@property (nonatomic, assign) NSInteger expectedCodeLength;
+/// True while one request is in flight, so the fields and links stop moving
+/// under it and a second tap cannot send the same number twice.
+@property (nonatomic, assign) BOOL busy;
 /// The ghost links under a step's button that only that step has.
 @property (nonatomic, strong) NSMutableArray *stepLinks;
 
 - (void)setupUI;
 - (void)applyTheme;
 - (void)actionButtonTapped;
+- (void)updateActionEnabled;
+- (BOOL)canSubmitCurrentStep;
+- (void)releaseBusyIfStepIsStill:(TGLoginStep)step;
 
 @end
 
@@ -74,10 +96,14 @@ typedef NS_ENUM(NSInteger, TGLoginStep) {
 /// here; this runs again on every layout pass and rotation, so nothing on
 /// the screen keeps the frame it got while the bounds were other.
 - (void)layoutActiveStep;
+- (CGFloat)placeSubtitleAtY:(CGFloat)y;
+- (CGFloat)placeErrorAtY:(CGFloat)y width:(CGFloat)width;
+- (void)clearError;
 - (void)qrCodeButtonTapped;
 - (void)useSingleFieldLayout;
 - (void)resendTick:(NSTimer *)timer;
 - (void)resendButtonTapped;
+- (NSString *)resendTitleForCountdown:(NSInteger)seconds;
 - (void)resetSessionTapped;
 - (UIImage *)generateQRCodeForString:(NSString *)string size:(CGFloat)size;
 - (void)clearStepLinks;

@@ -13,8 +13,15 @@
 /// one the bubble falls back to the chat's initial.
 @property (nonatomic, strong) NSArray *stories;
 
+/// Your own tile, always first: the account's picture with a plus badge, the
+/// way Telegram shows "My Story". The controller supplies "avatarImage" (or
+/// the title for the initials fallback) and whether there is an active story.
+@property (nonatomic, strong) NSDictionary *ownStory;
+
 @property (nonatomic, copy) void (^onAddStory)(void);
 @property (nonatomic, copy) void (^onMore)(void);
+@property (nonatomic, copy) void (^onMyStoryTapped)(void);
+@property (nonatomic, copy) void (^onMyStoryHeld)(void);
 @property (nonatomic, copy) void (^onStoryTapped)(NSDictionary *row);
 @property (nonatomic, copy) void (^onStoryHeld)(NSDictionary *row);
 

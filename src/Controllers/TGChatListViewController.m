@@ -19,8 +19,17 @@ static const CGFloat kRowGlyph     = 28.0f;
 /// The title view's box: the name, then the connection line under it. 200 pt
 /// is the chat header's width on the same 320 pt bar, so neither nav button
 /// loses its target to a long folder name.
-static const CGFloat kListTitleWidth  = 200.0f;
+static const CGFloat kListTitleWidth  = 150.0f;
 static const CGFloat kListTitleHeight = TGMetricRow;
+/// The chat-list bar controls: the Edit pill, the circled add and the blue
+/// compose button. Named here because only this header stacks them.
+static const CGFloat kBarEditWidth    = 66.0f;
+static const CGFloat kBarEditHeight   = 30.0f;
+static const CGFloat kBarRightWidth   = 82.0f;
+static const CGFloat kBarControlSide  = 34.0f;
+static const CGFloat kBarComposeSide  = 38.0f;
+static const CGFloat kBarComposeX     = 42.0f;
+static const CGFloat kBarControlTop   = 1.0f;
 /// The archive pill's tag, outside the folder indexes (100 + slot).
 static const NSInteger kFolderArchiveTag = 1000;
 /// A folder pill's side padding, its widest form and the gap to the next pill.
@@ -118,9 +127,8 @@ static NSDictionary *TGChatSnapshotRow(NSDictionary *chat) {
 	self.avatars = [[TGImageLruCache alloc] initWithCapacity:50];
 	self.avatarsRequested = [NSMutableSet set];
 
-	self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc]
-			initWithBarButtonSystemItem:UIBarButtonSystemItemCompose
-				   target:self action:@selector(composeTapped)];
+	self.navigationItem.rightBarButtonItem = nil;
+	[self buildHeaderButtons];
 
 	self.searchBar = [[UISearchBar alloc] initWithFrame:CGRectMake(0, 0, TGMetricScreenWidth, TGMetricRow)];
 	self.searchBar.delegate = self;
@@ -237,7 +245,146 @@ static NSDictionary *TGChatSnapshotRow(NSDictionary *chat) {
 	self.listSubtitleLabel.textColor = [[TGTheme shared] barSubtitleColour];
 }
 
-/// A horizontal strip of folder pills, the way the official clients show
+/// Telegram's chat list bar: a pill-shaped Edit on the left, and on the right
+/// a circled add-contact control beside the blue compose button. The stock
+/// compose item is a grey glyph; the official screen draws both controls as
+/// circles, so they are custom views with their own hit areas.
+- (void)buildHeaderButtons {
+	if (self.showsArchive || self.folderId != 0)
+		return;
+
+	UIButton *edit = [UIButton buttonWithType:UIButtonTypeCustom];
+	edit.frame = CGRectMake(TGMetricZero, TGMetricZero, kBarEditWidth, kBarEditHeight);
+	edit.layer.cornerRadius = TGHalf(kBarEditHeight);
+	edit.layer.borderWidth = TGMetricHairline;
+	edit.layer.borderColor = [[TGTheme shared] separatorColour].CGColor;
+	edit.titleLabel.font = TGFontCaptionStrong();
+	[edit setTitle:@"Edit" forState:UIControlStateNormal];
+	[edit setTitleColor:[[TGTheme shared] barTitleColour] forState:UIControlStateNormal];
+	[edit addTarget:self action:@selector(toggleChatListEditing)
+   forControlEvents:UIControlEventTouchUpInside];
+	self.editButton = edit;
+	self.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc]
+			initWithCustomView:edit];
+
+	UIView *right = [[UIView alloc] initWithFrame:CGRectMake(TGMetricZero, TGMetricZero, kBarRightWidth, kBarComposeSide)];
+
+	UIButton *add = [UIButton buttonWithType:UIButtonTypeCustom];
+	add.frame = CGRectMake(TGMetricZero, kBarControlTop, kBarControlSide, kBarControlSide);
+	add.layer.cornerRadius = TGHalf(kBarControlSide);
+	add.layer.borderWidth = TGMetricHairline;
+	add.layer.borderColor = [[TGTheme shared] separatorColour].CGColor;
+	[add setImage:[TGIcons glyphNamed:@"plus"
+							   colour:[[TGTheme shared] barTitleColour]
+								 side:TGMetricMenuGlyph]
+		 forState:UIControlStateNormal];
+	[add addTarget:self action:@selector(addContactTapped)
+  forControlEvents:UIControlEventTouchUpInside];
+	[right addSubview:add];
+
+	UIButton *compose = [UIButton buttonWithType:UIButtonTypeCustom];
+	compose.frame = CGRectMake(kBarComposeX, TGMetricZero, kBarComposeSide, kBarComposeSide);
+	compose.layer.cornerRadius = TGHalf(kBarComposeSide);
+	compose.backgroundColor = [[TGTheme shared] accentColour];
+	[compose setImage:[TGIcons glyphNamed:@"compose"
+								   colour:[[TGTheme shared] onAccentColour]
+									 side:TGMetricMenuGlyph]
+			 forState:UIControlStateNormal];
+	[compose addTarget:self action:@selector(composeTapped)
+	  forControlEvents:UIControlEventTouchUpInside];
+	[right addSubview:compose];
+
+	self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc]
+			initWithCustomView:right];
+}
+
+- (void)addContactTapped {
+	TGNewContactViewController *contact = [[TGNewContactViewController alloc] init];
+	contact.hidesBottomBarWhenPushed = YES;
+	[self.navigationController pushViewController:contact animated:YES];
+}
+
+/// Telegram's Edit is multi-select, not a settings mode: check the chats,
+/// then delete, archive or mute them together. The table's own editing mode
+/// draws the checks; the toolbar carries the three verbs.
+- (void)toggleChatListEditing {
+	self.editingChats = !self.editingChats;
+	self.tableView.allowsMultipleSelectionDuringEditing = YES;
+	[self.tableView setEditing:self.editingChats animated:YES];
+	[self.editButton setTitle:(self.editingChats ? @"Done" : @"Edit")
+					 forState:UIControlStateNormal];
+	self.navigationItem.rightBarButtonItem.customView.hidden = self.editingChats;
+
+	UINavigationController *nav = self.navigationController;
+	if (!self.editingChats){
+		[nav setToolbarHidden:YES animated:YES];
+		return;
+	}
+	UIBarButtonItem *space = [[UIBarButtonItem alloc]
+			initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace
+								 target:nil action:nil];
+	UIBarButtonItem *delete = [[UIBarButtonItem alloc] initWithTitle:@"Delete"
+			style:UIBarButtonItemStyleBordered target:self
+			action:@selector(deleteSelectedChats)];
+	UIBarButtonItem *archive = [[UIBarButtonItem alloc] initWithTitle:@"Archive"
+			style:UIBarButtonItemStyleBordered target:self
+			action:@selector(archiveSelectedChats)];
+	UIBarButtonItem *mute = [[UIBarButtonItem alloc] initWithTitle:@"Mute"
+			style:UIBarButtonItemStyleBordered target:self
+			action:@selector(muteSelectedChats)];
+	[nav setToolbarItems:@[delete, space, archive, space, mute] animated:NO];
+	[nav setToolbarHidden:NO animated:YES];
+}
+
+- (NSArray *)selectedChatIndexes {
+	NSMutableArray *ids = [NSMutableArray array];
+	NSInteger header = [self headerRows].count;
+	for (NSIndexPath *path in self.tableView.indexPathsForSelectedRows){
+		if (path.row < header)
+			continue;
+		NSInteger index = path.row - header;
+		NSArray *chats = [self visibleChats];
+		if (index >= 0 && index < (NSInteger)chats.count)
+			[ids addObject:chats[(NSUInteger)index]];
+	}
+	return ids;
+}
+
+- (void)finishChatEditingAction {
+	self.editingChats = NO;
+	[self.tableView setEditing:NO animated:YES];
+	[self.editButton setTitle:@"Edit" forState:UIControlStateNormal];
+	self.navigationItem.rightBarButtonItem.customView.hidden = NO;
+	[self.navigationController setToolbarHidden:YES animated:YES];
+	[self reload];
+}
+
+- (void)deleteSelectedChats {
+	NSArray *selected = [self selectedChatIndexes];
+	if (!selected.count)
+		return;
+	__weak typeof(self) weakSelf = self;
+	[TGAlertSheet showConfirm:[NSString stringWithFormat:@"Delete %lu chats?",
+			(unsigned long)selected.count]
+						title:@"Delete Chats" action:@"Delete" destructive:YES
+					   inView:self.view onConfirm:^{
+		for (NSDictionary *chat in selected)
+			[[TGClient shared] deleteChat:[chat[@"id"] longLongValue]];
+		[weakSelf finishChatEditingAction];
+	}];
+}
+
+- (void)archiveSelectedChats {
+	for (NSDictionary *chat in [self selectedChatIndexes])
+		[[TGClient shared] setChat:[chat[@"id"] longLongValue] archived:YES];
+	[self finishChatEditingAction];
+}
+
+- (void)muteSelectedChats {
+	for (NSDictionary *chat in [self selectedChatIndexes])
+		[[TGClient shared] setChat:[chat[@"id"] longLongValue] muted:YES];
+	[self finishChatEditingAction];
+}
 /// them: "All chats" first, then every folder, the active one filled with
 /// the accent colour. Tapping one switches the list in place - no sheet,
 /// no navigation.
@@ -1046,6 +1193,11 @@ static dispatch_semaphore_t TGAvtDecodeGate(NSInteger cap) {
 	dispatch_semaphore_t gate = TGAvtDecodeGate(2);
 	NSMutableArray *rows = [NSMutableArray arrayWithArray:self.chats ?: @[]];
 	[rows addObjectsFromArray:self.storyRows ?: @[]];
+	NSNumber *ownPhoto = [TGClient shared].me[@"profile_photo"][@"small"][@"id"]
+			?: [[TGClient shared] photoFileIdForUserId:
+					[[TGClient shared].me[@"id"] longLongValue]];
+	if (ownPhoto)
+		[rows addObject:@{@"photoFileId" : ownPhoto}];
 	for (NSDictionary *c in rows){
 		NSNumber *fileId = c[@"photoFileId"];
 		if (!fileId || fileId.longLongValue < 0 || self.avatars[fileId] || [self.avatarsRequested containsObject:fileId])
@@ -1182,17 +1334,45 @@ static NSString *TGChatDate(NSTimeInterval unix) {
 				strip = [[TGStoriesCell alloc] initWithStyle:UITableViewCellStyleDefault
 											  reuseIdentifier:storyReuse];
 			NSMutableArray *display = [NSMutableArray array];
+			NSDictionary *own = nil;
 			for (NSDictionary *row in self.storyRows){
+				if ([row[@"isOwn"] boolValue]){
+					own = row;
+					continue;
+				}
 				NSMutableDictionary *copy = [row mutableCopy];
 				NSNumber *fileId = row[@"photoFileId"];
 				if (fileId && self.avatars[fileId])
 					copy[@"avatarImage"] = self.avatars[fileId];
 				[display addObject:copy];
 			}
+			int64_t myId = [[TGClient shared].me[@"id"] longLongValue];
+			NSMutableDictionary *mine = [own mutableCopy] ?: [NSMutableDictionary dictionary];
+			mine[@"title"] = @"My Story";
+			mine[@"isOwn"] = @YES;
+			if (!mine[@"chatId"])
+				mine[@"chatId"] = @([[TGClient shared] savedMessagesChatId] ?: myId);
+			NSNumber *ownPhoto = mine[@"photoFileId"]
+					?: [TGClient shared].me[@"profile_photo"][@"small"][@"id"]
+					?: [[TGClient shared] photoFileIdForUserId:myId];
+			if (ownPhoto)
+				mine[@"photoFileId"] = ownPhoto;
+			if (ownPhoto && self.avatars[ownPhoto])
+				mine[@"avatarImage"] = self.avatars[ownPhoto];
 			strip.stories = display;
+			strip.ownStory = mine;
 			__weak typeof(self) weakSelf = self;
 			strip.onAddStory = ^{ [weakSelf openStoryComposer]; };
 			strip.onMore = ^{ [weakSelf openStoriesMenu]; };
+			strip.onMyStoryTapped = ^{
+				TGChatListViewController *me = weakSelf;
+				if (!me) return;
+				if ([own[@"stories"] count])
+					[me showStoryRow:own];
+				else
+					[me openStoryComposer];
+			};
+			strip.onMyStoryHeld = ^{ [weakSelf openStoriesMenu]; };
 			strip.onStoryTapped = ^(NSDictionary *row){ [weakSelf showStoryRow:row]; };
 			strip.onStoryHeld = ^(NSDictionary *row){ [weakSelf runStoryRowMenu:row]; };
 			return strip;
@@ -1290,7 +1470,13 @@ static NSString *TGChatDate(NSTimeInterval unix) {
 	return cell;
 }
 
+- (BOOL)tableView:(UITableView *)tableView canEditRowAtIndexPath:(NSIndexPath *)indexPath {
+	return indexPath.row >= (NSInteger)[self headerRows].count;
+}
+
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
+	if (self.editingChats)
+		return;
 	[tableView deselectRowAtIndexPath:indexPath animated:YES];
 
 	NSArray *header = [self headerRows];

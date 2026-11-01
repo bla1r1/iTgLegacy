@@ -96,6 +96,27 @@ static const CGFloat TGMetricCallTogglesBottom   = 150.0f;
 static const CGFloat TGMetricCallLabelGap        = 65.0f;
 static const CGFloat TGMetricCallLabelWidth      = 80.0f;
 static const CGFloat TGMetricCallLabelHeight     = 15.0f;
+/// The name block sits under the status bar; Telegram moves it down a little
+/// on taller phones and keeps it close to the top on a 3.5" one.
+static const CGFloat TGMetricCallStatusTopSmall  = 52.0f;
+static const CGFloat TGMetricCallStatusTop       = 76.0f;
+static const CGFloat TGMetricCallStatusTopTall   = 112.0f;
+/// The four-word key in the top-right corner and the bar a minimised call
+/// leaves over the app.
+static const CGFloat TGMetricCallKeyWidth        = 128.0f;
+static const CGFloat TGMetricCallKeyHeight       = 32.0f;
+static const CGFloat TGMetricCallBarHeight       = 64.0f;
+static const CGFloat TGMetricCallKeyCardWidth    = 280.0f;
+static const CGFloat TGMetricCallKeyCardHeight   = 220.0f;
+static const CGFloat TGMetricCallKeyGlyphSize    = 34.0f;
+/// The card that shows the four emoji, and the width of the QR screen's
+/// "Enter a Link" button.
+static const CGFloat TGMetricCallKeyCardBody     = TGMetricLineBody * 3.0f;
+static const CGFloat TGMetricQRManualWidth       = 120.0f;
+/// A forum topic row: a coloured icon, two lines and the unread badge on the
+/// right. Taller than a person row because the second line is a preview.
+static const CGFloat TGMetricTopicRow            = 72.0f;
+static const CGFloat TGMetricTopicIcon           = 44.0f;
 
 #pragma mark - menu and sheet metrics
 
@@ -233,6 +254,11 @@ static const CGFloat TGMetricQuoteForwardLine   = TGMetricLineBody;
 static const CGFloat TGMetricSenderLineHeight   = TGMetricLineCaption;
 static const CGFloat TGMetricSelectionShift     = 34.0f;
 static const CGFloat TGMetricLoginQRSize        = 180.0f;
+/// The paper plane and the wordmark above the phone step. 56 is the size
+/// Telegram's splash logo settles at on a 320 pt screen.
+static const CGFloat TGMetricLoginBrandLogo     = 56.0f;
+static const CGFloat TGMetricLoginBrandLabel    = TGMetricLineTitle;
+static const CGFloat TGMetricLoginCountryLine   = TGMetricLineSubhead;
 
 static const CGFloat TGMetricStackTop   = TGMetricPadLarge;
 static const CGFloat TGMetricStackStep  = TGMetricPadMedium;  // 8 left the field touching the button

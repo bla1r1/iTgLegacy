@@ -35,6 +35,11 @@
 	[self rebuild];
 }
 
+- (void)setOwnStory:(NSDictionary *)ownStory {
+	_ownStory = [ownStory copy];
+	[self rebuild];
+}
+
 - (void)layoutSubviews {
 	[super layoutSubviews];
 	self.strip.frame = CGRectMake(0, 0, self.contentView.bounds.size.width,
@@ -46,7 +51,7 @@
 }
 
 - (NSInteger)bubbleCount {
-	return (NSInteger)self.stories.count + 2;   // Add Story and More
+	return (NSInteger)self.stories.count + 1;   // My Story, then everyone else
 }
 
 - (void)rebuild {
@@ -54,13 +59,16 @@
 		[view removeFromSuperview];
 
 	CGFloat x = TGMetricStoryBubbleGap;
-	[self addBubbleAt:x
-			  title:@"Add Story"
-			   ring:nil
-				image:[TGIcons glyphNamed:@"plus"
-								   colour:[[TGTheme shared] onAccentColour]
-									 side:TGMetricPadLarge]
-				 tag:-1];
+	NSString *ownTitle = self.ownStory[@"title"];
+	UIImage *ownImage = self.ownStory[@"avatarImage"];
+	if (!ownImage){
+		NSString *first = ownTitle.length
+				? [ownTitle substringToIndex:1].uppercaseString : @"?";
+		ownImage = [TGIcons avatarWithInitials:first
+										 size:TGMetricStoryAvatar
+									 colourId:[self.ownStory[@"chatId"] longLongValue]];
+	}
+	[self addMyStoryAt:x image:ownImage];
 	x += TGMetricStoryBubble + TGMetricStoryBubbleGap;
 
 	for (NSInteger i = 0; i < (NSInteger)self.stories.count; i++){
@@ -79,17 +87,66 @@
 		x += TGMetricStoryBubble + TGMetricStoryBubbleGap;
 	}
 
-	[self addBubbleAt:x
-			  title:@"More"
-			   ring:nil
-				image:[TGIcons glyphNamed:@"more"
-								   colour:[[TGTheme shared] secondaryTextColour]
-									 side:TGMetricPadLarge]
-				 tag:-2];
-	x += TGMetricStoryBubble + TGMetricStoryBubbleGap;
-
 	self.strip.contentSize = CGSizeMake(x, TGMetricStoryStripRow);
 	[self setNeedsLayout];
+}
+
+/// The own tile is not a story bubble: it is the account's face with a plus
+/// badge, and the badge is the way in even when there is nothing to watch.
+- (void)addMyStoryAt:(CGFloat)x image:(UIImage *)image {
+	UIView *bubble = [[UIView alloc] initWithFrame:CGRectMake(
+			x, TGMetricStoryStripTop, TGMetricStoryBubble, TGMetricStoryBubble)];
+
+	UIImageView *picture = [[UIImageView alloc] initWithFrame:bubble.bounds];
+	picture.image = image;
+	picture.contentMode = UIViewContentModeScaleAspectFill;
+	picture.clipsToBounds = YES;
+	picture.layer.cornerRadius = TGHalf(TGMetricStoryBubble);
+	picture.backgroundColor = [[TGTheme shared] fileTileColour];
+	[bubble addSubview:picture];
+
+	CGFloat badge = TGMetricStoryBubble * 0.34f;
+	UIView *plate = [[UIView alloc] initWithFrame:CGRectMake(
+			CGRectGetMaxX(bubble.bounds) - badge - 1,
+			CGRectGetMaxY(bubble.bounds) - badge - 1, badge, badge)];
+	plate.backgroundColor = [[TGTheme shared] accentColour];
+	plate.layer.cornerRadius = TGHalf(badge);
+	plate.layer.borderWidth = 2.0f;
+	plate.layer.borderColor = [[TGTheme shared] listBackgroundColour].CGColor;
+	[bubble addSubview:plate];
+
+	UIImageView *plus = [[UIImageView alloc] initWithFrame:plate.bounds];
+	plus.image = [TGIcons glyphNamed:@"plus"
+							  colour:[[TGTheme shared] onAccentColour]
+								side:badge * 0.52f];
+	plus.contentMode = UIViewContentModeCenter;
+	[plate addSubview:plus];
+
+	UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(
+			x, TGMetricStoryStripTop + TGMetricStoryBubble +
+			   TGMetricStoryLabelTopGap,
+			TGMetricStoryBubble, TGMetricStoryLabelHeight)];
+	label.text = self.ownStory[@"title"] ?: @"My Story";
+	label.font = TGFontMicro();
+	label.textAlignment = NSTextAlignmentCenter;
+	label.textColor = [[TGTheme shared] secondaryTextColour];
+	label.backgroundColor = [UIColor clearColor];
+	label.lineBreakMode = NSLineBreakByTruncatingTail;
+	[self.strip addSubview:label];
+
+	UIButton *hit = [UIButton buttonWithType:UIButtonTypeCustom];
+	hit.frame = CGRectMake(x, TGMetricStoryStripTop, TGMetricStoryBubble,
+						   TGMetricStoryBubble + TGMetricStoryLabelTopGap +
+						   TGMetricStoryLabelHeight);
+	hit.tag = -1;
+	[hit addTarget:self action:@selector(bubbleTapped:)
+		  forControlEvents:UIControlEventTouchUpInside];
+	UILongPressGestureRecognizer *hold = [[UILongPressGestureRecognizer alloc]
+			initWithTarget:self action:@selector(bubbleHeld:)];
+	hold.minimumPressDuration = 0.45;
+	[hit addGestureRecognizer:hold];
+	[self.strip addSubview:bubble];
+	[self.strip addSubview:hit];
 }
 
 /// One bubble: the ring is a separate view behind the picture, so a read
@@ -161,7 +218,9 @@
 
 - (void)bubbleTapped:(UIButton *)button {
 	if (button.tag == -1){
-		if (self.onAddStory)
+		if (self.onMyStoryTapped)
+			self.onMyStoryTapped();
+		else if (self.onAddStory)
 			self.onAddStory();
 		return;
 	}
@@ -182,6 +241,11 @@
 	if (![view isKindOfClass:UIButton.class])
 		return;
 	NSInteger tag = ((UIButton *)view).tag;
+	if (tag == -1){
+		if (self.onMyStoryHeld)
+			self.onMyStoryHeld();
+		return;
+	}
 	if (tag >= 0 && tag < (NSInteger)self.stories.count && self.onStoryHeld)
 		self.onStoryHeld(self.stories[tag]);
 }

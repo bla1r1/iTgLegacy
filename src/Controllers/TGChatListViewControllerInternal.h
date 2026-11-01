@@ -9,6 +9,7 @@
 #import "TGContactsViewController.h"
 #import "TGTopicsViewController.h"
 #import "TGPopupMenu.h"
+#import "TGNewContactViewController.h"
 #import "TGSnackbar.h"
 #import "TGSearchViewController.h"
 #import "TGChatCell.h"
@@ -23,6 +24,8 @@
 @property (nonatomic, strong) NSArray *chats;
 @property (nonatomic, assign) BOOL showsArchive;      // this IS the archive screen
 @property (nonatomic, assign) NSInteger folderId;     // 0 = no folder
+@property (nonatomic, assign) BOOL editingChats;
+@property (nonatomic, strong) UIButton *editButton;
 // A folder pill being dragged to a new slot: where on the pill the finger
 // grabbed it, and the frame it lifted from.
 @property (nonatomic, assign) CGFloat folderDragOffset;

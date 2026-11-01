@@ -2,6 +2,8 @@
 #import "TGStyle.h"
 #import "TGAlertSheet.h"
 #import "TGClient.h"
+#import "TGIcons.h"
+#import "TGUIFormat.h"
 
 @implementation TGLoginViewController
 
@@ -82,6 +84,26 @@
     CGFloat wide  = width - TGDoubled(TGMetricPadWide);
     CGFloat y = TGMetricStackTop;
 
+    // The sign-in screen is the app's first screen, so it says whose it is:
+    // the same paper plane and wordmark Telegram opens with, drawn from the
+    // icon set rather than shipped as bitmap art.
+    self.brandLogoView = [[UIImageView alloc] initWithFrame:
+            CGRectMake(TGCenteredOrigin(width, TGMetricLoginBrandLogo), y,
+                       TGMetricLoginBrandLogo, TGMetricLoginBrandLogo)];
+    self.brandLogoView.contentMode = UIViewContentModeScaleAspectFit;
+    self.brandLogoView.backgroundColor = [UIColor clearColor];
+    [self.scrollView addSubview:self.brandLogoView];
+
+    y += TGMetricLoginBrandLogo + TGMetricPad;
+    self.brandLabel = [[UILabel alloc] initWithFrame:
+            CGRectMake(TGMetricPadWide, y, wide, TGMetricLoginBrandLabel)];
+    self.brandLabel.text = @"LegacyTG";
+    self.brandLabel.font = TGFontTitle();
+    self.brandLabel.textAlignment = NSTextAlignmentCenter;
+    self.brandLabel.backgroundColor = [UIColor clearColor];
+    [self.scrollView addSubview:self.brandLabel];
+
+    y += TGMetricLoginBrandLabel + TGMetricStackGroup;
     // Clean native iOS 7 subtitle / instructions
     self.subtitleLabel = [[UILabel alloc] initWithFrame:
             CGRectMake(TGMetricPadWide, y, wide, TGMetricLoginSubtitleHeight)];
@@ -92,8 +114,29 @@
     self.subtitleLabel.numberOfLines = 2;
     [self.scrollView addSubview:self.subtitleLabel];
 
-    // Grouped input container
+    // The country and formatting line: Telegram puts the country's name and
+    // the number as it would dial it directly under the instructions.
     y += TGMetricLoginSubtitleHeight + TGMetricStackStep;
+    self.countryLabel = [[UILabel alloc] initWithFrame:
+            CGRectMake(TGMetricPadWide, y, wide, TGMetricLoginCountryLine)];
+    self.countryLabel.font = TGFontSubhead();
+    self.countryLabel.textAlignment = NSTextAlignmentCenter;
+    self.countryLabel.backgroundColor = [UIColor clearColor];
+    self.countryLabel.numberOfLines = 1;
+    self.countryLabel.hidden = YES;
+    [self.scrollView addSubview:self.countryLabel];
+
+    self.errorLabel = [[UILabel alloc] initWithFrame:
+            CGRectMake(TGMetricGutter, 0, inner, TGMetricLineCaption)];
+    self.errorLabel.font = TGFontCaption();
+    self.errorLabel.textAlignment = NSTextAlignmentCenter;
+    self.errorLabel.backgroundColor = [UIColor clearColor];
+    self.errorLabel.numberOfLines = 2;
+    self.errorLabel.hidden = YES;
+    [self.scrollView addSubview:self.errorLabel];
+
+    // Grouped input container
+    y += TGMetricLoginCountryLine + TGMetricStackStep;
     self.inputContainer = [[UIView alloc] initWithFrame:
             CGRectMake(TGMetricGutter, y, inner, TGMetricRow)];
     self.inputContainer.layer.cornerRadius = TGMetricCornerControl;
@@ -162,6 +205,7 @@
     y += TGMetricLoginLinkHeight + TGMetricPadLarge;
     self.scrollView.contentSize = CGSizeMake(width, y);
     self.currentStep = TGLoginStepPhone;
+    [self updateActionEnabled];
 
     dispatch_async(dispatch_get_main_queue(), ^{
         [self.inputField becomeFirstResponder];
@@ -190,6 +234,11 @@
     self.subtitleLabel.textColor = [theme secondaryTextColour];
     self.subtitleLabel.shadowColor = [theme etchedTextShadowColour];
     self.subtitleLabel.shadowOffset = TGMetricShadowOffsetEtched;
+
+    self.brandLabel.textColor = [theme primaryTextColour];
+    self.brandLogoView.image = [TGIcons telegramAirplaneOfSide:TGMetricLoginBrandLogo];
+    self.countryLabel.textColor = [theme secondaryTextColour];
+    self.errorLabel.textColor = [theme destructiveColour];
 
     // Input container & fields
     self.inputContainer.backgroundColor = [theme cardBackgroundColour];
@@ -230,6 +279,11 @@
 }
 
 - (void)setBusy:(BOOL)busy {
+    self.busy = busy;
+    if (busy) {
+        self.errorLabel.text = nil;
+        self.errorLabel.hidden = YES;
+    }
     self.actionButton.enabled = !busy;
     self.nextItem.enabled = !busy;
     if (busy) {
@@ -239,46 +293,117 @@
         self.actionButton.titleLabel.alpha = TGAlphaOpaque;
         [self.spinner stopAnimating];
     }
+    [self updateActionEnabled];
+}
+
+/// Whether the current field holds enough to be sent. Telegram keeps the
+/// button inactive until it does; a disabled Next is the only error a number
+/// that is still being typed needs.
+- (BOOL)canSubmitCurrentStep {
+    NSString *text = [self.inputField.text
+            stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    NSString *digits = [text stringByReplacingOccurrencesOfString:@"\\D"
+            withString:@"" options:NSRegularExpressionSearch
+            range:NSMakeRange(0, text.length)];
+    switch (self.currentStep) {
+        case TGLoginStepPhone:
+            return digits.length >= 4;
+        case TGLoginStepCode:
+        case TGLoginStepEmailCode:
+        case TGLoginStepRecoveryCode:
+            return digits.length >= 4;
+        case TGLoginStepEmail:
+            return [text rangeOfString:@"@"].location != NSNotFound &&
+                   [text rangeOfString:@"."].location != NSNotFound;
+        default:
+            return text.length > 0;
+    }
+}
+
+- (void)updateActionEnabled {
+    BOOL ready = !self.busy && [self canSubmitCurrentStep];
+    self.actionButton.enabled = ready;
+    self.nextItem.enabled = ready;
+    self.inputField.enabled = !self.busy;
+    self.phonePrefixField.enabled = !self.busy;
+    self.qrCodeButton.enabled = !self.busy;
+    self.resendButton.enabled = !self.busy && self.resendCountdown <= 0;
+    self.codeStepQrButton.enabled = !self.busy;
+    for (UIView *link in self.stepLinks) {
+        link.userInteractionEnabled = !self.busy;
+        link.alpha = self.busy ? TGAlphaDimmed : TGAlphaOpaque;
+    }
+}
+
+/// The auth requests for phone, code, password and email answer through the
+/// authorization state, not a completion. A wrong code changes nothing, so
+/// the spinner is released after a few seconds and the field is usable
+/// again; a correct one changes step first and this does nothing.
+- (void)releaseBusyIfStepIsStill:(TGLoginStep)step {
+    __weak typeof(self) weakSelf = self;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(6.0 * NSEC_PER_SEC)),
+            dispatch_get_main_queue(), ^{
+        TGLoginViewController *me = weakSelf;
+        if (!me || !me.busy || me.currentStep != step)
+            return;
+        [me setBusy:NO];
+        NSString *sentence = nil;
+        switch (step) {
+            case TGLoginStepCode:
+            case TGLoginStepEmailCode:
+            case TGLoginStepRecoveryCode:
+                sentence = @"That code was not accepted. Check it and try again.";
+                break;
+            case TGLoginStepPassword:
+                sentence = @"That password was not accepted. Try again.";
+                break;
+            case TGLoginStepPhone:
+                sentence = @"Telegram did not accept that number. Check the country code.";
+                break;
+            default:
+                break;
+        }
+        if (sentence.length) {
+            me.errorLabel.text = sentence;
+            me.errorLabel.hidden = NO;
+            [me layoutActiveStep];
+            [me.inputField becomeFirstResponder];
+        }
+    });
 }
 
 - (void)actionButtonTapped {
-    NSString *text = [self.inputField.text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-    if (text.length == 0) {
+    if (![self canSubmitCurrentStep])
         return;
-    }
+    NSString *text = [self.inputField.text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
 
     [self setBusy:YES];
 
     if (self.currentStep == TGLoginStepPhone) {
-        NSString *prefix = [self.phonePrefixField.text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-        if (![prefix hasPrefix:@"+"]) {
-            prefix = [@"+" stringByAppendingString:prefix];
-        }
-        NSString *prefixDigits = [prefix stringByReplacingOccurrencesOfString:@"\\D" withString:@"" options:NSRegularExpressionSearch range:NSMakeRange(0, prefix.length)];
-        NSString *numberDigits = [text stringByReplacingOccurrencesOfString:@"\\D" withString:@"" options:NSRegularExpressionSearch range:NSMakeRange(0, text.length)];
-
-        if (prefixDigits.length > 0 && [numberDigits hasPrefix:prefixDigits]) {
-            numberDigits = [numberDigits substringFromIndex:prefixDigits.length];
-        }
-
-        NSString *fullPhone = [NSString stringWithFormat:@"+%@%@", prefixDigits, numberDigits];
+        NSString *fullPhone = TGUIFormatFullPhone(self.phonePrefixField.text, text);
         self.savedPhoneNumber = fullPhone;
+        self.savedNationalNumber = text;
         if (self.onPhoneSubmitted) {
             self.onPhoneSubmitted(fullPhone);
         }
+        [self releaseBusyIfStepIsStill:TGLoginStepPhone];
     } else if (self.currentStep == TGLoginStepCode) {
         NSString *cleanCode = [text stringByReplacingOccurrencesOfString:@"\\D" withString:@"" options:NSRegularExpressionSearch range:NSMakeRange(0, text.length)];
         if (self.onCodeSubmitted) {
             self.onCodeSubmitted(cleanCode.length ? cleanCode : text);
         }
+        [self releaseBusyIfStepIsStill:TGLoginStepCode];
     } else if (self.currentStep == TGLoginStepPassword) {
         if (self.onPasswordSubmitted) {
             self.onPasswordSubmitted(text);
         }
+        [self releaseBusyIfStepIsStill:TGLoginStepPassword];
     } else if (self.currentStep == TGLoginStepEmail) {
         [[TGClient shared] sendEmailAddress:text];
+        [self releaseBusyIfStepIsStill:TGLoginStepEmail];
     } else if (self.currentStep == TGLoginStepEmailCode) {
         [[TGClient shared] sendEmailCode:text];
+        [self releaseBusyIfStepIsStill:TGLoginStepEmailCode];
     } else if (self.currentStep == TGLoginStepRecoveryCode) {
         __weak typeof(self) weakSelf = self;
         [[TGClient shared] recoverPasswordWithCode:text completion:^(NSString *error){
@@ -310,6 +435,13 @@
     UIEdgeInsets contentInsets = UIEdgeInsetsMake(0, 0, kbHeight + TGMetricPadMedium, 0);
     self.scrollView.contentInset = contentInsets;
     self.scrollView.scrollIndicatorInsets = contentInsets;
+
+    // The keyboard covers the button on a 3.5" screen once the brand block is
+    // above the field. Keep the field, not the top of the form, on screen.
+    CGRect field = [self.inputField convertRect:self.inputField.bounds
+                                         toView:self.scrollView];
+    [self.scrollView scrollRectToVisible:CGRectInset(field, 0, -TGMetricPad)
+                                animated:YES];
 }
 
 - (void)keyboardWillHide:(NSNotification *)notification {

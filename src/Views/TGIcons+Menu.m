@@ -29,6 +29,8 @@ void TGIconsClearSettingsIconCache(void) {
 				@"endcall", @"recent", @"star", @"speakerOn",
 				// the stories strip's add bubble
 				@"plus",
+				// the chat list's compose button: a square and a pencil
+				@"compose",
 				// the dismiss cross and the record lock's arrow, which were
 				// drawn with characters in four places and came out as four
 				// different shapes
@@ -305,6 +307,22 @@ void TGIconsClearSettingsIconCache(void) {
 			CGContextAddLineToPoint(ctx, s / 2, s * 0.74f);
 			CGContextMoveToPoint(ctx, s * 0.26f, s / 2);
 			CGContextAddLineToPoint(ctx, s * 0.74f, s / 2);
+			CGContextStrokePath(ctx);
+
+		} else if ([name isEqualToString:@"compose"]){
+			// a rounded square with a pencil across its top-right corner:
+			// the compose control in Telegram's chat list
+			CGPathRef box = CGPathCreateWithRoundedRect(CGRectMake(m + s * 0.06f,
+					s * 0.26f, s * 0.56f, s * 0.56f), s * 0.10f, s * 0.10f, NULL);
+			CGContextAddPath(ctx, box);
+			CGPathRelease(box);
+			CGContextStrokePath(ctx);
+			CGContextMoveToPoint(ctx, s * 0.48f, s * 0.66f);
+			CGContextAddLineToPoint(ctx, s * 0.44f, s * 0.52f);
+			CGContextAddLineToPoint(ctx, s * 0.82f, s * 0.14f);
+			CGContextAddLineToPoint(ctx, s * 0.92f, s * 0.24f);
+			CGContextAddLineToPoint(ctx, s * 0.54f, s * 0.62f);
+			CGContextClosePath(ctx);
 			CGContextStrokePath(ctx);
 
 		} else if ([name isEqualToString:@"notifications"]){

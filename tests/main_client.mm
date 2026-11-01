@@ -48,6 +48,7 @@
 #import "TGStickerBudgetTests.m"
 #import "TGStickerImageTests.m"
 #import "TGChatListRowGeometryTests.m"
+#import "TGUIFormatTests.m"
 #import "TGClientMessagesFunctionsTests.m"
 
 int main(int argc, char *argv[]) {

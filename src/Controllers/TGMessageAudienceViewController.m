@@ -13,6 +13,7 @@
 #import "TGFastDate.h"
 #import "TGIcons.h"
 #import "TGOptions.h"
+#import "TGProfileViewController.h"
 #import "TGStyle.h"
 #import "TGTheme.h"
 #import <QuartzCore/QuartzCore.h>
@@ -458,6 +459,20 @@ static NSString *TGAudienceDate(NSTimeInterval unix) {
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
 	[tableView deselectRowAtIndexPath:indexPath animated:YES];
+	if (indexPath.row >= (NSInteger)self.rows.count)
+		return;
+	NSDictionary *row = self.rows[(NSUInteger)indexPath.row];
+	int64_t userId = [row[@"userId"] longLongValue];
+	if (!userId)
+		return;
+	// Telegram opens the person from a reaction or a reader, the same way it
+	// does from a member row; the list is not a dead end.
+	TGProfileViewController *profile = [[TGProfileViewController alloc]
+			initWithChatId:userId userId:userId title:row[@"name"] ?: @""];
+	if (!profile)
+		return;
+	profile.hidesBottomBarWhenPushed = YES;
+	[self.navigationController pushViewController:profile animated:YES];
 }
 
 @end

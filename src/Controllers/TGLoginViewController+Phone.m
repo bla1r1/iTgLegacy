@@ -57,6 +57,8 @@
                 NSDictionary *country = matches[(NSUInteger)index];
                 me.phonePrefixField.text = country[@"prefix"];
                 me.prefixEdited = YES;
+                [me updateActionEnabled];
+                [me refreshPhoneNumberInfo];
                 [me.inputField becomeFirstResponder];
             }];
         }];
@@ -64,7 +66,27 @@
 }
 
 - (void)inputFieldChanged:(UITextField *)sender {
-    if (self.currentStep != TGLoginStepPhone) return;
+    [self clearError];
+    if (self.currentStep == TGLoginStepCode ||
+            self.currentStep == TGLoginStepEmailCode ||
+            self.currentStep == TGLoginStepRecoveryCode) {
+        [self updateActionEnabled];
+        NSString *digits = [sender.text stringByReplacingOccurrencesOfString:@"\\D"
+                withString:@"" options:NSRegularExpressionSearch
+                range:NSMakeRange(0, sender.text.length)];
+        // Telegram submits a code as soon as it is as long as the one it sent;
+        // waiting for a second tap on Done only adds a step.
+        if (self.expectedCodeLength > 0 &&
+                (NSInteger)digits.length == self.expectedCodeLength &&
+                ![self busy])
+            [self actionButtonTapped];
+        return;
+    }
+    if (self.currentStep != TGLoginStepPhone) {
+        [self updateActionEnabled];
+        return;
+    }
+    [self updateActionEnabled];
     NSString *text = sender.text;
     if ([text rangeOfString:@"+"].location != NSNotFound || (text.length >= 4 && [self containsKnownCountryPrefix:text])) {
         [self processPastedPhoneNumber:text];
@@ -86,8 +108,12 @@
             stringByReplacingOccurrencesOfString:@" " withString:@""];
     if (![prefix hasPrefix:@"+"])
         prefix = [@"+" stringByAppendingString:prefix ?: @""];
-    if (prefix.length < 3 || local.length < 3)
+    if (prefix.length < 2 || local.length < 3) {
+        self.countryLabel.text = nil;
+        self.countryLabel.hidden = YES;
+        [self layoutActiveStep];
         return;
+    }
 
     NSString *full = [prefix stringByAppendingString:local];
     __weak typeof(self) weakSelf = self;
@@ -105,15 +131,16 @@
         NSString *formatted = info[@"formatted"];
         if (!formatted.length)
             return;
-        me.subtitleLabel.text = [NSString stringWithFormat:
-                @"Please confirm your country code\nand enter your phone number.\n\n%@ %@\n%@",
+        me.countryLabel.text = [NSString stringWithFormat:@"%@  %@  ·  %@",
                 info[@"flag"] ?: @"", info[@"name"] ?: @"", formatted];
+        me.countryLabel.hidden = NO;
         [me layoutActiveStep];
     }];
 }
 
 - (void)prefixFieldChanged:(UITextField *)sender {
     if (self.currentStep != TGLoginStepPhone) return;
+    [self clearError];
     self.prefixEdited = YES;
     NSString *text = sender.text;
     if (![text hasPrefix:@"+"]) {
@@ -129,6 +156,7 @@
         }
     }
     sender.text = clean;
+    [self updateActionEnabled];
     [self refreshPhoneNumberInfo];
 }
 
@@ -231,6 +259,8 @@
     self.phonePrefixField.text = [NSString stringWithFormat:@"+%@", prefix];
     self.prefixEdited = YES;
     self.inputField.text = rest;
+    [self updateActionEnabled];
+    [self refreshPhoneNumberInfo];
     [self.inputField becomeFirstResponder];
 }
 
