@@ -136,7 +136,13 @@
 	X(TGUpdateEmojiChatThemes,             "updateEmojiChatThemes") \
 	X(TGUpdateAvailableMessageEffects,     "updateAvailableMessageEffects") \
 	X(TGUpdateStopMessageDraft,            "updateStopMessageDraft") \
-	X(TGUpdateVideoPublished,              "updateVideoPublished")
+	X(TGUpdateVideoPublished,              "updateVideoPublished") \
+	X(TGUpdateGroupCall,                   "updateGroupCall") \
+	X(TGUpdateGroupCallParticipant,        "updateGroupCallParticipant") \
+	X(TGUpdateGroupCallParticipants,       "updateGroupCallParticipants") \
+	X(TGUpdateNewGroupCallMessage,         "updateNewGroupCallMessage") \
+	X(TGUpdateGroupCallMessagesDeleted,    "updateGroupCallMessagesDeleted") \
+	X(TGUpdateGroupCallMessageSendFailed,  "updateGroupCallMessageSendFailed")
 
 // The scaffold: updates the filter lets through and the dispatch marks
 // as read, but no branch acts on yet. Each is one screen this client has

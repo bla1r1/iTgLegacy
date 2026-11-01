@@ -183,6 +183,15 @@ extern double TGFileWaiterTimeoutSeconds;
 /// updateLanguagePackStrings carries the strings that changed, not a whole
 /// pack. Kept in TGClient+Language beside getLanguagePackStrings.
 - (void)applyLanguagePackStringsUpdate:(NSDictionary *)update;
+/// Group call updates: the call record, one participant, a batch of ids, a
+/// new message, a deletion, and a send failure. Kept in TGClient+GroupCalls
+/// beside the flattening the call screens read.
+- (void)applyGroupCallUpdate:(NSDictionary *)update;
+- (void)applyGroupCallParticipantUpdate:(NSDictionary *)update;
+- (void)applyGroupCallParticipantsUpdate:(NSDictionary *)update;
+- (void)applyNewGroupCallMessage:(NSDictionary *)update;
+- (void)applyGroupCallMessagesDeleted:(NSDictionary *)update;
+- (void)applyGroupCallMessageSendFailed:(NSDictionary *)update;
 /// One field on one chat row changed, so the list is stale but nothing is
 /// waiting on it this instant. Updates that arrive in floods - a typing
 /// storm, the presence burst at login, a forum flag landing on twenty chats

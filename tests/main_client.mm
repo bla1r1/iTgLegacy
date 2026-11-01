@@ -34,6 +34,7 @@
 #import "TGClientAppearanceDiagnosticsTests.m"
 #import "TGClientMiscTests.m"
 #import "TGClientStoriesTests.m"
+#import "TGClientGroupCallsTests.m"
 #import "TGClientNotificationsForumTests.m"
 #import "TGMessageStreamStoreTests.m"
 #import "TGThemeFileTests.m"

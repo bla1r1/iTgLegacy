@@ -1407,6 +1407,24 @@ NSDictionary *TGFormattedText(NSString *text) {
 			self.onChatsChanged();
 		return;
 	}
+	case TGUpdateGroupCall:
+		[self applyGroupCallUpdate:obj];
+		return;
+	case TGUpdateGroupCallParticipant:
+		[self applyGroupCallParticipantUpdate:obj];
+		return;
+	case TGUpdateGroupCallParticipants:
+		[self applyGroupCallParticipantsUpdate:obj];
+		return;
+	case TGUpdateNewGroupCallMessage:
+		[self applyNewGroupCallMessage:obj];
+		return;
+	case TGUpdateGroupCallMessagesDeleted:
+		[self applyGroupCallMessagesDeleted:obj];
+		return;
+	case TGUpdateGroupCallMessageSendFailed:
+		[self applyGroupCallMessageSendFailed:obj];
+		return;
 	case TGUpdateUnreadChatCount: {
 		NSLog(@"TGClient: %@ total=%@ list=%@", type, obj[@"total_count"],
 				obj[@"chat_list"][@"@type"]);

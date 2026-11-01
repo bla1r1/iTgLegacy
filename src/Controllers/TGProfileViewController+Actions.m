@@ -8,6 +8,7 @@
 #import "TGProfilePhotosViewController.h"
 #import "TGGroupSettingsViewController.h"
 #import "TGGroupMemberActions.h"
+#import "TGGroupCallViewController.h"
 
 /// The glyph on an action tile, over the word that names it.
 static const CGFloat kTileGlyph = TGMetricMenuGlyph;
@@ -200,6 +201,7 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 	// picker, the chat's own history actions).
 	if (!self.userId){
 		[items addObject:@{@"title" : @"Group Settings", @"icon" : @"privacy"}];
+		[items addObject:@{@"title" : @"Calls", @"icon" : @"call"}];
 		[items addObject:@{@"title" : @"View with Topics", @"icon" : @"folder"}];
 	}
 	// A note kept in the chat without being sent to anyone. It is the only
@@ -432,6 +434,13 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 
 
 
+	if ([title isEqualToString:@"Calls"]){
+		TGGroupCallViewController *screen = [[TGGroupCallViewController alloc]
+				initWithChatId:self.chatId groupCallId:0];
+		screen.hidesBottomBarWhenPushed = YES;
+		TGPresentControllerFrom(screen, self);
+		return;
+	}
 	if ([title isEqualToString:@"Group Settings"]){
 		// Build through the runtime class name so a build that somehow lost
 		// the screen says so in the log instead of pushing nil and looking

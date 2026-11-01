@@ -221,6 +221,7 @@ APP_SRC_M := \
 	src/Core/TGClient+Profile.m \
 	src/Core/TGClient+Proxy.m \
 	src/Core/TGClient+Groups.m \
+	src/Core/TGClient+GroupCalls.m \
 	src/Core/TGClient+Usernames.m \
 	src/Core/TGClient+Payments.m \
 	src/Core/TGClient+Calls.m \
@@ -332,6 +333,12 @@ APP_SRC_M := \
 	src/Controllers/TGEditProfileViewController.m \
 	src/Controllers/TGUsernameSettingsViewController.m \
 	src/Controllers/TGGroupSettingsViewController.m \
+	src/Controllers/TGGroupCallViewController.m \
+	src/Controllers/TGGroupCallParticipantsViewController.m \
+	src/Controllers/TGGroupCallParticipantCell.m \
+	src/Controllers/TGVideoChatSetupViewController.m \
+	src/Controllers/TGVideoChatStreamViewController.m \
+	src/Controllers/TGCallMessagesViewController.m \
 	src/Controllers/TGGroupMemberActions.m \
 	src/Controllers/TGAdminRightsViewController.m \
 	src/Controllers/TGDeviceViewController.m \

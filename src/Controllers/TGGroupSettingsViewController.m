@@ -24,6 +24,8 @@
 #import "TGMemberCell.h"
 #import "TGProfileViewController.h"
 #import "TGIcons.h"
+#import "TGGroupCallViewController.h"
+#import "TGVideoChatSetupViewController.h"
 
 /// The rows a section can hold. A switch draws a UISwitch, a member row a
 /// face, and everything else a value with a chevron.
@@ -456,6 +458,17 @@ static NSDictionary *TGSection(NSString *header, NSString *footer, NSArray *rows
 				@"Tap a member for their profile; hold for their actions. The "
 				@"list shows the members Telegram returned first.", people)];
 	}
+
+	// ── calls ───────────────────────────────────────────────────────────
+	NSMutableArray *calls = [NSMutableArray array];
+	[calls addObject:TGActionRow(@"Group Call",
+			@"Join, leave or manage the active call", @"groupCall", NO)];
+	[calls addObject:TGActionRow(@"Video Chat",
+			@"Create, schedule and record", @"videoChat", NO)];
+	[sections addObject:TGSection(@"Calls",
+			@"A video chat is a group call bound to this chat. The call screen "
+			@"shows Telegram's participant list, messages and stream metadata; "
+			@"this client has no group-call audio engine.", calls)];
 
 	// ── what the group does ─────────────────────────────────────────────
 	if (supergroup && manager){
@@ -910,6 +923,8 @@ targetIndexPathForMoveFromRowAtIndexPath:(NSIndexPath *)source
 	if ([action isEqualToString:@"welcome"])      { [self showWelcomeMessages]; return; }
 	if ([action isEqualToString:@"joinRequests"]) { [self showJoinRequests]; return; }
 	if ([action isEqualToString:@"chatTools"])    { [self openChatTools]; return; }
+	if ([action isEqualToString:@"groupCall"])    { [self openGroupCall]; return; }
+	if ([action isEqualToString:@"videoChat"])    { [self openVideoChatSetup]; return; }
 	if ([action isEqualToString:@"directMessages"]){ [self chooseDirectMessages]; return; }
 	if ([action isEqualToString:@"import"])       { [self importMessages]; return; }
 	if ([action isEqualToString:@"sendAs"])       { [self showSendAs]; return; }
@@ -922,6 +937,34 @@ targetIndexPathForMoveFromRowAtIndexPath:(NSIndexPath *)source
 }
 
 #pragma mark - identity
+
+- (void)openGroupCall {
+	__weak typeof(self) weakSelf = self;
+	[[TGClient shared] chatRecordForChat:self.chatId completion:^(NSDictionary *chat){
+		TGGroupSettingsViewController *me = weakSelf;
+		if (!me)
+			return;
+		int32_t callId = [chat[@"video_chat"][@"group_call_id"] intValue];
+		TGGroupCallViewController *screen = [[TGGroupCallViewController alloc]
+				initWithChatId:me.chatId groupCallId:callId];
+		screen.hidesBottomBarWhenPushed = YES;
+		[me.navigationController pushViewController:screen animated:YES];
+	}];
+}
+
+- (void)openVideoChatSetup {
+	__weak typeof(self) weakSelf = self;
+	[[TGClient shared] chatRecordForChat:self.chatId completion:^(NSDictionary *chat){
+		TGGroupSettingsViewController *me = weakSelf;
+		if (!me)
+			return;
+		int32_t callId = [chat[@"video_chat"][@"group_call_id"] intValue];
+		TGVideoChatSetupViewController *screen = [[TGVideoChatSetupViewController alloc]
+				initWithChatId:me.chatId groupCallId:callId];
+		screen.hidesBottomBarWhenPushed = YES;
+		[me.navigationController pushViewController:screen animated:YES];
+	}];
+}
 
 - (void)editName {
 	__weak typeof(self) weakSelf = self;

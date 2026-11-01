@@ -103,6 +103,7 @@ CLIENT_OBJC_SRCS := \
     $(SRC)/Core/TGStatusText.m \
     $(SRC)/Core/TGClient+Proxy.m \
     $(SRC)/Core/TGClient+Groups.m \
+    $(SRC)/Core/TGClient+GroupCalls.m \
     $(SRC)/Core/TGClient+Usernames.m \
     $(SRC)/Core/TGClient+Payments.m \
     $(SRC)/Core/TGClient+Calls.m \
@@ -181,6 +182,7 @@ CLIENT_TEST_SRCS := \
     $(TESTS)/TGClientAppearanceDiagnosticsTests.m \
     $(TESTS)/TGClientMiscTests.m \
     $(TESTS)/TGClientStoriesTests.m \
+    $(TESTS)/TGClientGroupCallsTests.m \
     $(TESTS)/TGClientNotificationsForumTests.m \
     $(TESTS)/TGThemeFileTests.m \
     $(TESTS)/TGUpdatesTests.mm \

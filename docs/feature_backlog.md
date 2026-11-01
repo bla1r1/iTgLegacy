@@ -20,12 +20,12 @@ As of 2026-11-01:
 
 | | declared | covered | gap | of it wanted | out of scope |
 |---|---|---|---|---|---|
-| functions | 1076 | 629 (58%) | 447 | 0 | 447 |
-| updates | 197 | 119 (60%) | 78 | 0 | 78 |
+| functions | 1076 | 671 (62%) | 405 | 0 | 405 |
+| updates | 197 | 125 (63%) | 72 | 0 | 72 |
 
 Functions are counted from string literals in `src/`, updates from the one list in `src/Core/TGUpdateType.h` — anything outside it is thrown away in the receive loop before a Foundation tree is built, so a dropped update leaves no trace in the log either. Both numbers are floors. Where this file and ROADMAP.md disagree, the roadmap wins — it knows the device.
 
-Every one of the 119 updates let through the filter now has a branch that acts on it; the scaffold in `TG_IGNORED_UPDATES` is empty in `TG_IGNORED_UPDATES` — names kept in the filter and the dispatch so the screen can be filled in later without hunting for the string, and reported by `--ignored` rather than counted as handled. The 78 dropped updates are out of scope and match the script's `SKIP` pattern.
+Every one of the 125 updates let through the filter now has a branch that acts on it; the scaffold in `TG_IGNORED_UPDATES` is empty — names kept in the filter and the dispatch so the screen can be filled in later without hunting for the string, and reported by `--ignored` rather than counted as handled. The 72 dropped updates are out of scope and match the script's `SKIP` pattern.
 
 The two halves are not comparable: 1076 functions include every bot, Stars, business and TON call, while the 197 updates are the live state of a client that is running. Updates are the weaker number of the two and the cheaper one to move — Tier 0 below is closed, the global unread total drives the app-icon badge now.
 
@@ -33,8 +33,8 @@ The two halves are not comparable: 1076 functions include every bot, Stars, busi
 
 | Tier | Meaning | Functions |
 |---|---|---|
-| 1 | done: reachable from a screen (`--wired`) | 629 |
-| 2 | not done yet, but buildable: the wanted list plus the skipped-but-possible set (`--relevant` + `--tier2`) | 0 + 146 |
+| 1 | done: reachable from a screen (`--wired`) | 671 |
+| 2 | not done yet, but buildable: the wanted list plus the skipped-but-possible set (`--relevant` + `--tier2`) | 0 + 104 |
 | 3 | never for this client: bot-account-only, or needs a stack this iOS cannot carry (`--tier3`) | 301 |
 
 The tier split is `scripts/tdlib_tiers.py`; it reads the same skip list the coverage
@@ -107,9 +107,8 @@ work was done in, not a second classification.
 
 28 functions in a long tail: notifications/sounds (6), forum topics (7), payments/orders (5), calls/sessions (4), connected websites (3), bot keyboards (2) and poll option properties (1). Run `--relevant` for the exact names and pick with the app in hand.
 
-That is the wanted half. The other half of Tier 2 is 146 functions skipped today because no screen wanted them yet, but they need no new stack:
+That is the wanted half. The other half of Tier 2 is 104 functions skipped today because no screen wanted them yet, but they need no new stack:
 
-- group and video calls — 42
 - communities, checklists and quick replies — 35
 - business accounts — 28
 - emoji status, profile audio and text styles — 22
@@ -127,6 +126,17 @@ That is the wanted half. The other half of Tier 2 is 146 functions skipped today
 - **Interactions and statistics** — `TGStoryInfoViewController` reads `getStoryInteractions` for own-account stories and `getChatStoryInteractions` for chat stories, lists `getStoryPublicForwards`, draws both `getStoryStatistics` graphs as line rows, and runs the two-step `reportStory` (option list, then text).
 - **Notifications, stealth and discovery** — `getStoryNotificationSettingsExceptions` is Settings → Stories, with the per-chat story switch each row reports. `activateStoryStealthMode` is the stories menu's Stealth row, and its server answer is the sentence on screen. The search screen gains Public Stories, where `searchPublicStoriesByTag`, `searchPublicStoriesByLocation` and `searchPublicStoriesByVenue` return stories that open in the same viewer.
 - **Live stories** — `TGLiveStoryViewController` starts with `startLiveStory`, reads `getLiveStoryRtmpUrl` and replaces it with `replaceLiveStoryRtmpUrl`, joins through `joinLiveStory`, and shows the server's `getLiveStoryStreamer`, `getLiveStoryAvailableMessageSenders` (with `setLiveStoryMessageSender`), `getLiveStoryTopDonors` and the pending star reactions (`addPendingLiveStoryReaction`, `commitPendingLiveStoryReactions`, `removePendingLiveStoryReactions`). This client has no camera encoder: the screen says so and keeps every request and answer real rather than pretending to broadcast.
+
+**Group and video calls — done as a wave.** Forty-two functions, every one reachable from a call screen:
+
+- **The call screen** — Group Settings and a group's More menu open `TGGroupCallViewController`. It reads `getGroupCall` and draws the title, participant count, speaking line, recording state and a session clock; `joinVideoChat` and `joinGroupCall` return the tgcalls payload, `leaveGroupCall` and `endGroupCall` close it, and `startScheduledVideoChat` starts a scheduled one. `createVideoChat` lives on `TGVideoChatSetupViewController` and binds the call to the chat.
+- **People** — `TGGroupCallParticipantsViewController` draws the participants TDLib sends, with avatars, speaking, raised hands, mute state, video and volume. Each row sends `toggleGroupCallParticipantIsMuted`, `setGroupCallParticipantVolumeLevel` or `toggleGroupCallParticipantIsHandRaised`; `loadGroupCallParticipants` pages a joined call and `getGroupCallParticipants` lists a chatless one that is not joined. `setGroupCallParticipantIsSpeaking` marks this account speaking, and `banGroupCallParticipants` removes a user from an owned call.
+- **Invitations** — `inviteVideoChatParticipants`, `inviteGroupCallParticipant` (reading all four outcomes), `getVideoChatInviteLink` with `revokeGroupCallInviteLink`, and `declineGroupCallInvitation` are rows on the call or setup screen. `getVideoChatAvailableParticipants` and `setVideoChatDefaultParticipant` choose who this account joins as.
+- **Managing a video chat** — `setVideoChatTitle`, `toggleGroupCallAreMessagesAllowed`, `toggleVideoChatMuteNewParticipants` and `toggleVideoChatEnabledStartNotification` are switches whose values come from `getGroupCall`. `startGroupCallRecording` / `endGroupCallRecording` take a title and audio, landscape or portrait mode. `getVideoChatRtmpUrl` / `replaceVideoChatRtmpUrl` show and rotate the stream key.
+- **Screen sharing and video** — `startGroupCallScreenSharing` sends the join payload and audio source, `toggleGroupCallScreenSharingIsPaused` pauses or resumes it, and `endGroupCallScreenSharing` stops it. `toggleGroupCallIsMyVideoEnabled` and `toggleGroupCallIsMyVideoPaused` set the two flags the call record carries. This client has no camera or group-call media engine, so the screen says the frame path is absent instead of drawing a fake one.
+- **Messages** — `TGCallMessagesViewController` sends `sendGroupCallMessage`, deletes one with `deleteGroupCallMessages` and everything from a sender with `deleteGroupCallMessagesBySender`; rows arrive through `updateNewGroupCallMessage` and leave through `updateGroupCallMessagesDeleted`. The call screen shows the newest three.
+- **Streams and data** — `TGVideoChatStreamViewController` lists `getGroupCallStreams`, fetches a `getGroupCallStreamSegment` at thumbnail, medium or full quality and writes the real bytes to disk, then reports the size and says there is no in-app decoder. `encryptGroupCallData` / `decryptGroupCallData` run the data-channel round trip on the same screen.
+- **Live state** — `updateGroupCall`, `updateGroupCallParticipant`, `updateGroupCallParticipants`, `updateNewGroupCallMessage`, `updateGroupCallMessagesDeleted` and `updateGroupCallMessageSendFailed` are handled; a call screen redraws when its call changes instead of polling.
 
 **Usernames and supergroup administration — done as a wave.** Fifteen functions, every one on a screen:
 
@@ -254,13 +264,13 @@ Saved-messages topics and tags, welcome messages, message sender switching, noti
 
 ## Tier 3 — out of scope
 
-78 dropped updates match the `SKIP` pattern in `scripts/tdlib_coverage.sh`: stories, group and video calls, business accounts, TON wallet, Stars and paid reactions, gifts and auctions, boosts, quick replies, mini-app and web-browser plumbing, plus every `updateNew*Query` — those only ever reach a bot account, never this one.
+72 dropped updates match the `SKIP` pattern in `scripts/tdlib_coverage.sh`: stories, business accounts, TON wallet, Stars and paid reactions, gifts and auctions, boosts, quick replies, mini-app and web-browser plumbing, plus every `updateNew*Query` — those only ever reach a bot account, never this one.
 
 Three more joined the pattern deliberately rather than through a screen: `updateMessageSendAcknowledged` (a flattened message has no state between pending and sent, so there is nothing to draw), `updateActiveEmojiReactions` (the reaction picker's list — no picker) and `updatePendingMessage` (a bot's streaming draft — no bot surface). `updateFileGenerationStart` / `updateFileGenerationStop` used to be here for the same reason; File Tools now asks TDLib to generate a file, so both are handled and announce progress to `TGFileToolsViewController`.
 
 ## Pick these first
 
-The update half is closed: 119 updates act, and `TG_IGNORED_UPDATES` is empty. The last markers became the Active Notifications screen, the Autosave page's live re-read and the Language page's string re-read.
+The update half is closed: 125 updates act, and `TG_IGNORED_UPDATES` is empty. The last markers became the Active Notifications screen, the Autosave page's live re-read and the Language page's string re-read.
 
 ---
 

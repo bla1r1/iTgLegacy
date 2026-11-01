@@ -21,6 +21,7 @@
 #import "TGClient+Downloads.h"
 #import "TGClient+Files.h"
 #import "TGClient+Groups.h"
+#import "TGClient+GroupCalls.h"
 #import "TGClient+Language.h"
 #import "TGClient+MessageMeta.h"
 #import "TGClient+Messages.h"
