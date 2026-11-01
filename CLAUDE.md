@@ -11,7 +11,7 @@ Telegram client for iOS 6.0–12.5.7 on old hardware. Objective-C UI over TDLib 
 - `src/App/` — app entry: main, AppDelegate, URL routing, dev bench
 - `src/Media/` — decoders (WebP, WebM sticker video)
 - `scripts/lint_tokens.sh` — fails on any hardcoded point size or colour in a screen
-- `make -f tests/Makefile test` — host test suite (currently 843 client and 164 call tests)
+- `make -f tests/Makefile test` — host test suite (currently 847 client and 164 call tests)
 - `scripts/devrun.sh` — build, install, launch, log, screenshot on device
 
 ## Architecture rules

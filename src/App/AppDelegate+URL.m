@@ -249,6 +249,20 @@ static const CGFloat kIconDumpSide = 52.0f;
 		dispatch_async(dispatch_get_main_queue(), ^{
 			UIWindow *window = [UIApplication sharedApplication].keyWindow;
 			UIView *hit = [window hitTest:point withEvent:nil];
+			// An action sheet lives in its own window, and the key window is
+			// not it - hit-testing only the key window makes every sheet look
+			// untouchable to this helper. Walk the windows from the top.
+			for (UIWindow *candidate in [[[UIApplication sharedApplication].windows
+					reverseObjectEnumerator] allObjects]){
+				if (candidate.hidden || candidate.alpha <= 0.01f)
+					continue;
+				UIView *found = [candidate hitTest:point withEvent:nil];
+				if (found && found != candidate.window){
+					hit = found;
+					window = candidate;
+					break;
+				}
+			}
 			NSLog(@"touch at %.0f,%.0f hit %@", point.x, point.y, [hit class]);
 
 			// A control is driven through its actions; a plain view gets its
@@ -828,6 +842,43 @@ static const CGFloat kIconDumpSide = 52.0f;
 			});
 			return YES;
 		}
+	}
+
+	// itglegacy://groupsettings[ /chatId] - open the group settings screen for
+	// the chat on screen, or for a named chat. It exists because the screen is
+	// reached through an action sheet, which the touch helper cannot drive on
+	// iOS 6; the user path is the group profile's More menu.
+	if ([host isEqualToString:@"groupsettings"]){
+		dispatch_async(dispatch_get_main_queue(), ^{
+			UITabBarController *tabs = [self activeTabBarController];
+			if (![tabs isKindOfClass:UITabBarController.class])
+				return;
+			UINavigationController *nc = tabs.viewControllers[tabs.selectedIndex];
+			UIViewController *top = nc.topViewController;
+			int64_t chatId = 0;
+			NSString *chatTitle = nil;
+			if ([top isKindOfClass:[TGChatViewController class]]){
+				chatId = [(TGChatViewController *)top chatId];
+				chatTitle = [(TGChatViewController *)top chatTitle];
+			}
+			if (arg.length)
+				chatId = [arg longLongValue];
+			Class settingsClass = NSClassFromString(@"TGGroupSettingsViewController");
+			UIViewController *settings = settingsClass
+					? [[settingsClass alloc] init] : nil;
+			if (!settings || !chatId){
+				NSLog(@"groupsettings: no screen (class %@, chat %lld)",
+						settingsClass ? @"present" : @"missing", chatId);
+				return;
+			}
+			[settings setValue:@(chatId) forKey:@"chatId"];
+			if (chatTitle.length)
+				[settings setValue:chatTitle forKey:@"chatTitle"];
+			settings.hidesBottomBarWhenPushed = YES;
+			[nc pushViewController:settings animated:NO];
+			NSLog(@"groupsettings: opened chat %lld", chatId);
+		});
+		return YES;
 	}
 
 	// itglegacy://profile - open the profile of the chat already on screen.
