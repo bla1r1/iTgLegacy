@@ -227,8 +227,6 @@ APP_SRC_M := \
 	src/UI/TGBadge.m \
 	src/UI/TGReactionPicker.m \
 	src/UI/TGAvatarView.m \
-	src/UI/TGBarButtonItem.m \
-	src/UI/TGMediaThumbnailView.m \
 	src/UI/TGGalleryViewController.m \
 	src/Controllers/TGSearchViewController.m \
 	src/Controllers/TGPlaceholderViewController.m \

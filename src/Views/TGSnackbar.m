@@ -81,10 +81,8 @@ static TGSnackbar *sOpenBar = nil;
 	// a light and a dark chat.
 	self.backgroundColor = [[TGTheme shared] snackbarBackgroundColour];
 	self.layer.cornerRadius = TGMetricCornerMedium;
-	if (![TGTheme shared].isFlat) {
-		self.layer.borderColor = [[TGTheme shared] separatorColour].CGColor;
-		self.layer.borderWidth = 1.0f;
-	}
+	self.layer.borderColor = [[TGTheme shared] separatorColour].CGColor;
+	self.layer.borderWidth = 1.0f;
 
 	CGRect ring = CGRectMake(TGMetricPadLarge, TGCenteredOrigin(kBarHeight, kRingSide),
 			kRingSide, kRingSide);

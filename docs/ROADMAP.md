@@ -84,11 +84,11 @@ The app was fully rewritten onto TDLib. `libtg` — the hand-written MTProto sta
 
 | | Feature | Notes |
 |---|---|---|
-| **done** | Skeuomorphic and flat themes | defaults by OS: skeuomorphic < iOS 7, flat ≥ 7 |
-| *in progress* | Skeuomorphic icon set | tab bar and buttons still use inherited artwork |
-| | Dark theme | available only by importing one |
+| **done** | Chrome is the system's | `996512d` + `8e0d1b4`: bars, grouped tables, cells, switches, search, alerts draw by UIKit on every supported iOS version; the app keeps drawing only the chat, sheets, snackbars, viewer, player, call screen |
+| **done** | Procedural icon set | every glyph drawn from published SVG paths (`6861366`); the tab bar carries outline/filled pairs |
+| out of scope | Dark theme | light only: Night and Auto-Night removed, dark theme files refused (`8e86854`) |
 | | Telegram wallpaper collection | `getBackgrounds` not called |
-| | Font size setting | |
+| **done** | Font size setting | Appearance → Message Text Size |
 | | Landscape / iPad layouts | portrait iPhone only |
 | | 4-inch screen check | built for 3.5-inch, never tested on a 5/5c |
 | | Localisation | English only, hardcoded |

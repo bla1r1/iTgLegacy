@@ -242,12 +242,10 @@ static const CGFloat kThumbStripH   = 54.0f;
 			kButtonWidth, kButtonHeight);
 	[close setTitle:@"Done" forState:UIControlStateNormal];
 	close.titleLabel.font = TGFontBody();
-	if (![TGTheme shared].isFlat) {
-		[close setBackgroundImage:[TGTheme buttonImageForStyle:TGButtonStyleSecondary highlighted:NO height:kButtonHeight] forState:UIControlStateNormal];
-		[close setBackgroundImage:[TGTheme buttonImageForStyle:TGButtonStyleSecondary highlighted:YES height:kButtonHeight] forState:UIControlStateHighlighted];
-		close.layer.cornerRadius = TGMetricCornerControl;
-		close.clipsToBounds = YES;
-	}
+	[close setBackgroundImage:[TGTheme buttonImageForStyle:TGButtonStyleSecondary highlighted:NO height:kButtonHeight] forState:UIControlStateNormal];
+	[close setBackgroundImage:[TGTheme buttonImageForStyle:TGButtonStyleSecondary highlighted:YES height:kButtonHeight] forState:UIControlStateHighlighted];
+	close.layer.cornerRadius = TGMetricCornerControl;
+	close.clipsToBounds = YES;
 	[close addTarget:self action:@selector(dismiss)
 	 forControlEvents:UIControlEventTouchUpInside];
 	[self.topBar addSubview:close];
@@ -271,12 +269,10 @@ static const CGFloat kThumbStripH   = 54.0f;
 			kChromeInset, kSaveWidth, kCaptionHeight);
 	[save setTitle:@"Save" forState:UIControlStateNormal];
 	save.titleLabel.font = TGFontBody();
-	if (![TGTheme shared].isFlat) {
-		[save setBackgroundImage:[TGTheme buttonImageForStyle:TGButtonStyleSecondary highlighted:NO height:kCaptionHeight] forState:UIControlStateNormal];
-		[save setBackgroundImage:[TGTheme buttonImageForStyle:TGButtonStyleSecondary highlighted:YES height:kCaptionHeight] forState:UIControlStateHighlighted];
-		save.layer.cornerRadius = TGMetricCornerControl;
-		save.clipsToBounds = YES;
-	}
+	[save setBackgroundImage:[TGTheme buttonImageForStyle:TGButtonStyleSecondary highlighted:NO height:kCaptionHeight] forState:UIControlStateNormal];
+	[save setBackgroundImage:[TGTheme buttonImageForStyle:TGButtonStyleSecondary highlighted:YES height:kCaptionHeight] forState:UIControlStateHighlighted];
+	save.layer.cornerRadius = TGMetricCornerControl;
+	save.clipsToBounds = YES;
 	[save addTarget:self action:@selector(saveCurrent)
 	 forControlEvents:UIControlEventTouchUpInside];
 	[self.bottomBar addSubview:save];
@@ -295,11 +291,9 @@ static const CGFloat kThumbStripH   = 54.0f;
 			CGRectMake(kScrubberLeft, kStripTop,
 					bounds.size.width - TGMetricViewerScrubberMarginRight, kStripHeight)];
 	self.scrubber.minimumTrackTintColor = [[TGTheme shared] accentColour];
-	if (![TGTheme shared].isFlat) {
-		[self.scrubber setThumbImage:[TGTheme skeuomorphicSliderThumbWithRadius:TGHalf(TGMetricSliderThumbD)] forState:UIControlStateNormal];
-		[self.scrubber setMinimumTrackImage:[TGTheme skeuomorphicSliderTrackImageFilled:YES] forState:UIControlStateNormal];
-		[self.scrubber setMaximumTrackImage:[TGTheme skeuomorphicSliderTrackImageFilled:NO] forState:UIControlStateNormal];
-	}
+	[self.scrubber setThumbImage:[TGTheme skeuomorphicSliderThumbWithRadius:TGHalf(TGMetricSliderThumbD)] forState:UIControlStateNormal];
+	[self.scrubber setMinimumTrackImage:[TGTheme skeuomorphicSliderTrackImageFilled:YES] forState:UIControlStateNormal];
+	[self.scrubber setMaximumTrackImage:[TGTheme skeuomorphicSliderTrackImageFilled:NO] forState:UIControlStateNormal];
 	[self.scrubber addTarget:self action:@selector(scrubberMoved)
 			forControlEvents:UIControlEventValueChanged];
 	self.scrubber.hidden = YES;

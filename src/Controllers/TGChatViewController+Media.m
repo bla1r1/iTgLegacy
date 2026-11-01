@@ -360,31 +360,52 @@
 #pragma mark - download progress
 
 /// A video or a document is megabytes over a 4S connection; without this the
-/// tap looks like it did nothing.
+/// tap looks like it did nothing. The system progress bar sits in the centre
+/// of the screen; the plate keeps it visible over the wallpaper.
 - (void)beginDownloadHUDForFile:(NSInteger)fileId {
 	self.downloadingFileId = fileId;
 
 	if (!self.downloadHUD){
-		self.downloadHUD = [[UILabel alloc] initWithFrame:CGRectMake(0, 0, kHUDWidth, kHUDHeight)];
+		UIView *plate = [[UIView alloc] initWithFrame:CGRectMake(0, 0, kHUDWidth, kHUDHeight)];
+		plate.backgroundColor = [[TGTheme shared] hudBackgroundColour];
+		plate.layer.cornerRadius = TGMetricCornerControl;
+		plate.clipsToBounds = YES;
+
+		UILabel *percent = [[UILabel alloc] initWithFrame:
+				CGRectMake(0, TGMetricPadSmall, kHUDWidth, TGMetricLineCaption)];
+		percent.textAlignment = NSTextAlignmentCenter;
+		percent.font = TGFontCaption();
+		percent.textColor = [[TGTheme shared] hudTextColour];
+		percent.backgroundColor = [UIColor clearColor];
+		percent.tag = kHUDPercentTag;
+		[plate addSubview:percent];
+
+		UIProgressView *bar = [[UIProgressView alloc]
+				initWithProgressViewStyle:UIProgressViewStyleDefault];
+		bar.frame = CGRectMake(TGMetricPadLarge,
+				TGMetricPadSmall + TGMetricLineCaption + TGMetricPadSmall,
+				kHUDWidth - TGDoubled(TGMetricPadLarge), TGMetricLineMicro);
+		bar.progressTintColor = [[TGTheme shared] accentColour];
+		bar.tag = kHUDBarTag;
+		[plate addSubview:bar];
+
+		self.downloadHUD = plate;
 		self.downloadHUD.center = CGPointMake(TGHalf(self.view.bounds.size.width),
 											  TGHalf(self.view.bounds.size.height));
-		self.downloadHUD.textAlignment = NSTextAlignmentCenter;
-		self.downloadHUD.font = TGFontBodyStrong();
-		self.downloadHUD.textColor = [[TGTheme shared] hudTextColour];
-		self.downloadHUD.backgroundColor = [[TGTheme shared] hudBackgroundColour];
-		self.downloadHUD.layer.cornerRadius = TGMetricCornerControl;
-		self.downloadHUD.clipsToBounds = YES;
+		self.downloadHUD.hidden = YES;
+		[self.view addSubview:plate];
 	}
-	self.downloadHUD.text = @"0%";
 	self.downloadHUD.hidden = NO;
-	[self.view addSubview:self.downloadHUD];
 
 	__weak typeof(self) weakSelf = self;
 	[TGClient shared].onFileProgress = ^(NSInteger updatedId, float progress){
 		TGChatViewController *me = weakSelf;
 		if (!me || updatedId != me.downloadingFileId)
 			return;
-		me.downloadHUD.text = [NSString stringWithFormat:@"%d%%", (int)(progress * 100)];
+		UIProgressView *bar = (UIProgressView *)[me.downloadHUD viewWithTag:kHUDBarTag];
+		bar.progress = progress;
+		UILabel *percent = (UILabel *)[me.downloadHUD viewWithTag:kHUDPercentTag];
+		percent.text = [NSString stringWithFormat:@"%d%%", (int)(progress * 100)];
 	};
 }
 

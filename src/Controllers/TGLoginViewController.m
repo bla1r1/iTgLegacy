@@ -146,28 +146,6 @@
     [self.qrCodeButton addTarget:self action:@selector(qrCodeButtonTapped) forControlEvents:UIControlEventTouchUpInside];
     [self.scrollView addSubview:self.qrCodeButton];
 
-    // Theme Switcher Section
-    // A new group, so the larger step.
-    y += TGMetricLoginLinkHeight + TGMetricStackGroup;
-    self.themeSectionLabel = [[UILabel alloc] initWithFrame:
-            CGRectMake(TGMetricPadWide, y, wide, TGMetricPadLarge)];
-    self.themeSectionLabel.text = @"THEME";
-    self.themeSectionLabel.font = TGFontMicroStrong();
-    self.themeSectionLabel.textAlignment = NSTextAlignmentCenter;
-    self.themeSectionLabel.backgroundColor = [UIColor clearColor];
-    [self.scrollView addSubview:self.themeSectionLabel];
-
-    self.themeSegmentedControl = [[UISegmentedControl alloc] initWithItems:@[@"Classic", @"Day", @"Night", @"Night Blue"]];
-    // Four segments on 290 pt: at the system 17 pt "Night Blue" lost its
-    // first letter.
-    [self.themeSegmentedControl setTitleTextAttributes:@{UITextAttributeFont : TGFontCaptionStrong()}
-                                              forState:UIControlStateNormal];
-    y += TGMetricPadLarge + TGMetricPadSmall;
-    self.themeSegmentedControl.frame = CGRectMake(TGMetricGutter, y, inner,
-                                                  TGMetricLoginLinkHeight);
-    [self.themeSegmentedControl addTarget:self action:@selector(themeSegmentChanged:) forControlEvents:UIControlEventValueChanged];
-    [self.scrollView addSubview:self.themeSegmentedControl];
-
     y += TGMetricLoginLinkHeight + TGMetricPadLarge;
     self.scrollView.contentSize = CGSizeMake(width, y);
     self.currentStep = TGLoginStepPhone;
@@ -199,7 +177,6 @@
     self.subtitleLabel.textColor = [theme secondaryTextColour];
     self.subtitleLabel.shadowColor = [theme etchedTextShadowColour];
     self.subtitleLabel.shadowOffset = TGMetricShadowOffsetEtched;
-    self.themeSectionLabel.textColor = [theme secondaryTextColour];
 
     // Input container & fields
     self.inputContainer.backgroundColor = [theme cardBackgroundColour];
@@ -219,17 +196,10 @@
     }
 
     // Action button
-    if (!theme.isFlat) {
-        [self.actionButton setBackgroundImage:[TGTheme buttonImageForStyle:TGButtonStyleAction highlighted:NO height:TGMetricRow] forState:UIControlStateNormal];
-        [self.actionButton setBackgroundImage:[TGTheme buttonImageForStyle:TGButtonStyleAction highlighted:YES height:TGMetricRow] forState:UIControlStateHighlighted];
-        self.actionButton.backgroundColor = [UIColor clearColor];
-        self.actionButton.layer.borderWidth = 0.0f;
-    } else {
-        [self.actionButton setBackgroundImage:nil forState:UIControlStateNormal];
-        [self.actionButton setBackgroundImage:nil forState:UIControlStateHighlighted];
-        self.actionButton.backgroundColor = [theme accentColour];
-        self.actionButton.layer.borderWidth = TGMetricBorderNone;
-    }
+    [self.actionButton setBackgroundImage:[TGTheme buttonImageForStyle:TGButtonStyleAction highlighted:NO height:TGMetricRow] forState:UIControlStateNormal];
+    [self.actionButton setBackgroundImage:[TGTheme buttonImageForStyle:TGButtonStyleAction highlighted:YES height:TGMetricRow] forState:UIControlStateHighlighted];
+    self.actionButton.backgroundColor = [UIColor clearColor];
+    self.actionButton.layer.borderWidth = 0.0f;
     [self.actionButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
 
     // Secondary buttons
@@ -241,36 +211,9 @@
         [self.codeStepQrButton setTitleColor:[theme accentColour] forState:UIControlStateNormal];
     }
 
-    // Theme Segmented Control
-    self.themeSegmentedControl.tintColor = [theme accentColour];
-    NSString *currentTheme = [theme currentThemeId];
-    if ([currentTheme isEqualToString:@"classic"]) {
-        self.themeSegmentedControl.selectedSegmentIndex = 0;
-    } else if ([currentTheme isEqualToString:@"day"]) {
-        self.themeSegmentedControl.selectedSegmentIndex = 1;
-    } else if ([currentTheme isEqualToString:@"night"]) {
-        self.themeSegmentedControl.selectedSegmentIndex = 2;
-    } else if ([currentTheme isEqualToString:@"nightblue"]) {
-        self.themeSegmentedControl.selectedSegmentIndex = 3;
-    } else {
-        self.themeSegmentedControl.selectedSegmentIndex = 1;
-    }
-
     if ([self respondsToSelector:@selector(setNeedsStatusBarAppearanceUpdate)]) {
         [self setNeedsStatusBarAppearanceUpdate];
     }
-}
-
-- (void)themeSegmentChanged:(UISegmentedControl *)sender {
-    NSString *themeId = @"day";
-    switch (sender.selectedSegmentIndex) {
-        case 0: themeId = @"classic"; break;
-        case 1: themeId = @"day"; break;
-        case 2: themeId = @"night"; break;
-        case 3: themeId = @"nightblue"; break;
-        default: break;
-    }
-    [[TGTheme shared] selectThemeId:themeId];
 }
 
 - (void)setBusy:(BOOL)busy {

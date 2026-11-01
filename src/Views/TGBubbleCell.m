@@ -62,7 +62,7 @@ static const CGFloat kWaveUnplayedAlpha = 0.32f;
 	// Pictures arrive pre-cropped and pre-rounded (TGIcons roundedImage:);
 	// cornerRadius here only shapes the placeholder fill, which costs nothing.
 	self.picture.layer.borderColor = [theme separatorColour].CGColor;
-	self.picture.layer.borderWidth = theme.isFlat ? 0.0f : 1.0f;
+	self.picture.layer.borderWidth = 1.0f;
 	self.picture.layer.cornerRadius = TGMetricCornerSmall;
 	[self.bubble addSubview:self.picture];
 

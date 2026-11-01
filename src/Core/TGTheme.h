@@ -8,9 +8,6 @@
 
 + (instancetype)shared;
 
-/// Always NO; kept for the screens that still branch on it.
-@property (nonatomic, readonly) BOOL isFlat;
-
 /// Posted when the style changes so open screens can restyle themselves.
 extern NSString *const TGThemeChangedNotification;
 

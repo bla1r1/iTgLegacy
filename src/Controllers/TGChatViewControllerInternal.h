@@ -179,6 +179,10 @@ static const CGFloat kBannerTitleTop  = TGMetricPadSmall;
 /// The little plate that says a file is being fetched.
 static const CGFloat kHUDWidth        = 110.0f;
 static const CGFloat kHUDHeight       = TGMetricListAvatar;
+// The percent label and the progress bar ride inside downloadHUD; cells use
+// this tag range too.
+static const NSInteger kHUDPercentTag = 0x9102;
+static const NSInteger kHUDBarTag     = 0x9103;
 /// The title view in the navigation bar: the chat's name over who is there.
 static const CGFloat kTitleWidth      = 200.0f;
 static const CGFloat kTitleRow        = TGMetricListAvatar;
@@ -249,7 +253,7 @@ static const CGFloat kBannerCloseGlyph = 16.0f;
 @property (nonatomic, strong) UILabel *playerLabel;
 @property (nonatomic, strong) TGImageLruCache *senderAvatars;   // userId -> UIImage (cap 50)
 @property (nonatomic, strong) NSMutableSet *senderAvatarsRequested;
-@property (nonatomic, strong) UILabel *downloadHUD;
+@property (nonatomic, strong) UIView *downloadHUD;
 @property (nonatomic, assign) NSInteger downloadingFileId;
 @property (nonatomic, strong) CLLocationManager *locationManager;
 /// The own live location this screen is holding open while it watches the

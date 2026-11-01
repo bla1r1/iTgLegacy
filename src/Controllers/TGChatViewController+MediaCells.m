@@ -213,7 +213,7 @@
 		cell.picture.backgroundColor = layout.isSticker ? [UIColor clearColor] : [theme fileTileColour];
 		cell.picture.frame = layout.pictureFrame;
 		cell.picture.layer.cornerRadius = layout.isSticker ? TGMetricCornerNone : TGMetricCornerMedium;
-		cell.picture.layer.borderWidth = (layout.isSticker || layout.isRound) ? 0.0f : (theme.isFlat ? 0.0f : 1.0f);
+		cell.picture.layer.borderWidth = (layout.isSticker || layout.isRound) ? 0.0f : 1.0f;
 		// A sticker is clipped to a plain rectangle, which is a scissor and
 		// free; a photo is already rounded, so it needs no clip at all.
 		cell.picture.clipsToBounds = layout.isSticker;

@@ -29,10 +29,11 @@
 		return;
 	}
 
-	// A popup instead of a UIActionSheet: on the 4S the sheet threw inside
-	// addButtonWithTitle: (B3 - folders crash on tap) even though every
-	// parsed folder title is a non-nil string. The popup is the control the
-	// chat rows already use, built from the same strings.
+	// The folder list opens through TGPopupMenu, which routes plain lists to
+	// a system action sheet (8e0d1b4). This spot once hit B3 on the 4S - the
+	// sheet threw inside addButtonWithTitle: - which is why every parsed
+	// folder title is type-checked and stays non-nil. The defensive parsing
+	// remains although the parse bug itself is fixed.
 	NSMutableArray *items = [NSMutableArray array];
 	[items addObject:@{@"title" : @"All chats"}];
 	for (NSDictionary *f in folders){

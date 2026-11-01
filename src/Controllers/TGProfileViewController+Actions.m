@@ -106,13 +106,9 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 	for (NSUInteger i = 0; i < tiles.count; i++){
 		UIButton *tile = [UIButton buttonWithType:UIButtonTypeCustom];
 		tile.frame = CGRectMake(margin + i * (tileW + gap), y, tileW, kActionTile);
-		if (!theme.isFlat) {
-			[tile setBackgroundImage:[TGTheme buttonImageForStyle:TGButtonStyleSecondary highlighted:NO height:kActionTile] forState:UIControlStateNormal];
-			[tile setBackgroundImage:[TGTheme buttonImageForStyle:TGButtonStyleSecondary highlighted:YES height:kActionTile] forState:UIControlStateHighlighted];
-			tile.backgroundColor = [UIColor clearColor];
-		} else {
-			tile.backgroundColor = [theme actionTileBackgroundColour];
-		}
+		[tile setBackgroundImage:[TGTheme buttonImageForStyle:TGButtonStyleSecondary highlighted:NO height:kActionTile] forState:UIControlStateNormal];
+		[tile setBackgroundImage:[TGTheme buttonImageForStyle:TGButtonStyleSecondary highlighted:YES height:kActionTile] forState:UIControlStateHighlighted];
+		tile.backgroundColor = [UIColor clearColor];
 		tile.layer.cornerRadius = TGMetricCornerControl;
 		tile.clipsToBounds = YES;
 		tile.tag = i;
@@ -223,17 +219,38 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 	};
 
 	if ([action isEqualToString:@"Send Message"]){
-		[[TGClient shared] privateChatWithUser:userId completion:^(int64_t privateId){
+		// The check before the push: a user who takes no messages from
+		// non-contacts turns the composer into a doomed one. Telegram's own
+		// answer names which of the four refusals this is.
+		[[TGClient shared] canSendMessageToUser:userId completion:^(NSString *result){
 			TGProfileViewController *me = weakSelf;
-			if (!privateId)
+			if (!me)
 				return;
-			Class chatClass = NSClassFromString(@"TGChatViewController");
-			UIViewController *chat = [[chatClass alloc] init];
-			[chat setValue:@(privateId) forKey:@"chatId"];
-			[chat setValue:(name ?: @"") forKey:@"chatTitle"];
-			chat.hidesBottomBarWhenPushed = YES;
-			[me.navigationController pushViewController:chat animated:YES];
+			if ([result isEqualToString:@"ok"]){
+				[[TGClient shared] privateChatWithUser:userId completion:^(int64_t privateId){
+					TGProfileViewController *me = weakSelf;
+					if (!privateId)
+						return;
+					Class chatClass = NSClassFromString(@"TGChatViewController");
+					UIViewController *chat = [[chatClass alloc] init];
+					[chat setValue:@(privateId) forKey:@"chatId"];
+					[chat setValue:(name ?: @"") forKey:@"chatTitle"];
+					chat.hidesBottomBarWhenPushed = YES;
+					[me.navigationController pushViewController:chat animated:YES];
+				}];
+				return;
+			}
+			NSString *say = [result isEqualToString:@"paidMessages"]
+					? @"They charge for incoming messages, and this account "
+					   @"carries no wallet for that."
+					: ([result isEqualToString:@"userRestrictsNewChats"]
+					   ? @"They set their profile to messages from contacts only."
+					   : @"That profile is gone.");
+			[TGAlertSheet showMessage:say
+								title:name.length ? name : @"Message"
+								   inView:me.view];
 		}];
+		return;
 
 	} else if ([action isEqualToString:@"Promote to Admin"]){
 		[[TGClient shared] setMember:userId inChat:chatId status:@"administrator"
@@ -321,6 +338,8 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 		[items addObject:@{@"title" : @"Invite Link", @"icon" : @"forward"}];
 		[items addObject:@{@"title" : @"Join Requests", @"icon" : @"select"}];
 		[items addObject:@{@"title" : @"View with Topics", @"icon" : @"folder"}];
+		[items addObject:@{@"title" : @"Sign Messages", @"icon" : @"edit"}];
+		[items addObject:@{@"title" : @"Join to Send", @"icon" : @"select"}];
 	}
 	if (self.onJumpToDateTapped)
 		[items addObject:@{@"title" : @"Jump to Date", @"icon" : @"folder"}];
@@ -769,6 +788,67 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 					return;
 				}
 				me.chatDescription = description;
+			}];
+		}];
+		return;
+	}
+
+	if ([title isEqualToString:@"Sign Messages"] ||
+			[title isEqualToString:@"Join to Send"]){
+		int64_t chatId = self.chatId;
+		NSString *chatTitle = self.name;
+		BOOL isSign = [title isEqualToString:@"Sign Messages"];
+		NSString *flagName = isSign ? @"Signed Messages" : @"Join to Send";
+		__weak typeof(self) weakSelf = self;
+		// What the switch sits on now is asked for, so the sheet names the
+		// move rather than a state it has already made.
+		[[TGClient shared] supergroupFlagsForChat:chatId
+				completion:^(BOOL signMessages, BOOL joinToSend, BOOL ok){
+			TGProfileViewController *me = weakSelf;
+			if (!me)
+				return;
+			if (!ok){
+				[TGAlertSheet showMessage:@"Only a supergroup or a channel "
+										  @"carries this switch."
+									title:flagName
+								   inView:me.view];
+				return;
+			}
+			NSString *say = nil;
+			NSString *action = nil;
+			if (isSign){
+				say = signMessages
+						? @"Members' names stop showing on their messages."
+						: @"Every member's post carries their name on it.";
+				action = signMessages ? @"Hide Names" : @"Sign Messages";
+			} else {
+				say = joinToSend
+						? @"Members go back to posting without joining this group."
+						: @"Members are added to the group before their composer "
+						  @"unlocks.";
+				action = joinToSend ? @"Turn Off" : @"Turn On";
+			}
+			[TGAlertSheet showConfirm:say
+								title:(chatTitle ?: flagName)
+							   action:action
+						  destructive:NO
+							   inView:weakSelf.view
+							onConfirm:^{
+				void (^mark)(BOOL) = ^(BOOL done){
+					TGProfileViewController *me2 = weakSelf;
+					if (!done && me2)
+						[TGAlertSheet showMessage:@"Telegram refused that."
+											title:flagName
+										   inView:me2.view];
+				};
+				if (isSign)
+					[[TGClient shared] setChatSignMessages:chatId
+														on:!signMessages
+												completion:mark];
+				else
+					[[TGClient shared] setChatJoinToSendMessages:chatId
+															  on:!joinToSend
+													  completion:mark];
 			}];
 		}];
 		return;

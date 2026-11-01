@@ -151,15 +151,10 @@
 		reactions.hidden = NO;
 		reactions.text = reactionText;
 		reactions.textColor = [theme secondaryTextColour];
-		if (!theme.isFlat) {
-			reactions.backgroundColor = [theme cardBackgroundColour];
-			reactions.layer.cornerRadius = TGMetricCornerSmall;
-			reactions.layer.borderWidth = 1.0f;
-			reactions.layer.borderColor = [theme separatorColour].CGColor;
-		} else {
-			reactions.backgroundColor = [UIColor clearColor];
-			reactions.layer.borderWidth = 0.0f;
-		}
+		reactions.backgroundColor = [theme cardBackgroundColour];
+		reactions.layer.cornerRadius = TGMetricCornerSmall;
+		reactions.layer.borderWidth = 1.0f;
+		reactions.layer.borderColor = [theme separatorColour].CGColor;
 		reactions.frame = CGRectMake(kPadH,
 				layout.bodyFrame.origin.y + layout.bodySize.height + TGMetricPadTiny,
 				layout.bubbleFrame.size.width - TGDoubled(kPadH), TGMetricLineCaption);
@@ -263,26 +258,17 @@
 	}
 	[cell.bubble bringSubviewToFront:cell.time];
 
-	// 10. iOS 6 Skeuomorphic drop shadows & styling (no harsh shine split)
-	if (!theme.isFlat && !layout.isService && !layout.isSticker && !layout.isRound) {
+	// 10. Text shadows on the printed plate; service/sticker/round rows sit
+	// shell-flat and cast nothing.
+	if (!layout.isService && !layout.isSticker && !layout.isRound) {
 		cell.shineBar.hidden = YES;
 		cell.shineGradientLayer.hidden = YES;
-
-		if (mine) {
-			cell.body.textColor = [theme primaryTextColour];
-			cell.body.shadowColor = [theme etchedTextShadowColour];
-			cell.body.shadowOffset = CGSizeMake(0, 1.0f);
-			cell.time.textColor = [theme timeMineColour];
-			cell.time.shadowColor = [theme etchedTextShadowColour];
-			cell.time.shadowOffset = CGSizeMake(0, 1.0f);
-		} else {
-			cell.body.textColor = [theme primaryTextColour];
-			cell.body.shadowColor = [theme etchedTextShadowColour];
-			cell.body.shadowOffset = CGSizeMake(0, 1.0f);
-			cell.time.textColor = [theme timeColour];
-			cell.time.shadowColor = [theme etchedTextShadowColour];
-			cell.time.shadowOffset = CGSizeMake(0, 1.0f);
-		}
+		cell.body.textColor = [theme primaryTextColour];
+		cell.body.shadowColor = [theme etchedTextShadowColour];
+		cell.body.shadowOffset = CGSizeMake(0, 1.0f);
+		cell.time.textColor = mine ? [theme timeMineColour] : [theme timeColour];
+		cell.time.shadowColor = [theme etchedTextShadowColour];
+		cell.time.shadowOffset = CGSizeMake(0, 1.0f);
 	} else {
 		cell.shineBar.hidden = YES;
 		cell.shineGradientLayer.hidden = YES;

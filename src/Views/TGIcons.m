@@ -89,8 +89,7 @@ BOOL TGIconAddPath(CGContextRef ctx, const char *name, CGRect box) {
 }
 
 + (UIImage *)iconNamed:(NSString *)name draw:(void (^)(CGContextRef ctx, CGFloat s))draw {
-	BOOL flat = [TGTheme shared].isFlat;
-	NSString *key = [NSString stringWithFormat:@"%@-%d", name, (int)flat];
+	NSString *key = name;
 	UIImage *cached = TGIconsGetCached(key);
 	if (cached)
 		return cached;
@@ -99,16 +98,13 @@ BOOL TGIconAddPath(CGContextRef ctx, const char *name, CGRect box) {
 	UIGraphicsBeginImageContextWithOptions(CGSizeMake(side, side), NO, 0);
 	CGContextRef ctx = UIGraphicsGetCurrentContext();
 
-	if (!flat){
-		// Skeuomorphic glyphs sit on the surface: a soft shadow under, a white
-		// highlight one pixel up. Flat ones are the shape and nothing else.
-		CGContextSaveGState(ctx);
-		CGContextTranslateCTM(ctx, 0, 1);
-		CGContextSetRGBFillColor(ctx, 1, 1, 1, 0.55f);
-		CGContextSetRGBStrokeColor(ctx, 1, 1, 1, 0.55f);
-		draw(ctx, side);
-		CGContextRestoreGState(ctx);
-	}
+	// The glyph sits on the surface: a white echo one pixel up, then the black.
+	CGContextSaveGState(ctx);
+	CGContextTranslateCTM(ctx, 0, 1);
+	CGContextSetRGBFillColor(ctx, 1, 1, 1, 0.55f);
+	CGContextSetRGBStrokeColor(ctx, 1, 1, 1, 0.55f);
+	draw(ctx, side);
+	CGContextRestoreGState(ctx);
 
 	CGContextSetRGBFillColor(ctx, 0, 0, 0, 1);
 	CGContextSetRGBStrokeColor(ctx, 0, 0, 0, 1);

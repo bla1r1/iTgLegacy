@@ -45,12 +45,8 @@ typedef NS_ENUM(NSInteger, TGLoginStep) {
 /// The ghost links under a step's button that only that step has.
 @property (nonatomic, strong) NSMutableArray *stepLinks;
 
-@property (nonatomic, strong) UILabel *themeSectionLabel;
-@property (nonatomic, strong) UISegmentedControl *themeSegmentedControl;
-
 - (void)setupUI;
 - (void)applyTheme;
-- (void)themeSegmentChanged:(UISegmentedControl *)sender;
 - (void)actionButtonTapped;
 
 @end

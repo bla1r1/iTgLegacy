@@ -312,6 +312,10 @@
 			weakSelf.accountTtl = days;
 			[weakSelf rebuild];
 		}];
+		[[TGClient shared] defaultMessageAutoDeleteTimeWithCompletion:^(NSInteger seconds){
+			weakSelf.autoDeleteDefault = seconds;
+			[weakSelf rebuild];
+		}];
 		[[TGClient shared] hasPasswordWithCompletion:^(BOOL has, NSString *email){
 			weakSelf.hasPassword = has;
 			weakSelf.passwordKnown = YES;
@@ -632,12 +636,8 @@ static const CGFloat kMeTextInset  = TGMetricPadMedium;
 		cell.accessoryType = [row[TGRowChecked] boolValue]
 				? UITableViewCellAccessoryCheckmark : UITableViewCellAccessoryNone;
 	} else if ([kind isEqualToString:TGKindDisclosure]){
-		if (!theme.isFlat) {
-			cell.accessoryView = [[UIImageView alloc] initWithImage:[TGIcons skeuomorphicDisclosureChevron]];
-			cell.accessoryType = UITableViewCellAccessoryNone;
-		} else {
-			cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
-		}
+		cell.accessoryView = [[UIImageView alloc] initWithImage:[TGIcons skeuomorphicDisclosureChevron]];
+		cell.accessoryType = UITableViewCellAccessoryNone;
 	} else if ([kind isEqualToString:TGKindAction]){
 		cell.textLabel.textColor = [theme accentColour];
 		cell.textLabel.textAlignment = NSTextAlignmentCenter;

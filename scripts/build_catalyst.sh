@@ -67,6 +67,10 @@ mkdir -p "$OBJ" "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
 sources() {
 	ls src/*/*.m src/*/*.mm src/*.m 2>/dev/null
+	# The C core the on-device build links as well: icon SVG paths and the
+	# perf sampler TGBench reads.
+	echo "src/Core/TGSVGPath.c"
+	echo "src/Core/TGSampler.c"
 	echo "src/Core/TGUpdateType.c"
 	echo "third_party/yyjson/yyjson.c"
 	echo "compat/tlv_polyfill.c"

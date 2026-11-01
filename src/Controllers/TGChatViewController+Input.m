@@ -18,13 +18,10 @@
 	self.inputBar.backgroundColor = [[TGTheme shared] inputBarColour];
 	self.inputBar.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleTopMargin;
 
-	TGTheme *theme = [TGTheme shared];
-	if (!theme.isFlat) {
-		UIImageView *barBg = [[UIImageView alloc] initWithFrame:CGRectMake(0, 0, b.size.width, kInputHeight)];
-		barBg.image = [TGTheme skeuomorphicInputBarImageWithHeight:kInputHeight];
-		barBg.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-		[self.inputBar addSubview:barBg];
-	}
+	UIImageView *barBg = [[UIImageView alloc] initWithFrame:CGRectMake(0, 0, b.size.width, kInputHeight)];
+	barBg.image = [TGTheme skeuomorphicInputBarImageWithHeight:kInputHeight];
+	barBg.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+	[self.inputBar addSubview:barBg];
 
 	UIView *hair = [[UIView alloc] initWithFrame:CGRectMake(0, 0, b.size.width,
 			TGMetricBorderWidth)];
@@ -46,17 +43,9 @@
 	self.input = [[UITextField alloc] initWithFrame:
 			CGRectMake(kFieldLeft, kFieldInsetV, b.size.width - kFieldRoom, fieldH)];
 	self.input.borderStyle = UITextBorderStyleNone;
-	if (!theme.isFlat) {
-		self.input.background = [TGTheme skeuomorphicWellImageWithHeight:fieldH cornerRadius:TGHalf(fieldH)];
-		self.input.backgroundColor = [UIColor clearColor];
-		self.input.layer.borderWidth = 0.0f;
-	} else {
-		self.input.background = nil;
-		self.input.backgroundColor = [[TGTheme shared] listBackgroundColour];
-		self.input.layer.cornerRadius = TGHalf(kInputHeight - TGMetricPadLarge);
-		self.input.layer.borderWidth = TGMetricBorderWidth;
-		self.input.layer.borderColor = [[TGTheme shared] separatorColour].CGColor;
-	}
+	self.input.background = [TGTheme skeuomorphicWellImageWithHeight:fieldH cornerRadius:TGHalf(fieldH)];
+	self.input.backgroundColor = [UIColor clearColor];
+	self.input.layer.borderWidth = 0.0f;
 	self.input.layer.shouldRasterize = YES;
 	self.input.layer.rasterizationScale = scale;
 	self.input.leftView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, kFieldLeftPad,
@@ -73,14 +62,9 @@
 	self.sendButton = [UIButton buttonWithType:UIButtonTypeCustom];
 	self.sendButton.frame = CGRectMake(b.size.width - kSendSide - kSendInset, sendY,
 									   kSendSide, kSendSide);
-	if (!theme.isFlat) {
-		[self.sendButton setBackgroundImage:[TGTheme buttonImageForStyle:TGButtonStyleAction highlighted:NO height:kSendSide] forState:UIControlStateNormal];
-		[self.sendButton setBackgroundImage:[TGTheme buttonImageForStyle:TGButtonStyleAction highlighted:YES height:kSendSide] forState:UIControlStateHighlighted];
-		self.sendButton.backgroundColor = [UIColor clearColor];
-	} else {
-		self.sendButton.backgroundColor = [[TGTheme shared] accentColour];
-		self.sendButton.layer.cornerRadius = TGHalf(kSendSide);
-	}
+	[self.sendButton setBackgroundImage:[TGTheme buttonImageForStyle:TGButtonStyleAction highlighted:NO height:kSendSide] forState:UIControlStateNormal];
+	[self.sendButton setBackgroundImage:[TGTheme buttonImageForStyle:TGButtonStyleAction highlighted:YES height:kSendSide] forState:UIControlStateHighlighted];
+	self.sendButton.backgroundColor = [UIColor clearColor];
 	self.sendButton.layer.shouldRasterize = YES;
 	self.sendButton.layer.rasterizationScale = scale;
 	[self.sendButton setImage:[TGIcons send] forState:UIControlStateNormal];

@@ -150,20 +150,15 @@ static NSArray *TGCallGradient(NSArray *colours) {
     [self.acceptBtn addTarget:self action:@selector(acceptCall) forControlEvents:UIControlEventTouchUpInside];
 
     TGTheme *theme = [TGTheme shared];
-    if (!theme.isFlat) {
-        [self.endBtn setBackgroundImage:[TGTheme buttonImageForStyle:TGButtonStyleDestructive highlighted:NO height:TGMetricCallButtonSide] forState:UIControlStateNormal];
-        [self.endBtn setBackgroundImage:[TGTheme buttonImageForStyle:TGButtonStyleDestructive highlighted:YES height:TGMetricCallButtonSide] forState:UIControlStateHighlighted];
-        self.endBtn.backgroundColor = [UIColor clearColor];
+    [self.endBtn setBackgroundImage:[TGTheme buttonImageForStyle:TGButtonStyleDestructive highlighted:NO height:TGMetricCallButtonSide] forState:UIControlStateNormal];
+    [self.endBtn setBackgroundImage:[TGTheme buttonImageForStyle:TGButtonStyleDestructive highlighted:YES height:TGMetricCallButtonSide] forState:UIControlStateHighlighted];
+    self.endBtn.backgroundColor = [UIColor clearColor];
 
-        [self.acceptBtn setBackgroundImage:[TGTheme buttonImageForStyle:TGButtonStyleSuccess highlighted:NO height:TGMetricCallButtonSide] forState:UIControlStateNormal];
-        [self.acceptBtn setBackgroundImage:[TGTheme buttonImageForStyle:TGButtonStyleSuccess highlighted:YES height:TGMetricCallButtonSide] forState:UIControlStateHighlighted];
-        self.acceptBtn.backgroundColor = [UIColor clearColor];
-    } else {
-        self.endBtn.backgroundColor = [theme callEndColour];
-        self.acceptBtn.backgroundColor = [theme callAcceptColour];
-    }
-    // Both plate moods (glossy image or flat colour) are saturated, so the
-    // end/accept glyphs stay light whatever the controls around them carry.
+    [self.acceptBtn setBackgroundImage:[TGTheme buttonImageForStyle:TGButtonStyleSuccess highlighted:NO height:TGMetricCallButtonSide] forState:UIControlStateNormal];
+    [self.acceptBtn setBackgroundImage:[TGTheme buttonImageForStyle:TGButtonStyleSuccess highlighted:YES height:TGMetricCallButtonSide] forState:UIControlStateHighlighted];
+    self.acceptBtn.backgroundColor = [UIColor clearColor];
+    // The plates are saturated, so the end/accept glyphs stay light whatever
+    // the controls around them carry.
     [self.endBtn setImage:[TGIcons glyphNamed:@"endcall" colour:[theme onAccentColour]
                                          side:TGMetricCallGlyphSide]
                  forState:UIControlStateNormal];

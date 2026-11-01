@@ -216,10 +216,8 @@
 	name.textColor = [[TGTheme shared] barTitleColour];
 	name.backgroundColor = [UIColor clearColor];
 	name.textAlignment = NSTextAlignmentCenter;
-	if (![TGTheme shared].isFlat){
-		name.shadowColor = [[TGTheme shared] navBarTextShadowColour];
-		name.shadowOffset = TGMetricShadowOffsetNav;
-	}
+	name.shadowColor = [[TGTheme shared] navBarTextShadowColour];
+	name.shadowOffset = TGMetricShadowOffsetNav;
 	[header addSubview:name];
 	self.titleNameLabel = name;
 
@@ -572,6 +570,16 @@
 		double tableStart = TGPerfNow();
 		[me.table reloadData];
 		TGPerfReport("chat table", "reloadData", tableStart, 100.0);
+		if (me.initialMessageId){
+			// Opened by a link to one message: the unread separator and the
+			// bottom both lose to the message the tap was about.
+			int64_t target = me.initialMessageId;
+			me.initialMessageId = 0;
+			[me showMessageId:target gone:@"That message is not in this chat"];
+			[me fetchMissingImages];
+			[me resolveUnknownSenders];
+			return;
+		}
 		if (unreadRow != NSNotFound)
 			[me.table scrollToRowAtIndexPath:[NSIndexPath indexPathForRow:unreadRow inSection:0]
 							atScrollPosition:UITableViewScrollPositionTop animated:NO];

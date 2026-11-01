@@ -150,10 +150,6 @@ static NSString *const kWallpaperTypeKey = @"themeWallpaperType";
 	return _imported[key];
 }
 
-- (BOOL)isFlat {
-	return NO;
-}
-
 + (UITableViewCell *)systemCellOfStyle:(UITableViewCellStyle)style {
 	static UITableViewCell *cells[4];
 	if (style < 0 || style > 3)

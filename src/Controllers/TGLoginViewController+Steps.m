@@ -18,8 +18,8 @@ static CGFloat TGStackPlace(UIView *view, CGFloat y, CGFloat height,
     return y + height + TGMetricStackStep;
 }
 
-/// The same, for the thing that starts a new group - the theme picker under
-/// everything else - which gets the larger step above it.
+/// The same, for whatever starts a new group further down the form - it gets
+/// the larger step above it.
 static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
                                  CGFloat width, CGFloat gutter) {
     return TGStackPlace(view, y + TGMetricStackGroup - TGMetricStackStep,
@@ -85,13 +85,7 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
         self.codeStepQrButton = nil;
     }
 
-    y = TGStackPlaceGroup(self.themeSectionLabel, y, TGMetricPadLarge,
-                          width, TGMetricPadWide);
-    y = TGStackPlace(self.themeSegmentedControl, y - TGMetricStackStep +
-                     TGMetricPadSmall, TGMetricLoginLinkHeight,
-                     width, TGMetricGutter);
-    self.themeSectionLabel.hidden = NO;
-    self.themeSegmentedControl.hidden = NO;
+    y += TGMetricStackGroup;
 
     self.scrollView.contentSize = CGSizeMake(width,
             y - TGMetricStackStep + TGMetricPadLarge);
@@ -180,13 +174,6 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
 
     CGFloat qrY = TGStackPlaceGroup(nil, TGMetricStackQRTop + qrSize,
                                     0, width, TGMetricPadWide);
-    qrY = TGStackPlace(self.themeSectionLabel, qrY - TGMetricStackStep,
-                       TGMetricPadLarge, width, TGMetricPadWide);
-    qrY = TGStackPlace(self.themeSegmentedControl,
-                       qrY - TGMetricStackStep + TGMetricPadSmall,
-                       TGMetricLoginLinkHeight, width, TGMetricGutter);
-    self.themeSectionLabel.hidden = NO;
-    self.themeSegmentedControl.hidden = NO;
 
     self.scrollView.contentSize = CGSizeMake(width,
             qrY - TGMetricStackStep + TGMetricPadLarge);
@@ -298,13 +285,7 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
     codeY += TGDoubled(TGMetricLoginLinkHeight) + TGMetricPadSmall;
     codeY = [self addStepLink:@"Didn't get the code?" action:@selector(codeMissingTapped)
                           atY:codeY + TGMetricPadSmall];
-    codeY = TGStackPlaceGroup(self.themeSectionLabel, codeY,
-                              TGMetricPadLarge, width, TGMetricPadWide);
-    codeY = TGStackPlace(self.themeSegmentedControl,
-                         codeY - TGMetricStackStep + TGMetricPadSmall,
-                         TGMetricLoginLinkHeight, width, TGMetricGutter);
-    self.themeSectionLabel.hidden = NO;
-    self.themeSegmentedControl.hidden = NO;
+    codeY += TGMetricStackGroup;
 
     self.scrollView.contentSize = CGSizeMake(width,
             codeY - TGMetricStackStep + TGMetricPadLarge);
@@ -404,8 +385,6 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
     self.nextItem.title = @"Done";
     self.navigationItem.rightBarButtonItem = self.nextItem;
 
-    self.themeSectionLabel.hidden = YES;
-    self.themeSegmentedControl.hidden = YES;
     self.scrollView.contentSize = CGSizeMake(width,
             y - TGMetricStackStep + TGMetricPadLarge);
 
@@ -566,8 +545,6 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
     self.nextItem.title = @"Done";
     self.navigationItem.rightBarButtonItem = self.nextItem;
 
-    self.themeSectionLabel.hidden = YES;
-    self.themeSegmentedControl.hidden = YES;
     self.scrollView.contentSize = CGSizeMake(width, y - TGMetricStackStep + TGMetricPadLarge);
 
     [self applyTheme];

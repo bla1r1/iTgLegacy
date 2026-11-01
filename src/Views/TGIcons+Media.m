@@ -323,8 +323,7 @@ static char kAwaitedKey;
 }
 
 + (UIImage *)mediaDiscOfSide:(CGFloat)side playing:(BOOL)playing {
-	BOOL isFlat = [TGTheme shared].isFlat;
-	NSString *key = [NSString stringWithFormat:@"mediaDisc_%.0f_%d_%d", side, playing, isFlat];
+	NSString *key = [NSString stringWithFormat:@"mediaDisc_%.0f_%d", side, playing];
 	UIImage *cached = TGIconsGetCached(key);
 	if (cached) return cached;
 
@@ -336,21 +335,16 @@ static char kAwaitedKey;
 	CGRect box = CGRectInset(CGRectMake(0, 0, side, side), -side / 10, -side / 10);
 	TGIconAddPath(ctx, playing ? "mediaDiscPause" : "mediaDiscPlay", box);
 	CGContextClip(ctx);
-	if (isFlat) {
-		CGContextSetRGBFillColor(ctx, 0.447f, 0.710f, 0.914f, 1.0f);
-		CGContextFillRect(ctx, CGRectMake(0, 0, side, side));
-	} else {
-		CGFloat colors[8] = {
-			0.52f, 0.78f, 0.96f, 1.0f,
-			0.28f, 0.54f, 0.78f, 1.0f
-		};
-		CGFloat locs[2] = {0.0f, 1.0f};
-		CGColorSpaceRef cs = CGColorSpaceCreateDeviceRGB();
-		CGGradientRef grad = CGGradientCreateWithColorComponents(cs, colors, locs, 2);
-		CGContextDrawLinearGradient(ctx, grad, CGPointMake(0, 0), CGPointMake(0, side), 0);
-		CGGradientRelease(grad);
-		CGColorSpaceRelease(cs);
-	}
+	CGFloat colors[8] = {
+		0.52f, 0.78f, 0.96f, 1.0f,
+		0.28f, 0.54f, 0.78f, 1.0f
+	};
+	CGFloat locs[2] = {0.0f, 1.0f};
+	CGColorSpaceRef cs = CGColorSpaceCreateDeviceRGB();
+	CGGradientRef grad = CGGradientCreateWithColorComponents(cs, colors, locs, 2);
+	CGContextDrawLinearGradient(ctx, grad, CGPointMake(0, 0), CGPointMake(0, side), 0);
+	CGGradientRelease(grad);
+	CGColorSpaceRelease(cs);
 
 	UIImage *image = UIGraphicsGetImageFromCurrentImageContext();
 	UIGraphicsEndImageContext();
@@ -359,37 +353,31 @@ static char kAwaitedKey;
 }
 
 + (UIImage *)fileDiscOfSide:(CGFloat)side {
-	BOOL isFlat = [TGTheme shared].isFlat;
-	NSString *key = [NSString stringWithFormat:@"fileDisc_%.0f_%d", side, isFlat];
+	NSString *key = [NSString stringWithFormat:@"fileDisc_%.0f", side];
 	UIImage *cached = TGIconsGetCached(key);
 	if (cached) return cached;
 
 	UIGraphicsBeginImageContextWithOptions(CGSizeMake(side, side), NO, 0);
 	CGContextRef ctx = UIGraphicsGetCurrentContext();
 
-	if (isFlat) {
-		CGContextSetRGBFillColor(ctx, 0.447f, 0.710f, 0.914f, 1.0f);
-		CGContextFillEllipseInRect(ctx, CGRectMake(0, 0, side, side));
-	} else {
-		CGFloat colors[8] = {
-			0.56f, 0.62f, 0.70f, 1.0f,
-			0.36f, 0.42f, 0.50f, 1.0f
-		};
-		CGFloat locs[2] = {0.0f, 1.0f};
-		CGColorSpaceRef cs = CGColorSpaceCreateDeviceRGB();
-		CGGradientRef grad = CGGradientCreateWithColorComponents(cs, colors, locs, 2);
-		CGContextSaveGState(ctx);
-		CGContextAddEllipseInRect(ctx, CGRectMake(0, 0, side, side));
-		CGContextClip(ctx);
-		CGContextDrawLinearGradient(ctx, grad, CGPointMake(0, 0), CGPointMake(0, side), 0);
-		CGContextRestoreGState(ctx);
-		CGGradientRelease(grad);
-		CGColorSpaceRelease(cs);
+	CGFloat colors[8] = {
+		0.56f, 0.62f, 0.70f, 1.0f,
+		0.36f, 0.42f, 0.50f, 1.0f
+	};
+	CGFloat locs[2] = {0.0f, 1.0f};
+	CGColorSpaceRef cs = CGColorSpaceCreateDeviceRGB();
+	CGGradientRef grad = CGGradientCreateWithColorComponents(cs, colors, locs, 2);
+	CGContextSaveGState(ctx);
+	CGContextAddEllipseInRect(ctx, CGRectMake(0, 0, side, side));
+	CGContextClip(ctx);
+	CGContextDrawLinearGradient(ctx, grad, CGPointMake(0, 0), CGPointMake(0, side), 0);
+	CGContextRestoreGState(ctx);
+	CGGradientRelease(grad);
+	CGColorSpaceRelease(cs);
 
-		CGContextSetRGBStrokeColor(ctx, 1.0f, 1.0f, 1.0f, 0.40f);
-		CGContextSetLineWidth(ctx, TGIconStrokeFine);
-		CGContextStrokeEllipseInRect(ctx, CGRectInset(CGRectMake(0, 0, side, side), 0.5f, 0.5f));
-	}
+	CGContextSetRGBStrokeColor(ctx, 1.0f, 1.0f, 1.0f, 0.40f);
+	CGContextSetLineWidth(ctx, TGIconStrokeFine);
+	CGContextStrokeEllipseInRect(ctx, CGRectInset(CGRectMake(0, 0, side, side), 0.5f, 0.5f));
 
 	CGContextSetRGBFillColor(ctx, 1, 1, 1, 1);
 	if (TGIconAddPath(ctx, "fileDisc", CGRectInset(CGRectMake(0, 0, side, side), side * 0.2f, side * 0.2f)))

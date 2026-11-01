@@ -12,10 +12,6 @@
 // Identity & Search
 #import "TGAvatarView.h"
 
-// Lists & Navigation
-#import "TGBarButtonItem.h"
-#import "TGMediaThumbnailView.h"
-
 // Contextual Menus & Reactions
 #import "TGReactionPicker.h"
 #import "TGPopupMenu.h"

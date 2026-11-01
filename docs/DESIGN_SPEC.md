@@ -7,7 +7,16 @@
 
 ## Concept
 
-Not a retro skin. A synthesis of authentic iOS 6 skeuomorphism (satin headers, linen canvas, recessed inputs, gloss buttons) with clean typographic hierarchy and accessible contrast (WCAG 2.1 AA). All rendering is procedural CoreGraphics — no offscreen GPU blurs, `@1x`/`@2x` cached — targeting 60 FPS on A5/A6.
+A Telegram client that looks like the iOS it runs on. Since the November 2026
+pass (`996512d`, `8e0d1b4`, `8e86854`) the chrome — bars, grouped tables,
+settings cells, switches, search, alerts — is the system's own UIKit drawing
+on every supported version. The app draws only what the system has no analogue
+for: the chat canvas, custom sheets, snackbars, the media viewer, the player,
+the call screen and the procedural icon engine. Light only: a theme file
+recolours the chat, never the chrome.
+
+Drawing that the app still does is CoreGraphics, `@1x`/`@2x` cached, targeting
+60 FPS on A5/A6.
 
 No neon gradients, no card-in-card layouts, no emoji as UI icons.
 
@@ -22,14 +31,14 @@ No neon gradients, no card-in-card layouts, no emoji as UI icons.
 | Contacts | `TGContactsViewController` | Alphabetical with A–Z index, search, add contact |
 | New contact | `TGNewContactViewController` | Phone + name, recessed inputs |
 | Settings | `TGSettingsViewController` | Profile card, sub-pages for Appearance / Notifications / Privacy / Folders / Devices |
-| Appearance | `TGSettingsViewController+Pages` | Theme switcher, auto-night, font size, wallpaper |
+| Appearance | `TGSettingsViewController+AppearancePages` | Light only: font size, wallpaper on/off, chat theme-file import |
 | Profile | `TGProfileViewController` | Avatar, shared media tabs, block/leave |
 | Music player (modal) | `TGPlayerView` | iPod-style deck, vinyl art, scrubber, queue |
 | Mini-player (docked) | `TGPlayerView` | Persistent bar above tab bar |
 | VoIP call | `TGCallViewController` | E2EE audio/video, embossed action buttons |
 | Media viewer | `TGMediaViewer` | Fullscreen photo/video, pinch-to-zoom |
 | Auth flow | `TGLoginViewController` | Phone → code → 2FA → QR |
-| Sheets & alerts | `TGAlertSheet`, `TGSheet` | Frosted slate card, embossed title |
+| Sheets & alerts | `TGAlertSheet`, `TGSheet` | Alerts are the system's (UIAlertView/UIActionSheet ≤ iOS 7, UIAlertController ≥ 8); `TGSheet` hosts the app's bottom sheets (attach, gifts, date pickers) |
 | Toasts | `TGSnackbar` | Floating bar, countdown ring, Undo |
 
 ---
@@ -50,47 +59,47 @@ All colours from `TGTheme+Colours`. All sizes and metrics from `src/Core/TGStyle
 
 ### Colour roles
 
-| Token | Light | Dark |
-|---|---|---|
-| `TGColorBackground` | `#EFEFF4` | `#1C1C1E` |
-| `TGColorSurface` | `#FFFFFF` | `#2C2C2E` |
-| `TGColorPrimary` | `#0A84FF` | `#0A84FF` |
-| `TGColorDestructive` | `#FF3B30` | `#FF453A` |
-| `TGColorTextPrimary` | `#000000` | `#FFFFFF` |
-| `TGColorTextSecondary` | `#6C6C70` | `#8E8E93` |
-| `TGColorSeparator` | `#C6C6C8` | `#38383A` |
-| `TGColorOutgoingBubble` | `#DCF8C6` | `#1E3A2F` |
-| `TGColorIncomingBubble` | `#FFFFFF` | `#2C2C2E` |
+Light only: Night and Auto-Night were removed in `8e86854`, and a chat theme
+file that declares a dark palette is refused. Roles live in `TGTheme+Colours`;
+the app draws no hue the running OS does not also know:
+
+| Token | Role |
+|---|---|
+| `groupedBackgroundColour` / `listBackgroundColour` | screen and list plates |
+| `cardBackgroundColour` | cards over a grouped screen |
+| `primaryTextColour` / `secondaryTextColour` | text |
+| `accentColour` / `onAccentColour` | buttons, links, unread badges; content over them |
+| `destructiveColour` | delete actions |
+| `separatorColour` | hairlines, bubble borders |
+| `bubbleMineColour` / `bubbleTheirsColour` | the chat — the only surface a theme file recolours |
+| `barTitleColour` / `barSubtitleColour` / `barButtonColour` | content the system bar draws |
 
 ### Metrics
 
 | Token | Value |
 |---|---|
-| `TGMetricListAvatar` | 46 pt |
-| `TGMetricListRowHeight` | 64 pt |
-| `TGMetricBubbleCornerRadius` | 16 pt |
-| `TGMetricNavBarHeight` | 44 pt |
-| `TGMetricTabBarHeight` | 49 pt |
-| `TGMetricInputBarHeight` | 52 pt |
-| `TGMetricInputBarCornerRadius` | 20 pt |
+| `TGMetricListAvatar` | 40 pt |
+| `TGMetricTabBarH` | 49 pt (the system tab bar's own height) |
+| `TGMetricInputBarHeight` | 48 pt |
+| `TGMetricCallButtonSide` | 60 pt |
+| `TGMetricCornerControl` | 8 pt |
+
+The navigation bar has no metric of ours — the system draws it.
 
 ---
 
 ## TGUI component framework (`src/UI/`)
 
-| Component | Class | Variants / notes |
+Mostly retired: `996512d` deleted `TGSwitch` and `TGSearchBar` in favour of the
+system's own, and the bars and lists stopped being drawn at all. What is left
+and what it does:
+
+| Component | Class | Where it lives |
 |---|---|---|
-| Button | `TGButton` | Primary / Secondary / Destructive / Success / Ghost × Small / Medium / Large. Physical press depression, busy state. |
-| Switch | `TGSwitch` | Recessed track, embossed ON/OFF glyphs, knurled thumb with pan-to-drag |
-| Slider | `TGSlider` | Recessed groove, glossy blue fill, min/max icons |
-| Input | `TGTextField` | Recessed well, clear button, leading icon, error outline |
-| Segmented | `TGSegmentedControl` | Satin container, sliding pill indicator |
-| Card | `TGCardView` | Specular highlight, ambient shadow, header |
-| Badge | `TGBadge` | Dome specular, 1 px rim — Notification / Accent / Muted / Success |
-| Avatar | `TGAvatarView` | Auto-initials, async cache, specular rim, online indicator |
-| Search bar | `TGSearchBar` | Linen, recessed well, animated Cancel |
-| Reaction bar | `TGReactionPicker` | Spring pop, selection glow |
-| Popup menu | `TGPopupMenu` | Directional arrow, emoji dock, etched rows |
+| Button | `TGButton` | production: login step buttons, chat edit-mode toolbar |
+| Gallery-only kit | `TGTextField`, `TGSlider`, `TGSegmentedControl`, `TGCardView`, `TGBadge`, `TGAvatarView` | showcase only; no production call sites |
+| Reaction bar | `TGReactionPicker` | the message context menu |
+| Popup menu | `TGPopupMenu` | plain lists route to a system action sheet; drawn variants remain for the reactions bar and the sticker-set header |
 | Design lab | `TGGalleryViewController` | Settings → Appearance → UI Component Gallery |
 
 ---
@@ -105,12 +114,11 @@ Full-screen modal with vinyl album art (drop shadow + gloss overlay), scrubber, 
 
 | Component | Behaviour |
 |---|---|
-| `TGSnackbar` | Satin bar above chrome, 10 s countdown ring, Undo |
-| `TGAlertSheet` | Frosted slate card, embossed OK, auto-dismiss keyboard |
-| `TGAlertSheet` (destructive) | Red glossy confirm button, silver Cancel |
-| `TGAlertSheet` (input) | Recessed text field, secure entry |
-| `TGConnectionBanner` | Pinned under nav bar — Connecting / Updating + radio pulse |
-| `TGEmptyView` | Centered illustration, embossed headline, action button |
+| `TGSnackbar` | Bar above the chrome, countdown ring, Undo |
+| `TGAlertSheet` | The system alert under iOS 7, `UIAlertController` from iOS 8, behind one block API: message, confirm, choices, input (incl. secure entry) |
+| `TGAlertSheet` (destructive) | Destructive confirms are asked from an action sheet with a red button |
+| `TGStatusBanner` | Pinned under nav bar — Connecting / Updating + native spinner |
+| `TGEmptyView` | Centered illustration, headline, action button |
 | Form errors | Red input border, red caption + warning glyph |
 
 ---
@@ -130,3 +138,6 @@ Full-screen modal with vinyl album art (drop shadow + gloss overlay), scrubber, 
 - [x] Design lab (`TGGalleryViewController`)
 - [x] Token lint (`scripts/lint_tokens.sh`)
 - [x] Full test suite (`make -f tests/Makefile test`)
+- [x] System chrome on every iOS version (`996512d`)
+- [x] System alerts and action sheets under `TGAlertSheet` (`8e0d1b4`)
+- [x] Light only: no Night/Auto-Night, theme files recolour the chat (`8e86854`)
