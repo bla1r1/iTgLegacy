@@ -117,10 +117,10 @@
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
 	if (section == 0)
-		return @"Generate and Upload";
+		return @"GENERATE AND UPLOAD";
 	if (section == 1 && self.hasTransfer)
-		return @"Transfer";
-	return self.hasResult ? @"Generated File" : nil;
+		return @"TRANSFER";
+	return self.hasResult ? @"GENERATED FILE" : nil;
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {

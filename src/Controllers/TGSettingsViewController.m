@@ -340,6 +340,57 @@
 - (void)loadForPage {
 	__weak typeof(self) weakSelf = self;
 
+	if (self.page == TGSettingsPageRoot){
+		// The root rows name their values, as the official client's do. All
+		// four answers are cached by the client or cheap to ask for; none of
+		// them blocks the first draw, and a failed answer leaves the row as
+		// it was rather than inventing a value.
+		[[TGClient shared] storageStatsWithCompletion:^(long long bytes, NSInteger files){
+			(void)files;
+			weakSelf.rootCacheBytes = bytes;
+			weakSelf.rootCacheLoaded = YES;
+			[weakSelf rebuild];
+		}];
+		[[TGClient shared] sessionsWithInactiveTtlCompletion:^(NSArray *sessions,
+															  NSInteger ttlDays){
+			(void)ttlDays;
+			NSInteger others = 0;
+			NSString *device = nil;
+			for (NSDictionary *session in sessions){
+				if ([session[@"isCurrent"] boolValue])
+					device = session[@"name"];
+				else
+					others++;
+			}
+			weakSelf.rootDeviceName = device;
+			weakSelf.rootSessionCount = others;
+			[weakSelf rebuild];
+		}];
+		[[TGClient shared] languagesWithCompletion:^(NSArray *languages,
+													 NSString *current){
+			NSString *name = current;
+			for (NSDictionary *language in languages)
+				if ([language[@"id"] isEqualToString:current ?: @""]){
+					name = language[@"name"] ?: current;
+					break;
+				}
+			weakSelf.rootLanguageName = name;
+			[weakSelf rebuild];
+		}];
+		[[TGClient shared] proxiesWithCompletion:^(NSArray *proxies){
+			NSString *detail = @"Off";
+			for (NSDictionary *proxy in proxies)
+				if ([proxy[@"enabled"] boolValue]){
+					detail = [proxy[@"server"] length]
+							? proxy[@"server"] : @"On";
+					break;
+				}
+			weakSelf.rootProxyDetail = detail;
+			[weakSelf rebuild];
+		}];
+		return;
+	}
+
 	if (self.page == TGSettingsPageAppearance){
 		// The colour list comes from updateAccentColors and is cached on the
 		// client; the selection is a field of the account record, so it takes

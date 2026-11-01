@@ -67,13 +67,35 @@ static NSArray *TGCustomResultRows(NSString *result) {
 	BOOL hasPhoto = [[TGClient shared] photoFileIdForUserId:
 			[me[@"id"] longLongValue]] != nil;
 
+	// The values Telegram shows on the right of these rows. They stay nil
+	// until the client answers, so a slow network leaves the row exactly as
+	// it was instead of a dash that never fills in.
+	NSString *username = [me[@"username"] length]
+			? [NSString stringWithFormat:@"@%@", me[@"username"]] : nil;
+	NSString *devicesDetail = self.rootDeviceName.length
+			? (self.rootSessionCount > 0
+					? [NSString stringWithFormat:@"%ld active", (long)self.rootSessionCount]
+					: self.rootDeviceName)
+			: nil;
+	NSString *foldersDetail = [TGClient shared].folders.count
+			? [NSString stringWithFormat:@"%lu",
+					(unsigned long)[TGClient shared].folders.count]
+			: nil;
+	NSString *cacheDetail = self.rootCacheLoaded
+			? TGBytes(self.rootCacheBytes) : nil;
+	NSString *languageDetail = self.rootLanguageName.length
+			? self.rootLanguageName : self.currentLanguage;
+	NSString *proxyDetail = self.rootProxyDetail.length
+			? self.rootProxyDetail : @"Off";
+
 	return @[
-		// Profile header card
+		// Profile header card. The account's name and phone are the first
+		// thing on the official page, and the rows under it act on that
+		// account rather than on any one setting.
 		TGSection(nil, nil, @[
 			TGRow(TGKindProfile, @""),
 		]),
 
-		// Account actions card
 		TGSection(nil, nil, @[
 			// Rows like every other in Settings: a glyph on a tile, dark text,
 			// a chevron. Two bare blue lines above an icon row read as a
@@ -84,22 +106,29 @@ static NSArray *TGCustomResultRows(NSString *result) {
 			TGIconRow(hasPhoto ? @"Change Profile Photo" : @"Set Profile Photo", @"react", TGIconTileCoral(), ^{
 				[weakSelf pickProfilePhoto];
 			}),
-			TGIconRow(@"Edit Profile", @"chat", TGIconTileViolet(), ^{
+			TGIconTapRow(@"Edit Profile", username, @"chat", TGIconTileViolet(), ^{
 				UIViewController *edit = [[TGEditProfileViewController alloc] init];
 				edit.hidesBottomBarWhenPushed = YES;
 				[weakSelf.navigationController pushViewController:edit animated:YES];
 			}),
 		]),
 
+		// The chats and the devices they live on. Telegram keeps these above
+		// the settings that change how the app looks and sounds.
 		TGSection(nil, nil, @[
 			TGIconRow(@"Saved Messages", @"folder", TGIconTileSky(), ^{
 				[weakSelf openSavedMessages];
 			}),
-			TGIconRow(@"Stickers", @"star", TGIconTileViolet(), ^{
-				TGStickerPacksViewController *packs =
-						[[TGStickerPacksViewController alloc] init];
-				packs.hidesBottomBarWhenPushed = YES;
-				[weakSelf.navigationController pushViewController:packs animated:YES];
+			TGIconRow(@"Recent Calls", @"call", TGIconTileGreen(), ^{
+				[weakSelf openPage:TGSettingsPageRecentCalls];
+			}),
+			TGIconTapRow(@"Devices", devicesDetail, @"devices", TGIconTileAmber(), ^{
+				TGSessionsViewController *sessions = [[TGSessionsViewController alloc] init];
+				sessions.hidesBottomBarWhenPushed = YES;
+				[weakSelf.navigationController pushViewController:sessions animated:YES];
+			}),
+			TGIconTapRow(@"Chat Folders", foldersDetail, @"folder", TGIconTileCyan(), ^{
+				[weakSelf openPage:TGSettingsPageFolders];
 			}),
 			TGIconRow(@"Stories", @"notifications", TGIconTileRed(), ^{
 				TGStorySettingsViewController *stories =
@@ -107,18 +136,7 @@ static NSArray *TGCustomResultRows(NSString *result) {
 				stories.hidesBottomBarWhenPushed = YES;
 				[weakSelf.navigationController pushViewController:stories animated:YES];
 			}),
-			TGIconRow(@"Recent Calls", @"call", TGIconTileGreen(), ^{
-				[weakSelf openPage:TGSettingsPageRecentCalls];
-			}),
-			TGIconRow(@"Devices", @"devices", TGIconTileAmber(), ^{
-				TGSessionsViewController *sessions = [[TGSessionsViewController alloc] init];
-				sessions.hidesBottomBarWhenPushed = YES;
-				[weakSelf.navigationController pushViewController:sessions animated:YES];
-			}),
-			TGIconRow(@"Chat Folders", @"folder", TGIconTileCyan(), ^{
-				[weakSelf openPage:TGSettingsPageFolders];
-			}),
-			TGIconRow(@"Proxy", @"data", TGIconTileGrey(), ^{
+			TGIconTapRow(@"Proxy", proxyDetail, @"data", TGIconTileGrey(), ^{
 				[weakSelf openPage:TGSettingsPageProxy];
 			}),
 		]),
@@ -130,7 +148,7 @@ static NSArray *TGCustomResultRows(NSString *result) {
 			TGIconRow(@"Privacy and Security", @"privacy", TGIconTileGrey(), ^{
 				[weakSelf openPage:TGSettingsPagePrivacy];
 			}),
-			TGIconRow(@"Data and Storage", @"data", TGIconTileGreen(), ^{
+			TGIconTapRow(@"Data and Storage", cacheDetail, @"data", TGIconTileGreen(), ^{
 				[weakSelf openPage:TGSettingsPageData];
 			}),
 			TGIconRow(@"Appearance", @"chat", TGIconTileSky(), ^{
@@ -139,13 +157,27 @@ static NSArray *TGCustomResultRows(NSString *result) {
 			TGIconRow(@"Power Saving", @"battery", TGIconTileAmber(), ^{
 				[weakSelf openPage:TGSettingsPagePowerSaving];
 			}),
-			TGIconRow(@"Language", @"language", TGIconTileViolet(), ^{
+			TGIconTapRow(@"Language", languageDetail, @"language", TGIconTileViolet(), ^{
 				[weakSelf openPage:TGSettingsPageLanguage];
 			}),
-			TGIconRow(@"Device", @"devices", TGIconTileSlate(), ^{
+			TGIconTapRow(@"This Device", [TGDevice tierName], @"devices", TGIconTileSlate(), ^{
 				TGDeviceViewController *device = [[TGDeviceViewController alloc] init];
 				device.hidesBottomBarWhenPushed = YES;
 				[weakSelf.navigationController pushViewController:device animated:YES];
+			}),
+		]),
+
+		// Stickers and the chat look are a pair in Telegram's list, so they
+		// are one card here rather than one row in a card of settings.
+		TGSection(nil, nil, @[
+			TGIconRow(@"Stickers and Emoji", @"star", TGIconTileViolet(), ^{
+				TGStickerPacksViewController *packs =
+						[[TGStickerPacksViewController alloc] init];
+				packs.hidesBottomBarWhenPushed = YES;
+				[weakSelf.navigationController pushViewController:packs animated:YES];
+			}),
+			TGIconRow(@"Chat Themes", @"chat", TGIconTileSky(), ^{
+				[weakSelf openPage:TGSettingsPageAppearance];
 			}),
 		]),
 
@@ -161,12 +193,21 @@ static NSArray *TGCustomResultRows(NSString *result) {
 			}),
 		]),
 
-		TGSection(nil, nil, @[
+		// Help last, the way the official client ends the list before Log
+		// Out. Every row here existed before; they were mixed in with the
+		// account rows and read as settings rather than support.
+		TGSection(@"Help", nil, @[
 			TGIconRow(@"Ask a Question", @"chat", TGIconTileAmber(), ^{
 				[weakSelf openSupport];
 			}),
 			TGIconRow(@"Telegram FAQ", @"faq", TGIconTileCyan(), ^{
 				[weakSelf openURL:@"https://telegram.org/faq"];
+			}),
+			TGIconRow(@"Telegram Features", @"star", TGIconTileGold(), ^{
+				[weakSelf openURL:@"https://telegram.org/blog"];
+			}),
+			TGIconRow(@"Privacy Policy", @"policy", TGIconTileGold(), ^{
+				[weakSelf openURL:@"https://telegram.org/privacy"];
 			}),
 			TGIconRow(@"Get the App", @"data", TGIconTileSky(), ^{
 				[[TGClient shared] applicationDownloadLinkWithCompletion:^(NSString *url){
@@ -176,9 +217,6 @@ static NSArray *TGCustomResultRows(NSString *result) {
 					}
 					[weakSelf openURL:url];
 				}];
-			}),
-			TGIconRow(@"Privacy Policy", @"policy", TGIconTileGold(), ^{
-				[weakSelf openURL:@"https://telegram.org/privacy"];
 			}),
 		]),
 
@@ -1117,6 +1155,14 @@ static NSString *TGOrderLines(NSDictionary *order) {
 				chat.isGroup = YES;
 				chat.hidesBottomBarWhenPushed = YES;
 				[weakSelf.navigationController pushViewController:chat animated:YES];
+			}),
+			// The component gallery is a development surface, not a setting.
+			// It sat in Appearance next to the theme picker, where a user had
+			// no reason to open it.
+			TGTapRow(@"UI Component Gallery", @"Every control and state", ^{
+				TGGalleryViewController *gallery = [[TGGalleryViewController alloc] init];
+				gallery.hidesBottomBarWhenPushed = YES;
+				[weakSelf.navigationController pushViewController:gallery animated:YES];
 			}),
 		]),
 

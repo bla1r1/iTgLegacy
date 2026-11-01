@@ -199,9 +199,14 @@ static UIColor *TGSliceColour(NSUInteger index) {
 	return section == 0 ? kRingSide + 54 : 24;
 }
 
+- (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
+	return section == 1 ? @"CACHE" : nil;
+}
+
 - (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
-	if (section != 1)
-		return nil;
+	if (section == 0)
+		return @"Each slice is one kind of file TDLib keeps on this device. "
+			   @"Tap a row to remove just that kind.";
 	return @"Media stays in Telegram's cloud and is downloaded again when you "
 		   @"open the message. Nothing is deleted from Telegram.";
 }
@@ -232,11 +237,11 @@ static UIColor *TGSliceColour(NSUInteger index) {
 	if (path.section == 1){
 		cell.textLabel.text = self.working
 				? @"Clearing..."
-				: [NSString stringWithFormat:@"Clear All Cache  %@",
+				: [NSString stringWithFormat:@"Clear Cache  %@",
 						TGHumanSize(self.total)];
 		cell.textLabel.textAlignment = NSTextAlignmentCenter;
 		cell.textLabel.textColor = self.working
-				? [theme secondaryTextColour] : [theme accentColour];
+				? [theme secondaryTextColour] : [theme destructiveColour];
 		cell.detailTextLabel.text = @"";
 		return cell;
 	}
@@ -277,7 +282,7 @@ static UIColor *TGSliceColour(NSUInteger index) {
 		[TGAlertSheet showConfirm:[NSString stringWithFormat:
 						@"%@ of cached media will be removed from this device.",
 						TGHumanSize(self.total)]
-							title:@"Clear All Cache"
+							title:@"Clear Cache"
 						   action:@"Clear"
 					  destructive:YES
 						   inView:self.view

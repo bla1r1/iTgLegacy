@@ -130,6 +130,18 @@ static inline NSDictionary *TGIconRow(NSString *title, NSString *icon, UIColor *
 	return row;
 }
 
+/// Telegram's settings rows pair the glyph with the value the setting holds:
+/// "Data and Storage  1.2 GB", "Language  Українська". The plain icon row has
+/// nowhere to put that value, so these pages were either glyphs or values.
+static inline NSDictionary *TGIconTapRow(NSString *title, NSString *detail,
+								  NSString *icon, UIColor *colour,
+								  void (^tap)(void)) {
+	NSMutableDictionary *row = [TGIconRow(title, icon, colour, tap) mutableCopy];
+	if (detail) row[TGRowDetail] = detail;
+	return row;
+}
+
+
 static inline NSString *TGBytes(long long bytes) {
 	if (bytes <= 0)              return @"0 KB";
 	if (bytes < 1024 * 1024)     return [NSString stringWithFormat:@"%.0f KB",
@@ -222,6 +234,17 @@ static inline NSString *TGBytes(long long bytes) {
 /// "chatId:messageId" and kept in defaults so the row can say so after a
 /// reopen. Sending a log twice is allowed; the row only records that one did.
 @property (nonatomic, strong) NSMutableDictionary *callDiagnostics;
+/// The root page names what its rows are set to, the way Telegram's does:
+/// the cache size under Data and Storage, the current device under Devices,
+/// the pack name under Language and the proxy state under Proxy. They are
+/// read once per open and stay empty until the client answers, so a slow
+/// answer leaves the row as it was rather than a placeholder.
+@property (nonatomic, assign) long long rootCacheBytes;
+@property (nonatomic, assign) BOOL rootCacheLoaded;
+@property (nonatomic, strong) NSString *rootDeviceName;
+@property (nonatomic, assign) NSInteger rootSessionCount;
+@property (nonatomic, strong) NSString *rootLanguageName;
+@property (nonatomic, strong) NSString *rootProxyDetail;
 
 + (NSArray *)privacySettings;
 + (NSArray *)privacyTitles;

@@ -11,6 +11,7 @@
 
 @implementation TGStickerPacksViewController {
 	NSArray *_ownedSets;
+	NSArray *_archivedSets;
 	NSArray *_trendingSets;
 }
 
@@ -23,6 +24,7 @@
 	self.title = @"Stickers";
 	self.tableView.rowHeight = TGMetricPersonRow;
 	_ownedSets = @[];
+	_archivedSets = @[];
 	_trendingSets = @[];
 	[self applyTheme];
 }
@@ -31,6 +33,7 @@
 	[super viewWillAppear:animated];
 	[self applyTheme];
 	[self reloadOwnedPacks];
+	[self reloadArchivedPacks];
 	[self reloadTrending];
 }
 
@@ -50,6 +53,20 @@
 		if (!me)
 			return;
 		_ownedSets = sets ?: @[];
+		[me.tableView reloadData];
+	}];
+}
+
+/// The archived shelf keeps a pack that was removed by mistake. Telegram
+/// does not show it with the installed packs, so this page has its own
+/// section and a restore that is one tap.
+- (void)reloadArchivedPacks {
+	__weak typeof(self) weakSelf = self;
+	[[TGClient shared] archivedStickerSetsWithCompletion:^(NSArray *sets){
+		TGStickerPacksViewController *me = weakSelf;
+		if (!me)
+			return;
+		_archivedSets = sets ?: @[];
 		[me.tableView reloadData];
 	}];
 }
@@ -76,25 +93,27 @@
 #pragma mark - rows
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
-	return 5;
+	return 6;
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
 	switch (section){
 		case 0: return 3;             // new, search, clear recents
 		case 1: return MAX((NSInteger)_ownedSets.count, 1);
-		case 2: return MAX((NSInteger)_trendingSets.count, 1);
-		case 3: return 4;             // three default shelves, id lookup
+		case 2: return MAX((NSInteger)_archivedSets.count, 1);
+		case 3: return MAX((NSInteger)_trendingSets.count, 1);
+		case 4: return 4;             // three default shelves, id lookup
 		default: return 1;            // greeting stickers
 	}
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
 	switch (section){
-		case 1: return @"My Packs";
-		case 2: return @"Trending";
-		case 3: return @"Custom Emoji";
-		default: return section == 4 ? @"Greetings" : nil;
+		case 1: return @"MY PACKS";
+		case 2: return _archivedSets.count ? @"ARCHIVED" : nil;
+		case 3: return @"TRENDING";
+		case 4: return @"CUSTOM EMOJI";
+		default: return section == 5 ? @"GREETINGS" : nil;
 	}
 }
 
@@ -102,10 +121,12 @@
 	if (section == 1)
 		return _ownedSets.count ? @"Tap a pack to edit its stickers, its title and "
 				@"its thumbnail." : @"Make one from the row above and it appears here.";
-	if (section == 2)
+	if (section == 2 && _archivedSets.count)
+		return @"A removed pack stays here. Tap one to put it back on the shelf.";
+	if (section == 3)
 		return _trendingSets.count ? @"Showing these marks them viewed, so they stop "
 				@"being recommended." : nil;
-	if (section == 3)
+	if (section == 4)
 		return @"The default custom emoji Telegram allows on photos, chats and "
 				@"backgrounds, plus a lookup by id.";
 	return nil;
@@ -162,6 +183,20 @@
 	}
 
 	if (indexPath.section == 2){
+		if (!_archivedSets.count){
+			cell.textLabel.text = @"No archived packs";
+			cell.detailTextLabel.text = @"Removed packs collect here";
+			cell.accessoryType = UITableViewCellAccessoryNone;
+			return cell;
+		}
+		NSDictionary *set = _archivedSets[(NSUInteger)indexPath.row];
+		cell.textLabel.text = [set[@"title"] length] ? set[@"title"] : @"Archived pack";
+		cell.detailTextLabel.text = [NSString stringWithFormat:@"%lu stickers  ·  tap to restore",
+				(unsigned long)[set[@"count"] unsignedIntegerValue]];
+		return cell;
+	}
+
+	if (indexPath.section == 3){
 		if (!_trendingSets.count){
 			cell.textLabel.text = @"Telegram has nothing to recommend";
 			cell.detailTextLabel.text = nil;
@@ -176,7 +211,7 @@
 		return cell;
 	}
 
-	if (indexPath.section == 3){
+	if (indexPath.section == 4){
 		NSArray *titles = @[@"Profile Photo Emoji", @"Chat Photo Emoji",
 							@"Background Emoji", @"Look Up Custom Emoji IDs..."];
 		NSArray *notes = @[@"The default shelf for a profile picture",
@@ -233,13 +268,20 @@
 	}
 
 	if (indexPath.section == 2){
+		if (!_archivedSets.count)
+			return;
+		[self restoreArchivedPack:_archivedSets[(NSUInteger)indexPath.row]];
+		return;
+	}
+
+	if (indexPath.section == 3){
 		if (!_trendingSets.count)
 			return;
 		[self offerPack:_trendingSets[(NSUInteger)indexPath.row]];
 		return;
 	}
 
-	if (indexPath.section == 3){
+	if (indexPath.section == 4){
 		if (indexPath.row == 0)
 			[self loadDefaultEmojiShelf:@"Profile Photo Emoji" kind:0];
 		else if (indexPath.row == 1)
@@ -330,6 +372,27 @@
 		[[TGClient shared] clearRecentStickersAttached:NO];
 		[TGAlertSheet showMessage:@"Recently Used is empty."
 							  title:@"Clear Recent Stickers" inView:me.view];
+	}];
+}
+
+/// Restoring is the inverse of the archive: installed again, no longer
+/// archived. The server answers by moving the set between shelves, so both
+/// lists are re-read rather than patched locally.
+- (void)restoreArchivedPack:(NSDictionary *)set {
+	__weak typeof(self) weakSelf = self;
+	[TGAlertSheet showConfirm:[NSString stringWithFormat:
+					@"%@ goes back to My Packs.", set[@"title"] ?: @"This pack"]
+						title:@"Restore Sticker Pack"
+					   action:@"Restore"
+				  destructive:NO
+					   inView:self.view
+					onConfirm:^{
+		[[TGClient shared] setStickerSet:set[@"id"] installed:YES archived:NO];
+		TGStickerPacksViewController *me = weakSelf;
+		[me performSelector:@selector(reloadOwnedPacks) withObject:nil afterDelay:0.5];
+		[me performSelector:@selector(reloadArchivedPacks) withObject:nil afterDelay:0.5];
+		[TGAlertSheet showMessage:@"The pack is back on the sticker shelf."
+							  title:@"Restored" inView:me.view];
 	}];
 }
 

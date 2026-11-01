@@ -5,7 +5,6 @@
 #import "TGSettingsViewControllerInternal.h"
 #import "TGAlertSheet.h"
 #import "TGBackgroundsViewController.h"
-#import "TGGalleryViewController.h"
 #import "TGStyle.h"
 
 /// The background type is a td_api object name; "backgroundTypeFill" reads
@@ -72,11 +71,14 @@ static NSString *TGAccentColorName(NSInteger colourId) {
 	return @[
 		TGSection(nil, nil, @[TGRow(TGKindPreview, @"")]),
 
-		TGSection(@"Chat", nil, @[
-			TGTapRow(@"Message Text Size",
+		TGSection(@"CHAT SETTINGS", nil, @[
+			TGIconTapRow(@"Message Text Size",
 					[NSString stringWithFormat:@"%.0f pt", theme.messageFontSize],
+					@"chat", TGIconTileSky(),
 					^{ [weakSelf chooseTextSize]; }),
-			TGTapRow(@"Chat Wallpaper", [theme wallpaperTitleForType:theme.wallpaperType], ^{
+			TGIconTapRow(@"Chat Background",
+					[theme wallpaperTitleForType:theme.wallpaperType],
+					@"data", TGIconTileGreen(), ^{
 				TGSettingsViewController *wp = [[TGSettingsViewController alloc] init];
 				wp.page = TGSettingsPageWallpaper;
 				[weakSelf.navigationController pushViewController:wp animated:YES];
@@ -84,7 +86,7 @@ static NSString *TGAccentColorName(NSInteger colourId) {
 		]),
 
 
-		TGSection(@"Telegram Defaults",
+		TGSection(@"TELEGRAM DEFAULTS",
 				  @"What Telegram itself offers for new chats: the default "
 				  @"background and the chat themes built from emoji. Both are "
 				  @"pushed by the server, so the rows fill in while you watch.",
@@ -101,34 +103,29 @@ static NSString *TGAccentColorName(NSInteger colourId) {
 					^{ [weakSelf showEmojiChatThemes]; }),
 		]),
 
-		TGSection(@"Design System",
-				  @"Interactive gallery demonstrating iOS 6 Reimagined tactile "
-				  @"components, states, and live controls.", @[
-			TGTapRow(@"UI Component Gallery", @"Open Lab", ^{
-				TGGalleryViewController *gallery = [[TGGalleryViewController alloc] init];
-				[weakSelf.navigationController pushViewController:gallery animated:YES];
-			}),
-		]),
-
-		TGSection(@"Accent Colour",
+		TGSection(@"ACCENT COLOR",
 				  @"Telegram draws your name, links and the backgrounds of your "
 				  @"profile photo with this colour. It is stored on the account, "
 				  @"not in this app's theme.",
 				  @[
-			TGTapRow(@"Accent Colour",
+			TGIconTapRow(@"Accent Color",
 					weakSelf.accentColorsLoaded ? TGAccentColorName(weakSelf.accentColorId)
-							: @"...", ^{ [weakSelf chooseAccentColorForProfile:NO]; }),
-			TGTapRow(@"Profile Accent",
+							: @"...",
+					@"star", TGIconTilePurple(),
+					^{ [weakSelf chooseAccentColorForProfile:NO]; }),
+			TGIconTapRow(@"Profile Accent",
 					weakSelf.accentColorsLoaded
 							? TGAccentColorName(weakSelf.profileAccentColorId) : @"...",
+					@"chat", TGIconTileViolet(),
 					^{ [weakSelf chooseAccentColorForProfile:YES]; }),
 		]),
 
-		TGSection(@"Telegram Backgrounds",
+		TGSection(@"CHAT BACKGROUNDS",
 				  @"Telegram keeps chat backgrounds on the account. The list "
 				  @"here is the one Telegram installed, and the catalogue is "
 				  @"searched on its server.", @[
-			TGTapRow(@"Chat Backgrounds", @"Installed, search, default", ^{
+			TGIconTapRow(@"Chat Backgrounds", @"Installed, search, default",
+					@"data", TGIconTileGreen(), ^{
 				TGBackgroundsViewController *backgrounds =
 						[[TGBackgroundsViewController alloc] init];
 				backgrounds.hidesBottomBarWhenPushed = YES;
@@ -136,7 +133,7 @@ static NSString *TGAccentColorName(NSInteger colourId) {
 			}),
 		]),
 
-		TGSection(@"Color Theme",
+		TGSection(@"THEMES",
 				  @"Theme files made for the official clients - .tgios-theme and "
 				  @".attheme - appear here once they are in the app's Documents "
 				  @"folder, or once one is opened from a chat.", themes),

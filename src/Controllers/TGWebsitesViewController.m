@@ -108,8 +108,8 @@ static NSString *TGWebsiteWhen(NSNumber *seconds) {
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
 	if (section == 1)
-		return @"Every website";
-	return self.sites.count || self.readError ? @"Signed in" : nil;
+		return @"ALL WEBSITES";
+	return self.sites.count || self.readError ? @"SIGNED IN" : nil;
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {

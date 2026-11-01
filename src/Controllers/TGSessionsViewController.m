@@ -2,6 +2,7 @@
 #import "TGClient.h"
 #import "TGTheme.h"
 #import "TGAlertSheet.h"
+#import "TGQRViewController.h"
 #import "TGWebsitesViewController.h"
 
 @interface TGSessionsViewController ()
@@ -87,54 +88,52 @@
 #pragma mark - table
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
-	// The timeout row and the connected-websites row belong to every account;
-	// the sign-out-everything section appears only when there is more than
-	// this device to sign out.
-	return [self othersOnly].count ? 5 : 4;
-}
-
-/// The section indices follow whether there is an "Active sessions" block;
-/// one helper keeps the five table callbacks agreeing on that.
-- (NSInteger)settingsSection {
-	return [self othersOnly].count ? 2 : 1;
-}
-
-- (NSInteger)websitesSection {
-	return [self othersOnly].count ? 3 : 2;
-}
-
-- (NSInteger)terminateSection {
-	return [self othersOnly].count ? 4 : 3;
+	// Fixed sections, the way their page reads: this device, the others,
+	// the two settings that apply to every session, and the sign-out. An
+	// account with no other sessions keeps the section and says so, rather
+	// than dropping it and leaving nothing where the explanation belongs.
+	return 5;
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
-	if (section == 0) return @"This device";
-	if ([self othersOnly].count && section == 1) return @"Active sessions";
-	if (section == [self settingsSection]) return @"Session settings";
-	if (section == [self websitesSection]) return @"Websites";
-	return nil;
+	switch (section){
+		case 0: return @"CURRENT SESSION";
+		case 1: return @"ACTIVE SESSIONS";
+		case 2: return @"SESSION SETTINGS";
+		case 3: return @"CONNECTED WEBSITES";
+		default: return nil;
+	}
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
-	if ([self othersOnly].count && section == 1)
-		return @"Tap a session to change whether it rings or sign it out.";
-	if (section == [self settingsSection])
-		return @"A session idle for this long is signed out automatically. "
-			   @"The choice applies to every device, including this one.";
-	if (section == [self websitesSection])
-		return @"Sites that signed in through a bot. Each one can be signed out "
-			   @"on its own, or all at once.";
-	if (section == [self terminateSection])
-		return @"Signs out every device but this one, including any this list "
-			   @"has not shown yet.";
-	return nil;
+	switch (section){
+		case 0:
+			return @"This device is the one you are using. A session's secret "
+				   @"chats and calls are settings about it, not about this account.";
+		case 1:
+			return [self othersOnly].count
+					? @"Tap a session to change whether it accepts calls or secret "
+					  @"chats, or to sign it out."
+					: @"You can log in on other phones, tablets and computers with "
+					  @"this phone number. Everything stays in sync.";
+		case 2:
+			return @"A session idle for this long is signed out automatically. "
+				   @"The choice applies to every device, including this one. "
+				   @"Scan QR Code opens the t.me link the camera finds.";
+		case 3:
+			return @"Sites that signed in through a bot. Each one can be signed out "
+				   @"on its own, or all at once.";
+		default:
+			return @"Signs out every device but this one, including any this list "
+				   @"has not shown yet.";
+	}
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-	if (section == 0) return [self currentSession] ? 1 : 0;
-	if ([self othersOnly].count && section == 1) return [self othersOnly].count;
-	if (section == [self settingsSection]) return 1;
-	if (section == [self websitesSection]) return 1;
+	if (section == 1)
+		return MAX((NSInteger)[self othersOnly].count, (NSInteger)1);
+	if (section == 2)
+		return 2;   // timeout, QR scanner
 	return 1;
 }
 
@@ -144,31 +143,34 @@
 		cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle
 									  reuseIdentifier:@"row"];
 	[[TGTheme shared] styleCell:cell];
+	cell.textLabel.textColor = [[TGTheme shared] primaryTextColour];
+	cell.detailTextLabel.textColor = [[TGTheme shared] secondaryTextColour];
+	cell.textLabel.textAlignment = NSTextAlignmentLeft;
 
-	if (indexPath.section == [self settingsSection]){
+	if (indexPath.section == 2){
+		if (indexPath.row == 1){
+			cell.textLabel.text = @"Scan QR Code";
+			cell.detailTextLabel.text = @"Open a t.me link with the camera";
+			cell.selectionStyle = UITableViewCellSelectionStyleBlue;
+			return cell;
+		}
 		NSString *detail = self.ttlLoaded
 				? [NSString stringWithFormat:@"%ld days", (long)self.inactiveTtl]
 				: @"...";
 		cell.textLabel.text = @"Inactive Session Timeout";
-		cell.textLabel.textColor = [[TGTheme shared] primaryTextColour];
-		cell.textLabel.textAlignment = NSTextAlignmentLeft;
 		cell.detailTextLabel.text = detail;
-		cell.detailTextLabel.textColor = [[TGTheme shared] secondaryTextColour];
 		cell.selectionStyle = UITableViewCellSelectionStyleBlue;
 		return cell;
 	}
 
-	if (indexPath.section == [self websitesSection]){
+	if (indexPath.section == 3){
 		cell.textLabel.text = @"Connected Websites";
-		cell.textLabel.textColor = [[TGTheme shared] primaryTextColour];
-		cell.textLabel.textAlignment = NSTextAlignmentLeft;
 		cell.detailTextLabel.text = @"Sites signed in through a bot";
-		cell.detailTextLabel.textColor = [[TGTheme shared] secondaryTextColour];
 		cell.selectionStyle = UITableViewCellSelectionStyleBlue;
 		return cell;
 	}
 
-	if (indexPath.section == [self terminateSection]){
+	if (indexPath.section == 4){
 		cell.textLabel.text = @"Terminate All Other Sessions";
 		cell.textLabel.textColor = [[TGTheme shared] destructiveColour];
 		cell.detailTextLabel.text = nil;
@@ -176,19 +178,36 @@
 		cell.selectionStyle = UITableViewCellSelectionStyleBlue;
 		return cell;
 	}
-	cell.textLabel.textAlignment = NSTextAlignmentLeft;
+
+	if (indexPath.section == 1 && ![self othersOnly].count){
+		cell.textLabel.text = @"No other sessions";
+		cell.detailTextLabel.text = @"Only this device is signed in";
+		cell.textLabel.textColor = [[TGTheme shared] secondaryTextColour];
+		cell.selectionStyle = UITableViewCellSelectionStyleNone;
+		return cell;
+	}
 
 	NSDictionary *session = indexPath.section == 0
 			? [self currentSession] : [self othersOnly][indexPath.row];
+	if (!session){
+		cell.textLabel.text = @"Reading sessions...";
+		cell.detailTextLabel.text = nil;
+		cell.textLabel.textColor = [[TGTheme shared] secondaryTextColour];
+		cell.selectionStyle = UITableViewCellSelectionStyleNone;
+		return cell;
+	}
 	cell.textLabel.text = session[@"name"];
-	cell.detailTextLabel.text = [session[@"isUnconfirmed"] boolValue]
-			? [NSString stringWithFormat:@"%@ - %@ · confirmation needed",
-					session[@"platform"], session[@"ip"]]
-			: [NSString stringWithFormat:@"%@ - %@",
-					session[@"platform"], session[@"ip"]];
-	cell.textLabel.textColor = [[TGTheme shared] primaryTextColour];
-	cell.detailTextLabel.textColor = [[TGTheme shared] secondaryTextColour];
-	// This device's own row opens the same two switches, because a phone that
+	NSMutableArray *parts = [NSMutableArray array];
+	if ([session[@"platform"] length])
+		[parts addObject:session[@"platform"]];
+	if ([session[@"ip"] length])
+		[parts addObject:session[@"ip"]];
+	if (indexPath.section == 0)
+		[parts addObject:@"This device"];
+	if ([session[@"isUnconfirmed"] boolValue])
+		[parts addObject:@"confirmation needed"];
+	cell.detailTextLabel.text = [parts componentsJoinedByString:@" · "];
+	// This device's own row opens the same switches, because a phone that
 	// should not ring is a setting about the session, not about the others.
 	cell.selectionStyle = UITableViewCellSelectionStyleBlue;
 	return cell;
@@ -197,7 +216,14 @@
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
 	[tableView deselectRowAtIndexPath:indexPath animated:YES];
 
-	if (indexPath.section == [self settingsSection]){
+	if (indexPath.section == 2 && indexPath.row == 1){
+		TGQRViewController *scanner = [[TGQRViewController alloc] init];
+		scanner.hidesBottomBarWhenPushed = YES;
+		[self.navigationController pushViewController:scanner animated:YES];
+		return;
+	}
+
+	if (indexPath.section == 2){
 		// 1-366 days is TDLib's own range. The presets are the spans their
 		// page offers; anything finer would be a number nobody means.
 		NSArray *titles = @[@"1 week", @"1 month", @"3 months", @"6 months", @"1 year"];
@@ -225,14 +251,14 @@
 		return;
 	}
 
-	if (indexPath.section == [self websitesSection]){
+	if (indexPath.section == 3){
 		TGWebsitesViewController *sites = [[TGWebsitesViewController alloc] init];
 		sites.hidesBottomBarWhenPushed = YES;
 		[self.navigationController pushViewController:sites animated:YES];
 		return;
 	}
 
-	if (indexPath.section == [self terminateSection]){
+	if (indexPath.section == 4){
 		__weak typeof(self) weakSelf = self;
 		[TGAlertSheet showConfirm:@"Every device but this one is signed out, "
 								  @"including any this list has not shown yet."

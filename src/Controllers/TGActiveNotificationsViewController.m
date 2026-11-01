@@ -106,7 +106,7 @@ titleForHeaderInSection:(NSInteger)section {
 		return nil;
 	NSInteger index = [self groupIndexForSection:section];
 	if (index < 0 || index >= (NSInteger)self.groups.count)
-		return nil;
+		return @"ACTIVE NOTIFICATIONS";
 	NSDictionary *group = self.groups[(NSUInteger)index];
 	NSString *title = [[TGClient shared] titleForChat:
 			[group[@"chatId"] longLongValue]] ?: @"Notifications";

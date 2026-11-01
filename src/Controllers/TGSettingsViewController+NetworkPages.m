@@ -36,29 +36,42 @@ static NSString *TGChatNameForId(NSNumber *chatId) {
 			: nil;
 
 	return @[
-		TGSection(@"Usage", nil, @[
-			TGTapRow(@"Downloads", nil, ^{
-				[weakSelf openPage:TGSettingsPageDownloads];
-			}),
-			TGTapRow(@"Network", @"Type, state, usage, graphs", ^{
-				TGNetworkViewController *network = [[TGNetworkViewController alloc] init];
-				network.hidesBottomBarWhenPushed = YES;
-				[weakSelf.navigationController pushViewController:network animated:YES];
-			}),
-			TGTapRow(@"Storage Usage", nil, ^{
+		TGSection(@"STORAGE", nil, @[
+			TGIconTapRow(@"Storage Usage", nil,
+					@"data", TGIconTileGreen(), ^{
 				TGStorageViewController *storage = [[TGStorageViewController alloc] init];
 				storage.hidesBottomBarWhenPushed = YES;
 				[weakSelf.navigationController pushViewController:storage animated:YES];
 			}),
-			TGTapRow(@"File Tools", @"Generate, upload, read back", ^{
+			TGIconTapRow(@"Downloads", nil,
+					@"archive", TGIconTileSky(), ^{
+				[weakSelf openPage:TGSettingsPageDownloads];
+			}),
+			TGIconTapRow(@"My Sent Files", nil,
+					@"folder", TGIconTileCyan(), ^{
+				[weakSelf showSentFilesSheet];
+			}),
+			TGIconTapRow(@"File Tools", @"Generate, upload, read back",
+					@"data", TGIconTileSlate(), ^{
 				TGFileToolsViewController *tools = [[TGFileToolsViewController alloc] init];
 				tools.hidesBottomBarWhenPushed = YES;
 				[weakSelf.navigationController pushViewController:tools animated:YES];
 			}),
-			TGTapRow(@"Network Usage",
+		]),
+
+		TGSection(@"DATA USAGE",
+				  @"The counters cover this launch. TDLib resets them when it "
+				  @"reopens the connection.", @[
+			TGIconTapRow(@"Network", @"Type, state, usage, graphs",
+					@"data", TGIconTileAzure(), ^{
+				TGNetworkViewController *network = [[TGNetworkViewController alloc] init];
+				network.hidesBottomBarWhenPushed = YES;
+				[weakSelf.navigationController pushViewController:network animated:YES];
+			}),
+			TGIconTapRow(@"Network Usage",
 					[NSString stringWithFormat:@"%@ in, %@ out",
 							TGBytes(weakSelf.networkReceived), TGBytes(weakSelf.networkSent)],
-					^{
+					@"notifications", TGIconTileAmber(), ^{
 				[TGAlertSheet showConfirm:@"Reset the counters?"
 									title:@"Network Usage"
 								   action:@"Reset"
@@ -71,36 +84,9 @@ static NSString *TGChatNameForId(NSNumber *chatId) {
 					[weakSelf rebuild];
 				}];
 			}),
-			TGRedRow(@"Clear All Drafts", ^{
-				[TGAlertSheet showConfirm:@"Every chat's draft is dropped, the ones "
-										  @"typed here and the ones typed on other devices."
-									title:@"Clear All Drafts"
-								   action:@"Clear"
-							  destructive:YES
-								   inView:weakSelf.view
-								onConfirm:^{
-					[[TGClient shared] clearAllDraftMessages];
-					[weakSelf toast:@"Drafts cleared."];
-				}];
-			}),
-			TGRedRow(@"Clear Call History", ^{
-				[TGAlertSheet showConfirm:@"Every call in the account's history is "
-										  @"gone, on every device."
-									title:@"Call History"
-								   action:@"Clear"
-							  destructive:YES
-								   inView:weakSelf.view
-								onConfirm:^{
-					[[TGClient shared] clearAllCallMessages];
-					[weakSelf toast:@"Call history cleared."];
-				}];
-			}),
-			TGTapRow(@"My Sent Files", nil, ^{
-				[weakSelf showSentFilesSheet];
-			}),
 		]),
 
-		TGSection(@"Automatic media download",
+		TGSection(@"AUTOMATIC MEDIA DOWNLOAD",
 				  @"Off over mobile by default: this radio is slow and the "
 				  @"cache lives on a small disk.", @[
 			TGTapRow(@"Presets", [weakSelf autoDownloadPresetSummary], ^{
@@ -118,7 +104,7 @@ static NSString *TGChatNameForId(NSNumber *chatId) {
 			}),
 		]),
 
-		TGSection(@"Gallery autosave",
+		TGSection(@"GALLERY AUTOSAVE",
 				  @"Telegram autosaves photos and videos it receives. Documents "
 				  @"are not autosaved by TDLib.", @[
 			TGTapRow(@"Autosave", autosaveDetail, ^{
@@ -126,7 +112,7 @@ static NSString *TGChatNameForId(NSNumber *chatId) {
 			}),
 		]),
 
-		TGSection(@"Archive", @"New chats from non-contacts can be archived "
+		TGSection(@"ARCHIVE", @"New chats from non-contacts can be archived "
 				  @"and muted instead of ringing in. A new message can drag "
 				  @"an archived chat back to the main list - the last two "
 				  @"switches decide whether it does.", @[
@@ -159,7 +145,34 @@ static NSString *TGChatNameForId(NSNumber *chatId) {
 			}),
 		]),
 
-		TGSection(nil, nil, @[
+		TGSection(@"OTHER",
+				  @"These rows remove data from this account or this device "
+				  @"only; nothing here touches another session's history.",
+				  @[
+			TGRedRow(@"Clear All Drafts", ^{
+				[TGAlertSheet showConfirm:@"Every chat's draft is dropped, the ones "
+										  @"typed here and the ones typed on other devices."
+									title:@"Clear All Drafts"
+								   action:@"Clear"
+							  destructive:YES
+								   inView:weakSelf.view
+								onConfirm:^{
+					[[TGClient shared] clearAllDraftMessages];
+					[weakSelf toast:@"Drafts cleared."];
+				}];
+			}),
+			TGRedRow(@"Clear Call History", ^{
+				[TGAlertSheet showConfirm:@"Every call in the account's history is "
+										  @"gone, on every device."
+									title:@"Call History"
+								   action:@"Clear"
+							  destructive:YES
+								   inView:weakSelf.view
+								onConfirm:^{
+					[[TGClient shared] clearAllCallMessages];
+					[weakSelf toast:@"Call history cleared."];
+				}];
+			}),
 			TGRedRow(@"Clear Local Database", ^{
 				[TGAlertSheet showConfirm:@"Cached chats and messages are dropped "
 										  @"and fetched again. The session stays."

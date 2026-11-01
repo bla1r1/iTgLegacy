@@ -11,6 +11,7 @@
 
 @interface TGTermsViewController ()
 @property (nonatomic, strong) UITextView *body;
+@property (nonatomic, strong) UILabel *intro;
 @end
 
 @implementation TGTermsViewController
@@ -20,7 +21,24 @@
 
 	self.title = @"Terms of Service";
 
-	UITextView *body = [[UITextView alloc] initWithFrame:self.view.bounds];
+	// Telegram puts one sentence above the document so the buttons have a
+	// reason. The body keeps its own scroll, because the text can run to
+	// pages and the acceptance is only meaningful if it can be read.
+	CGFloat width = self.view.bounds.size.width;
+	UILabel *intro = [[UILabel alloc] initWithFrame:
+			CGRectMake(TGMetricPad, TGMetricPad,
+					width - TGDoubled(TGMetricPad), TGDoubled(TGMetricLineTitle))];
+	intro.text = @"Please read and accept Telegram's Terms of Service to continue.";
+	intro.font = TGFontCaption();
+	intro.numberOfLines = 2;
+	intro.textAlignment = NSTextAlignmentCenter;
+	intro.backgroundColor = [UIColor clearColor];
+	intro.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+	[self.view addSubview:intro];
+
+	CGFloat top = CGRectGetMaxY(intro.frame) + TGMetricPadSmall;
+	UITextView *body = [[UITextView alloc] initWithFrame:
+			CGRectMake(0, top, width, self.view.bounds.size.height - top)];
 	body.autoresizingMask = UIViewAutoresizingFlexibleWidth |
 							UIViewAutoresizingFlexibleHeight;
 	body.editable = NO;
@@ -29,6 +47,7 @@
 	body.textContainerInset = UIEdgeInsetsMake(TGMetricPad, TGMetricPad,
 											   TGMetricPad, TGMetricPad);
 	self.body = body;
+	self.intro = intro;
 	[self.view addSubview:body];
 
 	self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc]
@@ -42,6 +61,7 @@
 - (void)applyTheme {
 	TGTheme *theme = [TGTheme shared];
 	self.view.backgroundColor = [theme listBackgroundColour];
+	self.intro.textColor = [theme secondaryTextColour];
 	self.body.backgroundColor = [theme listBackgroundColour];
 	self.body.textColor = [theme primaryTextColour];
 	[theme styleNavigationBar:self.navigationController.navigationBar];

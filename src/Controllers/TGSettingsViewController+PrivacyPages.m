@@ -163,27 +163,29 @@ static NSString *TGNotificationGroupLabel(NSString *type) {
 		activeDetail = @"None";
 
 	return @[
-		TGSection(@"Show notifications for", nil, show),
-		TGSection(@"Message previews",
+		TGSection(@"SHOW NOTIFICATIONS FOR", nil, show),
+		TGSection(@"MESSAGE PREVIEWS",
 				  @"With previews off a notification says who wrote, not what "
 				  @"they wrote.", preview),
-		TGSection(@"Active",
+		TGSection(@"ACTIVE NOTIFICATIONS",
 				  @"TDLib keeps the notifications it showed while this app was "
 				  @"closed. They can be read and removed here without leaving "
 				  @"the chat.", @[
-			TGTapRow(@"Active Notifications", activeDetail, ^{
+			TGIconTapRow(@"Active Notifications", activeDetail,
+					@"notifications", TGIconTileRed(), ^{
 				TGActiveNotificationsViewController *active =
 						[[TGActiveNotificationsViewController alloc] init];
 				active.hidesBottomBarWhenPushed = YES;
 				[weakSelf.navigationController pushViewController:active animated:YES];
 			}),
 		]),
-		TGSection(@"Reactions",
+		TGSection(@"REACTIONS",
 				  @"Notification settings for reactions and poll votes live in "
 				  @"the same record; only the message source moves here.",
 				  reactionRows),
-		TGSection(@"Per-chat exceptions", nil, @[
-			TGTapRow(@"Chats With Custom Settings", nil, ^{
+		TGSection(@"PER-CHAT EXCEPTIONS", nil, @[
+			TGIconTapRow(@"Chats With Custom Settings", nil,
+					@"chat", TGIconTileAzure(), ^{
 				[[TGClient shared] notificationExceptionsWithCompletion:^(NSArray *chats){
 					NSMutableArray *rows = [NSMutableArray array];
 					for (NSDictionary *chat in chats){
@@ -210,22 +212,17 @@ static NSString *TGNotificationGroupLabel(NSString *type) {
 			}),
 		]),
 
-		TGSection(@"Sounds and Local Notifications",
-				  @"Custom sounds are stored on the account. The active list is "
-				  @"TDLib's own copy; iOS still draws the banners.",
+		TGSection(@"SOUNDS",
+				  @"Custom sounds are stored on the account, so a chat rings the "
+				  @"same way on every device. iOS still draws the banners.",
 				  @[
-			TGTapRow(@"Custom Sounds",
+			TGIconTapRow(@"Custom Sounds",
 					weakSelf.savedSoundsLoaded
 							? [NSString stringWithFormat:@"%lu",
 								(unsigned long)weakSelf.savedSounds.count]
 							: nil,
+					@"notifications", TGIconTileAmber(),
 					^{ [weakSelf openPage:TGSettingsPageNotificationSounds]; }),
-			TGTapRow(@"Active Notifications",
-					[TGClient shared].activeNotificationGroups.count
-							? [NSString stringWithFormat:@"%lu",
-								(unsigned long)[TGClient shared].activeNotificationGroups.count]
-							: @"None",
-					^{ [weakSelf openPage:TGSettingsPageActiveNotifications]; }),
 		]),
 
 		TGSection(nil,
@@ -501,13 +498,18 @@ static NSString *TGNotificationGroupLabel(NSString *type) {
 - (NSArray *)privacySections {
 	__weak typeof(self) weakSelf = self;
 
+	static NSArray *ruleColours = nil;
+	if (!ruleColours)
+		ruleColours = @[TGIconTileSky(), TGIconTileViolet(), TGIconTileGreen(),
+						TGIconTileAmber(), TGIconTileCoral(), TGIconTileAzure()];
 	NSMutableArray *rules = [NSMutableArray array];
 	NSArray *settings = [TGSettingsViewController privacySettings];
 	for (NSUInteger i = 0; i < settings.count; i++){
 		NSString *setting = settings[i];
 		NSUInteger index = i;
-		[rules addObject:TGTapRow([TGSettingsViewController privacyTitles][index],
-				TGPrivacyLabel(weakSelf.privacy[setting]), ^{
+		[rules addObject:TGIconTapRow([TGSettingsViewController privacyTitles][index],
+				TGPrivacyLabel(weakSelf.privacy[setting]),
+				@"privacy", ruleColours[index % ruleColours.count], ^{
 			[weakSelf askPrivacyRuleAtIndex:index];
 		})];
 	}
@@ -525,81 +527,190 @@ static NSString *TGNotificationGroupLabel(NSString *type) {
 	else                 deleteLabel = [NSString stringWithFormat:@"%ld days",
 									 (long)(ttl / 86400)];
 
+	// Telegram's own order: Security, then the switches that decide who can
+	// see what, then the rules for messages from people you do not know,
+	// then account status and the destructive rows at the end.
 	return @[
-		TGSection(@"Security", nil, @[
-			TGTapRow(@"Two-Step Verification", passwordDetail, ^{
+		TGSection(@"SECURITY", nil, @[
+			TGIconTapRow(@"Two-Step Verification", passwordDetail,
+					@"privacy", TGIconTileGrey(), ^{
 				[weakSelf showTwoStepState];
 			}),
-			TGTapRow(@"Login Email Address", nil, ^{
+			TGIconTapRow(@"Login Email Address", nil,
+					@"chat", TGIconTileSky(), ^{
 				[weakSelf showLoginEmailFlow];
 			}),
-			TGTapRow(@"Phone Number",
-					[TGClient shared].me[@"phone_number"] ?: nil, ^{
+			TGIconTapRow(@"Phone Number",
+					[TGClient shared].me[@"phone_number"] ?: nil,
+					@"call", TGIconTileGreen(), ^{
 				[weakSelf showChangePhoneFlow];
 			}),
-			TGTapRow(@"Temporary Password", nil, ^{
+			TGIconTapRow(@"Temporary Password", nil,
+					@"policy", TGIconTileAmber(), ^{
 				[weakSelf showTemporaryPasswordFlow];
 			}),
-			TGTapRow(@"Application Verification",
+			TGIconTapRow(@"Application Verification",
 					[TGClient shared].pendingApplicationVerificationId ? @"Required" : @"None",
-					^{
+					@"select", TGIconTileRed(), ^{
 				[weakSelf showApplicationVerification];
 			}),
-			TGTapRow(@"Default Admin Rights", nil, ^{
+			TGIconTapRow(@"Default Admin Rights", nil,
+					@"folder", TGIconTileAzure(), ^{
 				TGAdminRightsViewController *rights =
 						[[TGAdminRightsViewController alloc] init];
 				rights.hidesBottomBarWhenPushed = YES;
 				[weakSelf.navigationController pushViewController:rights animated:YES];
 			}),
-			TGTapRow(@"Active Sessions", nil, ^{
+			TGIconTapRow(@"Active Sessions", nil,
+					@"devices", TGIconTileSlate(), ^{
 				TGSessionsViewController *sessions = [[TGSessionsViewController alloc] init];
 				sessions.hidesBottomBarWhenPushed = YES;
 				[weakSelf.navigationController pushViewController:sessions animated:YES];
 			}),
-			TGTapRow(@"Blocked Users", nil, ^{
+			TGIconTapRow(@"Blocked Users", nil,
+					@"close", TGIconTileCoral(), ^{
 				[weakSelf openPage:TGSettingsPageBlocked];
 			}),
 		]),
 
-		TGSection(@"Account Status",
+		TGSection(@"PRIVACY", nil, rules),
+
+		TGSection(@"MESSAGES",
+				  @"Read receipts are mutual: turning yours off also hides "
+				  @"whether the other person has read your messages.",
+				  @[
+			TGIconTapRow(@"Delete Messages By Default", deleteLabel,
+					@"archive", TGIconTileGrey(), ^{
+				[TGAlertSheet showChoices:@[@"Off", @"1 day", @"1 week", @"1 month"]
+									title:@"Delete messages in new chats after"
+						 destructiveIndex:-1
+								   inView:weakSelf.view
+								 onChoice:^(NSInteger index){
+					static const NSInteger seconds[4] = {0, 86400, 604800, 2592000};
+					[[TGClient shared] setDefaultMessageAutoDeleteTime:seconds[index]];
+					weakSelf.autoDeleteDefault = seconds[index];
+					[weakSelf rebuild];
+				}];
+			}),
+			TGSwitchRow(@"Messages From Unknown Users",
+					weakSelf.newChatAllowUnknown, ^(BOOL on){
+				weakSelf.newChatAllowUnknown = on;
+				[[TGClient shared] setNewChatPrivacyAllowUnknown:on
+													  completion:^(BOOL ok){
+					if (!ok)
+						[weakSelf toast:@"Telegram refused that setting."];
+				}];
+			}),
+			TGIconTapRow(@"Personal Chat", weakSelf.personalChatId ? @"Set" : @"None",
+					@"chat", TGIconTileSky(), ^{
+				[weakSelf choosePersonalChat];
+			}),
+			TGIconTapRow(@"Inactive Groups", nil,
+					@"folder", TGIconTileCyan(), ^{
+				[weakSelf showInactiveGroups];
+			}),
+			TGIconTapRow(@"My Public Chats", nil,
+					@"faq", TGIconTileViolet(), ^{
+				[weakSelf showPublicChats];
+			}),
+			weakSelf.readDateLoaded
+					? TGSwitchRow(@"Read Receipts",
+							weakSelf.showReadDate, ^(BOOL on){
+				[[TGClient shared] setReadDateShown:on completion:^(BOOL ok, NSString *error){
+					if (!ok){
+						[TGAlertSheet showMessage:(error ?: @"Telegram refused that.")
+											title:@"Read Receipts" inView:weakSelf.view];
+						[weakSelf rebuild];
+						return;
+					}
+					weakSelf.showReadDate = on;
+					[weakSelf rebuild];
+				}];
+			})
+					: TGTapRow(@"Read Receipts", @"...", nil),
+		]),
+
+		TGSection(@"CLOSE FRIENDS",
+				  @"Close friends are contacts you pick; the list is what "
+				  @"stories and other close-friend features read.",
+				  @[
+			TGIconTapRow(@"Close Friends",
+					weakSelf.closeFriendsLoaded
+							? [NSString stringWithFormat:@"%ld",
+									(long)weakSelf.closeFriendsCount] : @"...",
+					@"react", TGIconTileCoral(), ^{ [weakSelf showCloseFriends]; }),
+			TGIconTapRow(@"Close Birthdays",
+					weakSelf.closeBirthdayRows.count
+							? [NSString stringWithFormat:@"%lu contacts",
+									(unsigned long)weakSelf.closeBirthdayRows.count]
+							: @"None nearby",
+					@"star", TGIconTileGold(), ^{ [weakSelf hideCloseBirthdays]; }),
+		]),
+
+		TGSection(@"CONTACTS",
+				  @"Frequent contacts are ranked on Telegram's side; turning "
+				  @"the suggestion off deletes that ranking.", @[
+			TGSwitchRow(@"Suggest Frequent Contacts",
+					weakSelf.suggestFrequent, ^(BOOL on){
+				weakSelf.suggestFrequent = on;
+				[[TGClient shared] setOption:@"disable_top_chats" boolValue:!on];
+			}),
+			TGRedRow(@"Delete Synced Contacts", ^{
+				[TGAlertSheet showConfirm:@"The phone numbers this account uploaded "
+										  @"to Telegram will be removed."
+									title:@"Delete Synced Contacts"
+								   action:@"Delete"
+							  destructive:YES
+								   inView:weakSelf.view
+								onConfirm:^{
+					[[TGClient shared] clearImportedContacts];
+				}];
+			}),
+		]),
+
+		TGSection(@"ACCOUNT STATUS",
 				  @"Telegram's own record for this account: a freeze, the "
 				  @"subscription it holds, the age gate its country sets, and "
 				  @"any reCAPTCHA it asks for before a request goes through. "
 				  @"These are pushed by the server, not fetched here.",
 				  @[
-			TGTapRow(@"Freeze State",
-					TGFreezeDetail([TGClient shared].freezeState), ^{
+			TGIconTapRow(@"Freeze State",
+					TGFreezeDetail([TGClient shared].freezeState),
+					@"policy", TGIconTileSlate(), ^{
 				[weakSelf showFreezeState];
 			}),
-			TGTapRow(@"Subscription",
+			TGIconTapRow(@"Subscription",
 					TGSubscriptionDetail([[TGClient shared]
 							subscriptionForUserId:
-									[[TGClient shared].me[@"id"] longLongValue]]), ^{
+									[[TGClient shared].me[@"id"] longLongValue]]),
+					@"star", TGIconTilePurple(), ^{
 				[weakSelf showSubscriptionState];
 			}),
-			TGTapRow(@"Age Verification",
+			TGIconTapRow(@"Age Verification",
 					TGAgeVerificationDetail([TGClient shared].ageVerificationParameters),
-					^{
+					@"select", TGIconTileAmber(), ^{
 				[weakSelf showAgeVerificationState];
 			}),
-			TGTapRow(@"reCAPTCHA Verification",
+			TGIconTapRow(@"reCAPTCHA Verification",
 					[TGClient shared].recaptchaVerificationRequest ? @"Requested" : @"None",
-					^{
+					@"privacy", TGIconTileRed(), ^{
 				[weakSelf showRecaptchaVerification];
 			}),
 		]),
 
-		TGSection(@"Email",
+		TGSection(@"EMAIL",
 				  @"Passport asks services to prove they own an address. This is "
 				  @"the address half of that: send a code, enter it, and Telegram "
 				  @"keeps the verified address on the account.", @[
-			TGTapRow(@"Verify an Email Address", nil, ^{
+			TGIconTapRow(@"Verify an Email Address", nil,
+					@"policy", TGIconTileSky(), ^{
 				[weakSelf showVerifyEmailFlow];
 			}),
 		]),
 
-		TGSection(@"Saved payment data", nil, @[
-			TGTapRow(@"Orders and Payment Data", nil, ^{
+		TGSection(@"PAYMENT AND ORDERS", nil, @[
+			TGIconTapRow(@"Orders and Payment Data", nil,
+					@"data", TGIconTileGreen(), ^{
 				[weakSelf openPage:TGSettingsPagePaymentData];
 			}),
 			TGRedRow(@"Delete Saved Payment Credentials", ^{
@@ -620,27 +731,11 @@ static NSString *TGNotificationGroupLabel(NSString *type) {
 			}),
 		]),
 
-		TGSection(nil, @"New chats carry this timer until one of the two "
-				  @"of you sets an auto-delete on that chat in particular.",
-				  @[
-			TGTapRow(@"Delete Messages By Default", deleteLabel, ^{
-				[TGAlertSheet showChoices:@[@"Off", @"1 day", @"1 week", @"1 month"]
-									title:@"Delete messages in new chats after"
-						 destructiveIndex:-1
-								   inView:weakSelf.view
-								 onChoice:^(NSInteger index){
-					static const NSInteger seconds[4] = {0, 86400, 604800, 2592000};
-					[[TGClient shared] setDefaultMessageAutoDeleteTime:seconds[index]];
-					weakSelf.autoDeleteDefault = seconds[index];
-					[weakSelf rebuild];
-				}];
-			}),
-		]),
-
 		TGSection(nil,
 				  @"Your own t.me link works without a username, and can be "
 				  @"given to someone who has no way to search for you.", @[
-			TGTapRow(@"My Link", nil, ^{
+			TGIconTapRow(@"My Link", nil,
+					@"faq", TGIconTileCyan(), ^{
 				[[TGClient shared] myUserLink:^(NSString *link){
 					if (!link.length){
 						[weakSelf toast:@"Telegram did not answer with a link."];
@@ -659,93 +754,13 @@ static NSString *TGNotificationGroupLabel(NSString *type) {
 			}),
 		]),
 
-		TGSection(@"New chats",
-				  @"Who may write first, the chat shown as your own, and the "
-				  @"public or idle chats that shape those limits.", @[
-			TGSwitchRow(@"Messages From Unknown Users",
-					weakSelf.newChatAllowUnknown, ^(BOOL on){
-				weakSelf.newChatAllowUnknown = on;
-				[[TGClient shared] setNewChatPrivacyAllowUnknown:on
-													  completion:^(BOOL ok){
-					if (!ok)
-						[weakSelf toast:@"Telegram refused that setting."];
-				}];
-			}),
-			TGTapRow(@"Personal Chat", weakSelf.personalChatId ? @"Set" : @"None", ^{
-				[weakSelf choosePersonalChat];
-			}),
-			TGTapRow(@"Inactive Groups", nil, ^{
-				[weakSelf showInactiveGroups];
-			}),
-			TGTapRow(@"My Public Chats", nil, ^{
-				[weakSelf showPublicChats];
-			}),
-		]),
-
-		TGSection(@"Who can see", nil, rules),
-
-		TGSection(@"Read receipts",
-				  @"Turning this off stops other people seeing when you have "
-				  @"read their messages. It does not stop you seeing theirs.",
-				  @[ weakSelf.readDateLoaded
-						? TGSwitchRow(@"Read Receipts", weakSelf.showReadDate, ^(BOOL on){
-				[[TGClient shared] setReadDateShown:on completion:^(BOOL ok, NSString *error){
-					if (!ok){
-						[TGAlertSheet showMessage:(error ?: @"Telegram refused that.")
-											title:@"Read Receipts" inView:weakSelf.view];
-						[weakSelf rebuild];
-						return;
-					}
-					weakSelf.showReadDate = on;
-					[weakSelf rebuild];
-				}];
-			})
-						: TGTapRow(@"Read Receipts", @"...", nil) ]),
-
-		TGSection(@"Close friends",
-				  @"Close friends are contacts you pick; the list is what "
-				  @"stories and other close-friend features read.",
-				  @[
-			TGTapRow(@"Close Friends",
-					weakSelf.closeFriendsLoaded
-							? [NSString stringWithFormat:@"%ld",
-									(long)weakSelf.closeFriendsCount] : @"...",
-					^{ [weakSelf showCloseFriends]; }),
-			TGTapRow(@"Close Birthdays",
-					weakSelf.closeBirthdayRows.count
-							? [NSString stringWithFormat:@"%lu contacts",
-									(unsigned long)weakSelf.closeBirthdayRows.count]
-							: @"None nearby",
-					^{ [weakSelf hideCloseBirthdays]; }),
-		]),
-
-		TGSection(@"Contacts",
-				  @"Frequent contacts are ranked on Telegram's side; turning "
-				  @"the suggestion off deletes that ranking.", @[
-			TGSwitchRow(@"Suggest Frequent Contacts", weakSelf.suggestFrequent, ^(BOOL on){
-				weakSelf.suggestFrequent = on;
-				[[TGClient shared] setOption:@"disable_top_chats" boolValue:!on];
-			}),
-			TGRedRow(@"Delete Synced Contacts", ^{
-				[TGAlertSheet showConfirm:@"The phone numbers this account uploaded "
-										  @"to Telegram will be removed."
-									title:@"Delete Synced Contacts"
-								   action:@"Delete"
-							  destructive:YES
-								   inView:weakSelf.view
-								onConfirm:^{
-					[[TGClient shared] clearImportedContacts];
-				}];
-			}),
-		]),
-
-		TGSection(nil,
+		TGSection(@"DELETE MY ACCOUNT",
 				  @"If you do not come online at least once within this period, "
 				  @"the account is deleted along with everything in it.", @[
-			TGTapRow(@"Delete My Account", weakSelf.accountTtl > 0
+			TGIconTapRow(@"Delete My Account", weakSelf.accountTtl > 0
 					? [NSString stringWithFormat:@"if away for %ld months",
 							(long)(weakSelf.accountTtl / 30)]
-					: @"...", ^{
+					: @"...", @"archive", TGIconTileGrey(), ^{
 				[TGAlertSheet showChoices:@[@"1 month", @"3 months",
 											@"6 months", @"12 months"]
 									title:@"Delete my account if away for"

@@ -147,7 +147,7 @@ static UIImage *TGBackgroundPreview(UIImage *source, NSInteger fillColour) {
 
 	NSMutableDictionary *themeRow = TGBRow(@"switch", @"Dark Theme Backgrounds");
 	themeRow[@"on"] = @(self.darkTheme);
-	[sections addObject:TGBSection(@"Theme",
+	[sections addObject:TGBSection(@"THEME",
 			@"Telegram keeps a separate installed list and default for the dark "
 			@"theme. This switch chooses which one this page edits.",
 			@[themeRow])];
@@ -165,7 +165,7 @@ static UIImage *TGBackgroundPreview(UIImage *source, NSInteger fillColour) {
 			[installedRows addObject:row];
 		}
 	}
-	[sections addObject:TGBSection(@"Installed",
+	[sections addObject:TGBSection(@"INSTALLED",
 			@"Tap a background to make it the default, read its address, or "
 			@"remove it from this list.", installedRows)];
 
@@ -180,7 +180,7 @@ static UIImage *TGBackgroundPreview(UIImage *source, NSInteger fillColour) {
 		row[@"installed"] = @NO;
 		[searchRows addObject:row];
 	}
-	[sections addObject:TGBSection(@"Catalogue",
+	[sections addObject:TGBSection(@"CATALOGUE",
 			@"Searches Telegram's public background catalogue. A result can be "
 			@"installed or its persistent address copied.", searchRows)];
 
@@ -189,13 +189,13 @@ static UIImage *TGBackgroundPreview(UIImage *source, NSInteger fillColour) {
 			@"deleteDefault")];
 	[defaultRows addObject:TGBCellRow(@"Reset Installed Backgrounds", nil,
 			@"reset")];
-	[sections addObject:TGBSection(@"Default",
+	[sections addObject:TGBSection(@"DEFAULT",
 			@"Deleting the default puts chats back on Telegram's own background. "
 			@"Reset restores the installed list without touching the default.",
 			defaultRows)];
 
 	if (self.status.length)
-		[sections addObject:TGBSection(@"Last Answer", nil,
+		[sections addObject:TGBSection(@"LAST ANSWER", nil,
 				@[TGBRow(@"plain", self.status)])];
 
 	return sections;

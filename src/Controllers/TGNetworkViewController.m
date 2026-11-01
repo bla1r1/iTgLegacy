@@ -55,6 +55,14 @@ static NSString *TGConfigValueText(id value) {	if ([value isKindOfClass:NSString
 	return [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] ?: @"";
 }
 
+static NSDictionary *TGNetSection(NSString *header, NSString *footer, NSArray *rows) {
+	NSMutableDictionary *section = [NSMutableDictionary dictionary];
+	if (header) section[@"header"] = header;
+	if (footer) section[@"footer"] = footer;
+	section[@"rows"] = rows ?: @[];
+	return section;
+}
+
 @interface TGNetworkViewController ()
 @property (nonatomic, copy) NSString *networkType;
 @property (nonatomic, assign) long long sent;
@@ -63,6 +71,10 @@ static NSString *TGConfigValueText(id value) {	if ([value isKindOfClass:NSString
 @property (nonatomic, copy) NSString *stateError;
 @property (nonatomic, assign) BOOL stateLoaded;
 @property (nonatomic, copy) NSString *status;
+/// Grouped the way Telegram's Data and Storage pages are: the connection,
+/// the diagnostics, what the radio carried, and the graph. The flat `rows`
+/// the base list keeps is filled from these so Copy still prints everything.
+@property (nonatomic, strong) NSArray *sections;
 @end
 
 @implementation TGNetworkViewController
@@ -85,7 +97,11 @@ static NSString *TGConfigValueText(id value) {	if ([value isKindOfClass:NSString
 }
 
 - (void)rebuild {
-	self.rows = [self buildRows];
+	self.sections = [self buildSections];
+	NSMutableArray *flat = [NSMutableArray array];
+	for (NSDictionary *section in self.sections)
+		[flat addObjectsFromArray:section[@"rows"]];
+	self.rows = flat;
 	self.listFooter = self.status.length ? self.status
 			: @"TDLib reopens every connection when the network type changes. "
 			  @"The counters are reset by TDLib itself and cover this launch only "
@@ -93,41 +109,113 @@ static NSString *TGConfigValueText(id value) {	if ([value isKindOfClass:NSString
 	[self.tableView reloadData];
 }
 
-- (NSArray *)buildRows {
+- (NSArray *)buildSections {
 	__weak typeof(self) weakSelf = self;
-	NSMutableArray *rows = [NSMutableArray array];
-
-	[rows addObject:TGNetRow(@"Network Type", TGNetworkTypeTitle(self.networkType), ^{
-		[weakSelf chooseNetworkType];
-	})];
 
 	NSString *stateDetail = self.stateError.length ? self.stateError
 			: (self.stateLoaded
 				? [NSString stringWithFormat:@"%lu updates",
 						(unsigned long)self.stateRows.count]
 				: @"Reading...");
-	[rows addObject:TGNetRow(@"TDLib State", stateDetail, ^{
-		[weakSelf showCurrentState];
-	})];
 
-	[rows addObject:TGNetRow(@"Application Config", @"Tap to read", ^{
-		[weakSelf showApplicationConfig];
-	})];
-	[rows addObject:TGNetRow(@"Database Statistics", @"Tap to read", ^{
-		[weakSelf showDatabaseStatistics];
-	})];
+	NSArray *connection = @[
+		TGNetRow(@"Network Type", TGNetworkTypeTitle(self.networkType), ^{
+			[weakSelf chooseNetworkType];
+		}),
+	];
 
-	[rows addObject:TGNetRow(@"Data Usage",
-			[NSString stringWithFormat:@"%@ in, %@ out",
-					TGNetBytes(weakSelf.received), TGNetBytes(weakSelf.sent)],
-			^{ [weakSelf loadTotals]; })];
-	[rows addObject:TGNetRow(@"Add Usage Entry",
-			@"A call's bytes and duration", ^{ [weakSelf addUsageEntry]; })];
+	NSArray *diagnostics = @[
+		TGNetRow(@"TDLib State", stateDetail, ^{
+			[weakSelf showCurrentState];
+		}),
+		TGNetRow(@"Application Config", @"Tap to read", ^{
+			[weakSelf showApplicationConfig];
+		}),
+		TGNetRow(@"Database Statistics", @"Tap to read", ^{
+			[weakSelf showDatabaseStatistics];
+		}),
+	];
 
-	[rows addObject:TGNetRow(@"Statistical Graph",
-			@"Render a chat statistics token", ^{ [weakSelf askStatisticalGraph]; })];
+	NSArray *usage = @[
+		TGNetRow(@"Data Usage",
+				[NSString stringWithFormat:@"%@ in, %@ out",
+						TGNetBytes(weakSelf.received), TGNetBytes(weakSelf.sent)],
+				^{ [weakSelf loadTotals]; }),
+		TGNetRow(@"Add Usage Entry",
+				@"A call's bytes and duration", ^{ [weakSelf addUsageEntry]; }),
+	];
 
-	return rows;
+	NSArray *graph = @[
+		TGNetRow(@"Statistical Graph",
+				@"Render a chat statistics token", ^{ [weakSelf askStatisticalGraph]; }),
+	];
+
+	return @[
+		TGNetSection(@"CONNECTION",
+				@"TDLib reports the network it is on; changing it here reopens "
+				@"every connection.", connection),
+		TGNetSection(@"DIAGNOSTICS",
+				@"The state, configuration and database report TDLib answers "
+				@"when this page asks.", diagnostics),
+		TGNetSection(@"DATA USAGE",
+				@"The counters cover this launch. Reset adds a call's bytes "
+				@"back into TDLib's own totals.", usage),
+		TGNetSection(@"STATISTICS",
+				@"A statistics token from a chat's admin panel draws its graph "
+				@"here as a list of points.", graph),
+	];
+}
+
+/// The base list has one section and one flat row list; this page draws its
+/// four groups itself and hands the shared cell styling the flat index.
+- (NSInteger)flatRowForIndexPath:(NSIndexPath *)path {
+	NSInteger flat = 0;
+	for (NSInteger i = 0; i < (NSInteger)self.sections.count && i < path.section; i++)
+		flat += (NSInteger)[self.sections[(NSUInteger)i][@"rows"] count];
+	return flat + path.row;
+}
+
+- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
+	return (NSInteger)self.sections.count;
+}
+
+- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
+	if (section >= (NSInteger)self.sections.count)
+		return 0;
+	return (NSInteger)[self.sections[(NSUInteger)section][@"rows"] count];
+}
+
+- (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
+	if (section >= (NSInteger)self.sections.count)
+		return nil;
+	NSString *text = self.sections[(NSUInteger)section][@"header"];
+	return text.length ? text : nil;
+}
+
+- (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
+	if (section >= (NSInteger)self.sections.count)
+		return nil;
+	if (section == (NSInteger)self.sections.count - 1 && self.status.length)
+		return self.status;
+	NSString *text = self.sections[(NSUInteger)section][@"footer"];
+	return text.length ? text : nil;
+}
+
+- (UITableViewCell *)tableView:(UITableView *)tableView
+		 cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+	NSIndexPath *flat = [NSIndexPath indexPathForRow:[self flatRowForIndexPath:indexPath]
+										  inSection:0];
+	return [super tableView:tableView cellForRowAtIndexPath:flat];
+}
+
+- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
+	[tableView deselectRowAtIndexPath:indexPath animated:YES];
+	NSInteger flat = [self flatRowForIndexPath:indexPath];
+	if (flat < 0 || flat >= (NSInteger)self.rows.count)
+		return;
+	void (^tap)(void) = self.rows[(NSUInteger)flat][@"tap"];
+	if (tap)
+		tap();
 }
 
 #pragma mark - network type

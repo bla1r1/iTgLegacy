@@ -18,7 +18,7 @@
 
 - (void)viewDidLoad {
 	[super viewDidLoad];
-	self.title = @"Device";
+	self.title = @"This Device";
 	if ([self respondsToSelector:@selector(setEdgesForExtendedLayout:)])
 		self.edgesForExtendedLayout = UIRectEdgeNone;
 	[self applyTheme];
@@ -50,28 +50,33 @@
 #pragma mark - table
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
-	return 3;
+	return 4;
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
-	if (section == 0) return @"Hardware";
-	if (section == 1) return @"Features";
-	return nil;
+	switch (section){
+		case 0: return @"SOFTWARE";
+		case 1: return @"HARDWARE";
+		case 2: return @"FEATURES";
+		default: return nil;
+	}
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
-	if (section == 0)
+	if (section == 1)
 		return @"Vintage: iPhone 3GS and 4. Legacy: 4S, 5 and 5c. "
 			   @"Modern: 5s and 6. Full: 6s and later.";
-	if (section == 1)
-		return @"Features off here are not missing from the app - this device "
-			   @"cannot run them.";
+	if (section == 2)
+		return @"A feature that is off here is not missing from the app - this "
+			   @"device cannot run it. The reason beside each row is the same "
+			   @"one the rest of the app checks before it draws the button.";
 	return nil;
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-	if (section == 0) return 4;
-	if (section == 1) return self.capabilities.count;
+	if (section == 0) return 2;
+	if (section == 1) return 3;
+	if (section == 2) return self.capabilities.count;
 	return 1; // Log out
 }
 
@@ -84,31 +89,44 @@
 	cell.textLabel.font = TGFontBody();
 	cell.detailTextLabel.font = TGFontSubhead();
 	[[TGTheme shared] styleCell:cell];
+	cell.textLabel.textColor = [[TGTheme shared] primaryTextColour];
+	cell.textLabel.textAlignment = NSTextAlignmentLeft;
+	cell.detailTextLabel.textColor = [[TGTheme shared] secondaryTextColour];
 
 	if (indexPath.section == 0){
+		NSDictionary *info = [NSBundle mainBundle].infoDictionary;
+		if (indexPath.row == 0){
+			cell.textLabel.text = @"iOS";
+			cell.detailTextLabel.text = [UIDevice currentDevice].systemVersion;
+		} else {
+			cell.textLabel.text = @"LegacyTG";
+			cell.detailTextLabel.text = [NSString stringWithFormat:@"%@ (%@)",
+					info[@"CFBundleShortVersionString"] ?: @"?",
+					info[@"CFBundleVersion"] ?: @"?"];
+		}
+		return cell;
+	}
+
+	if (indexPath.section == 1){
 		switch (indexPath.row){
 			case 0:
 				cell.textLabel.text = @"Model";
 				cell.detailTextLabel.text = [TGDevice modelName];
 				break;
 			case 1:
-				cell.textLabel.text = @"Chip and memory";
+				cell.textLabel.text = @"Chip and Memory";
 				cell.detailTextLabel.text = [NSString stringWithFormat:@"%@, %lu MB",
 						[TGDevice chip] ?: @"?", (unsigned long)[TGDevice memoryMB]];
 				break;
-			case 2:
-				cell.textLabel.text = @"iOS";
-				cell.detailTextLabel.text = [UIDevice currentDevice].systemVersion;
-				break;
 			default:
-				cell.textLabel.text = @"Tier";
+				cell.textLabel.text = @"Device Tier";
 				cell.detailTextLabel.text = [TGDevice tierName];
 				break;
 		}
 		return cell;
 	}
 
-	if (indexPath.section == 2){
+	if (indexPath.section == 3){
 		// Log out — red, centred, tappable
 		cell.selectionStyle = UITableViewCellSelectionStyleDefault;
 		cell.textLabel.text = @"Log out";
@@ -120,7 +138,7 @@
 
 	TGCapability *capability = self.capabilities[indexPath.row];
 	cell.textLabel.text = capability.name;
-	cell.detailTextLabel.text = capability.available ? @"on" : capability.requirement;
+	cell.detailTextLabel.text = capability.available ? @"On" : capability.requirement;
 	cell.detailTextLabel.textColor = capability.available
 			? [[TGTheme shared] onlineColour]
 			: [[TGTheme shared] secondaryTextColour];
@@ -132,7 +150,7 @@
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
 	[tableView deselectRowAtIndexPath:indexPath animated:YES];
-	if (indexPath.section != 2)
+	if (indexPath.section != 3)
 		return;
 	// Log out — confirm before doing anything irreversible
 	[TGAlertSheet showConfirm:@"Are you sure you want to log out?"
