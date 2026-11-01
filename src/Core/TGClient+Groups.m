@@ -382,6 +382,97 @@ static NSDictionary *TGFlattenInviteLink(NSDictionary *link) {
 
 #pragma mark - what it is called
 
+/// The supergroup id behind a chat id, asked for rather than guessed:
+/// toggles below name a supergroup, all the app has is the chat. A basic
+/// group has no supergroup; the completion answers 0 and nobody is toggled.
+- (void)supergroupIdForChat:(int64_t)chatId
+				 completion:(void (^)(int64_t supergroupId))completion {
+	__weak typeof(self) weakSelf = self;
+	[self request:@{@"@type" : @"getChat", @"chat_id" : @(chatId)}
+	   completion:^(NSDictionary *chat){
+		NSString *kind = chat[@"type"][@"@type"];
+		NSString *id_ = chat[@"type"][@"supergroup_id"];
+		if ([kind isEqualToString:@"chatTypeSupergroup"] && id_){
+			if (completion) completion([id_ longLongValue]);
+			return;
+		}
+		// A basic group turns into a supergroup the moment this matters;
+		// the row the list cached can name the newer shape for us.
+		id row = weakSelf.chatsById[@(chatId)][@"supergroupId"];
+		if ([row isKindOfClass:NSNumber.class] && [row longLongValue]){
+			if (completion) completion([row longLongValue]);
+			return;
+		}
+		if (completion) completion(0);
+	}];
+}
+
+/// Signs what members post with their names, the way a channel wall works.
+- (void)setChatSignMessages:(int64_t)chatId
+						 on:(BOOL)on
+				 completion:(void (^)(BOOL ok))completion {
+	__weak typeof(self) weakSelf = self;
+	[self supergroupIdForChat:chatId completion:^(int64_t supergroupId){
+		if (!supergroupId){
+			if (completion) completion(NO);
+			return;
+		}
+		[weakSelf request:@{@"@type"          : @"toggleSupergroupSignMessages",
+							@"supergroup_id"  : @(supergroupId),
+							@"sign_messages"  : @(on)}
+			 completion:^(NSDictionary *result){
+			if (completion)
+				completion(![result[@"@type"] isEqualToString:@"error"]);
+		}];
+	}];
+}
+
+/// Members who cannot post otherwise - non-admins of a broadcast-style group
+/// - are shown the composer only when this is on; on it is private and their
+/// posts land in the admins' chat.
+- (void)setChatJoinToSendMessages:(int64_t)chatId
+							   on:(BOOL)on
+					   completion:(void (^)(BOOL ok))completion {
+	__weak typeof(self) weakSelf = self;
+	[self supergroupIdForChat:chatId completion:^(int64_t supergroupId){
+		if (!supergroupId){
+			if (completion) completion(NO);
+			return;
+		}
+		[weakSelf request:@{@"@type"           : @"toggleSupergroupJoinToSendMessages",
+							@"supergroup_id"   : @(supergroupId),
+							@"join_to_send"    : @(on)}
+			 completion:^(NSDictionary *result){
+			if (completion)
+				completion(![result[@"@type"] isEqualToString:@"error"]);
+		}];
+	}];
+}
+
+/// What the two toggles above sit on right now, read off the supergroup's
+/// full record, so a menu row can say what the flip is about to do.
+- (void)supergroupFlagsForChat:(int64_t)chatId
+					completion:(void (^)(BOOL signMessages, BOOL joinToSend, BOOL ok))completion {
+	__weak typeof(self) weakSelf = self;
+	[self supergroupIdForChat:chatId completion:^(int64_t supergroupId){
+		if (!supergroupId){
+			if (completion) completion(NO, NO, NO);
+			return;
+		}
+		[weakSelf request:@{@"@type" : @"getSupergroupFullInfo",
+							@"supergroup_id" : @(supergroupId)}
+			 completion:^(NSDictionary *full){
+			if ([full[@"@type"] isEqualToString:@"error"]){
+				if (completion) completion(NO, NO, NO);
+				return;
+			}
+			if (completion)
+				completion([full[@"sign_messages"] boolValue],
+						   [full[@"join_to_send"] boolValue], YES);
+		}];
+	}];
+}
+
 - (void)setChat:(int64_t)chatId
 		  title:(NSString *)title
 	 completion:(void (^)(BOOL ok))completion {

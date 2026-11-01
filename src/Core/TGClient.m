@@ -36,11 +36,33 @@ NSString *const TGChatMembersChangedNotification = @"TGChatMembersChangedNotific
 NSString *const TGNotificationSettingsChangedNotification = @"TGNotificationSettingsChangedNotification";
 NSString *const TGForumTopicsChangedNotification = @"TGForumTopicsChangedNotification";
 NSString *const TGChatActionBarChangedNotification = @"TGChatActionBarChangedNotification";
+NSString *const TGSavedTopicsChangedNotification = @"TGSavedTopicsChangedNotification";
 
 @implementation TGClient
 
 - (NSUInteger)chatsCached {
 	return self.chatsById.count;
+}
+
+// The Saved Messages topics, array-shaped the way the screen reads them:
+// pinned rows first, the rest newest activity on top.
+- (NSArray *)savedTopics {
+	NSMutableArray *out = [NSMutableArray array];
+	for (NSDictionary *row in self.savedTopicsById.allValues)
+		[out addObject:row];
+	return [out sortedArrayUsingComparator:^NSComparisonResult(id a, id b){
+		BOOL pa = [a[@"pinned"] boolValue], pb = [b[@"pinned"] boolValue];
+		if (pa != pb)
+			return pa ? NSOrderedAscending : NSOrderedDescending;
+		id da = a[@"date"], db = b[@"date"];
+		long long ta = da ? [da longLongValue] : 0;
+		long long tb = db ? [db longLongValue] : 0;
+		if (tb > ta)
+			return NSOrderedAscending;
+		if (tb < ta)
+			return NSOrderedDescending;
+		return NSOrderedSame;
+	}];
 }
 
 + (instancetype)shared {
@@ -565,6 +587,45 @@ NSDictionary *TGFormattedText(NSString *text) {
 							userInfo:@{@"count" : obj[@"unread_unmuted_count"] ?: @0}];
 		return;
 	}
+	case TGUpdateSavedMessagesTopic:
+	case TGUpdateSavedMessagesTopicCount:
+	case TGUpdateSavedMessagesTags: {
+		// A Saved Messages topic arrived, moved, or got a label: asked for by
+		// loadSavedMessagesTopics, changing while the topics screen is open.
+		// The tags update patches the row the tag belonged to.
+		NSDictionary *topic = obj[@"topic"];
+		NSString *topicId = [topic[@"id"] isKindOfClass:NSString.class] ?
+				topic[@"id"] : [@(topic[@"id"] ? [topic[@"id"] longLongValue] : 0) stringValue];
+		if (topicId && !self.savedTopicsById)
+			self.savedTopicsById = [NSMutableDictionary dictionary];
+		if (topicId && self.savedTopicsById){
+			NSMutableDictionary *row = self.savedTopicsById[topicId] ?:
+					[NSMutableDictionary dictionary];
+			row[@"id"] = @(topicId.length ? [topicId longLongValue] : 0);
+			NSString *type = topic[@"type"][@"@type"] ?: @"";
+			NSString *title = @"Forwarded";
+			if ([type isEqualToString:@"savedMessagesTopicTypeMyNotes"])
+				title = @"My Notes";
+			else if ([type isEqualToString:@"savedMessagesTopicTypeAuthorHidden"])
+				title = @"Hidden Author";
+			else if ([type isEqualToString:@"savedMessagesTopicTypeSavedFromChat"]){
+				NSString *chatTitle = [[TGClient shared] titleForChat:
+						[topic[@"type"][@"chat_id"] longLongValue]];
+				title = chatTitle.length ? chatTitle : @"Forwarded Chat";
+			}
+			row[@"title"] = title;
+			NSString *text = TGFlattenMessage(topic[@"last_message"])[@"text"];
+			row[@"text"] = text ?: @"";
+			if (topic[@"date"] && topic[@"date"] != [NSNull null])
+				row[@"date"] = topic[@"date"];
+			row[@"pinned"] = topic[@"is_pinned"];
+			row[@"order"] = topic[@"order"];
+			self.savedTopicsById[topicId] = row;
+		}
+		[[NSNotificationCenter defaultCenter]
+				postNotificationName:TGSavedTopicsChangedNotification object:self];
+		return;
+	}
 	// Arriving read by nobody: each one is a marker for a screen the app
 	// does not draw yet, kept on the record rather than dropped so the
 	// dispatch and the filter agree. Letting them through costs one parse;
@@ -592,9 +653,6 @@ NSDictionary *TGFormattedText(NSString *text) {
 	case TGUpdateAnimationSearchParameters:
 	case TGUpdateAvailableMessageEffects:  // message effects are not rendered
 	case TGUpdateContactCloseBirthdays:    // no birthday strip to land them on
-	case TGUpdateSavedMessagesTopic:       // saved-messages topics are not drawn
-	case TGUpdateSavedMessagesTopicCount:
-	case TGUpdateSavedMessagesTags:
 	case TGUpdateStopMessageDraft:         // where the draft was stopped, nothing was drawn
 	case TGUpdateVideoPublished:
 		return;

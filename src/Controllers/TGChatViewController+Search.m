@@ -1,4 +1,6 @@
 #import "TGChatViewControllerInternal.h"
+#import "TGAlertSheet.h"
+#import "TGClientInternal.h"
 
 @implementation TGChatViewController (Search)
 
@@ -49,7 +51,48 @@
 		return;
 	}
 
+	NSString *clean = [query stringByTrimmingCharactersInSet:
+			[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+	NSString *tag = [clean hasPrefix:@"#"] ? [clean substringFromIndex:1] : clean;
+	NSString *flatTag = tag.length ? tag : nil;
 	__weak typeof(self) weakSelf = self;
+	void (^takeAnswer)(NSArray *raw) = ^void(NSArray *raw){
+		TGChatViewController *me = weakSelf;
+		if (!me) return;
+		// These two answers arrive as raw message dicts, and the table
+		// reads the flattened kind.
+		NSMutableArray *flat = [NSMutableArray array];
+		for (NSDictionary *m in raw ?: @[]){
+			NSDictionary *f = TGFlattenMessage(m);
+			if (f) [flat addObject:f];
+		}
+		me.messages = [[flat reverseObjectEnumerator] allObjects];
+		[me.table reloadData];
+	};
+
+	// A word starting in # is Telegram's own searchable tag, and the server
+	// owns those searches: in Saved Messages the tag answers from this
+	// account's notes; everywhere else it is the public wall.
+	if ([clean hasPrefix:@"#"]){
+		if ([TGClient shared].savedMessagesChatId == self.chatId && self.threadId){
+			[[TGClient shared] searchSavedMessagesInTopic:self.threadId
+													  query:@""
+														tag:@{@"@type" : @"reactionTypeEmoji",
+															  @"emoji" : flatTag ?: @""}
+														   from:0
+													completion:^(NSArray *found, int64_t next){
+				takeAnswer(found);
+			}];
+		} else {
+			[[TGClient shared] publicMessagesByTag:flatTag ?: @""
+											offset:nil
+										completion:^(NSArray *found, NSString *next){
+				takeAnswer(found);
+			}];
+		}
+		return;
+	}
+
 	[[TGClient shared] searchInChat:self.chatId query:query completion:^(NSArray *found){
 		TGChatViewController *me = weakSelf;
 		if (!me || ![me.chatSearchBar.text isEqualToString:query])

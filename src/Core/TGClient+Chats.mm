@@ -466,6 +466,10 @@ int64_t TGArchiveOrder(NSArray *positions) {
 	return [self.chatsById[@(chatId)][@"isMuted"] boolValue];
 }
 
+- (BOOL)chatIsSavedMessages:(int64_t)chatId {
+	return [self.chatsById[@(chatId)][@"isSaved"] boolValue];
+}
+
 - (void)clearHistoryInChat:(int64_t)chatId {
 	// Without remove_from_chat_list this empties the chat and leaves it there,
 	// which is what "clear history" means as opposed to "delete chat".
@@ -1439,8 +1443,8 @@ static NSDictionary *TGFolderObject(NSString *name, NSString *icon,
 		info[@"chatBackground"] = update[@"background"];
 	else if ([update[@"@type"] isEqualToString:@"updateChatBackground"])
 		[info removeObjectForKey:@"chatBackground"];
-	if (update[@"welcome_messages"])
-		info[@"welcomeMessages"] = update[@"welcome_messages"];
+	if (update[@"welcome_messages"] || update[@"messages"])
+		info[@"welcomeMessages"] = update[@"welcome_messages"] ?: update[@"messages"];
 	// Removed from a list: the order for that list is gone, and without
 	// clearing it the row stays on the strip it was just taken off. A chat
 	// added to a list carries no order yet - its position follows.

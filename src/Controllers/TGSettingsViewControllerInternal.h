@@ -152,6 +152,8 @@ static inline NSString *TGBytes(long long bytes) {
 @property (nonatomic, strong) NSArray *blocked;
 @property (nonatomic, strong) NSArray *calls;
 @property (nonatomic, assign) NSInteger accountTtl;
+/// Privacy page: the lifetime new chats start with, loaded per open.
+@property (nonatomic, assign) NSInteger autoDeleteDefault;
 @property (nonatomic, assign) BOOL hasPassword;
 @property (nonatomic, assign) BOOL passwordKnown;
 @property (nonatomic, assign) BOOL suggestFrequent;

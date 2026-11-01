@@ -348,6 +348,8 @@ static const CGFloat kBannerCloseGlyph = 16.0f;
 @property (nonatomic, assign) NSInteger scheduledCount;
 @property (nonatomic, strong) UIDatePicker *pickPicker;
 @property (nonatomic, strong) TGSheet *pickSheet;
+/// Jump-to-date sheet: the "N messages" line, filled when the count lands.
+@property (nonatomic, strong) UILabel *pickCountLabel;
 - (void)holdScheduledSheet;
 - (void)sendHeldText:(NSDictionary *)state;
 

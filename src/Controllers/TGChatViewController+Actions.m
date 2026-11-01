@@ -4,6 +4,9 @@
 #import "TGStyle.h"
 #import "TGAlertSheet.h"
 #import "TGReactionPicker.h"
+#import "TGFastDate.h"
+#import "TGOptions.h"
+#import "TGClientInternal.h"
 
 /// What the reply strip shows on its second line. The rows here are already
 /// flattened, so TGMessagePreview - which reads a raw TDLib content - cannot
@@ -178,6 +181,23 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 	// A sticker you are holding is a sticker you may want to keep.
 	if ([m[@"kind"] isEqualToString:@"messageSticker"] && TGStickerFileId(m) > 0)
 		[items addObject:@{@"title" : @"Add to Favourites", @"icon" : @"pin"}];
+	// The record of a post that left this account: who opened it, who
+	// reacted, whether Telegram names the hand behind "Channel Admin".
+	// Rows over-reach on purpose: the server refuses what the chat is not,
+	// and the refusal is one honest sheet line.
+	if (mine && self.isGroup)
+		[items addObject:@{@"title" : @"Who Read This", @"icon" : @"select"}];
+	[items addObject:@{@"title" : @"Reactions", @"icon" : @"react"}];
+	if (!mine)
+		[items addObject:@{@"title" : @"Author", @"icon" : @"select"}];
+	NSString *text = m[@"text"] ?: @"";
+	if (text.length)
+		[items addObject:@{@"title" : @"Translate", @"icon" : @"edit"}];
+	if ([text containsString:@"#"])
+		[items addObject:@{@"title" : @"Search by Hashtag", @"icon" : @"data"}];
+	if ([m[@"kind"] isEqualToString:@"messageLocation"] ||
+			[m[@"kind"] isEqualToString:@"messageLiveLocation"])
+		[items addObject:@{@"title" : @"Recent Locations", @"icon" : @"data"}];
 	// Someone else's message in a group is the only place a spam report has
 	// anywhere to go: reportSupergroupSpam wants a supergroup behind it.
 	if (!mine && self.isGroup)
@@ -542,6 +562,49 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 
 	} else if ([action isEqualToString:@"Copy"]){
 		[UIPasteboard generalPasteboard].string = m[@"text"];
+
+	} else if ([action isEqualToString:@"Who Read This"]){
+		[self showViewersOfActionMessage];
+
+	} else if ([action isEqualToString:@"Reactions"]){
+		[self showReactorsOfActionMessage];
+
+	} else if ([action isEqualToString:@"Author"]){
+		[self showAuthorOfActionMessage];
+
+	} else if ([action isEqualToString:@"Translate"]){
+		[self translateActionMessage];
+
+	} else if ([action isEqualToString:@"Search by Hashtag"]){
+		NSString *query = m[@"text"] ?: @"";
+		NSRange first = [query rangeOfString:@"#"];
+		NSString *tag = [query substringFromIndex:first.location];
+		NSString *clean = [[tag componentsSeparatedByCharactersInSet:
+				[NSCharacterSet whitespaceAndNewlineCharacterSet]] firstObject]
+				?: tag;
+		// The in-chat search bar owns the results view; a hashtag rides it,
+		// just typed for the user.
+		[self toggleChatSearchOpenWithTag:clean ?: tag];
+
+	} else if ([action isEqualToString:@"Recent Locations"]){
+		[self showRecentLocationsInActionMessage];
+
+	} else if ([action isEqualToString:@"Copy Embed Code"]){
+		int64_t chatId = self.chatId;
+		__weak typeof(self) weakSelf = self;
+		[[TGClient shared] embeddingCodeOfMessage:messageId inChat:chatId
+											album:[m[@"isAlbum"] boolValue]
+									   completion:^(NSString *code){
+			TGChatViewController *me = weakSelf;
+			if (!me) return;
+			if (!code.length){
+				[TGSnackbar showInView:me.view
+								  text:@"No embed for this message" seconds:2 onCommit:nil];
+				return;
+			}
+			[UIPasteboard generalPasteboard].string = code;
+			[TGSnackbar showInView:me.view text:@"Embed copied" seconds:2 onCommit:nil];
+		}];
 
 	} else if ([action isEqualToString:@"Edit"]){
 		self.editingId = messageId;
@@ -972,6 +1035,30 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 	}];
 }
 
+/// A link to one message, the way internalLinkKind says "message" for it:
+/// Telegram names the chat and the message, and the chat opens to it.
+- (void)openMessageLink:(NSString *)link {
+	if (!link.length) return;
+	__weak typeof(self) weakSelf = self;
+	[[TGClient shared] messageLinkInfo:link completion:^(int64_t chatId, int64_t messageId){
+		TGChatViewController *me = weakSelf;
+		if (!me) return;
+		if (!chatId){
+			[TGSnackbar showInView:me.navigationController.view
+							  text:@"That link points at no open message"
+						   seconds:2 onCommit:nil];
+			return;
+		}
+		TGChatViewController *chatVC = [[TGChatViewController alloc] init];
+		chatVC.chatId = chatId;
+		NSString *title = [[TGClient shared] titleForChat:chatId];
+		chatVC.chatTitle = title.length ? title : @"Chat";
+		chatVC.hidesBottomBarWhenPushed = YES;
+		chatVC.initialMessageId = messageId;
+		[me.navigationController pushViewController:chatVC animated:YES];
+	}];
+}
+
 - (void)handleOpenLink:(NSString *)urlStr {
 	if (!urlStr.length) return;
 
@@ -1007,6 +1094,13 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 				return;
 			if ([kind isEqualToString:@"publicChat"] && value.length){
 				[me openChatWithUsername:value];
+				return;
+			}
+			if ([kind isEqualToString:@"message"] && value.length){
+				// A link to the exact message, t.me/name/12345: the chat is
+				// resolved and the message jumped to, by Telegram's own
+				// answer at getMessageLinkInfo.
+				[me openMessageLink:value];
 				return;
 			}
 			if ([kind isEqualToString:@"inviteLink"] && value.length){
@@ -1188,6 +1282,223 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 - (void)openPlainLink:(NSURL *)url {
 	if (url)
 		[[UIApplication sharedApplication] openURL:url];
+}
+
+#pragma mark - message record sheets
+
+/// One-shared-shape date for the sheets: three shapes the chat list shows.
+static NSString *TGSheetDate(NSTimeInterval unix) {
+	char buf[TGFastDateBufferSize + 1] = {0};
+	size_t len = TGFastChatDate((time_t)unix, (time_t)TGOptionNow(), buf, TGFastDateBufferSize);
+	return len ? [[NSString alloc] initWithBytes:buf length:len encoding:NSUTF8StringEncoding]
+			   : @"";
+}
+
+/// The helper behind five of the menu rows: the action message is read into
+/// a bound pair, since a sheet can arrive after the chat scrolled on.
+- (void)withActionMessage:(void (^)(int64_t messageId, int64_t chatId, NSDictionary *m))block {
+	NSDictionary *m = self.actionMessage;
+	if (!m || !block)
+		return;
+	block([m[@"id"] longLongValue], self.chatId, m);
+}
+
+/// Names come off the client's user cache; a viewer nobody knows about is
+/// still a row, said as "User".
+- (void)showViewersOfActionMessage {
+	__weak typeof(self) weakSelf = self;
+	[self withActionMessage:^(int64_t messageId, int64_t chatId, NSDictionary *m){
+		[[TGClient shared] viewersOfMessage:messageId inChat:chatId completion:^(NSArray *viewers){
+			TGChatViewController *me = weakSelf;
+			if (!me) return;
+			if (!viewers.count){
+				[TGAlertSheet showMessage:@"Only a recent message of your own in a "
+										  @"group says who read it."
+									 title:@"Who Read This"
+									inView:me.view];
+				return;
+			}
+			NSMutableArray *names = [NSMutableArray array];
+			for (NSDictionary *v in viewers){
+				NSString *name = [[TGClient shared] nameForUserId:
+						[v[@"user_id"] longLongValue]] ?: @"User";
+				NSString *when = TGSheetDate([v[@"view_date"] doubleValue]);
+				NSString *line = name ?: @"User";
+				if (when.length)
+					line = [NSString stringWithFormat:@"%@ — %@", line, when];
+				[names addObject:line];
+			}
+			[TGAlertSheet showChoices:names
+								title:@"Read by"
+					 destructiveIndex:-1
+							   inView:me.view
+							 onChoice:nil];
+		}];
+	}];
+}
+
+/// The sheet's first page lists what is on the message per emoji (the
+/// interaction info a flattened message already carries); a tap lists that
+/// reaction's adders, where an administrator takes one person's set off.
+- (void)showReactorsOfActionMessage {
+	__weak typeof(self) weakSelf = self;
+	[self withActionMessage:^(int64_t messageId, int64_t chatId, NSDictionary *m){
+		NSArray *groups = m[@"interaction_info"][@"reactions"][@"reactions"];
+		if (![groups isKindOfClass:NSArray.class] || !groups.count){
+			[TGAlertSheet showMessage:@"This message carries no reactions."
+								title:@"Reactions"
+								inView:weakSelf.view];
+			return;
+		}
+		NSMutableArray *lines = [NSMutableArray array];
+		for (NSDictionary *r in groups){
+			NSString *emoji = r[@"type"][@"emoji"];
+			NSString *name = emoji.length ? emoji : @"★";
+			[lines addObject:[NSString stringWithFormat:@"%@  ×%@", name,
+							  r[@"total_count"] ?: @(0)]];
+		}
+		[TGAlertSheet showChoices:lines
+							title:@"Reactions"
+				 destructiveIndex:-1
+						   inView:weakSelf.view
+						 onChoice:^(NSInteger index){
+			NSString *emoji = groups[index][@"type"][@"emoji"] ?: @"";
+			[[TGClient shared] addedReactionsOfMessage:messageId
+												 inChat:chatId
+												 emoji:emoji
+												offset:nil
+											completion:^(NSArray *rows, NSString *next){
+				TGChatViewController *me = weakSelf;
+				if (!me) return;
+				if (!rows.count){
+					[TGAlertSheet showMessage:@"Telegram keeps that list closed here."
+										 title:@"Reactions"
+										inView:me.view];
+					return;
+				}
+				NSMutableArray *names = [NSMutableArray array];
+				for (NSDictionary *r in rows){
+					NSDictionary *sender = r[@"sender"];
+					NSString *label = nil;
+					NSString *userId = sender[@"user_id"];
+					if (userId)
+						label = [[TGClient shared] nameForUserId:[userId longLongValue]];
+					if (!label.length)
+						label = sender[@"chat_id"] ? @"Another chat" : @"User";
+					NSString *mine = [r[@"mine"] boolValue] ? @" (you)" : @"";
+					NSString *line = label ?: @"User";
+					[names addObject:[line stringByAppendingString:mine]];
+				}
+				[TGAlertSheet showChoices:names
+									title:[NSString stringWithFormat:@"Who set %@", emoji ?: @"★"]
+						 destructiveIndex:-1
+								   inView:me.view
+								 onChoice:^(NSInteger choice){
+					// An administrator takes one person's reactions here -
+					// on this message and every other one in this chat.
+					NSDictionary *sender = rows[choice][@"sender"];
+					if (!sender)
+						return;
+					[TGAlertSheet showConfirm:
+							@"This removes everything that account reacted "
+							@"with, here and across this chat."
+								title:@"Clear Reactions"
+							   action:@"Remove"
+						  destructive:YES
+							   inView:weakSelf.view
+							onConfirm:^{
+						[[TGClient shared] deleteReactionsOfSender:sender
+														  ofMessage:messageId
+															 inChat:weakSelf.chatId];
+						[[TGClient shared] deleteAllReactionsOfSender:sender
+															   inChat:weakSelf.chatId];
+					}];
+				}];
+			}];
+		}];
+	}];
+}
+
+- (void)showAuthorOfActionMessage {
+	__weak typeof(self) weakSelf = self;
+	[self withActionMessage:^(int64_t messageId, int64_t chatId, NSDictionary *m){
+		[[TGClient shared] authorOfMessage:messageId inChat:chatId completion:^(NSDictionary *user){
+			TGChatViewController *me = weakSelf;
+			if (!me || !user){
+				[TGAlertSheet showMessage:@"Telegram names an author only for a "
+										  @"post an anonymous admin made."
+									 title:@"Author" inView:me.view];
+				return;
+			}
+			NSString *name = [NSString stringWithFormat:@"%@ %@",
+					user[@"first_name"] ?: @"", user[@"last_name"] ?: @""];
+			[TGAlertSheet showMessage:name ?: @"The server named nobody"
+							   title:@"Author" inView:me.view];
+		}];
+	}];
+}
+
+- (void)translateActionMessage {
+	__weak typeof(self) weakSelf = self;
+	[self withActionMessage:^(int64_t messageId, int64_t chatId, NSDictionary *m){
+		NSString *language = [[NSLocale currentLocale] objectForKey:
+				NSLocaleLanguageCode] ?: @"en";
+		[[TGClient shared] translateMessage:messageId inChat:chatId
+									 toCode:language
+								  completion:^(NSString *text){
+			TGChatViewController *me = weakSelf;
+			if (!me) return;
+			[TGAlertSheet showMessage:(text.length ? text : @"Not translatable")
+							   title:@"Translation"
+							   inView:me.view];
+		}];
+	}];
+}
+
+- (void)showRecentLocationsInActionMessage {
+	__weak typeof(self) weakSelf = self;
+	[self withActionMessage:^(int64_t messageId, int64_t chatId, NSDictionary *m){
+		[[TGClient shared] recentLocationsInChat:chatId completion:^(NSArray *messages){
+			TGChatViewController *me = weakSelf;
+			if (!me) return;
+			if (!messages.count){
+				[TGAlertSheet showMessage:@"No location pins in this chat."
+									 title:@"Recent Locations" inView:me.view];
+				return;
+			}
+			NSMutableArray *rows = [NSMutableArray array];
+			for (NSDictionary *loc in messages){
+				NSString *who = [loc[@"sender_id"] isKindOfClass:NSDictionary.class]
+						? ([[TGClient shared] nameForUserId:
+						   [loc[@"sender_id"][@"user_id"] longLongValue]]) ?: @"User"
+						: @"Location";
+				NSString *day = TGSheetDate([loc[@"date"] doubleValue]);
+				NSString *live = [loc[@"content"][@"@type"]
+						isEqualToString:@"messageLiveLocation"] ? @" · live" : @"";
+				NSString *line = [NSString stringWithFormat:@"%@%@%@",
+						who ?: @"Location", day.length ? @" · " : @"", day ?: @""];
+				[rows addObject:[line stringByAppendingString:live]];
+			}
+			[TGAlertSheet showChoices:rows
+								title:@"Recent Locations"
+					 destructiveIndex:-1
+							   inView:me.view
+							 onChoice:^(NSInteger index){
+				if (index >= (NSInteger)messages.count)
+					return;
+				[weakSelf showMessageId:[messages[index][@"id"] longLongValue]
+									 gone:@"That location is gone"];
+			}];
+		}];
+	}];
+}
+
+- (void)toggleChatSearchOpenWithTag:(NSString *)tag {
+	[self toggleChatSearch];
+	if (!self.chatSearchBar)
+		return;
+	self.chatSearchBar.text = tag;
+	[self searchBar:self.chatSearchBar textDidChange:tag];
 }
 
 @end

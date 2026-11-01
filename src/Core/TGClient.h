@@ -35,6 +35,10 @@ extern NSString *const TGUserStatusChangedNotification;
 /// own count is not sent here: shrinking the badge for it would be a lie.
 extern NSString *const TGUnreadTotalChangedNotification;
 
+/// A Saved Messages topic arrived, moved or got a label. The topics screen
+/// re-reads; loadSavedMessagesTopics starts the stream.
+extern NSString *const TGSavedTopicsChangedNotification;
+
 /// The download list changed: a file was added, finished, paused or removed.
 /// Carries no payload - the list is short and is re-read whole.
 extern NSString *const TGDownloadsChangedNotification;
@@ -137,6 +141,10 @@ typedef NS_ENUM(NSInteger, TGConnectionState) {
 /// Chats in the archive, same shape as `chats`.
 @property (nonatomic, readonly) NSArray *archivedChats;
 
+/// The Saved Messages topics, as they streamed in: dicts with "id" (the
+/// topic's), "date", "title", "text", "pinned" and "order".
+@property (nonatomic, readonly) NSArray *savedTopics;
+
 /// How many chat records the client has actually cached - the merge uses it
 /// to notice when the cache grew enough to be worth re-reading the folders.
 @property (nonatomic, readonly) NSUInteger chatsCached;
@@ -176,9 +184,24 @@ typedef NS_ENUM(NSInteger, TGConnectionState) {
 			   viewAsTopics:(BOOL)viewAsTopics
 				 completion:(void (^)(BOOL ok))completion;
 
+/// What two supergroup switches sit on right now, so a row can name the
+/// flip rather than the state. NO/NO/NO when the chat is not a supergroup.
+- (void)supergroupFlagsForChat:(int64_t)chatId
+					completion:(void (^)(BOOL signMessages, BOOL joinToSend, BOOL ok))completion;
+- (void)setChatSignMessages:(int64_t)chatId
+						 on:(BOOL)on
+				 completion:(void (^)(BOOL ok))completion;
+- (void)setChatJoinToSendMessages:(int64_t)chatId
+							   on:(BOOL)on
+					   completion:(void (^)(BOOL ok))completion;
+
 /// Whether the signed-in user may post in a chat. A channel you only follow
 /// says NO, and the composer has to go away rather than fail on send.
 - (void)canSendInChat:(int64_t)chatId completion:(void (^)(BOOL canSend, BOOL isChannel))completion;
+
+/// Whether this chat is the Saved Messages chat, read off the row the list
+/// keeps. NO when the chat is anything else or not loaded.
+- (BOOL)chatIsSavedMessages:(int64_t)chatId;
 
 /// Delete a chat's history for the current user, and leave it if it is a group.
 - (void)deleteChat:(int64_t)chatId;
@@ -695,6 +718,111 @@ typedef NS_ENUM(NSInteger, TGDownloadPriority) {
 /// the piece of it worth acting on.
 - (void)internalLinkKind:(NSString *)link
 			  completion:(void (^)(NSString *kind, NSString *value))completion;
+
+/// The chat and the exact message a "message"-kind link resolves to: a
+/// t.me/name/12345 landed on. The chat id is 0 when Telegram refused.
+- (void)messageLinkInfo:(NSString *)link
+			 completion:(void (^)(int64_t chatId, int64_t messageId))completion;
+
+/// Whether a compose with this user can go through at all: "ok",
+/// "paidMessages", "userDeleted" or "userRestrictsNewChats".
+- (void)canSendMessageToUser:(int64_t)userId
+				  completion:(void (^)(NSString *result))completion;
+
+/// Every cache's draft dropped at once, on every device.
+- (void)clearAllDraftMessages;
+
+/// The lifetime new chats carry when nobody chose one. Zero is off.
+- (void)defaultMessageAutoDeleteTimeWithCompletion:
+		(void (^)(NSInteger seconds))completion;
+- (void)setDefaultMessageAutoDeleteTime:(NSInteger)seconds;
+
+#pragma mark - message functions, the third wave
+
+- (void)viewersOfMessage:(int64_t)messageId
+				  inChat:(int64_t)chatId
+			  completion:(void (^)(NSArray *viewers))completion;
+/// A nil date with the reason word is the honest sheet line.
+- (void)readDateOfMessage:(int64_t)messageId
+				   inChat:(int64_t)chatId
+			   completion:(void (^)(NSTimeInterval date, NSString *reason))completion;
+- (void)authorOfMessage:(int64_t)messageId
+				inChat:(int64_t)chatId
+			 completion:(void (^)(NSDictionary *user))completion;
+- (void)embeddingCodeOfMessage:(int64_t)messageId
+						inChat:(int64_t)chatId
+						 album:(BOOL)album
+					completion:(void (^)(NSString *code))completion;
+- (void)publicForwardsOfMessage:(int64_t)messageId
+						 inChat:(int64_t)chatId
+					 completion:(void (^)(NSArray *messages))completion;
+- (void)addedReactionsOfMessage:(int64_t)messageId
+						 inChat:(int64_t)chatId
+						  emoji:(NSString *)emoji
+						 offset:(NSString *)offset
+					 completion:(void (^)(NSArray *rows, NSString *next))completion;
+- (void)deleteReactionsOfSender:(NSDictionary *)sender
+					  ofMessage:(int64_t)messageId
+						 inChat:(int64_t)chatId;
+- (void)deleteAllReactionsOfSender:(NSDictionary *)sender inChat:(int64_t)chatId;
+- (void)messageCountInChat:(int64_t)chatId
+					thread:(int64_t)threadId
+				completion:(void (^)(NSInteger count))completion;
+- (void)calendarJumpForChat:(int64_t)chatId
+					 endDate:(NSInteger)end
+				  completion:(void (^)(int64_t messageId, NSInteger total))completion;
+- (void)clearAllCallMessages;
+- (void)sentDocuments:(NSString *)query
+			 completion:(void (^)(NSArray *messages))completion;
+- (void)publicMessagesByTag:(NSString *)tag
+					 offset:(NSString *)offset
+				completion:(void (^)(NSArray *messages, NSString *next))completion;
+- (void)recentLocationsInChat:(int64_t)chatId
+				   completion:(void (^)(NSArray *messages))completion;
+- (void)translateMessage:(int64_t)messageId
+				  inChat:(int64_t)chatId
+				 toCode:(NSString *)languageCode
+			  completion:(void (^)(NSString *text))completion;
+- (void)loadSavedMessagesTopics;
+- (void)welcomeMessagesOfChat:(int64_t)chatId
+				   completion:(void (^)(NSArray *welcomes))completion;
+- (void)addWelcomeMessageToChat:(int64_t)chatId
+						   text:(NSString *)text
+					 completion:(void (^)(BOOL ok))completion;
+- (void)setWelcomeMessage:(int64_t)messageId
+				   inChat:(int64_t)chatId
+					 text:(NSString *)text
+			   completion:(void (^)(BOOL ok))completion;
+- (void)deleteWelcomeMessage:(int64_t)messageId inChat:(int64_t)chatId;
+- (void)clearAllWelcomeMessagesInChat:(int64_t)chatId;
+- (void)availableMessageSendersInChat:(int64_t)chatId
+						   completion:(void (^)(NSArray *senders))completion;
+- (void)setMessageSender:(NSDictionary *)sender
+				  inChat:(int64_t)chatId
+			  completion:(void (^)(BOOL ok))completion;
+- (void)deleteChatMessagesByDate:(int64_t)chatId
+						  minDate:(NSInteger)minDate
+						  maxDate:(NSInteger)maxDate
+						   revoke:(BOOL)revoke;
+- (void)deleteChatMessagesBySender:(NSDictionary *)sender
+							inChat:(int64_t)chatId
+							revoke:(BOOL)revoke;
+- (void)labelSavedTag:(NSDictionary *)tag label:(NSString *)label;
+- (void)toggleSavedTopicPinned:(int64_t)topicId pinned:(BOOL)pinned;
+- (void)setPinnedSavedTopics:(NSArray *)topicIds;
+- (void)savedTopicsTags:(int64_t)topicId
+			 completion:(void (^)(NSArray *tags))completion;
+- (void)searchSavedMessagesInTopic:(int64_t)topicId
+							 query:(NSString *)query
+							 tag:(NSDictionary *)tag
+							  from:(int64_t)fromMessageId
+					completion:(void (^)(NSArray *found, int64_t next))completion;
+- (void)clearSavedTopicMessagesBefore:(int64_t)topicId
+							 minDate:(NSInteger)minDate
+							 maxDate:(NSInteger)maxDate;
+- (void)savedTopicMessageAtDate:(int64_t)topicId
+						 date:(NSInteger)date
+					completion:(void (^)(NSDictionary *message))completion;
 
 /// A received formatted message handed back as the markdown its sender
 /// typed: *bold*, `_italic_`, `code` - so Edit edits the origin, not the

@@ -54,6 +54,7 @@ NSDictionary *TGStickerInfo(NSDictionary *sticker);
 @property (nonatomic, strong) NSMutableDictionary *userPhotosById; // id -> photo file id
 @property (nonatomic, strong) NSMutableDictionary *forumSupergroups;
 @property (nonatomic, strong) NSArray *archivedChats;
+@property (nonatomic, strong) NSMutableDictionary *savedTopicsById; // topic id -> row
 @property (nonatomic, strong) NSArray *folders;
 @property (nonatomic, strong) NSDictionary *archiveSettings;
 @property (nonatomic, strong) NSArray *chats;

@@ -15,10 +15,17 @@
 @property (nonatomic, assign) BOOL isGroup;
 /// Non-zero when this is one topic of a forum supergroup.
 @property (nonatomic, assign) int64_t threadId;
+/// The message a link opened this chat to show: scrolled to on the first
+/// load, fetched around if the first page does not carry it.
+@property (nonatomic, assign) int64_t initialMessageId;
 
 /// Run the tap handler for a row, without a touch. Used by
 /// itglegacy://tap/N so playback and viewers can be exercised remotely.
 - (void)simulateTapOnRow:(NSInteger)row;
+
+/// The in-chat search bar opened on a tag the user tapped, collecting the
+/// public wall or this account's saved notes.
+- (void)toggleChatSearchOpenWithTag:(NSString *)tag;
 
 @property (nonatomic, assign, readonly) BOOL isEditingMessages;
 @property (nonatomic, strong, readonly) NSMutableSet *selectedMessageIds;

@@ -188,6 +188,7 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 		if (iCanEdit){
 			[choices addObject:theyAreAdmin ? @"Dismiss as Admin"
 											: @"Promote to Admin"];
+			[choices addObject:@"Clear Their Reactions"];
 			[choices addObject:@"Remove from Group"];
 			[choices addObject:@"Ban"];
 			if (iAmOwner)
@@ -259,6 +260,19 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 	} else if ([action isEqualToString:@"Dismiss as Admin"]){
 		[[TGClient shared] setMember:userId inChat:chatId status:@"member"
 						  completion:report];
+
+	} else if ([action isEqualToString:@"Clear Their Reactions"]){
+		NSDictionary *sender = @{@"@type" : @"messageSenderUser", @"user_id" : @(userId)};
+		[TGAlertSheet showConfirm:
+				@"Every reaction they added in this chat is removed, here "
+				@"and across its messages."
+					title:(name.length ? name : @"Member")
+						   action:@"Clear"
+					  destructive:YES
+						   inView:self.view
+						onConfirm:^{
+			[[TGClient shared] deleteAllReactionsOfSender:sender inChat:chatId];
+		}];
 
 	} else if ([action isEqualToString:@"Remove from Group"]){
 		[[TGClient shared] setMember:userId inChat:chatId status:@"left"
@@ -340,7 +354,13 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 		[items addObject:@{@"title" : @"View with Topics", @"icon" : @"folder"}];
 		[items addObject:@{@"title" : @"Sign Messages", @"icon" : @"edit"}];
 		[items addObject:@{@"title" : @"Join to Send", @"icon" : @"select"}];
+		[items addObject:@{@"title" : @"Welcome Messages", @"icon" : @"edit"}];
+		[items addObject:@{@"title" : @"Clear by Date", @"icon" : @"delete",
+						   @"destructive" : @YES}];
+		[items addObject:@{@"title" : @"Send as", @"icon" : @"user"}];
 	}
+	if ([[TGClient shared] chatIsSavedMessages:self.chatId])
+		[items insertObject:@{@"title" : @"Topics", @"icon" : @"folder"} atIndex:0];
 	if (self.onJumpToDateTapped)
 		[items addObject:@{@"title" : @"Jump to Date", @"icon" : @"folder"}];
 	[items addObject:@{@"title" : @"Auto-delete messages", @"icon" : @"delete"}];
@@ -854,6 +874,55 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 		return;
 	}
 
+	if ([title isEqualToString:@"Topics"]){
+		__weak typeof(self) weakSelf = self;
+		Class topicsClass = NSClassFromString(@"TGSavedTopicsViewController");
+		UIViewController *topics = [[topicsClass alloc] init];
+		if (topics){
+			topics.hidesBottomBarWhenPushed = YES;
+			[weakSelf.navigationController pushViewController:topics animated:YES];
+		}
+		return;
+	}
+
+	if ([title isEqualToString:@"Welcome Messages"]){
+		[self showWelcomeMessagesSheet];
+		return;
+	}
+
+	if ([title isEqualToString:@"Clear by Date"]){
+		__weak typeof(self) weakSelf = self;
+		[TGAlertSheet showChoices:@[@"Older than a week", @"Older than a month",
+									@"Everything older than today"]
+							title:@"Clear by Date"
+				 destructiveIndex:-1
+						   inView:self.view
+						 onChoice:^(NSInteger index){
+			NSTimeInterval now = [[NSDate date] timeIntervalSince1970];
+			NSInteger days = index == 0 ? 7 : (index == 1 ? 30 : 1);
+			NSString *say = [NSString stringWithFormat:
+					@"Everything sent before that is deleted for everyone, "
+					@"if this account may delete it here."];
+			[TGAlertSheet showConfirm:say
+								title:@"Clear by Date"
+							   action:@"Clear"
+						  destructive:YES
+							   inView:weakSelf.view
+							onConfirm:^{
+				[[TGClient shared] deleteChatMessagesByDate:weakSelf.chatId
+													 minDate:(NSInteger)0
+													 maxDate:(NSInteger)(now - days * 86400)
+													  revoke:YES];
+			}];
+		}];
+		return;
+	}
+
+	if ([title isEqualToString:@"Send as"]){
+		[self showSendAsSheet];
+		return;
+	}
+
 	if ([title isEqualToString:@"Permissions"]){
 		int64_t chatId = self.chatId;
 		__weak typeof(self) weakSelf = self;
@@ -1019,6 +1088,169 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 - (void)imagePickerControllerDidCancel:(UIImagePickerController *)picker {
 	self.pickingChatPhoto = NO;
 	[picker dismissViewControllerAnimated:YES completion:nil];
+}
+
+#pragma mark - welcome messages, sent-as, moderation
+
+/// One sheet, everything a welcome message family does: add, edit, delete
+/// all. Text is what this client composes; a media welcome stays TDLib-side.
+- (void)showWelcomeMessagesSheet {
+	__weak typeof(self) weakSelf = self;
+	int64_t chatId = self.chatId;
+	NSString *groupTitle = self.name;
+	[[TGClient shared] welcomeMessagesOfChat:chatId completion:^(NSArray *welcomes){
+		TGProfileViewController *me = weakSelf;
+		if (!me) return;
+
+		NSMutableArray *rows = [NSMutableArray array];
+		NSMutableArray *ids = [NSMutableArray array];
+		for (NSDictionary *w in welcomes){
+			NSString *text = w[@"text"];
+			NSString *preview = text.length
+					? [text substringToIndex:MIN(30, (NSUInteger)text.length)]
+					: @"(not text)";
+			[rows addObject:[NSString stringWithFormat:@"Edit — %@", preview]];
+			[ids addObject:w[@"id"]];
+		}
+		[rows addObject:@"Add"];
+		[rows addObject:@"Delete All"];
+
+		NSMutableArray *choices = rows;
+		NSString *say = welcomes.count
+				? @"The first one a joiner sees."
+				: @"None yet. A new joiner sees the highest one first.";
+		NSInteger destructive = (NSInteger)choices.count - 1;
+		NSString *header = (groupTitle ?: @"Welcome Messages");
+		[TGAlertSheet showChoices:choices
+							title:header
+						 message:say
+				 destructiveIndex:destructive
+						   inView:weakSelf.view
+						 onChoice:^(NSInteger index){
+			NSString *what = choices[index];
+			void (^tellError)(NSString *) = ^(NSString *sayTwo){
+				TGProfileViewController *me = weakSelf;
+				if (me)
+					[TGAlertSheet showMessage:sayTwo
+										title:(groupTitle ?: @"Welcome")
+									   inView:me.view];
+			};
+
+			if ([what isEqualToString:@"Delete All"]){
+				[TGAlertSheet showConfirm:@"Every welcome message this group "
+										  @"has is removed."
+									title:@"Welcome Messages"
+								   action:@"Delete All"
+							  destructive:YES
+								   inView:weakSelf.view
+								onConfirm:^{
+					[[TGClient shared] clearAllWelcomeMessagesInChat:chatId];
+				}];
+				return;
+			}
+			if ([what isEqualToString:@"Add"]){
+				[TGAlertSheet showInput:@"Add Welcome"
+									 message:nil
+								   placeholder:@"A word to the joiner"
+										  text:nil
+										action:@"Add"
+										inView:weakSelf.view
+									  onSubmit:^(NSString *typed){
+					if (!typed.length) return;
+					[[TGClient shared] addWelcomeMessageToChat:chatId
+														  text:typed
+													completion:^(BOOL ok){
+						if (!ok)
+							tellError(@"Telegram refused that. Only an "
+									  @"administrator adds one.");
+					}];
+				}];
+				return;
+			}
+			if (index >= (NSInteger)ids.count)
+				return;
+			NSString *old = welcomes[index][@"text"];
+			// A welcome id answers as a string; both spellings land in one.
+			NSString *welcomeId = [ids[index] isKindOfClass:NSString.class]
+					? ids[index] : [ids[index] stringValue];
+			[TGAlertSheet showInput:@"Edit Welcome"
+								 message:nil
+							   placeholder:old ?: @"A word to the joiner"
+									  text:old
+									action:@"Save"
+									inView:weakSelf.view
+								  onSubmit:^(NSString *typed){
+				if (!typed.length) return;
+				[[TGClient shared] setWelcomeMessage:[welcomeId longLongValue]
+											   inChat:chatId
+												 text:typed
+										  completion:^(BOOL ok){
+					if (!ok)
+						tellError(@"Telegram refused that.");
+				}];
+			}];
+		}];
+	}];
+}
+
+/// The switch Telegram offers channel owners: post under yourself, or as
+/// one of the other accounts you own.
+- (void)showSendAsSheet {
+	__weak typeof(self) weakSelf = self;
+	int64_t chatId = self.chatId;
+	NSString *chatTitle = self.name;
+	[[TGClient shared] availableMessageSendersInChat:chatId completion:^(NSArray *senders){
+		TGProfileViewController *me = weakSelf;
+		if (!me)
+			return;
+		if (!senders.count){
+			[TGAlertSheet showMessage:@"Only a chat you may post in carries a "
+									  @"Send-as switch."
+									title:@"Send as"
+								   inView:me.view];
+			return;
+		}
+		NSMutableArray *rows = [NSMutableArray array];
+		for (NSDictionary *s in senders){
+			NSString *who = nil;
+			NSString *userId = s[@"user_id"];
+			if (userId)
+				who = [[TGClient shared] nameForUserId:[userId longLongValue]];
+			if (!who.length && s[@"chat_id"])
+				who = [[TGClient shared] titleForChat:
+						[s[@"chat_id"] longLongValue]];
+			NSString *line = who.length ? who : @"chat";
+			NSString *current = [s[@"is_current"] boolValue] ? @" — now" : @"";
+			[rows addObject:[line stringByAppendingString:current]];
+		}
+		[TGAlertSheet showChoices:rows
+							title:@"Send as"
+						 message:@"What you post here posts under that name."
+				 destructiveIndex:-1
+						   inView:weakSelf.view
+						 onChoice:^(NSInteger index){
+			NSDictionary *sender = senders[index];
+			[[TGClient shared] setMessageSender:sender inChat:chatId
+									 completion:^(BOOL ok){
+				TGProfileViewController *me = weakSelf;
+				if (!ok && me)
+					[TGAlertSheet showMessage:@"Telegram refused that."
+										title:(chatTitle ?: @"Send as")
+									   inView:me.view];
+			}];
+		}];
+	}];
+}
+
+/// A member's dict turned into what a delete call names as its sender.
+static NSDictionary *TGSenderFromMember(NSDictionary *member){
+	NSString *userId = member[@"user_id"] ?: member[@"id"];
+	NSString *chatId = member[@"chat_id"] ?: member[@"sender_chat_id"];
+	if (userId)
+		return @{@"@type" : @"messageSenderUser", @"user_id" : userId};
+	if (chatId)
+		return @{@"@type" : @"messageSenderChat", @"chat_id" : chatId};
+	return nil;
 }
 
 @end

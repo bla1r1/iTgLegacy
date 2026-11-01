@@ -69,6 +69,16 @@
 	NSString *passwordDetail = !weakSelf.passwordKnown ? @"..."
 			: (weakSelf.hasPassword ? @"On" : @"Off");
 
+	NSString *deleteLabel;
+	NSInteger ttl = weakSelf.autoDeleteDefault;
+	if (ttl < 0)         deleteLabel = @"...";
+	else if (ttl == 0)   deleteLabel = @"Off";
+	else if (ttl == 86400)     deleteLabel = @"1 day";
+	else if (ttl == 604800)    deleteLabel = @"1 week";
+	else if (ttl == 2592000)   deleteLabel = @"1 month";
+	else                 deleteLabel = [NSString stringWithFormat:@"%ld days",
+									 (long)(ttl / 86400)];
+
 	return @[
 		TGSection(@"Security", nil, @[
 			TGTapRow(@"Two-Step Verification", passwordDetail, ^{
@@ -81,6 +91,23 @@
 			}),
 			TGTapRow(@"Blocked Users", nil, ^{
 				[weakSelf openPage:TGSettingsPageBlocked];
+			}),
+		]),
+
+		TGSection(nil, @"New chats carry this timer until one of the two "
+				  @"of you sets an auto-delete on that chat in particular.",
+				  @[
+			TGTapRow(@"Delete Messages By Default", deleteLabel, ^{
+				[TGAlertSheet showChoices:@[@"Off", @"1 day", @"1 week", @"1 month"]
+									title:@"Delete messages in new chats after"
+						 destructiveIndex:-1
+								   inView:weakSelf.view
+								 onChoice:^(NSInteger index){
+					static const NSInteger seconds[4] = {0, 86400, 604800, 2592000};
+					[[TGClient shared] setDefaultMessageAutoDeleteTime:seconds[index]];
+					weakSelf.autoDeleteDefault = seconds[index];
+					[weakSelf rebuild];
+				}];
 			}),
 		]),
 

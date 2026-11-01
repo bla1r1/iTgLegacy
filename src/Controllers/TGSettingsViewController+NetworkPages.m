@@ -53,6 +53,33 @@ static NSString *TGChatNameForId(NSNumber *chatId) {
 					[weakSelf rebuild];
 				}];
 			}),
+			TGRedRow(@"Clear All Drafts", ^{
+				[TGAlertSheet showConfirm:@"Every chat's draft is dropped, the ones "
+										  @"typed here and the ones typed on other devices."
+									title:@"Clear All Drafts"
+								   action:@"Clear"
+							  destructive:YES
+								   inView:weakSelf.view
+								onConfirm:^{
+					[[TGClient shared] clearAllDraftMessages];
+					[weakSelf toast:@"Drafts cleared."];
+				}];
+			}),
+			TGRedRow(@"Clear Call History", ^{
+				[TGAlertSheet showConfirm:@"Every call in the account's history is "
+										  @"gone, on every device."
+									title:@"Call History"
+								   action:@"Clear"
+							  destructive:YES
+								   inView:weakSelf.view
+								onConfirm:^{
+					[[TGClient shared] clearAllCallMessages];
+					[weakSelf toast:@"Call history cleared."];
+				}];
+			}),
+			TGTapRow(@"My Sent Files", nil, ^{
+				[weakSelf showSentFilesSheet];
+			}),
 		]),
 
 		TGSection(@"Automatic media download",
@@ -589,6 +616,47 @@ static NSString *TGChatNameForId(NSNumber *chatId) {
 		[files removeItemAtPath:path error:nil];
 	}
 	[self toast:[NSString stringWithFormat:@"Freed %@", TGBytes(freed)]];
+}
+
+/// Everything this account sent as a file, one sheet: name, size and the
+/// day, and the chat it lives in if the list knows it.
+- (void)showSentFilesSheet {
+	__weak typeof(self) weakSelf = self;
+	[[TGClient shared] sentDocuments:nil completion:^(NSArray *messages){
+		TGSettingsViewController *me = weakSelf;
+		if (!me) return;
+		if (!messages.count){
+			[weakSelf toast:@"No files sent yet."];
+			return;
+		}
+		NSMutableArray *rows = [NSMutableArray array];
+		for (NSDictionary *m in messages){
+			NSString *name = (m[@"content"] ?: @{})[@"document"][@"file_name"];
+			NSString *line = name.length ? name : @"File";
+			NSString *chat = [[TGClient shared] titleForChat:
+					[m[@"chat_id"] longLongValue]];
+			if (chat.length)
+				line = [line stringByAppendingFormat:@" — %@", chat];
+			[rows addObject:line];
+		}
+		[TGAlertSheet showChoices:rows
+							title:@"My Sent Files"
+				 destructiveIndex:-1
+						   inView:me.view
+						 onChoice:^(NSInteger index){
+			if (index >= (NSInteger)messages.count)
+				return;
+			NSDictionary *m = messages[index];
+			NSString *title = [[TGClient shared] titleForChat:
+					[m[@"chat_id"] longLongValue]] ?: @"Chat";
+			Class chatClass = NSClassFromString(@"TGChatViewController");
+			UIViewController *chat = [[chatClass alloc] init];
+			[chat setValue:m[@"chat_id"] forKey:@"chatId"];
+			[chat setValue:title forKey:@"chatTitle"];
+			chat.hidesBottomBarWhenPushed = YES;
+			[weakSelf.navigationController pushViewController:chat animated:YES];
+		}];
+	}];
 }
 
 @end

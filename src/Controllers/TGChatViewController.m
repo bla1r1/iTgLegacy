@@ -776,7 +776,7 @@
 /// A day to go to: the last message sent on or before the end of it.
 - (void)showJumpToDateSheet {
 	TGSheet *sheet = [TGSheet sheetForView:self.view.window ?: self.view];
-	UIView *card = [sheet addCardOfHeight:TGMetricRow + TGMetricPickerHeight edgeToEdge:YES];
+	UIView *card = [sheet addCardOfHeight:TGMetricRow * 2 + TGMetricPickerHeight edgeToEdge:YES];
 	UIDatePicker *picker = [[UIDatePicker alloc] initWithFrame:
 			CGRectMake(0, TGMetricRow, card.bounds.size.width, TGMetricPickerHeight)];
 	picker.datePickerMode = UIDatePickerModeDate;
@@ -791,10 +791,33 @@
 		[[UIBarButtonItem alloc] initWithTitle:@"Go" style:UIBarButtonItemStyleDone
 				target:self action:@selector(jumpToDateCommit:)],
 	];
-	[card addSubview:bar];
+	UILabel *countLabel = [[UILabel alloc] initWithFrame:CGRectMake(
+			TGMetricPad, TGMetricRow + TGMetricPickerHeight - TGMetricPad,
+			card.bounds.size.width - TGMetricPad - TGMetricPad, TGMetricRow)];
+	countLabel.font = TGFontCaption();
+	countLabel.textColor = [[TGTheme shared] secondaryTextColour];
+	countLabel.text = @"counting...";
+	[card addSubview:countLabel];
+	self.pickCountLabel = countLabel;
 	self.pickPicker = picker;
 	self.pickSheet = sheet;
 	[sheet present];
+
+	// The one number the sheet never knew: how big this chat carries. A
+	// folder applies its own answer, so the chat itself is asked.
+	NSString *line = self.chatTitle ?: @"This chat";
+	__weak typeof(self) weakSelf = self;
+	[[TGClient shared] messageCountInChat:self.chatId thread:self.threadId
+			completion:^(NSInteger count){
+		NSString *say = count > 0
+				? [NSString stringWithFormat:@"%@: %ld messages total",
+								   line, (long)count]
+				: [NSString stringWithFormat:@"%@: no server answer", line];
+		TGChatViewController *me = weakSelf ? weakSelf : nil;
+		if (!me || !me.pickCountLabel)
+			return;
+		me.pickCountLabel.text = say;
+	}];
 }
 
 - (void)jumpToDateCommit:(UIBarButtonItem *)sender {
@@ -809,13 +832,19 @@
 	c.hour = 23; c.minute = 59; c.second = 59;
 	NSTimeInterval end = [[calendar dateFromComponents:c] timeIntervalSince1970];
 	__weak typeof(self) weakSelf = self;
-	[[TGClient shared] messageAtDate:end inChat:self.chatId completion:^(NSDictionary *m){
+	// One stop instead of two: the calendar answers both the message to
+	// land on and how many the chat has carried all along.
+	[[TGClient shared] calendarJumpForChat:self.chatId
+									endDate:(NSInteger)end
+								completion:^(int64_t messageId, NSInteger total){
 		TGChatViewController *me = weakSelf;
-		if (!m) {
-			[TGSnackbar showInView:me.view text:@"Nothing that old in this chat" seconds:2 onCommit:nil];
+		if (!me || !messageId){
+			[TGSnackbar showInView:me.view
+							  text:@"Nothing that old in this chat"
+						   seconds:2 onCommit:nil];
 			return;
 		}
-		[me showMessageId:[m[@"id"] longLongValue] gone:@"That message is gone"];
+		[me showMessageId:messageId gone:@"That message is gone"];
 	}];
 }
 
