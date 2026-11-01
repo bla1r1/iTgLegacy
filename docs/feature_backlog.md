@@ -11,16 +11,16 @@ sh scripts/tdlib_coverage.sh --skipped  # missing functions, on purpose
 sh scripts/tdlib_coverage.sh --updates  # dropped updates worth reading
 ```
 
-As of 2026-10-31:
+As of 2026-11-01:
 
 | | declared | covered | gap | of it wanted | out of scope |
 |---|---|---|---|---|---|
-| functions | 1076 | 232 (21%) | 844 | 344 | 500 |
-| updates | 197 | 66 (33%) | 131 | 56 | 75 |
+| functions | 1076 | 249 (23%) | 827 | 327 | 500 |
+| updates | 197 | 117 (59%) | 80 | 0 | 80 |
 
 Functions are counted from string literals in `src/`, updates from the one list in `src/Core/TGUpdateType.h` — anything outside it is thrown away in the receive loop before a Foundation tree is built, so a dropped update leaves no trace in the log either. Both numbers are floors. Where this file and ROADMAP.md disagree, the roadmap wins — it knows the device.
 
-The two halves are not comparable: 1076 functions include every bot, Stars, business and TON call, while the 197 updates are the live state of a client that is running. Updates are the weaker number of the two and the cheaper one to move — Tier 0 below is closed but for the global unread total.
+The two halves are not comparable: 1076 functions include every bot, Stars, business and TON call, while the 197 updates are the live state of a client that is running. Updates are the weaker number of the two and the cheaper one to move — Tier 0 below is closed, the global unread total drives the app-icon badge now.
 
 ---
 
@@ -104,7 +104,7 @@ A missing function is a button that isn't there. A dropped update is a screen th
 | `updateMessageEdited` | No "edited" mark until the history was re-read | **done** — re-reads the open chat |
 | `updateMessageIsPinned` | Pinned banner showed what was pinned when the chat opened | **done** — re-reads the open chat |
 | `updateMessageContentOpened` | Voice note kept its unplayed dot after the other side played it | **done** — re-reads the open chat |
-| `updateChatIsMarkedAsUnread` | Mark-as-unread from another device never arrived | **done**. `updateUnreadMessageCount` (the global total) — open, nothing draws it yet |
+| `updateChatIsMarkedAsUnread` | Mark-as-unread from another device never arrived | **done**. `updateUnreadMessageCount` (the global total) — **done**: the unmuted main-list total drives the app-icon badge from `TGUnreadTotalChangedNotification`; a folder's slice does not shrink the badge |
 | `updateFileAddedToDownloads`, `updateFileDownload`, `updateFileDownloads`, `updateFileRemovedFromDownloads` | Settings → Downloads was built from one `searchFileDownloads` answer and never moved | **done** — `TGDownloadsChangedNotification`, list re-read 0.3 s after the burst |
 | `updateOption` | Limits and the clock were read once at sign-in and never corrected | **done** — `TGOptionStore` (C++); `unix_time` now grades chat-list dates |
 
@@ -112,7 +112,7 @@ A missing function is a button that isn't there. A dropped update is a screen th
 
 Full info for every sender type: `updateUserFullInfo`, `updateBasicGroup`, `updateBasicGroupFullInfo`, `updateSupergroupFullInfo` — **done**. They post `TGFullInfoChangedNotification` with the peer's kind and id, and an open profile re-reads its details instead of needing a reopen. A group profile holds the chat id rather than the supergroup id, so any group's full info re-reads a group profile: one request, against caching a mapping for no gain.
 
-Counters and reactions on a message: `updateMessageInteractionInfo` — **done**, through the batcher: a dirty message marks its chat, and the 100 ms window delivers one nudge per chat however many messages in it moved, so a crowd reacting to a channel post costs one history re-read rather than twenty. `updateMessageReaction` and `updateMessageReactions` (who reacted, not how many) are still open and only matter once the app shows a reactor list.
+Counters and reactions on a message: `updateMessageInteractionInfo` — **done**, through the batcher: a dirty message marks its chat, and the 100 ms window delivers one nudge per chat however many messages in it moved, so a crowd reacting to a channel post costs one history re-read rather than twenty. `updateMessageReaction` and `updateMessageReactions` (who reacted, not how many) ride the same coalescer now, so the open chat sees a reaction land and unfresh itself without a re-open; the reactor list screen is separate and still missing.
 
 Group administration — **done**. `updateChatMember`, `updateChatPendingJoinRequests` and `updateNewChatJoinRequest` post `TGChatMembersChangedNotification` with the chat id; `updateChatPermissions`, `updateChatMessageAutoDeleteTime` and `updateChatOnlineMemberCount` are chat fields, merged in `applyChatUpdate` and announced as a full record of kind "chat". An open group profile re-reads either way.
 
@@ -120,40 +120,33 @@ Chat list placement: `updateChatAddedToList`, `updateChatRemovedFromList` — **
 
 Stickers and GIFs: `updateInstalledStickerSets`, `updateRecentStickers`, `updateFavoriteStickers`, `updateSavedAnimations`, `updateTrendingStickerSets`, `updateStickerSet` — **done**. Six lists, one notification, because the panel asks for whichever tab it is showing; installing a set fires several at once so the re-read waits out the burst.
 
-Notifications: `updateScopeNotificationSettings` and `updateChatDefaultDisableNotification` — **done**, one notification, the settings page re-reads all three scopes. Still open, and only needed once notifications are drawn locally rather than by APNs: `updateNotification`, `updateNotificationGroup`, `updateActiveNotifications`, `updateHavePendingNotifications`.
+Notifications: `updateScopeNotificationSettings` and `updateChatDefaultDisableNotification` — **done**, one notification, the settings page re-reads all three scopes. `updateReactionNotificationSettings` and `updateSavedNotificationSounds` ride the same announcement. Still marked — served, but nothing to land on until notifications are drawn locally rather than by APNs, which is the work left: `updateNotification`, `updateNotificationGroup`, `updateActiveNotifications`, `updateHavePendingNotifications` are explicit no-op rows in the dispatch, each with its name.
 
 Forum topics — **done**: `updateForumTopic`, `updateForumTopicInfo` (whose chat id is nested in the info) and `updateTopicMessageCount` all name their chat, and an open topics list re-reads itself.
 
 Polls: `updateChatUnreadPollVoteCount` and `updateMessageContainsUnreadPollVotes` — **done**, the chat keeps the count and the message goes through the coalescer. `updatePoll` and `updatePollAnswer` turned out to be marked "for bots only" in td_api and are now counted out of scope — a poll a user can see changes through `updateMessageContent`.
 
-Service traffic an official client is expected to show: `updateServiceNotification`, `updateTermsOfService`, `updateUnconfirmedSession`, `updateUserPrivacySettingRules`, `updateFreezeState`.
+Service traffic an official client is expected to show: `updateServiceNotification`, `updateTermsOfService`, `updateUnconfirmedSession`, `updateUserPrivacySettingRules`, `updateFreezeState` — in the dispatch as marked no-ops; the settings screens re-read each per open, so the first three would be fresh if drawn, and nothing draws service posts or a TOS review sheet yet, which is the work, not the update.
 
-Also here: `updateActiveLiveLocationMessages` (live location is shipped), `updateChatAvailableReactions`, `updateDefaultReactionType`, `updateChatBlockList`, `updateChatHasScheduledMessages`, `updateChatViewAsTopics`, `updateLanguagePackStrings`, `updateMessageReaction` and `updateMessageReactions` (who reacted, not how many — wanted once there is a reactor list to show).
+Also here, **done** since the second wave: `updateActiveLiveLocationMessages` (every running live location nudges its chat), `updateChatAvailableReactions`, `updateChatBlockList`, `updateChatHasScheduledMessages`, `updateChatViewAsTopics`, `updateChatIsTranslatable`, `updateChatHasProtectedContent` and the rest of the chat-field wave — merged into the row through `applyChatUpdate` and announced as a full record of kind "chat", so an open profile re-reads; `updateSpeedLimitNotification` posts the downloads-round announcement; `updateChatJoinResult` lands next to the other membership updates. `updateDefaultReactionType` and `updateLanguagePackStrings` are marked no-ops — no reaction picker, and one language ships.
 
 ## Tier 2 — wanted, nobody blocked
 
-Accent colours, chat themes and backgrounds, saved-messages topics and tags, welcome messages, message sender switching, close birthdays, notification sounds, autosave settings, translation flags, `updateChatReplyMarkup`, `updateSpeedLimitNotification`. Run `--updates` and pick from it when Tier 0 and 1 are closed.
+Accent colours, chat themes and backgrounds, saved-messages topics and tags, welcome messages, message sender switching, close birthdays, notification sounds, autosave settings, translation flags, `updateChatReplyMarkup`, `updateSpeedLimitNotification` — **done as a wave**: every update the sample wants is in the filter now, with the ones that have a reader merged or nudged and the rest explicit no-op markers in the dispatch. What remains is screens, not updates: run `sh scripts/tdlib_coverage.sh --updates` to watch it stay at zero.
 
 ## Tier 3 — out of scope
 
-73 dropped updates match the `SKIP` pattern in `scripts/tdlib_coverage.sh`: stories, group and video calls, business accounts, TON wallet, Stars and paid reactions, gifts and auctions, boosts, quick replies, mini-app and web-browser plumbing, plus every `updateNew*Query` — those only ever reach a bot account, never this one.
+80 dropped updates match the `SKIP` pattern in `scripts/tdlib_coverage.sh`: stories, group and video calls, business accounts, TON wallet, Stars and paid reactions, gifts and auctions, boosts, quick replies, mini-app and web-browser plumbing, plus every `updateNew*Query` — those only ever reach a bot account, never this one.
 
-Two more are dropped deliberately rather than by pattern: `updateFileGenerationStart` / `updateFileGenerationStop` (the app never asks TDLib to generate a file) and `updateMessageSendAcknowledged` (a flattened message has no state between pending and sent, so there is nothing to draw).
+Four more joined the pattern deliberately rather than through a screen: `updateMessageSendAcknowledged` (a flattened message has no state between pending and sent, so there is nothing to draw), `updateFileGenerationStart` / `updateFileGenerationStop` (the app never asks TDLib to generate a file), `updateActiveEmojiReactions` (the reaction picker's list — no picker) and `updatePendingMessage` (a bot's streaming draft — no bot surface).
 
 ## Pick these first
 
-Tier 0 is closed except the global unread total. Next, in this order:
+The update half of this file is closed: Tier 0 done through the badge, Tier 1 and Tier 2 either merged, nudged or marked. What is left is not updates — it is the screens the markers name, in this order:
 
-Tier 1 is down to what has no screen to land on. In order:
-
-1. `updateChatBlockList` + `updateChatHasScheduledMessages` + `updateChatViewAsTopics` + `updateChatAvailableReactions` — four more chat fields through `applyChatUpdate`, the same shape as the last batch.
-2. `updateActiveLiveLocationMessages` — live location is shipped and its list is fetched once.
-3. `updateUserPrivacySettingRules` + `updateUnconfirmedSession` + `updateFreezeState` — settings screens read them per open.
-4. `updateServiceNotification` + `updateTermsOfService` — nothing draws them yet, which is the work, not the update.
-5. `updateUnreadMessageCount` — needs the app-icon badge drawn first, same.
-6. `updateLanguagePackStrings` — only matters once the app ships more than one language.
-
-Bot keyboards, once the largest feature hole, are in (see Tier 1).
+1. `updateServiceNotification` + `updateTermsOfService` — the only markers a user is meant to *see*; the sheet is the work.
+2. Local notification drawing (`updateNotification`, `updateNotificationGroup`, `updateActiveNotifications`, `updateHavePendingNotifications`) — replaces APNs as the delivery path.
+3. The functions half below, still 327 wide — pick from `--relevant` with the app in hand.
 
 ---
 

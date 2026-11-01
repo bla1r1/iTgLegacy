@@ -1406,6 +1406,41 @@ static NSDictionary *TGFolderObject(NSString *name, NSString *icon,
 		info[@"unreadPollVotes"] = update[@"unread_poll_vote_count"];
 	if (update[@"default_disable_notification"])
 		info[@"defaultSilent"] = update[@"default_disable_notification"];
+	// Fields the list does not draw yet, kept true in the row all the same:
+	// the flag arrives update-side and the screen that starts reading one
+	// re-reads on TGFullInfoChangedNotification without another merge. The
+	// object fields follow the photo pattern - the object sets it, the
+	// update's own type arriving cleans it, because a null clears there.
+	if ([update[@"block_list"] isKindOfClass:NSDictionary.class])
+		info[@"blockList"] = update[@"block_list"];
+	else if ([update[@"@type"] isEqualToString:@"updateChatBlockList"])
+		[info removeObjectForKey:@"blockList"];
+	if (update[@"has_protected_content"])
+		info[@"hasProtectedContent"] = update[@"has_protected_content"];
+	if (update[@"has_scheduled_messages"])
+		info[@"hasScheduledMessages"] = update[@"has_scheduled_messages"];
+	if (update[@"view_as_topics"])
+		info[@"viewAsTopics"] = update[@"view_as_topics"];
+	if (update[@"is_translatable"])
+		info[@"isTranslatable"] = update[@"is_translatable"];
+	if (update[@"has_welcome_messages"])
+		info[@"hasWelcomeMessages"] = update[@"has_welcome_messages"];
+	if ([update[@"available_reactions"] isKindOfClass:NSDictionary.class])
+		info[@"availableReactions"] = update[@"available_reactions"];
+	else if ([update[@"@type"] isEqualToString:@"updateChatAvailableReactions"])
+		[info removeObjectForKey:@"availableReactions"];
+	if (update[@"theme"])
+		info[@"chatTheme"] = update[@"theme"];
+	if (update[@"accent_color_id"])
+		info[@"accentColorId"] = update[@"accent_color_id"];
+	if (update[@"message_sender_id"])
+		info[@"messageSender"] = update[@"message_sender_id"];
+	if ([update[@"background"] isKindOfClass:NSDictionary.class])
+		info[@"chatBackground"] = update[@"background"];
+	else if ([update[@"@type"] isEqualToString:@"updateChatBackground"])
+		[info removeObjectForKey:@"chatBackground"];
+	if (update[@"welcome_messages"])
+		info[@"welcomeMessages"] = update[@"welcome_messages"];
 	// Removed from a list: the order for that list is gone, and without
 	// clearing it the row stays on the strip it was just taken off. A chat
 	// added to a list carries no order yet - its position follows.

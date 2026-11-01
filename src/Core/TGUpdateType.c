@@ -13,8 +13,9 @@ static const TGUpdateEntry kTGUpdateEntries[] = {
 #undef TG_UPDATE_TABLE_ROW
 };
 
-// ponytail: linear scan over 23 names, length compared first so almost every
-// row costs one integer compare. A perfect hash earns its keep past a hundred.
+// ponytail: linear scan over the handled names, length compared first so
+// almost every row costs one integer compare. A perfect hash earns its keep
+// if this ever gets deep enough to be measured.
 TGUpdateType TGUpdateTypeFor(const char *name, size_t len) {
 	if (!name || !len)
 		return TGUpdateUnknown;

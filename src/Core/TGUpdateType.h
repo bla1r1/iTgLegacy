@@ -7,6 +7,11 @@
 // needs an enum member, and the enum comes from this list - so an update
 // cannot be dispatched without also being let through the filter.
 //
+// The list grew a second wave: chat fields kept true in the row,
+// message-level nudges, the global unread total, and the no-op markers each
+// named in the dispatch below TGClient.m's handleUpdate - every one points
+// at a screen the app does not draw yet.
+//
 #pragma once
 #include <stddef.h>
 
@@ -77,7 +82,57 @@
 	X(TGUpdateChatActionBar,          "updateChatActionBar") \
 	X(TGUpdateChatFolders,            "updateChatFolders") \
 	X(TGUpdateUnreadChatCount,        "updateUnreadChatCount") \
-	X(TGUpdateChatReplyMarkup,        "updateChatReplyMarkup")
+	X(TGUpdateChatReplyMarkup,        "updateChatReplyMarkup") \
+	X(TGUpdateChatBlockList,          "updateChatBlockList") \
+	X(TGUpdateChatHasProtectedContent, "updateChatHasProtectedContent") \
+	X(TGUpdateChatHasScheduledMessages, "updateChatHasScheduledMessages") \
+	X(TGUpdateChatViewAsTopics,       "updateChatViewAsTopics") \
+	X(TGUpdateChatIsTranslatable,     "updateChatIsTranslatable") \
+	X(TGUpdateChatHasWelcomeMessages, "updateChatHasWelcomeMessages") \
+	X(TGUpdateChatAvailableReactions, "updateChatAvailableReactions") \
+	X(TGUpdateChatTheme,              "updateChatTheme") \
+	X(TGUpdateChatAccentColors,       "updateChatAccentColors") \
+	X(TGUpdateChatMessageSender,      "updateChatMessageSender") \
+	X(TGUpdateChatWelcomeMessages,    "updateChatWelcomeMessages") \
+	X(TGUpdateChatBackground,         "updateChatBackground") \
+	X(TGUpdateMessageReaction,        "updateMessageReaction") \
+	X(TGUpdateMessageReactions,       "updateMessageReactions") \
+	X(TGUpdateMessageLiveLocationViewed, "updateMessageLiveLocationViewed") \
+	X(TGUpdateAnimatedEmojiMessageClicked, "updateAnimatedEmojiMessageClicked") \
+	X(TGUpdateActiveLiveLocationMessages, "updateActiveLiveLocationMessages") \
+	X(TGUpdateChatJoinResult,         "updateChatJoinResult") \
+	X(TGUpdateReactionNotificationSettings, "updateReactionNotificationSettings") \
+	X(TGUpdateSavedNotificationSounds, "updateSavedNotificationSounds") \
+	X(TGUpdateSpeedLimitNotification, "updateSpeedLimitNotification") \
+	X(TGUpdateUnreadMessageCount,     "updateUnreadMessageCount") \
+	X(TGUpdateActiveNotifications,    "updateActiveNotifications") \
+	X(TGUpdateNotification,           "updateNotification") \
+	X(TGUpdateNotificationGroup,      "updateNotificationGroup") \
+	X(TGUpdateHavePendingNotifications, "updateHavePendingNotifications") \
+	X(TGUpdateServiceNotification,    "updateServiceNotification") \
+	X(TGUpdateTermsOfService,         "updateTermsOfService") \
+	X(TGUpdateUnconfirmedSession,     "updateUnconfirmedSession") \
+	X(TGUpdateFreezeState,            "updateFreezeState") \
+	X(TGUpdateUserPrivacySettingRules, "updateUserPrivacySettingRules") \
+	X(TGUpdateAgeVerificationParameters, "updateAgeVerificationParameters") \
+	X(TGUpdateApplicationVerificationRequired, "updateApplicationVerificationRequired") \
+	X(TGUpdateApplicationRecaptchaVerificationRequired, "updateApplicationRecaptchaVerificationRequired") \
+	X(TGUpdateUserSubscription,       "updateUserSubscription") \
+	X(TGUpdateAutosaveSettings,       "updateAutosaveSettings") \
+	X(TGUpdateLanguagePackStrings,    "updateLanguagePackStrings") \
+	X(TGUpdateAccentColors,           "updateAccentColors") \
+	X(TGUpdateProfileAccentColors,    "updateProfileAccentColors") \
+	X(TGUpdateDefaultBackground,      "updateDefaultBackground") \
+	X(TGUpdateDefaultReactionType,    "updateDefaultReactionType") \
+	X(TGUpdateEmojiChatThemes,        "updateEmojiChatThemes") \
+	X(TGUpdateAnimationSearchParameters, "updateAnimationSearchParameters") \
+	X(TGUpdateAvailableMessageEffects, "updateAvailableMessageEffects") \
+	X(TGUpdateContactCloseBirthdays,  "updateContactCloseBirthdays") \
+	X(TGUpdateSavedMessagesTopic,     "updateSavedMessagesTopic") \
+	X(TGUpdateSavedMessagesTopicCount, "updateSavedMessagesTopicCount") \
+	X(TGUpdateSavedMessagesTags,      "updateSavedMessagesTags") \
+	X(TGUpdateStopMessageDraft,       "updateStopMessageDraft") \
+	X(TGUpdateVideoPublished,         "updateVideoPublished")
 
 typedef enum {
 	TGUpdateUnknown = 0,

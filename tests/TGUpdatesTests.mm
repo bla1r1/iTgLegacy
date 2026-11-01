@@ -429,4 +429,161 @@ static NSMutableDictionary *info(TGClient *c, int64_t chatId) {
 	XCTAssertEqualObjects(chats, (@[@(24), @(25), @(26)]));
 }
 
+// ─── chat fields, reactions, the global unread total ─────────────────────────
+
+- (void)testChatFields_MergeIntoTheRowAndTellAnOpenProfile {
+	TGClient *c = U();
+	NSMutableArray *kinds = [NSMutableArray array];
+	id token = [[NSNotificationCenter defaultCenter]
+			addObserverForName:TGFullInfoChangedNotification object:nil
+			queue:nil usingBlock:^(NSNotification *n){
+		[kinds addObject:@[n.userInfo[@"kind"], n.userInfo[@"id"]]];
+	}];
+
+	[c handleUpdate:@{@"@type" : @"updateChatHasProtectedContent",
+					  @"chat_id" : @(30), @"has_protected_content" : @YES}];
+	[c handleUpdate:@{@"@type" : @"updateChatHasScheduledMessages",
+					  @"chat_id" : @(30), @"has_scheduled_messages" : @YES}];
+	[c handleUpdate:@{@"@type" : @"updateChatViewAsTopics",
+					  @"chat_id" : @(30), @"view_as_topics" : @NO}];
+	[c handleUpdate:@{@"@type" : @"updateChatIsTranslatable",
+					  @"chat_id" : @(30), @"is_translatable" : @YES}];
+	[c handleUpdate:@{@"@type" : @"updateChatTheme", @"chat_id" : @(30),
+					  @"theme" : @{@"@type" : @"chatTheme", @"theme_name" : @"day"}}];
+	[c handleUpdate:@{@"@type" : @"updateChatMessageSender", @"chat_id" : @(30),
+					  @"message_sender_id" : @{@"@type" : @"messageSenderUser",
+											   @"user_id" : @(3)}}];
+	// A null block list is an unblock: the row has to lose the old value,
+	// the way a removed photo clears the avatar.
+	[c handleUpdate:@{@"@type" : @"updateChatBlockList", @"chat_id" : @(31),
+					  @"block_list" : @{@"@type" : @"blockListMain"}}];
+	[c handleUpdate:@{@"@type" : @"updateChatBlockList", @"chat_id" : @(31)}];
+
+	[[NSNotificationCenter defaultCenter] removeObserver:token];
+	NSMutableDictionary *chat = c.chatsById[@(30)];
+	XCTAssertEqualObjects(chat[@"hasProtectedContent"], @YES);
+	XCTAssertEqualObjects(chat[@"hasScheduledMessages"], @YES);
+	XCTAssertEqualObjects(chat[@"viewAsTopics"], @NO);
+	XCTAssertEqualObjects(chat[@"isTranslatable"], @YES);
+	XCTAssertEqualObjects(chat[@"chatTheme"][@"theme_name"], @"day");
+	XCTAssertEqualObjects(chat[@"messageSender"][@"user_id"], @(3));
+	XCTAssertNil(c.chatsById[@(31)][@"blockList"]);   // unblocked: gone, not YES
+	// One announcement per update, each pointing at its chat.
+	XCTAssertTrue(kinds.count >= 7, @"kinds: %@", kinds);
+}
+
+- (void)testMessageReactions_CoalesceIntoOneNudgePerChat {
+	TGClient *c = U();
+	NSMutableArray *nudged = [NSMutableArray array];
+	c.onMessage = ^(int64_t chatId, NSDictionary *message, int64_t deletedId){
+		if (!message && deletedId == 0) [nudged addObject:@(chatId)];
+	};
+
+	// A burst of reaction activity on several messages of one chat.
+	for (int i = 0; i < 5; i++){
+		[c handleUpdate:@{@"@type" : @"updateMessageReactions",
+						  @"chat_id" : @(40), @"message_id" : @(100 + i),
+						  @"reactions" : @[@{@"@type" : @"messageReaction",
+											 @"reaction_type" : @{@"@type" : @"reactionTypeEmoji",
+																  @"emoji" : @"🔥"}}]}];
+	}
+	[c handleUpdate:@{@"@type" : @"updateMessageReaction", @"chat_id" : @(40),
+					  @"message_id" : @(100), @"date" : @(1700000000),
+					  @"actor_id" : @{@"@type" : @"messageSenderUser", @"user_id" : @(9)},
+					  @"old_reaction_types" : @[], @"new_reaction_types" : @[]}];
+	[c handleUpdate:@{@"@type" : @"updateMessageLiveLocationViewed",
+					  @"chat_id" : @(40), @"message_id" : @(600)}];
+	// The second chat's nudge is separate.
+	[c handleUpdate:@{@"@type" : @"updateAnimatedEmojiMessageClicked",
+					  @"chat_id" : @(41), @"message_id" : @(700),
+					  @"emoji" : @"🍫", @"sticker" : @{@"@type" : @"file", @"id" : @(1)}}];
+	[c.updateCoalescer flushNow];
+	c.onMessage = nil;
+
+	// Seven message-level updates, two chats, two nudges after the window.
+	XCTAssertEqual(nudged.count, (NSUInteger)2);
+	XCTAssertTrue([nudged containsObject:@(40)] && [nudged containsObject:@(41)]);
+}
+
+- (void)testActiveLiveLocationMessages_NudgeEachRidingChat {
+	TGClient *c = U();
+	NSMutableArray *nudged = [NSMutableArray array];
+	c.onMessage = ^(int64_t chatId, NSDictionary *message, int64_t deletedId){
+		if (!message && deletedId == 0) [nudged addObject:@(chatId)];
+	};
+
+	[c handleUpdate:@{@"@type" : @"updateActiveLiveLocationMessages",
+					  @"messages" : @[@{@"@type" : @"message", @"id" : @(1),
+										@"chat_id" : @(50)},
+									  @{@"@type" : @"message", @"id" : @(2),
+										@"chat_id" : @(50)},
+									  @{@"@type" : @"message", @"id" : @(3),
+										@"chat_id" : @(51)}]}];
+	[c.updateCoalescer flushNow];
+	c.onMessage = nil;
+
+	// Three riders, two chats, one nudge per chat.
+	XCTAssertEqual(nudged.count, (NSUInteger)2);
+	XCTAssertTrue([nudged containsObject:@(50)] && [nudged containsObject:@(51)]);
+}
+
+- (void)testUnreadMessageCount_IsTheBadgeOnlyForTheMainList {
+	TGClient *c = U();
+	NSMutableArray *totals = [NSMutableArray array];
+	id token = [[NSNotificationCenter defaultCenter]
+			addObserverForName:TGUnreadTotalChangedNotification object:nil
+			queue:nil usingBlock:^(NSNotification *n){
+		[totals addObject:n.userInfo[@"count"]];
+	}];
+
+	// Folders carry their own slices; shrinking the badge for them is a lie.
+	[c handleUpdate:@{@"@type" : @"updateUnreadMessageCount",
+					  @"chat_list" : @{@"@type" : @"chatListFolder",
+									   @"chat_folder_id" : @(2)},
+					  @"unread_count" : @(9), @"unread_unmuted_count" : @(9)}];
+	// The main list speaks with a null chat list, and a zero is a real count.
+	[c handleUpdate:@{@"@type" : @"updateUnreadMessageCount",
+					  @"chat_list" : [NSNull null],
+					  @"unread_count" : @(7), @"unread_unmuted_count" : @(3)}];
+	[c handleUpdate:@{@"@type" : @"updateUnreadMessageCount",
+					  @"unread_count" : @(0)}];
+
+	[[NSNotificationCenter defaultCenter] removeObserver:token];
+	XCTAssertEqualObjects(totals, (@[@(3), @(0)]));
+}
+
+- (void)testNotificationSettings_TheReactionAndSoundListsTellTheSamePage {
+	TGClient *c = U();
+	__block int posts = 0;
+	id token = [[NSNotificationCenter defaultCenter]
+			addObserverForName:TGNotificationSettingsChangedNotification object:nil
+			queue:nil usingBlock:^(NSNotification *n){ posts++; }];
+
+	[c handleUpdate:@{@"@type" : @"updateReactionNotificationSettings",
+					  @"notification_settings" : @{@"@type" : @"reactionNotificationSettings",
+												   @"show_reactions" : @YES}}];
+	[c handleUpdate:@{@"@type" : @"updateSavedNotificationSounds",
+					  @"notification_sound_ids" : @[@(5)]}];
+
+	[[NSNotificationCenter defaultCenter] removeObserver:token];
+	XCTAssertEqual(posts, 2);
+}
+
+- (void)testChatJoinResult_HandsTheChatToTheMembersSheet {
+	TGClient *c = U();
+	NSMutableArray *chats = [NSMutableArray array];
+	id token = [[NSNotificationCenter defaultCenter]
+			addObserverForName:TGChatMembersChangedNotification object:nil
+			queue:nil usingBlock:^(NSNotification *n){
+		[chats addObject:n.userInfo[@"chatId"]];
+	}];
+
+	[c handleUpdate:@{@"@type" : @"updateChatJoinResult", @"query_id" : @"11",
+					  @"chat_id" : @(60),
+					  @"result" : @{@"@type" : @"text", @"text" : @"approved"}}];
+
+	[[NSNotificationCenter defaultCenter] removeObserver:token];
+	XCTAssertEqualObjects(chats, (@[@(60)]));
+}
+
 @end

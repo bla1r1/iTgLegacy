@@ -74,6 +74,18 @@ static void TGDevCommandNotifyCallback(CFNotificationCenterRef center, void *obs
 	application.applicationIconBadgeNumber = 0;
 	self.showNotifications = [[NSUserDefaults standardUserDefaults] boolForKey:@"showNotifications"];
 
+	// The server moves the unread total while we are backgrounded; the badge
+	// follows the update instead of waiting for the next foreground list read.
+	[[NSNotificationCenter defaultCenter]
+			addObserverForName:TGUnreadTotalChangedNotification
+						object:nil queue:nil
+			usingBlock:^(NSNotification *n){
+		int count = [n.userInfo[@"count"] intValue];
+		dispatch_async(dispatch_get_main_queue(), ^{
+			[UIApplication sharedApplication].applicationIconBadgeNumber = count;
+		});
+	}];
+
 	[fm changeCurrentDirectoryPath:[[NSBundle mainBundle] bundlePath]];
 
 	self.window = [[UIWindow alloc] initWithFrame:[[UIScreen mainScreen] bounds]];

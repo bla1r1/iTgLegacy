@@ -28,6 +28,7 @@ NSString *const TGChatReadOutboxChangedNotification = @"TGChatReadOutboxChangedN
 NSString *const TGChatReplyMarkupChangedNotification = @"TGChatReplyMarkupChangedNotification";
 NSString *const TGConnectionStateChangedNotification = @"TGConnectionStateChangedNotification";
 NSString *const TGUserStatusChangedNotification = @"TGUserStatusChangedNotification";
+NSString *const TGUnreadTotalChangedNotification = @"TGUnreadTotalChangedNotification";
 NSString *const TGDownloadsChangedNotification = @"TGDownloadsChangedNotification";
 NSString *const TGFullInfoChangedNotification = @"TGFullInfoChangedNotification";
 NSString *const TGStickerListsChangedNotification = @"TGStickerListsChangedNotification";
@@ -500,6 +501,103 @@ NSDictionary *TGFormattedText(NSString *text) {
 								userInfo:@{@"kind" : @"chat", @"id" : chatId}];
 		return;
 	}
+	// Chat fields nothing draws yet - block list, protected content, the
+	// scheduled bar, view-as-topics, translation, reactions, theme, accent
+	// colours, send-as, welcome messages, background. Merged into the row so
+	// the screen that starts reading one is already fed, and told the same
+	// way the group facts are told: an open profile re-reads.
+	case TGUpdateChatBlockList:
+	case TGUpdateChatHasProtectedContent:
+	case TGUpdateChatHasScheduledMessages:
+	case TGUpdateChatViewAsTopics:
+	case TGUpdateChatIsTranslatable:
+	case TGUpdateChatHasWelcomeMessages:
+	case TGUpdateChatAvailableReactions:
+	case TGUpdateChatTheme:
+	case TGUpdateChatAccentColors:
+	case TGUpdateChatMessageSender:
+	case TGUpdateChatWelcomeMessages:
+	case TGUpdateChatBackground: {
+		[self applyChatUpdate:obj];
+		NSNumber *chatId = obj[@"chat_id"];
+		if (chatId)
+			[[NSNotificationCenter defaultCenter]
+					postNotificationName:TGFullInfoChangedNotification object:self
+								userInfo:@{@"kind" : @"chat", @"id" : chatId}];
+		return;
+	}
+	case TGUpdateMessageReaction:
+	case TGUpdateMessageReactions:
+	case TGUpdateMessageLiveLocationViewed:
+	case TGUpdateAnimatedEmojiMessageClicked: {
+		// Who reacted, who watched, what was tapped: all fields of the
+		// message, so the open chat re-reads it - coalesced, the way a crowd
+		// reacting to a channel post stays one nudge per chat.
+		if (self.updateCoalescer)
+			[self.updateCoalescer markMessageDirty:[obj[@"message_id"] longLongValue]
+											inChat:[obj[@"chat_id"] longLongValue]];
+		return;
+	}
+	case TGUpdateActiveLiveLocationMessages: {
+		// The list of running live locations moved; every rider nudges its
+		// own chat, the same shape a content change arrives in.
+		for (NSDictionary *m in obj[@"messages"]){
+			if (self.updateCoalescer)
+				[self.updateCoalescer markMessageDirty:[m[@"message_id"] longLongValue]
+												inChat:[m[@"chat_id"] longLongValue]];
+		}
+		return;
+	}
+	case TGUpdateUnreadMessageCount: {
+		// The one global counter in the app: the badge. The update fires per
+		// chat list, and only the main list's total is the badge's number -
+		// a folder's slice shrinking it would be a lie. A missing or null
+		// chat_list is the main list; zero in the field is a real count and
+		// goes out as one.
+		id list = obj[@"chat_list"];
+		BOOL mainList = !list || [list isKindOfClass:[NSNull class]];
+		if (!mainList && [list isKindOfClass:NSDictionary.class])
+			mainList = [list[@"@type"] isEqualToString:@"chatListMain"];
+		if (!mainList)
+			return;
+		[[NSNotificationCenter defaultCenter]
+				postNotificationName:TGUnreadTotalChangedNotification object:self
+							userInfo:@{@"count" : obj[@"unread_unmuted_count"] ?: @0}];
+		return;
+	}
+	// Arriving read by nobody: each one is a marker for a screen the app
+	// does not draw yet, kept on the record rather than dropped so the
+	// dispatch and the filter agree. Letting them through costs one parse;
+	// every one here is rare. docs/feature_backlog.md says what each waits for.
+	case TGUpdateActiveNotifications:      // local notification drawing is APNs for now
+	case TGUpdateNotification:
+	case TGUpdateNotificationGroup:
+	case TGUpdateHavePendingNotifications:
+	case TGUpdateServiceNotification:      // Telegram's service posts, no sheet to show them in
+	case TGUpdateTermsOfService:           // acceptance through the signup screen, no review sheet
+	case TGUpdateUnconfirmedSession:       // Settings > devices re-reads per open
+	case TGUpdateFreezeState:
+	case TGUpdateUserPrivacySettingRules:  // privacy settings re-read per open
+	case TGUpdateAgeVerificationParameters:
+	case TGUpdateApplicationVerificationRequired:
+	case TGUpdateApplicationRecaptchaVerificationRequired:
+	case TGUpdateUserSubscription:
+	case TGUpdateAutosaveSettings:         // no auto-delete presets screen
+	case TGUpdateLanguagePackStrings:      // one language ships so far
+	case TGUpdateAccentColors:             // accent colours have no UI
+	case TGUpdateProfileAccentColors:
+	case TGUpdateDefaultBackground:        // chat backgrounds are not drawn
+	case TGUpdateDefaultReactionType:
+	case TGUpdateEmojiChatThemes:
+	case TGUpdateAnimationSearchParameters:
+	case TGUpdateAvailableMessageEffects:  // message effects are not rendered
+	case TGUpdateContactCloseBirthdays:    // no birthday strip to land them on
+	case TGUpdateSavedMessagesTopic:       // saved-messages topics are not drawn
+	case TGUpdateSavedMessagesTopicCount:
+	case TGUpdateSavedMessagesTags:
+	case TGUpdateStopMessageDraft:         // where the draft was stopped, nothing was drawn
+	case TGUpdateVideoPublished:
+		return;
 	case TGUpdateMessageContainsUnreadPollVotes: {
 		// The badge on a poll whose votes you have not looked at. Same storm
 		// risk as a reaction count, same window.
@@ -509,7 +607,11 @@ NSDictionary *TGFormattedText(NSString *text) {
 		return;
 	}
 	case TGUpdateScopeNotificationSettings:
-	case TGUpdateChatDefaultDisableNotification: {
+	case TGUpdateChatDefaultDisableNotification:
+	case TGUpdateReactionNotificationSettings:
+	case TGUpdateSavedNotificationSounds: {
+		// The settings page re-reads all three scopes and the sounds list;
+		// nothing finer is carried for it to read piecemeal.
 		[[NSNotificationCenter defaultCenter]
 				postNotificationName:TGNotificationSettingsChangedNotification object:self];
 		if ([type isEqualToString:@"updateChatDefaultDisableNotification"])
@@ -569,7 +671,10 @@ NSDictionary *TGFormattedText(NSString *text) {
 	}
 	case TGUpdateChatMember:
 	case TGUpdateChatPendingJoinRequests:
-	case TGUpdateNewChatJoinRequest: {
+	case TGUpdateNewChatJoinRequest:
+	case TGUpdateChatJoinResult: {
+		// updateChatJoinResult is the answer to our own join request, sent
+		// the way the other three are: the chat's members sheet re-reads.
 		NSNumber *chatId = obj[@"chat_id"];
 		if (!chatId)
 			return;
@@ -581,11 +686,14 @@ NSDictionary *TGFormattedText(NSString *text) {
 	case TGUpdateFileAddedToDownloads:
 	case TGUpdateFileDownload:
 	case TGUpdateFileDownloads:
-	case TGUpdateFileRemovedFromDownloads: {
+	case TGUpdateFileRemovedFromDownloads:
+	case TGUpdateSpeedLimitNotification: {
 		// Settings > Downloads is the one screen built from a single
 		// searchFileDownloads answer, so it had no way of noticing a download
 		// that finished, paused or was removed from another device.
 		// updateFile carries the bytes; the list membership is only here.
+		// The speed limit rides along: throttled progress is a change the
+		// rows should re-read too.
 		[[NSNotificationCenter defaultCenter]
 				postNotificationName:TGDownloadsChangedNotification object:self];
 		return;
