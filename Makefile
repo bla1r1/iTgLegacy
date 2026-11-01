@@ -237,6 +237,7 @@ APP_SRC_M := \
 	src/Core/TGClient+Stories.m \
 	src/Core/TGClient+Business.m \
 	src/Core/TGClient+Tier2.m \
+	src/Core/TGClient+Tier3.m \
 	src/Core/TGClient+ChatTools.m \
 	src/Core/TGClient+Downloads.m \
 	src/Core/TGClient+Secret.m \
@@ -389,6 +390,10 @@ APP_SRC_M := \
 	src/Controllers/TGSuggestedPostViewController.m \
 	src/Controllers/TGAiComposeViewController.m \
 	src/Controllers/TGMessageToolsViewController.m \
+	src/Controllers/TGSponsoredMessagesViewController.m \
+	src/Controllers/TGEnvironmentViewController.m \
+	src/Controllers/TGBotConsoleViewController.m \
+	src/Controllers/TGStarsGiftsViewController.m \
 	src/Audio/TGVoiceDecoder.m \
 	src/Audio/TGStreamingVoicePlayer.m \
 	src/Calls/TGCallIce.m \

@@ -11,6 +11,10 @@
 #import "TGStorySettingsViewController.h"
 #import "TGStoriesMenuViewController.h"
 #import "TGSettingsViewController+Tier2.h"
+#import "TGSponsoredMessagesViewController.h"
+#import "TGEnvironmentViewController.h"
+#import "TGBotConsoleViewController.h"
+#import "TGStarsGiftsViewController.h"
 
 /// A custom method's answer is a string the app has no schema for. When it is
 /// JSON, pretty-print it so the viewer reads like a response rather than one
@@ -1187,6 +1191,38 @@ static NSString *TGOrderLines(NSDictionary *order) {
 				TGDeviceViewController *device = [[TGDeviceViewController alloc] init];
 				device.hidesBottomBarWhenPushed = YES;
 				[weakSelf.navigationController pushViewController:device animated:YES];
+			}),
+		]),
+
+		// The calls the old tier list called "never" but a user account can
+		// still send. Each screen names its request and shows Telegram's
+		// answer; the ones that stay impossible are documented in
+		// docs/feature_backlog.md.
+		TGSection(@"Tier 3 Audit",
+				  @"Surfaces for the calls a user account really can make: "
+				  @"advertisements, TDLib's environment, owned bots and the "
+				  @"read-only Premium and gift records.", @[
+			TGTapRow(@"Sponsored Messages", @"Channel, search and video ads", ^{
+				TGSponsoredMessagesViewController *ads =
+						[[TGSponsoredMessagesViewController alloc] init];
+				ads.hidesBottomBarWhenPushed = YES;
+				[weakSelf.navigationController pushViewController:ads animated:YES];
+			}),
+			TGTapRow(@"TDLib Environment", @"JSON, log, weather and time zones", ^{
+				TGEnvironmentViewController *environment =
+						[[TGEnvironmentViewController alloc] init];
+				environment.hidesBottomBarWhenPushed = YES;
+				[weakSelf.navigationController pushViewController:environment animated:YES];
+			}),
+			TGTapRow(@"Bot Console", @"Bots this account owns and its inline bots", ^{
+				TGBotConsoleViewController *bots = [[TGBotConsoleViewController alloc] init];
+				bots.hidesBottomBarWhenPushed = YES;
+				[weakSelf.navigationController pushViewController:bots animated:YES];
+			}),
+			TGTapRow(@"Premium, Stars and Gifts", @"Read-only", ^{
+				TGStarsGiftsViewController *stars = [[TGStarsGiftsViewController alloc] init];
+				stars.hidesBottomBarWhenPushed = YES;
+				[weakSelf.navigationController pushViewController:stars animated:YES];
 			}),
 		]),
 

@@ -209,6 +209,14 @@ NSString *const TGMusicPlayerChangedNotification = @"TGMusicPlayerChanged";
 }
 
 - (void)audioPlayerDidFinishPlaying:(AVAudioPlayer *)player successfully:(BOOL)ok {
+	// A finished track is a listened track: Telegram's only use for the audio
+	// file id here is the listened mark and its recommendations.
+	NSNumber *fileId = self.current[@"docId"];
+	if ([fileId isKindOfClass:NSNumber.class] && fileId.intValue > 0){
+		[[TGClient shared] markAudioListened:fileId.intValue
+									duration:(int32_t)MAX(0.0, player.duration)
+								  completion:nil];
+	}
 	if (self.repeatMode == TGMusicRepeatOne) {
 		self.player.currentTime = 0;
 		[self.player play];

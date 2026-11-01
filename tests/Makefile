@@ -114,6 +114,7 @@ CLIENT_OBJC_SRCS := \
     $(SRC)/Core/TGClient+Stories.m \
     $(SRC)/Core/TGClient+Business.m \
     $(SRC)/Core/TGClient+Tier2.m \
+    $(SRC)/Core/TGClient+Tier3.m \
     $(SRC)/Core/TGClient+Downloads.m \
     $(SRC)/Core/TGClient+Secret.m \
     $(SRC)/Core/TGClient+Account.m \
@@ -193,6 +194,7 @@ CLIENT_TEST_SRCS := \
     $(TESTS)/TGClientMiscTests.m \
     $(TESTS)/TGClientStoriesTests.m \
     $(TESTS)/TGClientTier2Tests.m \
+    $(TESTS)/TGClientTier3AuditTests.m \
     $(TESTS)/TGClientGroupCallsTests.m \
     $(TESTS)/TGClientBusinessTests.m \
     $(TESTS)/TGClientNotificationsForumTests.m \

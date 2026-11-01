@@ -41,5 +41,6 @@
 #import "TGClient+Stickers.h"
 #import "TGClient+Stories.h"
 #import "TGClient+Tier2.h"
+#import "TGClient+Tier3.h"
 #import "TGClient+Usernames.h"
 #import "TGClient+Websites.h"

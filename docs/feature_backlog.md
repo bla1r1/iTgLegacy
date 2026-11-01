@@ -20,7 +20,7 @@ As of 2026-11-01:
 
 | | declared | covered | gap | of it wanted | out of scope |
 |---|---|---|---|---|---|
-| functions | 1076 | 775 (72%) | 301 | 0 | 301 |
+| functions | 1076 | 916 (85%) | 160 | 0 | 160 |
 | updates | 197 | 136 (69%) | 61 | 0 | 61 |
 
 Functions are counted from string literals in `src/`, updates from the one list in `src/Core/TGUpdateType.h` — anything outside it is thrown away in the receive loop before a Foundation tree is built, so a dropped update leaves no trace in the log either. Both numbers are floors. Where this file and ROADMAP.md disagree, the roadmap wins — it knows the device.
@@ -33,14 +33,16 @@ The two halves are not comparable: 1076 functions include every bot, Stars, busi
 
 | Tier | Meaning | Functions |
 |---|---|---|
-| 1 | done: reachable from a screen (`--wired`) | 775 |
+| 1 | done: reachable from a screen (`--wired`) | 916 |
 | 2 | not done yet, but buildable: the wanted list plus the skipped-but-possible set (`--relevant` + `--tier2`) | 0 + 0 |
-| 3 | never for this client: bot-account-only, or needs a stack this iOS cannot carry (`--tier3`) | 301 |
+| 3 | never for this client: bot-account-only, or needs a stack this iOS cannot carry (`--tier3`) | 160 |
 
 The tier split is `scripts/tdlib_tiers.py`; it reads the same skip list the coverage
 script uses, so the two cannot disagree. Tier 2 is not one backlog: the wanted
 half is what the app is missing from the features it already draws, and the
-skipped half is the features it has never drawn.
+skipped half is the features it has never drawn. Every Tier 3 group now prints
+its reason from the same script, so the classification is auditable instead of
+a feeling.
 
 ---
 
@@ -209,29 +211,39 @@ The wanted half is empty: `--relevant` reads 0, and the skipped-but-buildable ha
 
 **Notifications, sounds and forum topics — done as a wave.** Settings → Notifications and Sounds gains Custom Sounds: the list is `getSavedNotificationSounds`, one row reads a fresh `getSavedNotificationSound`, Add Bundled Sample / Add MP3 uploads with `addSavedNotificationSound`, and removal sends `removeSavedNotificationSound`. Active Notifications is TDLib's local list from `updateActiveNotifications` plus the two incremental updates; a row removes one with `removeNotification`, and the group row sends `removeNotificationGroup`. In a forum, holding a topic opens Topic Info (`getForumTopic`), Copy Link (`getForumTopicLink`), mute/previews (`setForumTopicNotificationSettings`), marking mentions/poll votes read (`readAllForumTopicMentions`, `readAllForumTopicPollVotes`), pinned order (`setPinnedForumTopics`) and Hide/Show General (`toggleGeneralForumTopicIsHidden`).
 
-## Tier 2 — buildable later (111)
+## Tier 2 — closed (0)
 
-These need no new stack: a screen and the existing client surface could carry each one. `python3 scripts/tdlib_tiers.py --tier2` lists the names.
+`python3 scripts/tdlib_tiers.py --tier2` prints nothing. Every group that used to live here is now on a screen: group and video calls, business accounts, emoji status, profile audio, text styles, direct message topics, dice and ephemeral content, anti-spam switches and the web proxy carrier. The communities/checklists/quick-replies group is reachable from the hub, the composer and Message Tools, and `scripts/tdlib_tiers.py` no longer counts it.
 
-- group and video calls — 42
-- business accounts — 28
-- emoji status, profile audio and text styles — 22
-- direct message topics — 9
-- dice, alarms and ephemeral content — 6
-- group anti-spam switches and web proxy carrier — 4
+## Tier 3 — audited, never for this client (160)
 
-The communities/checklists/quick-replies group that used to lead this list is gone: all 35 names are reachable from the hub, the composer and Message Tools, and `scripts/tdlib_tiers.py` no longer counts them.
+Skipped by pattern in `scripts/tdlib_coverage.sh`; `python3 scripts/tdlib_tiers.py --tier3` lists them with their group and its reason. The count below is the audited remainder, not the old 301: 141 names that the first pass parked here were calls a user account can make, and they moved to Tier 1.
 
-## Tier 3 — never for this client (301)
+| Group | Count | Why it stays |
+|---|---|---|
+| TON wallet, on-ramp and NFT withdrawal | 43 | a TON wallet, an on-ramp provider and blockchain confirmation; no iOS 6–12 API and no wallet backend |
+| Gift, auction and paid-reaction spending | 38 | moves, spends, prices or manages a gift/Star balance this client cannot fund; the read-only catalogue is implemented |
+| Bot sessions, Web App host and passkeys | 30 | `answer*`, commands, menu button and managed bots need a bot session; Web App data needs a WebView bridge; passkeys need AuthenticationServices after iOS 12 |
+| StoreKit purchases and payment providers | 15 | builds a price or checkout record; charging needs StoreKit or a payment provider this build does not link |
+| Passport identity documents | 8 | needs document/selfie capture and a 2FA identity vault; a half-built Passport would send documents into an unverified flow |
+| Test harness | 12 | `test*` exercises the schema, it is not a user action |
+| Affiliate and ads monetization | 7 | attaches to an owned bot/channel and pays out through Fragment; no monetization backend |
+| Game score tables (bot-served) | 4 | the score table belongs to the bot that owns the game |
+| Support-staff plumbing | 3 | Telegram support staff only; a user session cannot call them |
 
-Skipped by pattern in `scripts/tdlib_coverage.sh`; `python3 scripts/tdlib_tiers.py --tier3` lists them with their groups:
+### What the audit found — 141 functions moved to Tier 1
 
-- payments, Stars, Premium, gifts, boosts and Passport — 166
-- bot accounts, inline mode and callbacks — 87
-- test, log and environment plumbing — 30
-- ads, games and speech recognition — 18
+The old regex parked a name because of a word, not because of what TDLib says. The audit read every entry against `td_api.tl` and this client's categories. The moved names are on real screens, not a debug-only dump:
 
-Reasons: a bot account this app never signs into, a payment or wallet stack, or a stack this OS cannot carry (browser engine, speech recogniser). To reconsider one, remove it from `SKIP` and re-run the tier script — that is the whole edit.
+- **Ads and speech — 16.** `getChatSponsoredMessages`, `click`/`reportChatSponsoredMessage`, the account and channel ad switches, `getSearchSponsoredChats` with `open`/`view`/`report`, the four video-advertisement calls, `recognizeSpeech` + `rateSpeechRecognition` (Telegram's server transcribes; no local recogniser), and `listenToAudio` from the music player. Screen: `TGSponsoredMessagesViewController`, opened from a channel profile's More menu and from a video message's More menu.
+- **Environment and log — 15.** `getJsonValue`/`getJsonString`, `getThemeParametersJsonString`, the five log reads/writes, `addLogMessage`, `saveApplicationLogEvent`, `getTimeZones`, `getCurrencyExchangeRates`, `getCurrentWeather` (also on a location message's More menu), and `setAlarm`. Screen: `TGEnvironmentViewController` from Debug Menu.
+- **Bots a user owns, inline and OAuth — 55.** The bot record (`getOwnedBots`, name, description, short description, photo removal, secondary usernames, ordering, media previews, similar bots, emoji-status permission, verification, creation), the user side of inline/attachment-menu bots (`getRecentInlineBots`, start, attachment menu, send permission, saved-reply inline result), browser settings and the three Web App URL getters (the URL is copied; no Web App host), the two keyboard-button answers, the four OAuth calls, and the six business-bot calls. Screen: `TGBotConsoleViewController`, opened from Debug Menu and from an owned bot's profile.
+- **Premium, Stars, boosts, revenue and gifts — 55.** Read-only Premium features/limits/stickers and gift-code redemption; Star transactions/subscriptions; the gift catalogue, one gift's record and the free auction reads; boost slots, status, features, link, boosts and `boostChat`; chat/Star/Gram revenue, paid-message and topic revenue; giveaway and collectible info; paid-message privacy, prices and receipts. Screen: `TGStarsGiftsViewController` from Debug Menu. Spending, withdrawal, auctions and Passport stay below.
+- **Business bot — 6** (counted in the bot group above): `get`/`set`/`delete`/`confirmBusinessConnectedBot`, removing it from a chat and pausing it there.
+
+The 61 updates are unchanged. This audit is functions only: no update was reclassified, because the update half was already closed.
+
+To reconsider a remaining name, remove it from `SKIP`, implement it on a screen with a host test, and re-run both scripts. Removing the pattern without the screen only moves the lie.
 
 ---
 

@@ -11,6 +11,8 @@
 #import "TGGroupCallViewController.h"
 #import "TGContactsViewController.h"
 #import "TGProfileViewController+Tier2.h"
+#import "TGSponsoredMessagesViewController.h"
+#import "TGBotConsoleViewController.h"
 
 /// The glyph on an action tile, over the word that names it.
 static const CGFloat kTileGlyph = TGMetricMenuGlyph;
@@ -271,11 +273,20 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 		[items addObject:@{@"title" : self.isChannel ? @"Channel Settings"
 													 : @"Group Settings",
 						   @"icon" : @"privacy"}];
+		// Sponsored messages are a channel surface; a normal group has none.
+		if (self.isChannel)
+			[items addObject:@{@"title" : @"Sponsored Messages",
+							   @"icon" : @"data"}];
 		if (self.canInvite && !self.isChannel)
 			[items addObject:@{@"title" : @"Add Members", @"icon" : @"plus"}];
 		[items addObject:@{@"title" : @"Calls", @"icon" : @"call"}];
 		[items addObject:@{@"title" : @"View with Topics", @"icon" : @"folder"}];
 	}
+	// A bot's own record is editable by the account that owns it. The row is
+	// only there for a bot, because every request behind it is refused for a
+	// person.
+	if (self.userId && [[TGClient shared] userIsBot:self.userId])
+		[items addObject:@{@"title" : @"Bot Settings", @"icon" : @"data"}];
 	// A note kept in the chat without being sent to anyone. It is the only
 	// way to make a message that never leaves this device.
 	[items addObject:@{@"title" : @"Add Local Note", @"icon" : @"edit"}];
@@ -517,6 +528,22 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 
 
 
+
+	if ([title isEqualToString:@"Sponsored Messages"]){
+		TGSponsoredMessagesViewController *ads =
+				[[TGSponsoredMessagesViewController alloc] init];
+		ads.chatId = self.chatId;
+		ads.hidesBottomBarWhenPushed = YES;
+		TGPresentControllerFrom(ads, self);
+		return;
+	}
+	if ([title isEqualToString:@"Bot Settings"]){
+		TGBotConsoleViewController *bots = [[TGBotConsoleViewController alloc] init];
+		bots.botUserId = self.userId;
+		bots.hidesBottomBarWhenPushed = YES;
+		TGPresentControllerFrom(bots, self);
+		return;
+	}
 
 	if ([title isEqualToString:@"Calls"]){
 		TGGroupCallViewController *screen = [[TGGroupCallViewController alloc]

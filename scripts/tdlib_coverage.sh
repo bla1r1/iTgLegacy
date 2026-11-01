@@ -70,9 +70,12 @@ comm -23 "$TMP/upd_all" "$TMP/upd_used" > "$TMP/upd_gap"
 # updateMessageContent.
 #
 # Areas this client is not going to have: they need a browser engine, a
-# payment stack, a wallet, a second screen, or a server feature that did not
+# payment or wallet stack, a bot session, or a server feature that did not
 # exist when this OS did. Kept as one pattern so the relevant gap is a number
-# that can be watched, not a feeling. docs/feature_backlog.md explains each.
+# that can be watched, not a feeling. docs/feature_backlog.md explains each,
+# and scripts/tdlib_tiers.py --tier3 prints the reason for every remaining
+# group. Speech recognition is not in this list: TDLib's recognizeSpeech asks
+# Telegram's own recognizer, so a user client can carry it.
 # updates join the functions here deliberately, not with their panel:
 # updateActiveEmojiReactions is the reaction-picker's list and there is no
 # picker to read it, updateMessageSendAcknowledged has no state between

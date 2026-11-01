@@ -36,7 +36,7 @@ Use conventional subjects: `fix(chat): …`, `feat(capabilities): …`. Include 
 
 ## PR checklist
 
-- [ ] `make -f tests/Makefile test` is green (currently 1025 client and 167 call tests, 0 failed — raise the bar, never lower it)
+- [ ] `make -f tests/Makefile test` is green (currently 1118 client and 167 call tests, 0 failed — raise the bar, never lower it)
 - [ ] `sh scripts/lint_tokens.sh` is clean
 - [ ] fix lands with the regression test that failed before it
 - [ ] every behaviour claim is backed by a checklist line or a device log

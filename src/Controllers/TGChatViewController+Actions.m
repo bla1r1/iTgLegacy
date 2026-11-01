@@ -10,6 +10,7 @@
 #import "TGInstantViewController.h"
 #import "TGMessageAudienceViewController.h"
 #import "TGMessageToolsViewController.h"
+#import "TGSponsoredMessagesViewController.h"
 #import <CoreImage/CoreImage.h>
 #import <QuartzCore/QuartzCore.h>
 
@@ -697,8 +698,22 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 		[items addObject:@{@"title" : @"Author", @"icon" : @"select"}];
 
 	if ([m[@"kind"] isEqualToString:@"messageLocation"] ||
-			[m[@"kind"] isEqualToString:@"messageLiveLocation"])
+			[m[@"kind"] isEqualToString:@"messageLiveLocation"]){
 		[items addObject:@{@"title" : @"Recent Locations", @"icon" : @"data"}];
+		[items addObject:@{@"title" : @"Weather Here", @"icon" : @"data"}];
+	}
+
+	// Speech recognition is Telegram's, not the device's. A voice or video
+	// note is the only content the request accepts.
+	if ([m[@"kind"] isEqualToString:@"messageVoiceNote"] ||
+			[m[@"kind"] isEqualToString:@"messageVideoNote"]){
+		[items addObject:@{@"title" : @"Transcribe", @"icon" : @"data"}];
+		[items addObject:@{@"title" : @"Rate Transcription", @"icon" : @"react"}];
+	}
+
+	// A video message can carry advertisements around its playback.
+	if ([m[@"kind"] isEqualToString:@"messageVideo"])
+		[items addObject:@{@"title" : @"Video Advertisements", @"icon" : @"data"}];
 
 	// A live pin of your own stays on the map until you take it off.
 	if (mine && [m[@"kind"] isEqualToString:@"messageLiveLocation"]
@@ -1228,6 +1243,62 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 
 	} else if ([action isEqualToString:@"Recent Locations"]){
 		[self showRecentLocationsInActionMessage];
+
+	} else if ([action isEqualToString:@"Weather Here"]){
+		NSNumber *latitude = m[@"latitude"];
+		NSNumber *longitude = m[@"longitude"];
+		if (![latitude isKindOfClass:NSNumber.class] ||
+				![longitude isKindOfClass:NSNumber.class]){
+			[TGAlertSheet showMessage:@"This message has no point to ask about."
+								title:@"Weather Here" inView:self.view];
+			return;
+		}
+		__weak typeof(self) weakSelf = self;
+		[[TGClient shared] currentWeatherAtLatitude:latitude.doubleValue
+										  longitude:longitude.doubleValue
+										 completion:^(NSDictionary *weather, NSString *error){
+			TGChatViewController *me = weakSelf;
+			if (!me) return;
+			NSString *text = error.length ? error
+					: [NSString stringWithFormat:@"%@  %.1f°",
+					   weather[@"emoji"] ?: @"", [weather[@"temperature"] doubleValue]];
+			[TGAlertSheet showMessage:text title:@"Weather Here" inView:me.view];
+		}];
+
+	} else if ([action isEqualToString:@"Transcribe"]){
+		__weak typeof(self) weakSelf = self;
+		[[TGClient shared] recognizeSpeechInChat:self.chatId message:messageId
+									  completion:^(BOOL ok, NSString *error){
+			TGChatViewController *me = weakSelf;
+			if (!me) return;
+			NSString *text = ok
+					? @"Telegram is transcribing. The text arrives with the message."
+					: (error.length ? error : @"Telegram refused the transcription.");
+			[TGAlertSheet showMessage:text title:@"Transcribe" inView:me.view];
+		}];
+
+	} else if ([action isEqualToString:@"Rate Transcription"]){
+		__weak typeof(self) weakSelf = self;
+		[TGAlertSheet showChoices:@[@"It was good", @"It was bad"]
+							title:@"Rate Transcription" destructiveIndex:-1
+						   inView:self.view onChoice:^(NSInteger index){
+			[[TGClient shared] rateSpeechInChat:weakSelf.chatId message:messageId
+										 isGood:(index == 0)
+									 completion:^(BOOL ok, NSString *error){
+				NSString *text = ok ? @"Telegram has the vote."
+						: (error.length ? error : @"Telegram refused the vote.");
+				[TGAlertSheet showMessage:text title:@"Rate Transcription"
+								   inView:weakSelf.view];
+			}];
+		}];
+
+	} else if ([action isEqualToString:@"Video Advertisements"]){
+		TGSponsoredMessagesViewController *ads =
+				[[TGSponsoredMessagesViewController alloc] init];
+		ads.chatId = self.chatId;
+		ads.messageId = messageId;
+		ads.hidesBottomBarWhenPushed = YES;
+		[self.navigationController pushViewController:ads animated:YES];
 
 	} else if ([action isEqualToString:@"Copy Embed Code"]){
 		int64_t chatId = self.chatId;
