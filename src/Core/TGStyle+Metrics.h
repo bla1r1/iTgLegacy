@@ -112,6 +112,13 @@ static const CGFloat TGMetricBubblePadV         = TGMetricPad;
 static const CGFloat TGMetricGroupAvatarSide    = 28.0f;
 static const CGFloat TGMetricImageMax           = 200.0f;
 static const CGFloat TGMetricPollRow            = 30.0f;
+/// A reaction chip under a bubble: the pill, the mini avatar of a single
+/// reactor, and the space between the avatar and the emoji.
+static const CGFloat TGMetricReactionChipHeight = 22.0f;
+static const CGFloat TGMetricReactionChipAvatar = 16.0f;
+static const CGFloat TGMetricReactionChipGap    = TGMetricPadSmall;
+static const CGFloat TGMetricReactionChipInset  = TGMetricPadSmall;
+static const CGFloat TGMetricReactionChipTop    = TGMetricPadTiny;
 static const CGFloat TGMetricComposeBannerTextMarginRight = 66.0f;
 static const CGFloat TGMetricPinnedBannerTextPadRight = 24.0f;
 

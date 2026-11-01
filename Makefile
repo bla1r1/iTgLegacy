@@ -289,6 +289,7 @@ APP_SRC_M := \
 	src/Controllers/TGChatViewController+Input.m \
 	src/Controllers/TGChatViewController+Media.m \
 	src/Controllers/TGChatViewController+Chrome.m \
+	src/Controllers/TGMessageAudienceViewController.m \
 	src/Controllers/TGContactsViewController.m \
 	src/Controllers/TGCloseFriendsViewController.m \
 	src/Controllers/TGNewContactViewController.m \

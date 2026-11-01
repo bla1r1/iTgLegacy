@@ -292,6 +292,79 @@ static NSDictionary *textContent(NSString *text) {
 	XCTAssertFalse([flat[@"service"] boolValue]);
 }
 
+#pragma mark - reaction chips and views
+
+/// The chip under a bubble needs the group's count, whether it is yours, and
+/// - for a group with one reactor - who that was and their picture. The view
+/// count rides here too because the menu's "Viewed by N" row reads it.
+- (void)testFlatten_ReactionGroupsCarryTheSoleReactorAndTheViewCount {
+	TGClient *c = TGClient.shared;
+	[c.usersById removeAllObjects];
+	[c.userPhotosById removeAllObjects];
+	c.usersById[@(6)] = @"Ann Lee";
+	c.userPhotosById[@(6)] = @(77);
+
+	NSDictionary *flat = TGFlattenMessage(msg(textContent(@"hi"), @{
+		@"interaction_info" : @{
+			@"view_count" : @(12),
+			@"reactions" : @{@"reactions" : @[
+				@{@"type" : @{@"@type" : @"reactionTypeEmoji", @"emoji" : @"\U0001F44D"},
+				  @"total_count" : @(1),
+				  @"is_chosen" : @YES,
+				  @"recent_sender_ids" : @[
+					  @{@"@type" : @"messageSenderUser", @"user_id" : @(6)}]},
+				@{@"type" : @{@"@type" : @"reactionTypeEmoji", @"emoji" : @"\U0001F525"},
+				  @"total_count" : @(3),
+				  @"recent_sender_ids" : @[
+					  @{@"@type" : @"messageSenderUser", @"user_id" : @(8)},
+					  @{@"@type" : @"messageSenderUser", @"user_id" : @(9)}]}]}}}));
+
+	NSArray *groups = flat[@"reactionGroups"];
+	XCTAssertEqual(groups.count, (NSUInteger)2);
+	XCTAssertEqual([flat[@"viewCount"] integerValue], (NSInteger)12);
+
+	NSDictionary *one = groups[0];
+	XCTAssertEqualObjects(one[@"emoji"], @"\U0001F44D");
+	XCTAssertEqual([one[@"count"] integerValue], (NSInteger)1);
+	XCTAssertTrue([one[@"chosen"] boolValue]);
+	XCTAssertEqual([one[@"userId"] longLongValue], 6LL,
+				   @"one reactor is the person a chip names");
+	XCTAssertEqualObjects(one[@"name"], @"Ann Lee");
+	XCTAssertEqual([one[@"avatarFileId"] integerValue], (NSInteger)77);
+	XCTAssertTrue([one[@"sender"] isKindOfClass:NSDictionary.class]);
+
+	NSDictionary *many = groups[1];
+	XCTAssertEqual([many[@"count"] integerValue], (NSInteger)3);
+	XCTAssertEqual([many[@"userId"] longLongValue], 0LL,
+				   @"three reactors are a count, not one face");
+	XCTAssertFalse([many[@"chosen"] boolValue]);
+}
+
+/// A custom reaction has no character, so the id travels and the chip draws
+/// a star. The group is still tappable, because the reactor list can be asked
+/// for by custom_emoji_id.
+- (void)testFlatten_CustomReactionKeepsItsIdAndFallsBackToAStar {
+	NSDictionary *flat = TGFlattenMessage(msg(textContent(@"hi"), @{
+		@"interaction_info" : @{@"reactions" : @{@"reactions" : @[
+			@{@"type" : @{@"@type" : @"reactionTypeCustomEmoji",
+						  @"custom_emoji_id" : @(999)},
+			  @"total_count" : @(1)}]}}}));
+	NSDictionary *group = flat[@"reactionGroups"][0];
+	XCTAssertEqualObjects(group[@"emoji"], @"");
+	XCTAssertEqual([group[@"customEmojiId"] longLongValue], 999LL);
+	XCTAssertEqual([group[@"count"] integerValue], (NSInteger)1);
+	XCTAssertEqual([group[@"userId"] longLongValue], 0LL,
+				   @"no named sender, so the chip counts instead of guessing");
+}
+
+/// A message without reactions carries an empty list and zero views, so the
+/// cell has one branch to check instead of a nil that would crash a count.
+- (void)testFlatten_NoReactionsIsAnEmptyGroupList {
+	NSDictionary *flat = TGFlattenMessage(msg(textContent(@"hi"), nil));
+	XCTAssertEqualObjects(flat[@"reactionGroups"], @[]);
+	XCTAssertEqual([flat[@"viewCount"] integerValue], (NSInteger)0);
+}
+
 @end
 
 // vim:ft=objc

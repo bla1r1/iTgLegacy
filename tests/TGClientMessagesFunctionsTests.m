@@ -358,6 +358,57 @@ static NSDictionary *plain(NSDictionary *d) {
 	XCTAssertNotNil(lastM(c, @"deleteAllRecentMessageReactionsFromSender"));
 }
 
+/// The reactor list reads addedReaction's own date and is_outgoing, and a
+/// custom emoji is asked for by id because there is no character to send.
+- (void)testAddedReactions_CarriesTheDateAndMineAndAcceptsACustomType {
+	TGClient *c = M();
+	__block NSArray *rows = nil;
+	__block NSString *next = nil;
+	[c addedReactionsOfMessage:100 inChat:33 emoji:@"🔥" offset:nil
+					   completion:^(NSArray *got, NSString *more){
+		rows = got; next = more;
+	}];
+	answerM(c, @{@"@type" : @"addedReactions",
+				 @"total_count" : @(2),
+				 @"reactions" : @[
+					@{@"@type" : @"addedReaction",
+					  @"type" : @{@"@type" : @"reactionTypeEmoji", @"emoji" : @"🔥"},
+					  @"sender_id" : @{@"@type" : @"messageSenderUser", @"user_id" : @(9)},
+					  @"is_outgoing" : @YES, @"date" : @(1712345678)},
+					@{@"@type" : @"addedReaction",
+					  @"type" : @{@"@type" : @"reactionTypeEmoji", @"emoji" : @"🔥"},
+					  @"sender_id" : @{@"@type" : @"messageSenderUser", @"user_id" : @(10)},
+					  @"is_outgoing" : @NO, @"date" : @(1712345679)}],
+				 @"next_offset" : @"next-page"});
+	XCTAssertEqual(rows.count, (NSUInteger)2);
+	XCTAssertEqual([rows[0][@"date"] longLongValue], 1712345678LL);
+	XCTAssertTrue([rows[0][@"mine"] boolValue]);
+	XCTAssertFalse([rows[1][@"mine"] boolValue]);
+	XCTAssertEqualObjects(next, @"next-page");
+
+	[c.outbox removeAllObjects];
+	[c addedReactionsOfMessage:100 inChat:33
+				  reactionType:@{@"@type" : @"reactionTypeCustomEmoji",
+								 @"custom_emoji_id" : @(999)}
+						offset:@"next-page"
+					completion:^(NSArray *got, NSString *more){}];
+	NSDictionary *r = lastM(c, @"getMessageAddedReactions");
+	XCTAssertEqualObjects(r[@"reaction_type"][@"@type"], @"reactionTypeCustomEmoji");
+	XCTAssertEqualObjects(r[@"reaction_type"][@"custom_emoji_id"], @(999));
+	XCTAssertEqualObjects(r[@"offset"], @"next-page");
+}
+
+/// A refused viewer list is nil rather than an empty array, which is how the
+/// screen knows to fall back to the read date instead of drawing nothing.
+- (void)testViewers_AnErrorAnswerIsNilNotAnEmptyList {
+	TGClient *c = M();
+	__block NSArray *viewers = @[];
+	[c viewersOfMessage:100 inChat:33 completion:^(NSArray *list){ viewers = list; }];
+	answerM(c, @{@"@type" : @"error", @"code" : @400,
+				 @"message" : @"viewers unavailable"});
+	XCTAssertNil(viewers);
+}
+
 - (void)testClearByDateAndBySender_CarryTheirRanges {
 	TGClient *c = M();
 	[c deleteChatMessagesByDate:33 minDate:0 maxDate:1000 revoke:YES];

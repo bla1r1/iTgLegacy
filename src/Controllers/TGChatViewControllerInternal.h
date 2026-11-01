@@ -48,6 +48,9 @@
 @property (nonatomic, strong) NSMutableDictionary *quotes;       // messageId -> flattened
 @property (nonatomic, strong) NSMutableSet *quotesRequested;
 @property (nonatomic, strong) NSDictionary *actionMessage;   // long-pressed
+/// Where the hold opened the menu, so the More card can appear beside the
+/// same bubble after the first card is dismissed.
+@property (nonatomic, assign) CGPoint actionMenuPoint;
 @property (nonatomic, assign) int64_t replyToId;             // composing a reply
 @property (nonatomic, assign) int64_t editingId;             // editing instead
 @property (nonatomic, strong) UIView *composeBanner;         // "Reply to ..."
@@ -265,6 +268,11 @@
 - (void)showActionsForRow:(NSInteger)row atPoint:(CGPoint)point;
 - (void)messageHeld:(UILongPressGestureRecognizer *)hold;
 - (void)runMessageAction:(NSString *)action;
+- (void)showMoreActions;
+- (void)showReactorsOfMessage:(NSDictionary *)m;
+- (void)showReactorsOfMessage:(NSDictionary *)m
+						emoji:(NSString *)emoji
+				customEmojiId:(int64_t)customEmojiId;
 - (void)pickMedia;
 - (void)sendCurrentLocation;
 - (void)pickContact;
@@ -356,7 +364,6 @@
 - (void)chromeDidScroll;
 - (void)installSwipeToReply;
 - (void)showChatAction:(NSString *)action resting:(NSString *)resting;
-- (void)showReactorsOfMessage:(NSDictionary *)message;
 - (void)stopChrome;
 - (void)sendImage:(UIImage *)image;
 
@@ -364,6 +371,8 @@
 - (BOOL)configureAudioCell:(TGBubbleCell *)cell message:(NSDictionary *)m layout:(TGMessageLayout *)layout isMine:(BOOL)mine indexPath:(NSIndexPath *)indexPath;
 - (BOOL)configureRoundOrStickerCell:(TGBubbleCell *)cell message:(NSDictionary *)m layout:(TGMessageLayout *)layout isMine:(BOOL)mine;
 - (void)configureMediaForCell:(TGBubbleCell *)cell message:(NSDictionary *)m layout:(TGMessageLayout *)layout isMine:(BOOL)mine;
+- (void)configureReactionChipsForCell:(TGBubbleCell *)cell message:(NSDictionary *)m layout:(TGMessageLayout *)layout;
+- (void)reactionChipTapped:(UITapGestureRecognizer *)tap;
 - (void)placeStickerEmoji:(TGBubbleCell *)cell message:(NSDictionary *)m inFrame:(CGRect)frame;
 - (void)startGifIfWantedIn:(TGBubbleCell *)cell message:(NSDictionary *)m;
 

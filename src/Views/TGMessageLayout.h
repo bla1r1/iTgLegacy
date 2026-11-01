@@ -52,6 +52,8 @@ CGSize TGTextSizeWithEntities(NSString *text, NSArray *entities, UIFont *font, C
 @property (nonatomic, assign) CGRect collageFrame;
 @property (nonatomic, strong) NSArray *albumFrames;
 @property (nonatomic, assign) CGRect mediaStampFrame;
+/// The row of reaction chips under a bubble; empty when there are none.
+@property (nonatomic, assign) CGRect reactionChipsFrame;
 @property (nonatomic, assign) CGRect timeFrame;
 @property (nonatomic, assign) CGSize bodySize;
 @property (nonatomic, assign) CGSize picSize;

@@ -241,6 +241,15 @@
 			sf.origin.x += TGMetricSelectionShift;
 			cell.sender.frame = sf;
 		}
+
+		// Reaction chips sit on the canvas below the bubble, so they have to
+		// follow the same shift the bubble did.
+		UIView *chips = [cell.contentView viewWithTag:0x9005];
+		if (chips && !chips.hidden){
+			CGRect cf = chips.frame;
+			cf.origin.x += TGMetricSelectionShift;
+			chips.frame = cf;
+		}
 	}
 
 	CGFloat cy = CGRectGetMidY(cell.bubble.frame);

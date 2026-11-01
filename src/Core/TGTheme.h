@@ -186,6 +186,12 @@ typedef NS_ENUM(NSInteger, TGButtonStyle) {
 - (UIColor *)bubbleMineColour;
 - (UIColor *)bubbleTheirsColour;
 - (UIColor *)bubbleBorderColour;    ///< clear when flat
+/// A reaction pill under a bubble. The chosen one takes the accent border,
+/// which is how Telegram marks a reaction you put there yourself.
+- (UIColor *)reactionChipColour;
+- (UIColor *)reactionChipMineColour;
+- (UIColor *)reactionChipBorderColour;
+- (UIColor *)reactionChipMineBorderColour;
 - (UIColor *)listBackgroundColour;
 /// The page behind a settings list. Their sections are rounded cards floating
 /// on it, so it has to differ from the card - a grouped table on this OS draws

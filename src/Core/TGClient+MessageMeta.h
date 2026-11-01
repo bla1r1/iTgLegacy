@@ -57,6 +57,14 @@
 						 offset:(NSString *)offset
 					 completion:(void (^)(NSArray *rows, NSString *next))completion;
 
+/// The same list for a reaction type that is not an emoji, chiefly a custom
+/// emoji by id. `reactionType` is the TDLib ReactionType object.
+- (void)addedReactionsOfMessage:(int64_t)messageId
+						 inChat:(int64_t)chatId
+				   reactionType:(NSDictionary *)reactionType
+						 offset:(NSString *)offset
+					 completion:(void (^)(NSArray *rows, NSString *next))completion;
+
 - (void)deleteReactionsOfSender:(NSDictionary *)sender
 					  ofMessage:(int64_t)messageId
 						 inChat:(int64_t)chatId;

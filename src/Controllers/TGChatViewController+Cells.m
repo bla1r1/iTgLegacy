@@ -5,10 +5,11 @@
 #import "TGCapabilities.h"
 #import "TGStyle.h"
 #import "TGMusicPlayer.h"
+#import "TGMessageAudienceViewController.h"
 
 @implementation TGChatViewController (Cells)
 
-static char kTGReactionPillMessageKey;
+static char kTGReactionChipInfoKey;
 
 #pragma mark - table
 
@@ -32,6 +33,11 @@ static char kTGReactionPillMessageKey;
 	TGMessageLayout *layout = [self layoutForMessage:m atRow:indexPath.row];
 
 	[cell resetForReuse];
+	// A row that is not the standard bubble path (service, audio, round note)
+	// still inherits the previous message's chips unless they are hidden
+	// before the branch returns.
+	UIView *reactionChips = [cell.contentView viewWithTag:0x9005];
+	reactionChips.hidden = YES;
 
 	// 1. Who wrote it. This runs before the service and audio branches
 	// return: the layout indents the bubble by the avatar column and keeps a
@@ -141,38 +147,10 @@ static char kTGReactionPillMessageKey;
 		[weakSelf handleOpenLink:url];
 	};
 
-	// 8. Reactions
-	UILabel *reactions = (UILabel *)[cell.bubble viewWithTag:0x9002];
-	NSString *reactionText = m[@"reactions"];
-	if ([reactionText length]) {
-		if (!reactions) {
-			reactions = [[UILabel alloc] init];
-			reactions.tag = 0x9002;
-			reactions.font = TGFontCaption();
-			[cell.bubble addSubview:reactions];
-		}
-		reactions.hidden = NO;
-		reactions.text = reactionText;
-		reactions.textColor = [theme secondaryTextColour];
-		reactions.backgroundColor = [theme cardBackgroundColour];
-		reactions.layer.cornerRadius = TGMetricCornerSmall;
-		reactions.layer.borderWidth = 1.0f;
-		reactions.layer.borderColor = [theme separatorColour].CGColor;
-		reactions.frame = CGRectMake(kPadH,
-				layout.bodyFrame.origin.y + layout.bodySize.height + TGMetricPadTiny,
-				layout.bubbleFrame.size.width - TGDoubled(kPadH), TGMetricLineCaption);
-		// The pill is the shortest path to who reacted: a tap opens the same
-		// list the menu's Reactions row does, without a long press first.
-		reactions.userInteractionEnabled = YES;
-		for (UIGestureRecognizer *old in [reactions.gestureRecognizers copy])
-			[reactions removeGestureRecognizer:old];
-		[reactions addGestureRecognizer:[[UITapGestureRecognizer alloc]
-				initWithTarget:self action:@selector(reactionPillTapped:)]];
-		objc_setAssociatedObject(reactions, &kTGReactionPillMessageKey, m,
-								 OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-	} else {
-		reactions.hidden = YES;
-	}
+	// 8. Reactions: pills under the bubble, one per group. A group with a
+	// single named reactor shows that person's face beside the emoji, which
+	// is what makes "who reacted" answerable without opening anything.
+	[self configureReactionChipsForCell:cell message:m layout:layout];
 
 	// 8b. Comments, under a channel post that has a discussion group
 	UIButton *comments = (UIButton *)[cell.bubble viewWithTag:0x9003];
@@ -193,8 +171,7 @@ static char kTGReactionPillMessageKey;
 		comments.hidden = NO;
 		[comments setTitle:label forState:UIControlStateNormal];
 		[comments setTitleColor:[theme accentColour] forState:UIControlStateNormal];
-		CGFloat below = layout.bodyFrame.origin.y + layout.bodySize.height + TGMetricPadTiny
-				+ ([m[@"reactions"] length] ? TGMetricLineBody : 0);
+		CGFloat below = layout.bodyFrame.origin.y + layout.bodySize.height + TGMetricPadTiny;
 		comments.frame = CGRectMake(kPadH, below,
 				layout.bubbleFrame.size.width - TGDoubled(kPadH), TGMetricLineCaption);
 	} else {
@@ -214,7 +191,6 @@ static char kTGReactionPillMessageKey;
 		for (UIView *old in [keys.subviews copy])
 			[old removeFromSuperview];
 		CGFloat top = layout.bodyFrame.origin.y + layout.bodySize.height + TGMetricBotButtonGap
-				+ ([m[@"reactions"] length] ? TGMetricLineBody : 0)
 				+ ([m[@"canComment"] boolValue] ? TGMetricLineBody : 0);
 		CGFloat width = layout.bubbleFrame.size.width - TGDoubled(kPadH);
 		keys.frame = CGRectMake(kPadH, top, width,
@@ -557,10 +533,108 @@ UIImage *TGBubbleBackImage(TGTheme *theme, BOOL mine, BOOL first, BOOL last) {
 	[cell parkHiddenViews];
 }
 
-- (void)reactionPillTapped:(UITapGestureRecognizer *)tap {
-	NSDictionary *m = objc_getAssociatedObject(tap.view, &kTGReactionPillMessageKey);
-	if (m)
-		[self showReactorsOfMessage:m];
+/// The chips under a bubble. One group per pill; a group with exactly one
+/// named reactor carries that person's small round picture before the glyph,
+/// and every other group says the emoji and the count. Pills sit side by side
+/// and stop at the bubble's edge, which is one line in every chat Telegram
+/// draws this way.
+- (void)configureReactionChipsForCell:(TGBubbleCell *)cell
+							  message:(NSDictionary *)m
+							   layout:(TGMessageLayout *)layout {
+	NSArray *groups = m[@"reactionGroups"];
+	UIView *holder = [cell.contentView viewWithTag:0x9005];
+	if (![groups isKindOfClass:NSArray.class] || !groups.count){
+		holder.hidden = YES;
+		return;
+	}
+
+	if (!holder){
+		holder = [[UIView alloc] initWithFrame:CGRectZero];
+		holder.tag = 0x9005;
+		holder.backgroundColor = [UIColor clearColor];
+		[cell.contentView addSubview:holder];
+	}
+	holder.hidden = NO;
+	holder.frame = layout.reactionChipsFrame;
+	for (UIView *old in [holder.subviews copy])
+		[old removeFromSuperview];
+
+	TGTheme *theme = [TGTheme shared];
+	CGFloat maxW = holder.bounds.size.width;
+	CGFloat x = TGMetricZero;
+	for (NSDictionary *group in groups){
+		NSString *emoji = group[@"emoji"];
+		NSString *glyph = emoji.length ? emoji : @"\u2605";
+		NSInteger count = [group[@"count"] integerValue];
+		int64_t userId = [group[@"userId"] longLongValue];
+		BOOL single = (count == 1 && userId > 0);
+		NSString *text = single ? glyph
+				: [NSString stringWithFormat:@"%@ %ld", glyph, (long)count];
+
+		CGFloat chipW = TGTextSize(text, TGFontCaption(), 0).width
+				+ TGDoubled(TGMetricReactionChipInset);
+		if (single)
+			chipW += TGMetricReactionChipAvatar + TGMetricReactionChipGap;
+		chipW = MIN(chipW, maxW);
+		if (x > TGMetricZero && x + chipW > maxW)
+			break;
+
+		BOOL chosen = [group[@"chosen"] boolValue];
+		UIView *chip = [[UIView alloc] initWithFrame:CGRectMake(x, TGMetricZero,
+				chipW, TGMetricReactionChipHeight)];
+		chip.backgroundColor = chosen ? [theme reactionChipMineColour]
+									  : [theme reactionChipColour];
+		chip.layer.cornerRadius = TGHalf(TGMetricReactionChipHeight);
+		chip.layer.borderWidth = TGMetricBorderWidth;
+		chip.layer.borderColor = (chosen ? [theme reactionChipMineBorderColour]
+										 : [theme reactionChipBorderColour]).CGColor;
+		chip.userInteractionEnabled = YES;
+
+		CGFloat textX = TGMetricReactionChipInset;
+		if (single){
+			UIImage *avatar = [self avatarForUser:userId name:group[@"name"]];
+			CGFloat side = TGMetricReactionChipAvatar;
+			UIImageView *face = [[UIImageView alloc] initWithFrame:CGRectMake(
+					TGMetricReactionChipInset,
+					TGCenteredOrigin(TGMetricReactionChipHeight, side), side, side)];
+			face.image = [TGIcons roundedImage:avatar
+										  size:CGSizeMake(side, side)
+										radius:TGHalf(side)
+									   corners:UIRectCornerAllCorners];
+			face.contentMode = UIViewContentModeScaleAspectFill;
+			[chip addSubview:face];
+			textX += side + TGMetricReactionChipGap;
+		}
+
+		UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(textX,
+				TGMetricZero, chipW - textX - TGMetricReactionChipInset,
+				TGMetricReactionChipHeight)];
+		label.font = TGFontCaption();
+		label.text = text;
+		label.textColor = [theme primaryTextColour];
+		label.backgroundColor = [UIColor clearColor];
+		[chip addSubview:label];
+
+		[chip addGestureRecognizer:[[UITapGestureRecognizer alloc]
+				initWithTarget:self action:@selector(reactionChipTapped:)]];
+		objc_setAssociatedObject(chip, &kTGReactionChipInfoKey, @{
+			@"message"       : m,
+			@"emoji"         : emoji ?: @"",
+			@"customEmojiId" : group[@"customEmojiId"] ?: @(0),
+		}, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+
+		[holder addSubview:chip];
+		x += chipW + TGMetricReactionChipGap;
+	}
+}
+
+- (void)reactionChipTapped:(UITapGestureRecognizer *)tap {
+	NSDictionary *info = objc_getAssociatedObject(tap.view, &kTGReactionChipInfoKey);
+	if (!info)
+		return;
+	[self showReactorsOfMessage:info[@"message"]
+						  emoji:info[@"emoji"]
+				  customEmojiId:[info[@"customEmojiId"] longLongValue]];
 }
 
 @end

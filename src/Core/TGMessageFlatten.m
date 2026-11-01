@@ -44,6 +44,64 @@ NSString *TGMyReactionEmoji(NSDictionary *m) {
 	return nil;
 }
 
+/// The reaction groups a bubble draws as chips. TDLib only names recent
+/// senders (at most three) and only in some chats; a group of exactly one
+/// reactor can therefore show the person's avatar instead of a bare count.
+/// Both spellings of ReactionType are read: a custom emoji has no glyph, so
+/// its id travels instead and the chip falls back to a star.
+static NSArray *TGFlattenReactionGroups(NSDictionary *m) {
+	NSArray *groups = m[@"interaction_info"][@"reactions"][@"reactions"];
+	if (![groups isKindOfClass:NSArray.class] || !groups.count)
+		return @[];
+
+	NSMutableArray *out = [NSMutableArray arrayWithCapacity:groups.count];
+	for (NSDictionary *r in groups){
+		if (![r isKindOfClass:NSDictionary.class])
+			continue;
+		NSDictionary *type = r[@"type"];
+		NSString *emoji = type[@"emoji"];
+		NSNumber *customId = type[@"custom_emoji_id"];
+		NSInteger count = [r[@"total_count"] integerValue];
+		if (count <= 0)
+			continue;
+
+		NSMutableDictionary *row = [@{
+			@"emoji"        : emoji ?: @"",
+			@"customEmojiId": customId ?: @(0),
+			@"count"        : @(count),
+			@"chosen"       : r[@"is_chosen"] ?: @NO,
+			// Filled only for a group with a single named reactor. Zero
+			// means the chip has to count instead of showing a face.
+			@"userId"       : @(0),
+			@"chatId"       : @(0),
+			@"name"         : @"",
+			@"avatarFileId" : @(0),
+		} mutableCopy];
+
+		NSArray *senders = r[@"recent_sender_ids"];
+		if (count == 1 && [senders isKindOfClass:NSArray.class] && senders.count == 1){
+			NSDictionary *sender = senders.firstObject;
+			if ([sender isKindOfClass:NSDictionary.class]){
+				int64_t userId = [sender[@"user_id"] longLongValue];
+				int64_t chatId = [sender[@"chat_id"] longLongValue];
+				if (userId){
+					NSString *name = [[TGClient shared] nameForUserId:userId] ?: @"";
+					NSNumber *avatar = [[TGClient shared] photoFileIdForUserId:userId];
+					row[@"userId"] = @(userId);
+					row[@"name"] = name;
+					row[@"avatarFileId"] = avatar ?: @(0);
+				} else if (chatId){
+					row[@"chatId"] = @(chatId);
+				}
+				if (userId || chatId)
+					row[@"sender"] = sender;
+			}
+		}
+		[out addObject:row];
+	}
+	return out;
+}
+
 /// One button as the chat needs it: "text", a "kind" (callback, url, login,
 /// switch, copy, user, or unsupported for what this client cannot do -
 /// web apps, payments, games, password callbacks) and what that kind needs.
@@ -573,6 +631,12 @@ NSDictionary *TGFlattenMessage(NSDictionary *m) {
 		@"effectId"  : m[@"effect_id"] ?: @(0),
 		// "\U0001F44D 3" per reaction, joined - enough to show under a bubble.
 		@"reactions" : TGReactionSummary(m) ?: @"",
+		// The same groups in the shape the chips draw: emoji, count, whether
+		// it is yours, and - for a sole reactor - who it was and their photo.
+		@"reactionGroups" : TGFlattenReactionGroups(m),
+		// How many times a channel or group message was seen. Zero where
+		// Telegram did not count, which is every private chat.
+		@"viewCount" : m[@"interaction_info"][@"view_count"] ?: @(0),
 		// Your own reaction, so the menu can offer to take it off.
 		@"myReaction" : TGMyReactionEmoji(m) ?: @"",
 		// Buttons a bot put under its message, and the keyboard it asked for.

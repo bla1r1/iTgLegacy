@@ -204,10 +204,30 @@
 						  emoji:(NSString *)emoji
 						 offset:(NSString *)offset
 					 completion:(void (^)(NSArray *rows, NSString *next))completion {
-	NSDictionary *type = @{@"@type" : @"reactionTypeEmoji", @"emoji" : emoji ?: @""};
+	NSDictionary *type = emoji.length
+			? @{@"@type" : @"reactionTypeEmoji", @"emoji" : emoji}
+			: nil;
+	[self addedReactionsOfMessage:messageId
+						   inChat:chatId
+					 reactionType:type
+						   offset:offset
+					   completion:completion];
+}
+
+/// The same list for either reaction spelling: a custom emoji has no character
+/// to send, so the id travels as reactionTypeCustomEmoji instead.
+- (void)addedReactionsOfMessage:(int64_t)messageId
+						 inChat:(int64_t)chatId
+				   reactionType:(NSDictionary *)reactionType
+						 offset:(NSString *)offset
+					 completion:(void (^)(NSArray *rows, NSString *next))completion {
+	if (!reactionType){
+		if (completion) completion(nil, nil);
+		return;
+	}
 	[self request:@{@"@type" : @"getMessageAddedReactions",
 					@"chat_id" : @(chatId), @"message_id" : @(messageId),
-					@"reaction_type" : type,
+					@"reaction_type" : reactionType,
 					@"offset" : offset ?: @"",
 					@"limit" : @(50)}
 	   completion:^(NSDictionary *result){
@@ -218,11 +238,24 @@
 			return;
 		}
 		NSMutableArray *rows = [NSMutableArray array];
-		for (NSDictionary *r in result[@"reactions"]){
-			[rows addObject:@{@"sender" : r[@"sender_id"],
-							  @"date" : r[@"date"],
-							  @"mine" : r[@"is_outgoing"]}];}
-		completion(rows, result[@"next_offset"]);
+		NSArray *reactions = result[@"reactions"];
+		if ([reactions isKindOfClass:NSArray.class]){
+			for (NSDictionary *r in reactions){
+				if (![r isKindOfClass:NSDictionary.class])
+					continue;
+				// addedReaction carries is_outgoing itself; older fixtures
+				// omit it and the sender still says who it was.
+				NSNumber *date = r[@"date"];
+				[rows addObject:@{
+					@"sender" : r[@"sender_id"] ?: @{},
+					@"date"   : date ?: @(0),
+					@"mine"   : r[@"is_outgoing"] ?: @NO,
+					@"type"   : r[@"type"] ?: @{},
+				}];
+			}
+		}
+		NSString *next = result[@"next_offset"];
+		completion(rows, [next isKindOfClass:NSString.class] ? next : @"");
 	}];
 }
 

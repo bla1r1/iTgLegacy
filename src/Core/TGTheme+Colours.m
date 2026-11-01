@@ -94,6 +94,22 @@
 	return [UIColor colorWithWhite:0.0f alpha:0.12f];
 }
 
+- (UIColor *)reactionChipColour {
+	return TGRole(@"reactionChip", [self cardBackgroundColour]);
+}
+
+- (UIColor *)reactionChipMineColour {
+	return TGRole(@"reactionChipMine", TG_BLUE_BUBBLE_LIGHT);
+}
+
+- (UIColor *)reactionChipBorderColour {
+	return TGRole(@"reactionChipBorder", [self separatorColour]);
+}
+
+- (UIColor *)reactionChipMineBorderColour {
+	return TGRole(@"reactionChipMineBorder", [self accentColour]);
+}
+
 #pragma mark - grouped lists
 
 - (UIColor *)listBackgroundColour {

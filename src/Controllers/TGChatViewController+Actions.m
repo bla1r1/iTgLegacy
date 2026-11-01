@@ -8,6 +8,7 @@
 #import "TGOptions.h"
 #import "TGClientInternal.h"
 #import "TGInstantViewController.h"
+#import "TGMessageAudienceViewController.h"
 
 /// What the reply strip shows on its second line. The rows here are already
 /// flattened, so TGMessagePreview - which reads a raw TDLib content - cannot
@@ -143,115 +144,7 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 	int64_t heldId = [m[@"id"] longLongValue];
 	NSString *myReaction = m[@"myReaction"];
 
-	NSMutableArray *items = [NSMutableArray array];
-	// A message that failed has one thing worth doing to it, and it goes first.
-	if ([m[@"failed"] boolValue])
-		[items addObject:@{@"title" : @"Retry", @"icon" : @"reply"}];
-
-	[items addObject:@{@"title" : @"Reply", @"icon" : @"reply"}];
-
-	if ([m[@"text"] length])
-		[items addObject:@{@"title" : @"Copy", @"icon" : @"copy"}];
-
-	// A caption is edited by its own request, which is why only text could be
-	// edited before: media with a caption got no Edit row at all.
-	if (mine && ([m[@"text"] length] || [m[@"photoId"] isKindOfClass:NSNumber.class]))
-		[items addObject:@{@"title" : @"Edit", @"icon" : @"edit"}];
-
-	// A caption is not the picture: replacing the picture itself is
-	// editMessageMedia, and only the sender may.
-	if (mine && [m[@"photoId"] isKindOfClass:NSNumber.class])
-		[items addObject:@{@"title" : @"Replace Photo", @"icon" : @"react"}];
-
-	if (![m[@"service"] boolValue])
-		[items addObject:@{@"title" : (heldId == self.pinnedMessageId ? @"Unpin" : @"Pin"),
-						   @"icon" : @"pin"}];
-
-	[items addObject:@{@"title" : @"Forward", @"icon" : @"forward"}];
-
-	// One reaction at a time is what TDLib allows here, so the menu either
-	// offers to remove yours or the reaction bar at top lets you pick one.
-	if (myReaction.length)
-		[items addObject:@{@"title" : [NSString stringWithFormat:
-				@"Remove %@", myReaction], @"icon" : @"react"}];
-
-	[items addObject:@{@"title" : @"Copy Link", @"icon" : @"copy"}];
-
-	// A dice or a ball is a message whose whole point is the tap.
-	if ([m[@"kind"] isEqualToString:@"messageAnimatedEmoji"])
-		[items addObject:@{@"title" : @"Click Emoji", @"icon" : @"react"}];
-	// A bot's buttons are the message's furniture; a bot account can take
-	// them off, and the row is where that interaction already lives.
-	if ([m[@"inlineRows"] count])
-		[items addObject:@{@"title" : @"Clear Buttons", @"icon" : @"delete",
-						   @"destructive" : @YES}];
-	// The record of the message itself: what is cached, where it sits, what
-	// the channel's graphs say, and the view report TDLib wants.
-	[items addObject:@{@"title" : @"Message Info", @"icon" : @"data"}];
-	[items addObject:@{@"title" : @"Shared Media Map", @"icon" : @"data"}];
-	if ([m[@"effectId"] longLongValue] > 0)
-		[items addObject:@{@"title" : @"Message Effect", @"icon" : @"react"}];
-
-	// Closing a poll is the sender's to do, and only while it is still open.
-	if (mine && [m[@"pollOptions"] count] && ![m[@"pollClosed"] boolValue])
-		[items addObject:@{@"title" : @"Stop Poll", @"icon" : @"select"}];
-	// A live pin of your own stays on the map until you take it off.
-	if (mine && [m[@"kind"] isEqualToString:@"messageLiveLocation"]
-			 && [m[@"liveEditable"] boolValue])
-		[items addObject:@{@"title" : @"Stop Live Location", @"icon" : @"delete",
-						   @"destructive" : @YES}];
-	// A poll's crowd and its options: voters answered, an option made after
-	// the fact, an option taken out of it.
-	if ([m[@"pollOptions"] count]){
-		if ([m[@"pollClosed"] boolValue] || [m[@"pollVoters"] boolValue])
-			[items addObject:@{@"title" : @"Poll Voters", @"icon" : @"select"}];
-		if ([m[@"pollStats"] boolValue])
-			[items addObject:@{@"title" : @"Poll Statistics", @"icon" : @"data"}];
-		if (mine && [m[@"pollOpen"] boolValue])
-			[items addObject:@{@"title" : @"Add Option", @"icon" : @"edit"}];
-		if (mine && [m[@"pollOpen"] boolValue] && [m[@"pollDeletable"] boolValue])
-			[items addObject:@{@"title" : @"Delete Option", @"icon" : @"delete",
-							   @"destructive" : @YES}];
-	}
-	// A sticker you are holding is a sticker you may want to keep.
-	if ([m[@"kind"] isEqualToString:@"messageSticker"] && TGStickerFileId(m) > 0)
-		[items addObject:@{@"title" : @"Add to Favourites", @"icon" : @"pin"}];
-	// The record of a post that left this account: who opened it, who
-	// reacted, whether Telegram names the hand behind "Channel Admin".
-	// Rows over-reach on purpose: the server refuses what the chat is not,
-	// and the refusal is one honest sheet line.
-	if (mine && ![[TGClient shared] chatIsSavedMessages:self.chatId])
-		[items addObject:@{@"title" : @"Who Read This", @"icon" : @"select"}];
-	[items addObject:@{@"title" : @"Public Forwards", @"icon" : @"forward"}];
-	[items addObject:@{@"title" : @"Reactions", @"icon" : @"react"}];
-	if (!mine)
-		[items addObject:@{@"title" : @"Author", @"icon" : @"select"}];
-	NSString *text = m[@"text"] ?: @"";
-	if (text.length)
-		[items addObject:@{@"title" : @"Translate", @"icon" : @"edit"}];
-	if (text.length)
-		[items addObject:@{@"title" : @"Find Quote", @"icon" : @"data"}];
-	if ([text rangeOfString:@"#"].location != NSNotFound)
-		[items addObject:@{@"title" : @"Search by Hashtag", @"icon" : @"data"}];
-	if ([m[@"kind"] isEqualToString:@"messageLocation"] ||
-			[m[@"kind"] isEqualToString:@"messageLiveLocation"])
-		[items addObject:@{@"title" : @"Recent Locations", @"icon" : @"data"}];
-	// Someone else's message in a group is the only place a spam report has
-	// anywhere to go: reportSupergroupSpam wants a supergroup behind it.
-	if (!mine && self.isGroup)
-		[items addObject:@{@"title" : @"Report Spam", @"icon" : @"privacy",
-						   @"destructive" : @YES}];
-	// A reaction the flattening could name - the person, not only the
-	// emoji - is one confirm away from the report TDLib asks for.
-	NSDictionary *reactionReport = m[@"reactionReport"];
-	if (reactionReport && ![reactionReport isKindOfClass:NSNull.class] && !mine)
-		[items addObject:@{@"title" : @"Report Reaction", @"icon" : @"privacy",
-						   @"destructive" : @YES}];
-	if (mine)
-		[items addObject:@{@"title" : @"Delete", @"icon" : @"delete",
-						   @"destructive" : @YES}];
-
-	[items addObject:@{@"title" : @"Select", @"icon" : @"select"}];
+	NSArray *items = [self commonActionItemsForMessage:m mine:mine heldId:heldId];
 
 	// Beside the message rather than over the whole screen, which is what
 	// makes it read as belonging to that bubble.
@@ -272,6 +165,7 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 	}
 
 	NSArray *reactions = [self reactionsWithDefaultFirst:[TGReactionPicker defaultReactions]];
+	self.actionMenuPoint = where;
 	__weak typeof(self) weakSelf = self;
 	[TGPopupMenu showItems:items
 				   atPoint:where
@@ -286,6 +180,9 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 		} else {
 			[[TGClient shared] reactTo:heldId inChat:me.chatId emoji:emoji];
 		}
+		// The chips are part of the row's height, so the cached geometry is
+		// stale the moment the reaction lands.
+		[me.layoutCache removeLayoutForMessageId:heldId];
 		[me reload];
 	} onDefaultReaction:^(NSString *emoji) {
 		// Telegram keeps the choice; the bar was already promoted in place.
@@ -299,6 +196,170 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 									inView:me.view];
 		}];
 	} onChoice:^(NSInteger index, NSString *title) {
+		[weakSelf runMessageAction:title];
+	}];
+}
+
+/// What a hold offers on every message: the verbs people came for. Anything
+/// administrative or rare lives in the More submenu below, so the card is
+/// short enough to read at a glance and keeps the reaction bar on top.
+- (NSArray *)commonActionItemsForMessage:(NSDictionary *)m
+									mine:(BOOL)mine
+								  heldId:(int64_t)heldId {
+	NSMutableArray *items = [NSMutableArray array];
+	NSString *text = [m[@"text"] isKindOfClass:NSString.class] ? m[@"text"] : @"";
+
+	// A message that failed has one thing worth doing to it, and it goes first.
+	if ([m[@"failed"] boolValue])
+		[items addObject:@{@"title" : @"Retry", @"icon" : @"reply"}];
+
+	[items addObject:@{@"title" : @"Reply", @"icon" : @"reply"}];
+
+	if (text.length)
+		[items addObject:@{@"title" : @"Copy", @"icon" : @"copy"}];
+
+	// A caption is edited by its own request, which is why only text could be
+	// edited before: media with a caption got no Edit row at all.
+	if (mine && (text.length || [m[@"photoId"] isKindOfClass:NSNumber.class]))
+		[items addObject:@{@"title" : @"Edit", @"icon" : @"edit"}];
+
+	if (![m[@"service"] boolValue])
+		[items addObject:@{@"title" : (heldId == self.pinnedMessageId ? @"Unpin" : @"Pin"),
+						   @"icon" : @"pin"}];
+
+	[items addObject:@{@"title" : @"Copy Link", @"icon" : @"copy"}];
+	[items addObject:@{@"title" : @"Forward", @"icon" : @"forward"}];
+
+	// A channel post with a discussion group: the row that was only the bar
+	// under the bubble is also one tap from the hold, where Telegram puts it.
+	if ([m[@"canComment"] boolValue]){
+		NSInteger count = [m[@"replyCount"] integerValue];
+		NSString *title = count <= 0 ? @"Leave a Comment"
+				: count == 1 ? @"Show 1 Reply"
+				: [NSString stringWithFormat:@"Show %ld Replies", (long)count];
+		[items addObject:@{@"title" : title, @"icon" : @"reply"}];
+	}
+
+	// Who saw this post. On a channel or group this is the number Telegram
+	// prints; a chat without one still offers the read date behind the same
+	// row name, which is what the sheet says when viewers are refused.
+	NSInteger views = [m[@"viewCount"] integerValue];
+	if (mine && (views > 0 || self.isGroup)){
+		NSString *title = views > 0
+				? [NSString stringWithFormat:@"Viewed by %ld", (long)views]
+				: @"Who Read This";
+		[items addObject:@{@"title" : title, @"icon" : @"select"}];
+	}
+
+	// Closing a poll is the sender's to do, and only while it is still open.
+	if (mine && [m[@"pollOptions"] count] && ![m[@"pollClosed"] boolValue])
+		[items addObject:@{@"title" : @"Stop Poll", @"icon" : @"select"}];
+	// A poll's crowd and its options: voters answered, an option made after
+	// the fact, an option taken out of it.
+	if ([m[@"pollOptions"] count]){
+		if ([m[@"pollClosed"] boolValue] || [m[@"pollVoters"] boolValue])
+			[items addObject:@{@"title" : @"Poll Voters", @"icon" : @"select"}];
+		if ([m[@"pollStats"] boolValue])
+			[items addObject:@{@"title" : @"Poll Statistics", @"icon" : @"data"}];
+		if (mine && [m[@"pollOpen"] boolValue])
+			[items addObject:@{@"title" : @"Add Option", @"icon" : @"edit"}];
+		if (mine && [m[@"pollOpen"] boolValue] && [m[@"pollDeletable"] boolValue])
+			[items addObject:@{@"title" : @"Delete Option", @"icon" : @"delete",
+							   @"destructive" : @YES}];
+	}
+
+	if (mine)
+		[items addObject:@{@"title" : @"Delete", @"icon" : @"delete",
+						   @"destructive" : @YES}];
+
+	[items addObject:@{@"title" : @"More", @"icon" : @"more"}];
+	[items addObject:@{@"title" : @"Select", @"icon" : @"select"}];
+	return items;
+}
+
+/// The second card: the record of the message, the moderator rows and the
+/// verbs that are useful once a year. This is where a debug list used to be
+/// on the first card; the split is the point of the change.
+- (NSArray *)moreActionItemsForMessage:(NSDictionary *)m mine:(BOOL)mine {
+	NSMutableArray *items = [NSMutableArray array];
+	NSString *text = [m[@"text"] isKindOfClass:NSString.class] ? m[@"text"] : @"";
+
+	if (text.length){
+		[items addObject:@{@"title" : @"Translate", @"icon" : @"edit"}];
+		[items addObject:@{@"title" : @"Find Quote", @"icon" : @"data"}];
+	}
+	if ([text rangeOfString:@"#"].location != NSNotFound)
+		[items addObject:@{@"title" : @"Search by Hashtag", @"icon" : @"data"}];
+
+	if (mine && [m[@"photoId"] isKindOfClass:NSNumber.class])
+		[items addObject:@{@"title" : @"Replace Photo", @"icon" : @"react"}];
+
+	[items addObject:@{@"title" : @"Message Info", @"icon" : @"data"}];
+	[items addObject:@{@"title" : @"Shared Media Map", @"icon" : @"data"}];
+	if ([m[@"effectId"] longLongValue] > 0)
+		[items addObject:@{@"title" : @"Message Effect", @"icon" : @"react"}];
+
+	// A dice or a ball is a message whose whole point is the tap.
+	if ([m[@"kind"] isEqualToString:@"messageAnimatedEmoji"])
+		[items addObject:@{@"title" : @"Click Emoji", @"icon" : @"react"}];
+	// A bot's buttons are the message's furniture; a bot account can take
+	// them off, and the row is where that interaction already lives.
+	if ([m[@"inlineRows"] count])
+		[items addObject:@{@"title" : @"Clear Buttons", @"icon" : @"delete",
+						   @"destructive" : @YES}];
+	// A sticker you are holding is a sticker you may want to keep.
+	if ([m[@"kind"] isEqualToString:@"messageSticker"] && TGStickerFileId(m) > 0)
+		[items addObject:@{@"title" : @"Add to Favourites", @"icon" : @"pin"}];
+
+	// The record of a post that left this account: who opened it, who
+	// reacted, whether Telegram names the hand behind "Channel Admin".
+	if (mine && !self.isGroup && ![[TGClient shared] chatIsSavedMessages:self.chatId])
+		[items addObject:@{@"title" : @"Who Read This", @"icon" : @"select"}];
+	[items addObject:@{@"title" : @"Public Forwards", @"icon" : @"forward"}];
+	if ([m[@"reactionGroups"] count])
+		[items addObject:@{@"title" : @"Reactions", @"icon" : @"react"}];
+	if (!mine)
+		[items addObject:@{@"title" : @"Author", @"icon" : @"select"}];
+
+	if ([m[@"kind"] isEqualToString:@"messageLocation"] ||
+			[m[@"kind"] isEqualToString:@"messageLiveLocation"])
+		[items addObject:@{@"title" : @"Recent Locations", @"icon" : @"data"}];
+
+	// A live pin of your own stays on the map until you take it off.
+	if (mine && [m[@"kind"] isEqualToString:@"messageLiveLocation"]
+			 && [m[@"liveEditable"] boolValue])
+		[items addObject:@{@"title" : @"Stop Live Location", @"icon" : @"delete",
+						   @"destructive" : @YES}];
+
+	// Someone else's message in a group is the only place a spam report has
+	// anywhere to go: reportSupergroupSpam wants a supergroup behind it.
+	if (!mine && self.isGroup)
+		[items addObject:@{@"title" : @"Report Spam", @"icon" : @"privacy",
+						   @"destructive" : @YES}];
+	// A reaction the flattening could name - the person, not only the
+	// emoji - is one confirm away from the report TDLib asks for.
+	NSDictionary *reactionReport = m[@"reactionReport"];
+	if (reactionReport && ![reactionReport isKindOfClass:NSNull.class] && !mine)
+		[items addObject:@{@"title" : @"Report Reaction", @"icon" : @"privacy",
+						   @"destructive" : @YES}];
+	return items;
+}
+
+- (void)showMoreActions {
+	NSDictionary *m = self.actionMessage;
+	if (!m)
+		return;
+	NSArray *items = [self moreActionItemsForMessage:m
+											   mine:[m[@"outgoing"] boolValue]];
+	if (!items.count)
+		return;
+	CGPoint where = self.actionMenuPoint;
+	__weak typeof(self) weakSelf = self;
+	[TGPopupMenu showItems:items
+				   atPoint:where
+					inView:self.view
+				headerView:nil
+				  onChoice:^(NSInteger index, NSString *title) {
 		[weakSelf runMessageAction:title];
 	}];
 }
@@ -352,10 +413,19 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 	} else if ([action isEqualToString:@"Retry"]){
 		[[TGClient shared] resendMessages:@[@(messageId)] inChat:self.chatId];
 
+	} else if ([action isEqualToString:@"More"]){
+		[self showMoreActions];
+
+	} else if ([action isEqualToString:@"Show 1 Reply"] ||
+			   [action hasPrefix:@"Show "] ||
+			   [action isEqualToString:@"Leave a Comment"]){
+		[self openCommentsForMessage:m];
+
 	} else if ([action hasPrefix:@"Remove "]){
 		[[TGClient shared] removeReaction:m[@"myReaction"]
 							  fromMessage:messageId
 								   inChat:self.chatId];
+		[self.layoutCache removeLayoutForMessageId:messageId];
 		[self reload];
 
 	} else if ([action hasPrefix:@"React"]){
@@ -1893,53 +1963,24 @@ static NSString *TGSheetDate(NSTimeInterval unix) {
 	block([m[@"id"] longLongValue], self.chatId, m);
 }
 
-/// Names come off the client's user cache; a viewer nobody knows about is
-/// still a row, said as "User".
+/// Who read this message. The list screen asks TDLib for the viewers and,
+/// when a private chat refuses that, shows the read date and its reason in
+/// the same place - so the row never opens an empty table.
 - (void)showViewersOfActionMessage {
-	__weak typeof(self) weakSelf = self;
-	[self withActionMessage:^(int64_t messageId, int64_t chatId, NSDictionary *m){
-		[[TGClient shared] viewersOfMessage:messageId inChat:chatId completion:^(NSArray *viewers){
-			TGChatViewController *me = weakSelf;
-			if (!me) return;
-			if (!viewers.count){
-				// A one-to-one chat has no viewer list; Telegram still knows
-				// when the message was read, and that is the whole answer
-				// there. The reason words come from TDLib, not guessed.
-				[[TGClient shared] readDateOfMessage:messageId inChat:chatId
-										  completion:^(NSTimeInterval date, NSString *reason){
-					TGChatViewController *me = weakSelf;
-					if (!me)
-						return;
-					NSString *say = date > 0
-							? [NSString stringWithFormat:@"Read %@.",
-									TGSheetDate(date)]
-							: (reason ?: @"Telegram cannot say.");
-					[TGAlertSheet showMessage:say title:@"Who Read This" inView:me.view];
-				}];
-				return;
-			}
-			NSMutableArray *names = [NSMutableArray array];
-			for (NSDictionary *v in viewers){
-				NSString *name = [[TGClient shared] nameForUserId:
-						[v[@"user_id"] longLongValue]] ?: @"User";
-				NSString *when = TGSheetDate([v[@"view_date"] doubleValue]);
-				NSString *line = name ?: @"User";
-				if (when.length)
-					line = [NSString stringWithFormat:@"%@ — %@", line, when];
-				[names addObject:line];
-			}
-			[TGAlertSheet showChoices:names
-								title:@"Read by"
-					 destructiveIndex:-1
-							   inView:me.view
-							 onChoice:nil];
-		}];
-	}];
+	int64_t messageId = [self.actionMessage[@"id"] longLongValue];
+	if (!messageId)
+		return;
+	TGMessageAudienceViewController *people =
+			[[TGMessageAudienceViewController alloc]
+					initWithKind:TGMessageAudienceKindViewers
+							chat:self.chatId
+						 message:messageId
+						   emoji:nil
+				   customEmojiId:0];
+	people.hidesBottomBarWhenPushed = YES;
+	[self.navigationController pushViewController:people animated:YES];
 }
 
-/// The sheet's first page lists what is on the message per emoji (the
-/// interaction info a flattened message already carries); a tap lists that
-/// reaction's adders, where an administrator takes one person's set off.
 /// Every public copy of this message TDLib knows about: channels and open
 /// groups that forwarded it. A copy opens where it was posted, at the same
 /// message id the forward carries.
@@ -1990,93 +2031,66 @@ static NSString *TGSheetDate(NSTimeInterval unix) {
 }
 
 - (void)showReactorsOfActionMessage {
+	[self showReactorsOfMessage:self.actionMessage];
+}
+
+/// The menu's Reaction row, for a message with groups the chips already
+/// summarise. One group opens its people directly; several ask which group
+/// first, because a chip is the only thing that names one without asking.
+- (void)showReactorsOfMessage:(NSDictionary *)m {
+	NSArray *groups = m[@"reactionGroups"];
+	if (![groups isKindOfClass:NSArray.class] || !groups.count){
+		[TGAlertSheet showMessage:@"This message carries no reactions."
+							title:@"Reactions"
+						   inView:self.view];
+		return;
+	}
+	if (groups.count == 1){
+		NSDictionary *group = groups.firstObject;
+		[self showReactorsOfMessage:m
+							  emoji:group[@"emoji"]
+					  customEmojiId:[group[@"customEmojiId"] longLongValue]];
+		return;
+	}
+
 	__weak typeof(self) weakSelf = self;
-	[self withActionMessage:^(int64_t messageId, int64_t chatId, NSDictionary *m){
-		[weakSelf showReactorsOfMessage:m];
+	NSMutableArray *lines = [NSMutableArray arrayWithCapacity:groups.count];
+	for (NSDictionary *group in groups){
+		NSString *emoji = group[@"emoji"];
+		NSString *name = emoji.length ? emoji : @"★";
+		[lines addObject:[NSString stringWithFormat:@"%@  ×%@", name,
+						  group[@"count"] ?: @(0)]];
+	}
+	[TGAlertSheet showChoices:lines
+						title:@"Reactions"
+			 destructiveIndex:-1
+					   inView:self.view
+					 onChoice:^(NSInteger index){
+		NSDictionary *group = groups[(NSUInteger)index];
+		[weakSelf showReactorsOfMessage:m
+								  emoji:group[@"emoji"]
+						  customEmojiId:[group[@"customEmojiId"] longLongValue]];
 	}];
 }
 
-/// The reaction pill under a bubble opens the same sheet; a tap on "👍 3"
-/// names the three people without a long press first.
-- (void)showReactorsOfMessage:(NSDictionary *)m {
+/// The list itself: a pushed screen with one row per person, their picture,
+/// when they reacted and the emoji they used. A chip calls this directly -
+/// there is no intermediate sheet on the path a tap takes.
+- (void)showReactorsOfMessage:(NSDictionary *)m
+						emoji:(NSString *)emoji
+				customEmojiId:(int64_t)customEmojiId {
 	int64_t messageId = [m[@"id"] longLongValue];
-	int64_t chatId = self.chatId;
 	if (!messageId)
 		return;
-	__weak typeof(self) weakSelf = self;
-		NSArray *groups = m[@"interaction_info"][@"reactions"][@"reactions"];
-		if (![groups isKindOfClass:NSArray.class] || !groups.count){
-			[TGAlertSheet showMessage:@"This message carries no reactions."
-								title:@"Reactions"
-								inView:weakSelf.view];
-			return;
-		}
-		NSMutableArray *lines = [NSMutableArray array];
-		for (NSDictionary *r in groups){
-			NSString *emoji = r[@"type"][@"emoji"];
-			NSString *name = emoji.length ? emoji : @"★";
-			[lines addObject:[NSString stringWithFormat:@"%@  ×%@", name,
-							  r[@"total_count"] ?: @(0)]];
-		}
-		[TGAlertSheet showChoices:lines
-							title:@"Reactions"
-				 destructiveIndex:-1
-						   inView:weakSelf.view
-						 onChoice:^(NSInteger index){
-			NSString *emoji = groups[index][@"type"][@"emoji"] ?: @"";
-			[[TGClient shared] addedReactionsOfMessage:messageId
-												 inChat:chatId
-												 emoji:emoji
-												offset:nil
-											completion:^(NSArray *rows, NSString *next){
-				TGChatViewController *me = weakSelf;
-				if (!me) return;
-				if (!rows.count){
-					[TGAlertSheet showMessage:@"Telegram keeps that list closed here."
-										 title:@"Reactions"
-										inView:me.view];
-					return;
-				}
-				NSMutableArray *names = [NSMutableArray array];
-				for (NSDictionary *r in rows){
-					NSDictionary *sender = r[@"sender"];
-					NSString *label = nil;
-					NSString *userId = sender[@"user_id"];
-					if (userId)
-						label = [[TGClient shared] nameForUserId:[userId longLongValue]];
-					if (!label.length)
-						label = sender[@"chat_id"] ? @"Another chat" : @"User";
-					NSString *mine = [r[@"mine"] boolValue] ? @" (you)" : @"";
-					NSString *line = label ?: @"User";
-					[names addObject:[line stringByAppendingString:mine]];
-				}
-				[TGAlertSheet showChoices:names
-									title:[NSString stringWithFormat:@"Who set %@", emoji ?: @"★"]
-						 destructiveIndex:-1
-								   inView:me.view
-								 onChoice:^(NSInteger choice){
-					// An administrator takes one person's reactions here -
-					// on this message and every other one in this chat.
-					NSDictionary *sender = rows[choice][@"sender"];
-					if (!sender)
-						return;
-					[TGAlertSheet showConfirm:
-							@"This removes everything that account reacted "
-							@"with, here and across this chat."
-								title:@"Clear Reactions"
-							   action:@"Remove"
-						  destructive:YES
-							   inView:weakSelf.view
-							onConfirm:^{
-						[[TGClient shared] deleteReactionsOfSender:sender
-														  ofMessage:messageId
-															 inChat:weakSelf.chatId];
-						[[TGClient shared] deleteAllReactionsOfSender:sender
-															   inChat:weakSelf.chatId];
-					}];
-				}];
-			}];
-		}];
+	TGMessageAudienceViewController *people =
+			[[TGMessageAudienceViewController alloc]
+					initWithKind:TGMessageAudienceKindReactions
+							chat:self.chatId
+						 message:messageId
+						   emoji:emoji
+				   customEmojiId:customEmojiId];
+	people.hidesBottomBarWhenPushed = YES;
+	[self.navigationController pushViewController:people animated:YES];
 }
 
 - (void)showAuthorOfActionMessage {

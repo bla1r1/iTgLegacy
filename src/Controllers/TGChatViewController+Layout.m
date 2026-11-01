@@ -50,8 +50,6 @@ UIColor *TGSenderColour(int64_t userId) {
 	// they said.
 	if ([self quoteTextFor:m])
 		h += kQuoteBlock;
-	if ([m[@"reactions"] length])
-		h += TGMetricLineBody;
 	// The "12 Comments" bar under a channel post.
 	if ([m[@"canComment"] boolValue])
 		h += TGMetricLineBody;
@@ -536,6 +534,25 @@ UIColor *TGSenderColour(int64_t userId) {
 	// not grow with the title, which is truncated instead.
 	// One expression for the row and the bubble, so they cannot drift apart.
 	if (isTrack) rowH = kTrackRow + forwarded + senderH;
+
+	// Reactions sit under the bubble rather than in it, the way Telegram draws
+	// them: the pill is its own object on the chat canvas. Their height is
+	// therefore added to the row, not to bubbleH.
+	if ([m[@"reactionGroups"] count]){
+		// A voice note measured its row differently from its bubble; the
+		// chips are placed from bubbleH, so the row must at least reach it.
+		rowH = MAX(rowH, bubbleH);
+		// Outgoing chips grow leftwards from the bubble's right edge, the way
+		// Telegram keeps a narrow own message from clipping its own reaction.
+		CGFloat chipsW = MIN(kBubbleMaxW, tableW - TGDoubled(TGMetricPad));
+		CGFloat chipsX = mine ? (tableW - TGMetricPad - chipsW) : x;
+		layout.reactionChipsFrame = CGRectMake(chipsX,
+				top + bubbleH + TGMetricReactionChipTop,
+				chipsW, TGMetricReactionChipHeight);
+		rowH += TGMetricReactionChipHeight + TGMetricReactionChipTop;
+	} else {
+		layout.reactionChipsFrame = CGRectZero;
+	}
 
 	layout.rowHeight = MAX(rowH + TGDoubled(TGMetricBubbleRowInset), kBubbleRowMin);
 	// A slow row names its kind, so scrolling or the initial burst can be
