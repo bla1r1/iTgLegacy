@@ -12,6 +12,10 @@
 #import "TGEphemeralViewController.h"
 #import "TGStyle.h"
 
+static const CGFloat kRecordModeSide = 28.0f;
+static const CGFloat kRecordModeGap  = 30.0f;
+#import "TGVideoNoteRecorder.h"
+
 @implementation TGChatViewController (Input)
 
 - (void)buildInputBar:(CGRect)b {
@@ -107,11 +111,29 @@
 			 forControlEvents:UIControlEventTouchDown];
 	[self.micButton addTarget:self action:@selector(recordTouchUp:withEvent:)
 			 forControlEvents:UIControlEventTouchUpInside | UIControlEventTouchUpOutside];
+	// A short tap is the mode switch; a hold is the recording. The two are
+	// separated by the touch duration, not a second button.
 	[self.micButton addTarget:self action:@selector(recordTouchCancel)
 			 forControlEvents:UIControlEventTouchCancel];
 	[self.micButton addTarget:self action:@selector(recordDrag:withEvent:)
 			 forControlEvents:UIControlEventTouchDragInside | UIControlEventTouchDragOutside];
 	[self.inputBar addSubview:self.micButton];
+
+	// A visible camera/mic switch beside the recorder. The tap-on-mic path
+	// stays, but a dedicated control is what makes the mode discoverable.
+	self.recordModeButton = [UIButton buttonWithType:UIButtonTypeCustom];
+	// Beside the paperclip, where there is room on a 320 pt bar and the
+	// camera/mic switch cannot be hidden by the text field.
+	// Between the text field and the sticker; the field is narrowed by
+	// kFieldRoom for exactly this slot.
+	self.recordModeButton.frame = CGRectMake(
+			b.size.width - kSendSide - kStickerInset - kRecordModeGap, sendY,
+			kRecordModeSide, kSendSide);
+	self.recordModeButton.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
+	[self.recordModeButton addTarget:self action:@selector(toggleRecordMode)
+					forControlEvents:UIControlEventTouchUpInside];
+	[self.inputBar addSubview:self.recordModeButton];
+	[self updateRecordModeIcon];
 
 	[self.input addTarget:self action:@selector(inputChanged)
 		 forControlEvents:UIControlEventEditingChanged];

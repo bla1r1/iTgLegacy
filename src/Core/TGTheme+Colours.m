@@ -45,6 +45,12 @@
 	return TGRole(@"barControlFill", [UIColor colorWithWhite:1.0f alpha:0.18f]);
 }
 
+- (UIColor *)composeButtonColour {
+	///< brighter than accent: the one filled control on the bar
+	return TGRole(@"composeButton", [UIColor colorWithRed:0.04f green:0.52f
+												 blue:1.0f alpha:1.0f]);
+}
+
 - (UIColor *)accentColour {
 	///< buttons, links, unread badges
 	return TGRole(@"accent", TG_BLUE_DARK4);

@@ -158,7 +158,7 @@ static const CGFloat kSendInset       = 6.0f;
 static const CGFloat kStickerInset    = TGMetricSendSide + 6.0f;
 static const CGFloat kStickerWidth    = 30.0f;
 static const CGFloat kFieldLeft       = 40.0f;
-static const CGFloat kFieldRoom       = 120.0f;
+static const CGFloat kFieldRoom       = 170.0f;
 static const CGFloat kFieldInsetV     = TGMetricPad;
 static const CGFloat kFieldLeftPad    = TGMetricPadMedium;
 /// The reply / edit banner above the composer: a stripe, then two lines.

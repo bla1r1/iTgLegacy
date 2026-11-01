@@ -72,6 +72,12 @@
 @property (nonatomic, assign) int64_t editingId;             // editing instead
 @property (nonatomic, strong) UIView *composeBanner;         // "Reply to ..."
 @property (nonatomic, strong) UIButton *micButton;
+@property (nonatomic, strong) UIButton *recordModeButton;
+/// NO records a voice note, YES a round video note. A tap on the mic
+/// switches the mode; a hold records the selected one.
+@property (nonatomic, assign) BOOL videoNoteMode;
+@property (nonatomic, strong) NSDate *recordBeganAt;
+@property (nonatomic, assign) NSInteger recordSelfDestructSeconds;
 // The bar over a chat nobody has spoken to: report spam, add to contacts.
 @property (nonatomic, strong) UIView *actionBarView;
 @property (nonatomic, strong) UILabel *actionBarLabel;
@@ -87,6 +93,7 @@
 @property (nonatomic, strong) UIView *recordLockView;
 @property (nonatomic, strong) UIButton *recordCancelButton;
 @property (nonatomic, strong) UIButton *recordSendButton;
+@property (nonatomic, strong) UIButton *recordOnceButton;
 @property (nonatomic, strong) UILabel *recordCancelSlideLabel;
 @property (nonatomic, assign) int64_t playingMessageId;
 @property (nonatomic, assign) BOOL isLoadingMoreHistory;
@@ -268,8 +275,11 @@
 
 @interface TGChatViewController (Audio)
 
+- (void)updateRecordModeIcon;
+- (void)toggleRecordMode;
 - (void)recordStart;
 - (void)recordFinish;
+- (void)toggleRecordOnce;
 - (void)recordCancel;
 - (void)recordTouchDown:(UIButton *)btn withEvent:(UIEvent *)event;
 - (void)recordTouchUp:(UIButton *)btn withEvent:(UIEvent *)event;

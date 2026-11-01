@@ -404,7 +404,8 @@ APP_SRC_M := \
 	src/Media/TGStickerImage.m \
 	src/Media/TGWebMDecoder.m \
 	src/Views/TGMediaViewer.m \
-	src/Audio/TGMusicPlayer.m
+	src/Audio/TGMusicPlayer.m \
+	src/Audio/TGVideoNoteRecorder.m
 
 # TGCall.mm sits with the app, not with the vendored libtgvoip: it is the
 # app's call protocol over the engine. The %.mm rule carries VOIP_FLAGS for

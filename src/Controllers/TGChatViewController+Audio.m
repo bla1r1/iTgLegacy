@@ -1,4 +1,5 @@
 #import "TGChatViewControllerInternal.h"
+#import "TGVideoNoteRecorder.h"
 #import "TGVoiceRecorder.h"
 #import "TGVoiceDecoder.h"
 #import "TGMusicPlayer.h"
@@ -129,6 +130,7 @@ static BOOL sIsCancelled;
 		self.recordSendButton.hidden = YES;
 		[self.recordPanel addSubview:self.recordSendButton];
 
+
 		// Classic halo and disc (original design)
 		CGFloat halo = TGMetricRecordHaloSide, disc = TGMetricRow;
 		UIView *ring = [[UIView alloc] initWithFrame:
@@ -201,6 +203,29 @@ static BOOL sIsCancelled;
 
 		self.recordLockView = pill;
 	}
+	if (!self.recordOnceButton){
+		self.recordOnceButton = [UIButton buttonWithType:UIButtonTypeCustom];
+		self.recordOnceButton.titleLabel.font = TGFontCaptionStrong();
+		[self.recordOnceButton setTitle:@"1×" forState:UIControlStateNormal];
+		[self.recordOnceButton setTitleColor:[[TGTheme shared] accentColour]
+									forState:UIControlStateNormal];
+		self.recordOnceButton.layer.cornerRadius = TGHalf(TGMetricRow);
+		self.recordOnceButton.layer.borderWidth = TGMetricHairline;
+		self.recordOnceButton.layer.borderColor =
+				[[TGTheme shared] separatorColour].CGColor;
+		[self.recordOnceButton addTarget:self action:@selector(toggleRecordOnce)
+						forControlEvents:UIControlEventTouchUpInside];
+	}
+	// Above the lock, where Telegram puts the one-time choice: tapping it
+	// makes the note self-destruct ten seconds after it is opened.
+	CGFloat onceSide = TGMetricRow;
+	CGFloat pillH = TGMetricVoicePillHeight;
+	CGFloat onceY = bar.origin.y - pillH - TGMetricPadMedium - onceSide - TGMetricPadSmall;
+	self.recordOnceButton.frame = CGRectMake(
+			bar.origin.x + bar.size.width - onceSide - TGMetricVoiceLockMaxShift,
+			onceY, onceSide, onceSide);
+	[self.view addSubview:self.recordOnceButton];
+
 	self.recordLockView.alpha = TGAlphaTransparent;
 	self.recordLockView.transform = CGAffineTransformMakeTranslation(0, kRecordLockRest);
 	[self.view addSubview:self.recordLockView];
@@ -215,6 +240,8 @@ static BOOL sIsCancelled;
 	[self.recordPanel removeFromSuperview];
 	[self.recordLockView removeFromSuperview];
 	self.recordLockView = nil;
+	[self.recordOnceButton removeFromSuperview];
+	self.recordOnceButton = nil;
 	sIsLocked = NO;
 	sIsCancelled = NO;
 	sDragDeltaX = 0;
@@ -244,7 +271,23 @@ static BOOL sIsCancelled;
 	self.recordSendButton.hidden = NO;
 }
 
+- (void)updateRecordModeIcon {
+	UIImage *video = [TGIcons glyphNamed:@"video"
+								  colour:[[TGTheme shared] secondaryTextColour]
+									side:TGMetricMenuGlyph];
+	[self.micButton setImage:(self.videoNoteMode ? video : [TGIcons microphone])
+					forState:UIControlStateNormal];
+	[self.recordModeButton setImage:(self.videoNoteMode ? [TGIcons microphone] : video)
+						   forState:UIControlStateNormal];
+}
+
+- (void)toggleRecordMode {
+	self.videoNoteMode = !self.videoNoteMode;
+	[self updateRecordModeIcon];
+}
+
 - (void)recordTouchDown:(UIButton *)btn withEvent:(UIEvent *)event {
+	self.recordBeganAt = [NSDate date];
 	sIsCancelled = NO;
 	sIsLocked = NO;
 	sDragDeltaX = 0;
@@ -262,6 +305,18 @@ static BOOL sIsCancelled;
 	self.table.scrollEnabled = YES;
 	if (sIsLocked || sIsCancelled)
 		return;
+
+	NSTimeInterval held = self.recordBeganAt
+			? -[self.recordBeganAt timeIntervalSinceNow] : 1.0;
+	self.recordBeganAt = nil;
+
+	// A tap, not a hold: change voice note <-> video note. The recorder that
+	// started on touch-down is thrown away.
+	if (held < 0.25 && sDragDeltaX < TGMetricVoiceDragDeadzone){
+		[self recordCancel];
+		[self toggleRecordMode];
+		return;
+	}
 
 	// Released while dragged towards cancel -> cancel
 	if (sDragDeltaX >= TGMetricVoiceDragDeadzone) {
@@ -315,7 +370,10 @@ static BOOL sIsCancelled;
 }
 
 - (void)recordStart {
-	if (![[TGVoiceRecorder shared] start]){
+	BOOL started = self.videoNoteMode
+			? [[TGVideoNoteRecorder shared] start]
+			: [[TGVoiceRecorder shared] start];
+	if (!started){
 		[self showPlaybackFailure];
 		return;
 	}
@@ -329,7 +387,9 @@ static BOOL sIsCancelled;
 }
 
 - (void)recordTick {
-	NSTimeInterval d = [TGVoiceRecorder shared].duration;
+	NSTimeInterval d = self.videoNoteMode
+			? [TGVideoNoteRecorder shared].duration
+			: [TGVoiceRecorder shared].duration;
 	// Shows tenths of seconds smoothly updated every 100ms
 	self.recordClock.text = [NSString stringWithFormat:@"%ld:%02ld,%ld",
 			(long)(d / 60), (long)((NSInteger)d % 60), (long)((NSInteger)(d * 10) % 10)];
@@ -350,17 +410,41 @@ static BOOL sIsCancelled;
 	self.recordTimer = nil;
 	[self hideRecordPanel];
 
+	BOOL video = self.videoNoteMode;
+	NSInteger destruct = self.recordSelfDestructSeconds;
 	__weak typeof(self) weakSelf = self;
-	[[TGVoiceRecorder shared] stopWithCompletion:^(NSString *path, NSTimeInterval seconds){
+	void (^done)(NSString *, NSTimeInterval) = ^(NSString *path, NSTimeInterval seconds){
 		TGChatViewController *me = weakSelf;
 		[me clearComposeState];
 		if (!me || !path || seconds < 0.5)
-			return;   // a stray tap is not a voice message
-		[[TGClient shared] sendVoiceAtPath:path
-								  duration:(NSInteger)seconds
-									toChat:me.chatId
-									thread:me.threadId];
-	}];
+			return;   // a stray tap is not a message
+		if (video)
+			[[TGClient shared] sendVideoNoteAtPath:path
+										  duration:(NSInteger)seconds
+											toChat:me.chatId
+											thread:me.threadId
+									  selfDestruct:destruct];
+		else
+			[[TGClient shared] sendVoiceAtPath:path
+									  duration:(NSInteger)seconds
+										toChat:me.chatId
+										thread:me.threadId
+								  selfDestruct:destruct];
+	};
+	if (video)
+		[[TGVideoNoteRecorder shared] stopWithCompletion:done];
+	else
+		[[TGVoiceRecorder shared] stopWithCompletion:done];
+}
+
+- (void)toggleRecordOnce {
+	self.recordSelfDestructSeconds = self.recordSelfDestructSeconds ? 0 : 10;
+	BOOL on = self.recordSelfDestructSeconds > 0;
+	[self.recordOnceButton setTitleColor:on
+			? [[TGTheme shared] onAccentColour] : [[TGTheme shared] accentColour]
+								forState:UIControlStateNormal];
+	self.recordOnceButton.backgroundColor = on
+			? [[TGTheme shared] accentColour] : [UIColor clearColor];
 }
 
 - (void)recordCancel {
@@ -369,7 +453,10 @@ static BOOL sIsCancelled;
 	[self.recordTimer invalidate];
 	self.recordTimer = nil;
 	[self hideRecordPanel];
-	[[TGVoiceRecorder shared] cancel];
+	if (self.videoNoteMode)
+		[[TGVideoNoteRecorder shared] cancel];
+	else
+		[[TGVoiceRecorder shared] cancel];
 	[self clearComposeState];
 }
 

@@ -30,11 +30,11 @@ static const CGFloat kListStoryGap     = 4.0f;
 /// compose button. Named here because only this header stacks them.
 static const CGFloat kBarEditWidth    = 66.0f;
 static const CGFloat kBarEditHeight   = 30.0f;
-static const CGFloat kBarRightWidth   = 82.0f;
-static const CGFloat kBarControlSide  = 34.0f;
-static const CGFloat kBarComposeSide  = 38.0f;
-static const CGFloat kBarComposeX     = 42.0f;
-static const CGFloat kBarControlTop   = 1.0f;
+static const CGFloat kBarRightWidth   = 92.0f;
+static const CGFloat kBarControlSide  = 36.0f;
+static const CGFloat kBarComposeSide  = 46.0f;
+static const CGFloat kBarComposeX     = 46.0f;
+static const CGFloat kBarControlTop   = 5.0f;
 /// The archive pill's tag, outside the folder indexes (100 + slot).
 static const NSInteger kFolderArchiveTag = 1000;
 /// A folder pill's side padding, its widest form and the gap to the next pill.
@@ -443,10 +443,10 @@ static NSDictionary *TGChatSnapshotRow(NSDictionary *chat) {
 	UIButton *compose = [UIButton buttonWithType:UIButtonTypeCustom];
 	compose.frame = CGRectMake(kBarComposeX, TGMetricZero, kBarComposeSide, kBarComposeSide);
 	compose.layer.cornerRadius = TGHalf(kBarComposeSide);
-	compose.backgroundColor = [[TGTheme shared] accentColour];
+	compose.backgroundColor = [[TGTheme shared] composeButtonColour];
 	[compose setImage:[TGIcons glyphNamed:@"compose"
-								   colour:[[TGTheme shared] onAccentColour]
-									 side:TGMetricMenuGlyph]
+								   colour:[UIColor whiteColor]
+									 side:TGMetricLineTitle]
 			 forState:UIControlStateNormal];
 	[compose addTarget:self action:@selector(composeTapped)
 	  forControlEvents:UIControlEventTouchUpInside];

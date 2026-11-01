@@ -126,6 +126,16 @@
 /// Send a recorded voice note (.oga), with its duration in seconds.
 - (void)sendVoiceAtPath:(NSString *)path duration:(NSInteger)seconds
                  toChat:(int64_t)chatId thread:(int64_t)threadId;
+/// A voice note with a self-destruct timer: 0 for a normal note, 1–60 for a
+/// one-time note in a private chat.
+- (void)sendVoiceAtPath:(NSString *)path duration:(NSInteger)seconds
+				 toChat:(int64_t)chatId thread:(int64_t)threadId
+		   selfDestruct:(NSInteger)seconds;
+
+/// A square video note recorded on this device.
+- (void)sendVideoNoteAtPath:(NSString *)path duration:(NSInteger)seconds
+					 toChat:(int64_t)chatId thread:(int64_t)threadId
+			   selfDestruct:(NSInteger)seconds;
 
 /// Send a video file from the library.
 - (void)sendVideoAtPath:(NSString *)path toChat:(int64_t)chatId;

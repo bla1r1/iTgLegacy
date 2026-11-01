@@ -595,13 +595,26 @@
 
 - (void)sendVoiceAtPath:(NSString *)path duration:(NSInteger)seconds
                  toChat:(int64_t)chatId thread:(int64_t)threadId {
+	[self sendVoiceAtPath:path duration:seconds toChat:chatId thread:threadId
+			 selfDestruct:0];
+}
+
+- (void)sendVoiceAtPath:(NSString *)path duration:(NSInteger)seconds
+				 toChat:(int64_t)chatId thread:(int64_t)threadId
+		   selfDestruct:(NSInteger)seconds {
 	if (!path.length)
 		return;
 
 	NSDictionary *attributes = [[NSFileManager defaultManager]
 			attributesOfItemAtPath:path error:nil];
-	NSLog(@"TGClient: sending voice %@ (%llu bytes, %lds) to %lld",
-			path.lastPathComponent, [attributes fileSize], (long)seconds, chatId);
+	NSLog(@"TGClient: sending voice %@ (%llu bytes, %lds, destruct %ld) to %lld",
+			path.lastPathComponent, [attributes fileSize], (long)seconds,
+			(long)seconds, chatId);
+
+	id destruct = seconds > 0
+			? @{@"@type" : @"messageSelfDestructTypeTimer",
+				@"self_destruct_time" : @(seconds)}
+			: [NSNull null];
 
 	// Answered rather than fire-and-forget: a rejected voice note is silent
 	// otherwise, and the file it points at lives in a temporary directory.
@@ -617,6 +630,8 @@
 				@"duration"   : @(seconds),
 				@"waveform"   : @"",
 			},
+			@"caption"    : [NSNull null],
+			@"self_destruct_type" : destruct,
 		},
 	} completion:^(NSDictionary *result){
 		if ([result[@"@type"] isEqualToString:@"error"])
@@ -624,6 +639,38 @@
 					result[@"code"], result[@"message"]);
 		else
 			NSLog(@"TGClient: voice accepted, message %@", result[@"id"]);
+	}];
+}
+
+- (void)sendVideoNoteAtPath:(NSString *)path duration:(NSInteger)seconds
+					 toChat:(int64_t)chatId thread:(int64_t)threadId
+			   selfDestruct:(NSInteger)seconds {
+	if (!path.length)
+		return;
+	id destruct = seconds > 0
+			? @{@"@type" : @"messageSelfDestructTypeTimer",
+				@"self_destruct_time" : @(seconds)}
+			: [NSNull null];
+	[self request:@{
+		@"@type"                : @"sendMessage",
+		@"chat_id"              : @(chatId),
+		@"message_thread_id"    : @(threadId),
+		@"input_message_content": @{
+			@"@type" : @"inputMessageVideoNote",
+			@"video_note" : @{
+				@"@type" : @"inputVideoNote",
+				@"video_note" : @{@"@type" : @"inputFileLocal", @"path" : path},
+				@"duration" : @(seconds),
+				@"length" : @(480),
+			},
+			@"self_destruct_type" : destruct,
+		},
+	} completion:^(NSDictionary *result){
+		if ([result[@"@type"] isEqualToString:@"error"])
+			NSLog(@"TGClient: video note rejected: %@ %@",
+					result[@"code"], result[@"message"]);
+		else
+			NSLog(@"TGClient: video note accepted, message %@", result[@"id"]);
 	}];
 }
 

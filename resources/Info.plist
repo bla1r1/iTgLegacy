@@ -192,5 +192,11 @@
 	</array>
 	<key>UIViewGroupOpacity</key>
 	<false/>
+	<key>NSCameraUsageDescription</key>
+	<string>Record round video messages.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Record voice and video messages.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Send photos and videos from your library.</string>
 </dict>
 </plist>
