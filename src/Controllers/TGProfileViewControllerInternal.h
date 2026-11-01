@@ -35,9 +35,6 @@ static const CGFloat kMediaTabs     = 30.0f;
 static const CGFloat kStoryThumb    = TGMetricListAvatar;
 static const CGFloat kGiftTile      = TGMetricListAvatar;
 static const CGFloat kGiftTileInset = TGMetricBorderWidth;
-/// A member's picture, which is smaller than a list avatar because the row
-/// it sits in is a settings row and not a person row.
-static const CGFloat kMemberAvatar  = 32.0f;
 /// The glyph beside a link in the media list.
 static const CGFloat kLinkGlyph     = 24.0f;
 /// The "Copied" toast, which is as wide as that word needs and no wider.
@@ -99,11 +96,8 @@ static const CGFloat   kStoryGridGap   = TGMetricCollageGap;
 - (void)reloadTableDebounced;
 - (void)doReloadTable;
 - (void)showMemberActionsFor:(NSDictionary *)member;
-- (void)runMemberAction:(NSString *)action onUser:(int64_t)userId named:(NSString *)name;
-- (void)showInviteLink;
 
-/// The photo-library picker the group photo opens, and the text it edits.
-@property (nonatomic, assign) BOOL pickingChatPhoto;
+/// The description the group profile's details section reads.
 @property (nonatomic, copy) NSString *chatDescription;
 
 @end

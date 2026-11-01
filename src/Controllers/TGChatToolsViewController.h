@@ -1,8 +1,8 @@
 //
 // TGChatToolsViewController.h - the per-chat half of Tier 2.
 //
-// Reached from a profile's More menu. Everything here changes the chat itself
-// or reads what Telegram keeps about it: the event log, statistics, similar
+// Reached from Group Settings. Everything here changes the chat itself or
+// reads what Telegram keeps about it: the event log, statistics, similar
 // chats, slow mode, reactions, protected content, themes, the discussion
 // group, the location, the local note, member positions and the photo tools.
 //

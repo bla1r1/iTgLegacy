@@ -345,6 +345,53 @@ static NSArray *TGPacksFrom(NSDictionary *target) {
 	return self.userPhotosById[@(userId)];
 }
 
+- (void)profilePhotoFileIdForUser:(int64_t)userId
+                       completion:(void (^)(NSNumber *))completion {
+	if (!userId){
+		if (completion) completion(nil);
+		return;
+	}
+	NSNumber *cached = self.userPhotosById[@(userId)];
+	if (cached){
+		if (completion) completion(cached);
+		return;
+	}
+	// A member list names people TDLib has already told us about; their raw
+	// record carries the picture without another round trip.
+	NSDictionary *raw = self.rawUsersById[@(userId)];
+	if (raw){
+		NSNumber *fileId = [raw[@"profile_photo"][@"small"][@"id"]
+				isKindOfClass:NSNumber.class]
+				? raw[@"profile_photo"][@"small"][@"id"] : nil;
+		if (fileId)
+			self.userPhotosById[@(userId)] = fileId;
+		if (completion) completion(fileId);
+		return;
+	}
+	__weak typeof(self) weakSelf = self;
+	[self request:@{@"@type" : @"getUser", @"user_id" : @(userId)}
+	   completion:^(NSDictionary *user){
+		TGClient *me = weakSelf;
+		NSNumber *fileId = nil;
+		if ([user[@"@type"] isEqualToString:@"user"]){
+			// The raw record is what the next call reads, so a user with no
+			// picture is answered locally instead of asked for again.
+			if (!me.rawUsersById)
+				me.rawUsersById = [[TGObjectLruCache alloc] initWithCapacity:TGRawUserCacheCap];
+			if (me)
+				me.rawUsersById[@(userId)] = user;
+			NSNumber *small = user[@"profile_photo"][@"small"][@"id"];
+			if ([small isKindOfClass:NSNumber.class]){
+				fileId = small;
+				if (!me.userPhotosById)
+					me.userPhotosById = [NSMutableDictionary dictionary];
+				me.userPhotosById[@(userId)] = small;
+			}
+		}
+		if (completion) completion(fileId);
+	}];
+}
+
 - (void)userProfile:(int64_t)userId completion:(void (^)(NSDictionary *))completion {
 	[self request:@{@"@type" : @"getUserFullInfo", @"user_id" : @(userId)}
 	   completion:^(NSDictionary *full){

@@ -204,6 +204,7 @@ APP_SRC_M := \
 	src/Core/TGStickerStore.m \
 	src/Core/TGEmojiStore.m \
 	src/Core/TGMediaStore.m \
+	src/Core/TGMemberAvatarStore.m \
 	src/Core/TGClient+Auth.m \
 	src/Core/TGClient+Messages.m \
 	src/Core/TGMessageFlatten.m \
@@ -273,6 +274,7 @@ APP_SRC_M := \
 	src/Views/TGEmojiData.m \
 	src/Views/TGEmojiPanel.m \
 	src/Views/TGAttachSheet.m \
+	src/Views/TGMemberCell.m \
 	src/Views/TGBubbleCell.m \
 	src/Controllers/TGDevShowcase.m \
 	src/Controllers/TGChatViewController.m \
@@ -309,6 +311,7 @@ APP_SRC_M := \
 	src/Controllers/TGEditProfileViewController.m \
 	src/Controllers/TGUsernameSettingsViewController.m \
 	src/Controllers/TGGroupSettingsViewController.m \
+	src/Controllers/TGGroupMemberActions.m \
 	src/Controllers/TGAdminRightsViewController.m \
 	src/Controllers/TGDeviceViewController.m \
 	src/Controllers/TGStorageViewController.m \

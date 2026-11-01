@@ -715,6 +715,83 @@ static void answerA(TGClient *c, NSDictionary *answer) {
 	XCTAssertEqualObjects(r[@"session_id"], @(5));
 }
 
+// ─── member avatars ──────────────────────────────────────────────────────────
+
+/// A member row only carries an id. When TDLib already told us about that
+/// user, the picture must come out of the cache rather than costing a
+/// getUser per row.
+- (void)testProfilePhoto_ACachedUserAnswersWithoutARoundTrip {
+	TGClient *c = A();
+	[c.rawUsersById removeObjectForKey:@(501)];
+	[c.userPhotosById removeObjectForKey:@(501)];
+	c.rawUsersById[@(501)] = @{@"@type" : @"user", @"id" : @(501),
+			@"profile_photo" : @{@"small" : @{@"id" : @(7001)}}};
+
+	__block BOOL called = NO;
+	__block NSNumber *got = nil;
+	[c profilePhotoFileIdForUser:501 completion:^(NSNumber *fileId){
+		called = YES;
+		got = fileId;
+	}];
+
+	XCTAssertTrue(called);
+	XCTAssertEqualObjects(got, @(7001));
+	XCTAssertEqualObjects([c photoFileIdForUserId:501], @(7001));
+	XCTAssertEqual(countA(c, @"getUser"), (NSUInteger)0);
+}
+
+/// An unknown user costs one getUser, and the answer is kept so the next row
+/// that draws them does not ask again.
+- (void)testProfilePhoto_AnUnknownUserIsFetchedAndRemembered {
+	TGClient *c = A();
+	[c.rawUsersById removeObjectForKey:@(502)];
+	[c.userPhotosById removeObjectForKey:@(502)];
+
+	__block NSNumber *got = nil;
+	[c profilePhotoFileIdForUser:502 completion:^(NSNumber *fileId){ got = fileId; }];
+	NSDictionary *r = lastA(c, @"getUser");
+	XCTAssertEqualObjects(r[@"user_id"], @(502));
+	XCTAssertNil(got);
+
+	answerA(c, @{@"@type" : @"user", @"id" : @(502),
+			@"profile_photo" : @{@"small" : @{@"id" : @(7002)}}});
+	XCTAssertEqualObjects(got, @(7002));
+	XCTAssertEqualObjects([c photoFileIdForUserId:502], @(7002));
+}
+
+/// No picture is an answer, not a reason to keep asking: the raw record is
+/// cached with no profile photo and the next call says nil at once.
+- (void)testProfilePhoto_UserWithoutAPhotoAnswersNilAndIsNotAskedTwice {
+	TGClient *c = A();
+	[c.rawUsersById removeObjectForKey:@(503)];
+	[c.userPhotosById removeObjectForKey:@(503)];
+
+	__block NSInteger calls = 0;
+	[c profilePhotoFileIdForUser:503 completion:^(NSNumber *fileId){
+		calls++;
+		XCTAssertNil(fileId);
+	}];
+	answerA(c, @{@"@type" : @"user", @"id" : @(503)});
+	[c profilePhotoFileIdForUser:503 completion:^(NSNumber *fileId){
+		calls++;
+		XCTAssertNil(fileId);
+	}];
+
+	XCTAssertEqual(calls, (NSInteger)2);
+	XCTAssertEqual(countA(c, @"getUser"), (NSUInteger)1);
+}
+
+- (void)testProfilePhoto_NoUserMeansNoRequest {
+	TGClient *c = A();
+	__block BOOL called = NO;
+	[c profilePhotoFileIdForUser:0 completion:^(NSNumber *fileId){
+		called = YES;
+		XCTAssertNil(fileId);
+	}];
+	XCTAssertTrue(called);
+	XCTAssertEqual(countA(c, @"getUser"), (NSUInteger)0);
+}
+
 @end
 
 // vim:ft=objc

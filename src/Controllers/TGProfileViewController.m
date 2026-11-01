@@ -1,6 +1,7 @@
 #import "TGProfileViewControllerInternal.h"
 #import "TGStyle.h"
 #import "TGAlertSheet.h"
+#import "TGMemberCell.h"
 
 /// Flattened messages carry a unix date, not a formatted stamp; the shared
 /// lists want a short one beside each row.
@@ -449,12 +450,34 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 		return side + kStoryGridGap;
 	}
 	if (indexPath.section == kSectionStories) return TGMetricPersonRow;
+	if (indexPath.section == kSectionMembers) return TGMetricPersonRow;
 	return indexPath.section == kSectionDetails ? TGMetricPersonRow : TGMetricRow;
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
 	if (indexPath.section == kSectionMedia && [self selectedTabIsGrid])
 		return [self mediaGridCellForTableView:tableView atRow:indexPath.row];
+
+	// The member list draws a face per row; the shared cell owns the picture
+	// and the one-row reload that follows its download.
+	if (indexPath.section == kSectionMembers){
+		static NSString *memberReuse = @"member";
+		TGMemberCell *memberCell = [tableView dequeueReusableCellWithIdentifier:memberReuse];
+		if (!memberCell)
+			memberCell = [[TGMemberCell alloc] initWithStyle:UITableViewCellStyleDefault
+										  reuseIdentifier:memberReuse];
+		[[TGTheme shared] styleCell:memberCell];
+		memberCell.textLabel.font = TGFontBody();
+		memberCell.textLabel.textColor = [[TGTheme shared] primaryTextColour];
+		memberCell.selectionStyle = UITableViewCellSelectionStyleDefault;
+		memberCell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+		NSDictionary *member = self.members[indexPath.row];
+		int64_t userId = [member[@"id"] longLongValue];
+		NSString *name = [member[@"name"] length]
+				? member[@"name"] : [[TGClient shared] nameForUserId:userId];
+		[memberCell setName:name userId:userId inTable:tableView];
+		return memberCell;
+	}
 
 	UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"row"];
 	if (!cell)
@@ -582,17 +605,7 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 		return cell;
 	}
 
-	if (indexPath.section == kSectionMembers){
-		NSDictionary *member = self.members[indexPath.row];
-		int64_t userId = [member[@"id"] longLongValue];
-		NSString *name = [member[@"name"] length]
-				? member[@"name"] : [[TGClient shared] nameForUserId:userId];
-		cell.textLabel.text = name ?: @"";
-		cell.detailTextLabel.text = nil;
-		cell.imageView.image = [TGIcons avatarWithInitials:
-				(name.length ? [name substringToIndex:1].uppercaseString : @"?")
-													  size:kMemberAvatar colourId:userId];
-	} else if (indexPath.section == kSectionMedia) {
+	if (indexPath.section == kSectionMedia) {
 		NSString *kind = [self selectedMediaKind];
 		NSArray *rows = [self selectedMediaRows];
 		if (indexPath.row < (NSInteger)rows.count) {

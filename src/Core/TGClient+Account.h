@@ -18,6 +18,12 @@
 /// Profile photo file id for a user, or nil if TDLib has not sent one.
 - (NSNumber *)photoFileIdForUserId:(int64_t)userId;
 
+/// The same id, asking Telegram when the user record is not cached yet. A
+/// member list only carries ids and names, so every face there starts here;
+/// the answer is kept in the same map photoFileIdForUserId reads.
+- (void)profilePhotoFileIdForUser:(int64_t)userId
+                       completion:(void (^)(NSNumber *fileId))completion;
+
 /// Full user record: "first_name", "last_name", "usernames", "phone_number".
 - (void)userInfo:(int64_t)userId completion:(void (^)(NSDictionary *user))completion;
 
