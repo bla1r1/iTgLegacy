@@ -24,12 +24,25 @@
 /// Empty for a chat that is not a forum.
 - (void)forumTopicsForChat:(int64_t)chatId completion:(void (^)(NSArray *topics))completion;
 
-/// Making and minding a forum's topics. `colour` is one of TDLib's forum
-/// hues, 0-6.
+/// Making and minding a forum's topics. `colour` indexes the six hues TDLib
+/// accepts, 0-5. `iconEmojiId` is one of the ids `forumTopicDefaultIcons`
+/// answers, or 0 for a colour-only icon.
 - (void)createForumTopicInChat:(int64_t)chatId
 						  name:(NSString *)name
 				   iconColour:(NSInteger)colour
+				  iconEmojiId:(int64_t)iconEmojiId
 				   completion:(void (^)(int64_t threadId, NSString *name))completion;
+
+/// The custom emoji any account may use as a topic icon. Each entry:
+/// "id" (the icon_custom_emoji_id) and "emoji" (its character).
+- (void)forumTopicDefaultIconsWithCompletion:(void (^)(NSArray *icons))completion;
+
+/// Changes only the icon; the name stays. An emoji id of 0 removes it.
+/// TDLib will not edit the General topic's icon, so a failure is normal there.
+- (void)setForumTopicIcon:(int64_t)iconEmojiId
+				 threadId:(int64_t)threadId
+				   inChat:(int64_t)chatId
+			   completion:(void (^)(BOOL ok))completion;
 
 /// Renaming only, unless `iconEmojiId` says the icon changes with it.
 - (void)renameForumTopic:(int64_t)threadId
@@ -51,6 +64,14 @@
 - (void)setChatViewAsTopics:(int64_t)chatId
 			   viewAsTopics:(BOOL)viewAsTopics
 				 completion:(void (^)(BOOL ok))completion;
+
+/// Turns a channel's direct-messages group on or off; the group is where
+/// readers' replies collect. `paidStars` is what a non-admin pays per
+/// message, 0 for free. Owner only.
+- (void)setDirectMessagesEnabled:(BOOL)enabled
+					   paidStars:(NSInteger)paidStars
+						  inChat:(int64_t)chatId
+					  completion:(void (^)(BOOL ok))completion;
 
 /// Whether the signed-in user may post in a chat. A channel you only follow
 /// says NO, and the composer has to go away rather than fail on send.

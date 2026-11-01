@@ -687,6 +687,51 @@ static NSDictionary *TGFlattenInviteLink(NSDictionary *link) {
 	}];
 }
 
+/// A group's sticker shelf is set on the supergroup, not the chat, and this
+/// client only ever holds the chat id. A basic group has no supergroup and no
+/// shelf, so it answers NO without a request.
+- (void)setSupergroupStickerSet:(int64_t)setId
+						inChat:(int64_t)chatId
+					completion:(void (^)(BOOL))completion {
+	__weak typeof(self) weakSelf = self;
+	[self supergroupIdForChat:chatId completion:^(int64_t supergroupId){
+		if (!supergroupId){
+			if (completion) completion(NO);
+			return;
+		}
+		[weakSelf request:@{@"@type" : @"setSupergroupStickerSet",
+							@"supergroup_id" : @(supergroupId),
+							@"sticker_set_id" : @(setId)}
+			   completion:^(NSDictionary *result){
+			BOOL ok = ![result[@"@type"] isEqualToString:@"error"];
+			if (!ok)
+				NSLog(@"setSupergroupStickerSet: %@", result[@"message"]);
+			if (completion) completion(ok);
+		}];
+	}];
+}
+
+- (void)setSupergroupCustomEmojiStickerSet:(int64_t)setId
+									inChat:(int64_t)chatId
+								completion:(void (^)(BOOL))completion {
+	__weak typeof(self) weakSelf = self;
+	[self supergroupIdForChat:chatId completion:^(int64_t supergroupId){
+		if (!supergroupId){
+			if (completion) completion(NO);
+			return;
+		}
+		[weakSelf request:@{@"@type" : @"setSupergroupCustomEmojiStickerSet",
+							@"supergroup_id" : @(supergroupId),
+							@"custom_emoji_sticker_set_id" : @(setId)}
+			   completion:^(NSDictionary *result){
+			BOOL ok = ![result[@"@type"] isEqualToString:@"error"];
+			if (!ok)
+				NSLog(@"setSupergroupCustomEmojiStickerSet: %@", result[@"message"]);
+			if (completion) completion(ok);
+		}];
+	}];
+}
+
 @end
 
 // vim:ft=objc

@@ -332,13 +332,26 @@ int64_t TGArchiveOrder(NSArray *positions) {
 	}];
 }
 
+/// TDLib takes an RGB value, not a palette index, and the server accepts only
+/// these six hues. The screen names them in the same order.
+static NSInteger TGForumTopicColour(NSInteger index) {
+	static const NSInteger hues[] = {
+		0x6FB9F0, 0xFFD67E, 0xCB86DB, 0x8EEE98, 0xFF93B2, 0xFB6F5F
+	};
+	NSInteger count = (NSInteger)(sizeof(hues) / sizeof(hues[0]));
+	if (index < 0)
+		index = 0;
+	return hues[index % count];
+}
+
 /// A topic made: its thread id is what every later edit answers through.
-/// `colour` is one of TDLib's forum hues, 0-6; a topic made without a name
-/// is what tapping "General" makes, and TDLib names it itself.
+/// A topic made without a name is what tapping "General" makes, and TDLib
+/// names it itself.
 - (void)createForumTopicInChat:(int64_t)chatId
 						  name:(NSString *)name
-					  iconColour:(NSInteger)colour
-					  completion:(void (^)(int64_t threadId, NSString *name))completion {
+				   iconColour:(NSInteger)colour
+				  iconEmojiId:(int64_t)iconEmojiId
+				   completion:(void (^)(int64_t threadId, NSString *name))completion {
 	if (!name.length){
 		if (completion) completion(0, nil);
 		return;
@@ -349,12 +362,52 @@ int64_t TGArchiveOrder(NSArray *positions) {
 		@"name"             : name,
 		@"is_name_implicit" : @NO,
 		@"icon"             : @{@"@type" : @"forumTopicIcon",
-								@"color" : @(colour % 7),
-								@"custom_emoji_id" : @(0)},
+								@"color" : @(TGForumTopicColour(colour)),
+								@"custom_emoji_id" : @(iconEmojiId)},
 	} completion:^(NSDictionary *info){
 		if (completion)
 			completion([info[@"forum_topic_id"] integerValue],
 					   info[@"name"] ?: name);
+	}];
+}
+
+/// The default set is a sticker set under the hood; only the emoji character
+/// and its id matter to the picker, so the thumbnails are left alone.
+- (void)forumTopicDefaultIconsWithCompletion:(void (^)(NSArray *))completion {
+	[self request:@{@"@type" : @"getForumTopicDefaultIcons"}
+	   completion:^(NSDictionary *result){
+		NSMutableArray *out = [NSMutableArray array];
+		for (NSDictionary *sticker in result[@"stickers"]){
+			if (![sticker isKindOfClass:NSDictionary.class])
+				continue;
+			NSNumber *emojiId = sticker[@"full_type"][@"custom_emoji_id"];
+			NSString *emoji = sticker[@"emoji"];
+			if (!emojiId || !emoji.length)
+				continue;
+			[out addObject:@{@"id" : emojiId, @"emoji" : emoji}];
+		}
+		NSLog(@"TGClient: %lu default topic icons",
+			  (unsigned long)out.count);
+		if (completion) completion(out);
+	}];
+}
+
+/// An empty name means "keep the old one", so this touches only the icon.
+/// 0 is a real value here: it removes the emoji and leaves the colour.
+- (void)setForumTopicIcon:(int64_t)iconEmojiId
+				 threadId:(int64_t)threadId
+				   inChat:(int64_t)chatId
+			   completion:(void (^)(BOOL ok))completion {
+	[self request:@{
+		@"@type"                 : @"editForumTopic",
+		@"chat_id"               : @(chatId),
+		@"forum_topic_id"        : @(threadId),
+		@"name"                  : @"",
+		@"edit_icon_custom_emoji" : @YES,
+		@"icon_custom_emoji_id"  : @(iconEmojiId),
+	} completion:^(NSDictionary *result){
+		if (completion)
+			completion(![result[@"@type"] isEqualToString:@"error"]);
 	}];
 }
 
@@ -418,6 +471,23 @@ int64_t TGArchiveOrder(NSArray *positions) {
 		@"@type"         : @"toggleChatViewAsTopics",
 		@"chat_id"       : @(chatId),
 		@"view_as_topics" : @(viewAsTopics),
+	} completion:^(NSDictionary *result){
+		if (completion)
+			completion(![result[@"@type"] isEqualToString:@"error"]);
+	}];
+}
+
+/// The channel's direct-messages group, switched on or off. A non-zero price
+/// only travels with the "on" state; TDLib keeps the old price otherwise.
+- (void)setDirectMessagesEnabled:(BOOL)enabled
+					   paidStars:(NSInteger)paidStars
+						  inChat:(int64_t)chatId
+					  completion:(void (^)(BOOL ok))completion {
+	[self request:@{
+		@"@type"                 : @"setChatDirectMessagesGroup",
+		@"chat_id"               : @(chatId),
+		@"is_enabled"            : @(enabled),
+		@"paid_message_star_count" : @(enabled ? MAX((NSInteger)0, paidStars) : 0),
 	} completion:^(NSDictionary *result){
 		if (completion)
 			completion(![result[@"@type"] isEqualToString:@"error"]);

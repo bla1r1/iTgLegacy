@@ -59,6 +59,27 @@ extern NSString *const TGStickerListsChangedNotification;
 /// Empty until it arrives.
 - (NSArray *)animationSearchEmojis;
 
+/// The tags a single sticker carries, and every tag matching one of them.
+/// The panel's hold card shows both so a sticker's filing is visible.
+- (void)stickerEmojisForFileId:(NSInteger)fileId
+					completion:(void (^)(NSArray *emojis))completion;
+- (void)allStickerEmojisForQuery:(NSString *)query
+					  completion:(void (^)(NSArray *emojis))completion;
+
+/// A sticker's outline and its SVG path. The card shows the shape count and
+/// offers the path for copying; no vector renderer is needed for either.
+- (void)stickerOutlineForFileId:(NSInteger)fileId
+					 completion:(void (^)(NSArray *paths, NSInteger pointCount))completion;
+- (void)stickerOutlineSvgPathForFileId:(NSInteger)fileId
+							completion:(void (^)(NSString *path))completion;
+
+/// Mark the trending shelf as seen. Called when the panel or the packs screen
+/// actually shows it, so the same packs are not recommended forever.
+- (void)viewTrendingStickerSets:(NSArray *)setIds;
+
+/// Empty Recently Used.
+- (void)clearRecentStickers;
+
 #pragma mark - commands
 
 /// The new strip order, as the */reorder* calls take it.

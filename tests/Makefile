@@ -39,6 +39,7 @@ CFLAGS  := \
     -I$(SRC)/Calls \
     -I$(SRC)/Audio \
     -I$(ROOT)/third_party \
+    -I$(ROOT)/libs \
     -I$(ROOT)/third_party/libtgvoip \
     -I$(TESTS) \
     -I$(OPENSSL)/include \
@@ -50,7 +51,9 @@ CFLAGS  := \
 LDFLAGS := \
     $(if $(SDK),-isysroot $(SDK),) \
     -L$(OPENSSL)/lib \
+    -L/opt/homebrew/opt/webp/lib \
     -lcrypto \
+    -lwebp \
     -lz \
     -lc++ \
     -framework Foundation \
@@ -85,6 +88,7 @@ CLIENT_OBJC_SRCS := \
     $(SRC)/Core/TGJson.mm \
     $(SRC)/Core/TGClient.m \
     $(SRC)/Core/TGClient+Chats.mm \
+    $(SRC)/Core/TGClient+ChatTools.m \
     $(SRC)/Core/TGMessageStreamStore.mm \
     $(SRC)/Core/TGUpdateBatcher.mm \
     $(SRC)/Core/TGClient+Messages.m \
@@ -94,6 +98,7 @@ CLIENT_OBJC_SRCS := \
     $(SRC)/Core/TGClient+Stickers.m \
     $(SRC)/Core/TGClient+Files.mm \
     $(SRC)/Core/TGStickerPack.mm \
+    $(SRC)/Media/TGStickerImage.m \
     $(SRC)/Core/TGStatusText.m \
     $(SRC)/Core/TGClient+Proxy.m \
     $(SRC)/Core/TGClient+Groups.m \
@@ -150,11 +155,14 @@ CLIENT_TEST_SRCS := \
     $(TESTS)/TGClientAccountTests.m \
     $(TESTS)/TGClientComposeTests.m \
     $(TESTS)/TGClientBareTests.m \
+    $(TESTS)/TGClientStickerAuthoringTests.m \
     $(TESTS)/TGClientThreadsTests.m \
+    $(TESTS)/TGClientChatToolsTests.m \
     $(TESTS)/TGThemeFileTests.m \
     $(TESTS)/TGUpdatesTests.mm \
     $(TESTS)/TGP1MigrationTests.mm \
-    $(TESTS)/TGStickerBudgetTests.m
+    $(TESTS)/TGStickerBudgetTests.m \
+    $(TESTS)/TGStickerImageTests.m
 
 TEST_BINARY := $(BUILD)/TGCallTests
 CLIENT_BINARY := $(BUILD)/TGClientTests

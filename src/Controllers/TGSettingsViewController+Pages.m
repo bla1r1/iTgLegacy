@@ -6,6 +6,7 @@
 #import "AppDelegate.h"
 #import "TGChatViewController.h"
 #import "TGDevShowcase.h"
+#import "TGStickerPacksViewController.h"
 
 @implementation TGSettingsViewController (Pages)
 
@@ -63,6 +64,12 @@
 		TGSection(nil, nil, @[
 			TGIconRow(@"Saved Messages", @"folder", TGIconTileSky(), ^{
 				[weakSelf openSavedMessages];
+			}),
+			TGIconRow(@"Stickers", @"star", TGIconTileViolet(), ^{
+				TGStickerPacksViewController *packs =
+						[[TGStickerPacksViewController alloc] init];
+				packs.hidesBottomBarWhenPushed = YES;
+				[weakSelf.navigationController pushViewController:packs animated:YES];
 			}),
 			TGIconRow(@"Recent Calls", @"call", TGIconTileGreen(), ^{
 				[weakSelf openPage:TGSettingsPageRecentCalls];
@@ -266,6 +273,338 @@
 			}),
 		]),
 
+		// The calls TDLib reserves for bot accounts. A user account still
+		// sends them; the server's refusal is the honest answer, and the row
+		// exists so the request and its result have a real surface.
+		TGSection(@"Bot Tools",
+				  @"Requests a bot account owns. A user account will usually get "
+				  @"Telegram's refusal back, shown as the answer.", @[
+			TGTapRow(@"Callback Query Message", nil, ^{
+				[TGAlertSheet showInput:@"Callback Query Message"
+								message:@"Chat id" placeholder:@"-100..."
+									 text:nil action:@"Next" inView:weakSelf.view
+							   onSubmit:^(NSString *chat){
+					int64_t chatId = [chat longLongValue];
+					[TGAlertSheet showInput:@"Callback Query Message"
+									message:@"Message id" placeholder:@"123"
+										 text:nil action:@"Next" inView:weakSelf.view
+								   onSubmit:^(NSString *message){
+						int64_t messageId = [message longLongValue];
+						[TGAlertSheet showInput:@"Callback Query Message"
+										message:@"Callback query id"
+									placeholder:@"0"
+										 text:nil action:@"Fetch"
+									   inView:weakSelf.view
+								   onSubmit:^(NSString *query){
+							[[TGClient shared] callbackQueryMessage:messageId
+															 inChat:chatId
+													callbackQueryId:[query longLongValue]
+														 completion:^(NSDictionary *found){
+								[TGAlertSheet showMessage:(found[@"text"] ?: @"Telegram refused or has no such callback.")
+													title:@"Callback Query Message"
+												   inView:weakSelf.view];
+							}];
+						}];
+					}];
+				}];
+			}),
+			TGTapRow(@"Personal Chat History", nil, ^{
+				[TGAlertSheet showInput:@"Personal Chat History"
+								message:@"User id" placeholder:@"123"
+									 text:nil action:@"Fetch" inView:weakSelf.view
+							   onSubmit:^(NSString *user){
+					[[TGClient shared] personalChatHistoryForUser:[user longLongValue]
+														   limit:20
+													  completion:^(NSArray *messages){
+						NSMutableString *body = [NSMutableString string];
+						for (NSDictionary *message in messages)
+							[body appendFormat:@"%@\n",
+									message[@"text"] ?: @"(no text)"];
+						if (!body.length)
+							body = [@"Telegram refused or the chat is empty."
+									mutableCopy];
+						[TGAlertSheet showMessage:body
+											title:@"Personal Chat History"
+										   inView:weakSelf.view];
+					}];
+				}];
+			}),
+			TGTapRow(@"Set Reactions", nil, ^{
+				[TGAlertSheet showInput:@"Set Reactions"
+								message:@"Chat id" placeholder:@"-100..."
+									 text:nil action:@"Next" inView:weakSelf.view
+							   onSubmit:^(NSString *chat){
+					int64_t chatId = [chat longLongValue];
+					[TGAlertSheet showInput:@"Set Reactions"
+									message:@"Message id" placeholder:@"123"
+										 text:nil action:@"Next" inView:weakSelf.view
+								   onSubmit:^(NSString *message){
+						int64_t messageId = [message longLongValue];
+						[TGAlertSheet showInput:@"Set Reactions"
+										message:@"Emoji (empty clears)"
+									placeholder:@"👍"
+										 text:nil action:@"Set"
+									   inView:weakSelf.view
+								   onSubmit:^(NSString *emoji){
+							[[TGClient shared] setReactions:(emoji.length ? @[emoji] : @[])
+												  onMessage:messageId
+													 inChat:chatId
+												 completion:^(BOOL ok){
+								[TGAlertSheet showMessage:(ok ? @"Reactions set."
+															: @"Telegram refused that.")
+													title:@"Set Reactions"
+												   inView:weakSelf.view];
+							}];
+						}];
+					}];
+				}];
+			}),
+			TGTapRow(@"Send Text Draft", nil, ^{
+				[TGAlertSheet showInput:@"Send Text Draft"
+								message:@"Chat id" placeholder:@"-100..."
+									 text:nil action:@"Next" inView:weakSelf.view
+							   onSubmit:^(NSString *chat){
+					int64_t chatId = [chat longLongValue];
+					[TGAlertSheet showInput:@"Send Text Draft"
+									message:@"Draft text" placeholder:@"Thinking..."
+										 text:nil action:@"Send" inView:weakSelf.view
+								   onSubmit:^(NSString *text){
+						int64_t draftId = (int64_t)([[NSDate date]
+								timeIntervalSince1970] * 1000);
+						[[TGClient shared] sendTextDraft:text
+												 toChat:chatId
+												  topic:0
+												draftId:draftId
+												 canStop:YES
+													keep:NO
+											 completion:^(BOOL ok){
+							NSString *body = ok
+									? [NSString stringWithFormat:
+											@"Draft sent. Its id is %lld.",
+											(long long)draftId]
+									: @"Telegram refused that.";
+							[TGAlertSheet showMessage:body
+												title:@"Send Text Draft"
+											   inView:weakSelf.view];
+						}];
+					}];
+				}];
+			}),
+			TGTapRow(@"Stop Text Draft", nil, ^{
+				[TGAlertSheet showInput:@"Stop Text Draft"
+								message:@"Chat id" placeholder:@"-100..."
+									 text:nil action:@"Next" inView:weakSelf.view
+							   onSubmit:^(NSString *chat){
+					int64_t chatId = [chat longLongValue];
+					[TGAlertSheet showInput:@"Stop Text Draft"
+									message:@"Draft id" placeholder:@"0"
+										 text:nil action:@"Stop" inView:weakSelf.view
+								   onSubmit:^(NSString *draft){
+						[[TGClient shared] stopTextDraft:[draft longLongValue]
+												  inChat:chatId
+												   topic:0
+											  completion:^(BOOL ok){
+							[TGAlertSheet showMessage:(ok ? @"Draft stopped."
+														: @"Telegram refused that.")
+												title:@"Stop Text Draft"
+											   inView:weakSelf.view];
+						}];
+					}];
+				}];
+			}),
+			TGTapRow(@"Prepared Inline Message", nil, ^{
+				[TGAlertSheet showInput:@"Prepared Inline Message"
+								message:@"Bot user id" placeholder:@"123"
+									 text:nil action:@"Next" inView:weakSelf.view
+							   onSubmit:^(NSString *bot){
+					int64_t botId = [bot longLongValue];
+					[TGAlertSheet showInput:@"Prepared Inline Message"
+									message:@"Prepared message id"
+								placeholder:@"prepared"
+									 text:nil action:@"Fetch"
+								   inView:weakSelf.view
+							   onSubmit:^(NSString *prepared){
+						[[TGClient shared] preparedInlineMessageFromBot:botId
+													  preparedMessageId:prepared
+														   completion:^(NSDictionary *found){
+							NSString *body = found
+									? [NSString stringWithFormat:@"Id: %@\nResult: %@",
+											found[@"id"] ?: @"",
+											found[@"result"] ?: @{}]
+									: @"Telegram refused or has no such message.";
+							[TGAlertSheet showMessage:body
+												title:@"Prepared Inline Message"
+											   inView:weakSelf.view];
+						}];
+					}];
+				}];
+			}),
+			TGTapRow(@"Save Inline Message", nil, ^{
+				[TGAlertSheet showInput:@"Save Inline Message"
+								message:@"User id to prepare it for" placeholder:@"123"
+									 text:nil action:@"Next" inView:weakSelf.view
+							   onSubmit:^(NSString *user){
+					int64_t userId = [user longLongValue];
+					[TGAlertSheet showInput:@"Save Inline Message"
+									message:@"Message text"
+								placeholder:@"Hello"
+									 text:nil action:@"Save"
+								   inView:weakSelf.view
+							   onSubmit:^(NSString *text){
+						[[TGClient shared] savePreparedInlineMessageForUser:userId
+																	 text:text
+																	title:text
+															   completion:^(NSString *preparedId){
+							[TGAlertSheet showMessage:(preparedId.length
+									? [NSString stringWithFormat:@"Saved as %@", preparedId]
+									: @"Telegram refused that.")
+												title:@"Save Inline Message"
+											   inView:weakSelf.view];
+						}];
+					}];
+				}];
+			}),
+			TGTapRow(@"Edit Inline Message", nil, ^{
+				[TGAlertSheet showInput:@"Edit Inline Message"
+								message:@"Inline message id"
+							placeholder:@"AAH..."
+									 text:nil action:@"Next"
+								   inView:weakSelf.view
+							   onSubmit:^(NSString *inlineId){
+					[TGAlertSheet showChoices:@[@"Text", @"Caption",
+												@"Remove Buttons", @"Photo",
+												@"Live Location"]
+										title:@"Edit Inline Message"
+							  destructiveIndex:-1
+									   inView:weakSelf.view
+									 onChoice:^(NSInteger index){
+						if (index == 0){
+							[TGAlertSheet showInput:@"Edit Inline Message"
+											message:@"New text" placeholder:@"Hello"
+												 text:nil action:@"Save"
+											   inView:weakSelf.view
+										   onSubmit:^(NSString *text){
+								[[TGClient shared] editInlineMessageText:inlineId
+																	text:text
+															  completion:^(BOOL ok){
+									[TGAlertSheet showMessage:(ok ? @"Edited."
+																: @"Telegram refused that.")
+														title:@"Edit Inline Message"
+													   inView:weakSelf.view];
+								}];
+							}];
+						} else if (index == 1){
+							[TGAlertSheet showInput:@"Edit Inline Message"
+											message:@"New caption" placeholder:@"Caption"
+												 text:nil action:@"Save"
+											   inView:weakSelf.view
+										   onSubmit:^(NSString *caption){
+								[[TGClient shared] editInlineMessageCaption:inlineId
+																   caption:caption
+																completion:^(BOOL ok){
+									[TGAlertSheet showMessage:(ok ? @"Caption saved."
+																: @"Telegram refused that.")
+														title:@"Edit Inline Message"
+													   inView:weakSelf.view];
+								}];
+							}];
+						} else if (index == 2){
+							[[TGClient shared] clearInlineMessageReplyMarkup:inlineId
+																 completion:^(BOOL ok){
+								[TGAlertSheet showMessage:(ok ? @"Buttons removed."
+															: @"Telegram refused that.")
+													title:@"Edit Inline Message"
+												   inView:weakSelf.view];
+							}];
+						} else if (index == 3){
+							[TGAlertSheet showInput:@"Edit Inline Message"
+											message:@"Photo id" placeholder:@"123"
+												 text:nil action:@"Next"
+											   inView:weakSelf.view
+										   onSubmit:^(NSString *photo){
+								int64_t photoId = [photo longLongValue];
+								[TGAlertSheet showInput:@"Edit Inline Message"
+												message:@"Caption" placeholder:@"Photo"
+													 text:nil action:@"Save"
+												   inView:weakSelf.view
+											   onSubmit:^(NSString *caption){
+									[[TGClient shared] editInlineMessagePhoto:inlineId
+																	photoId:photoId
+																	caption:caption
+																 completion:^(BOOL ok){
+										[TGAlertSheet showMessage:(ok ? @"Photo saved."
+																	: @"Telegram refused that.")
+															title:@"Edit Inline Message"
+														   inView:weakSelf.view];
+									}];
+								}];
+							}];
+						} else {
+							[TGAlertSheet showInput:@"Edit Inline Message"
+											message:@"Latitude" placeholder:@"0.0"
+												 text:nil action:@"Next"
+											   inView:weakSelf.view
+										   onSubmit:^(NSString *lat){
+								double latitude = [lat doubleValue];
+								[TGAlertSheet showInput:@"Edit Inline Message"
+												message:@"Longitude" placeholder:@"0.0"
+													 text:nil action:@"Save"
+												   inView:weakSelf.view
+											   onSubmit:^(NSString *lon){
+									[[TGClient shared] editInlineMessageLiveLocation:inlineId
+																			latitude:latitude
+																		   longitude:[lon doubleValue]
+																		  completion:^(BOOL ok){
+										[TGAlertSheet showMessage:(ok ? @"Location moved."
+																	: @"Telegram refused that.")
+															title:@"Edit Inline Message"
+														   inView:weakSelf.view];
+									}];
+								}];
+							}];
+						}
+					}];
+				}];
+			}),
+		]),
+
+		TGSection(@"Chat Resolvers",
+				  @"A chat id is what every screen carries. These turn the "
+				  @"internal basic-group, supergroup or secret-chat id back "
+				  @"into one, which is the compatibility path TDLib keeps for "
+				  @"an account that only ever saw the inner id.", @[
+			TGTapRow(@"Open Basic Group by ID", nil, ^{
+				[TGAlertSheet showInput:@"Basic Group ID" message:nil
+							placeholder:@"Group id" text:nil action:@"Open"
+								 inView:weakSelf.view onSubmit:^(NSString *text){
+					[[TGClient shared] chatForBasicGroup:text.longLongValue
+											completion:^(int64_t chatId){
+						[weakSelf openResolvedChat:chatId title:@"Basic Group"];
+					}];
+				}];
+			}),
+			TGTapRow(@"Open Supergroup by ID", nil, ^{
+				[TGAlertSheet showInput:@"Supergroup ID" message:nil
+							placeholder:@"Supergroup id" text:nil action:@"Open"
+								 inView:weakSelf.view onSubmit:^(NSString *text){
+					[[TGClient shared] chatForSupergroup:text.longLongValue
+											completion:^(int64_t chatId){
+						[weakSelf openResolvedChat:chatId title:@"Supergroup"];
+					}];
+				}];
+			}),
+			TGTapRow(@"Open Secret Chat by ID", nil, ^{
+				[TGAlertSheet showInput:@"Secret Chat ID" message:nil
+							placeholder:@"Secret chat id" text:nil action:@"Open"
+								 inView:weakSelf.view onSubmit:^(NSString *text){
+					[[TGClient shared] chatForSecretChat:(int32_t)text.intValue
+											completion:^(int64_t chatId){
+						[weakSelf openResolvedChat:chatId title:@"Secret Chat"];
+					}];
+				}];
+			}),
+		]),
+
 		TGSection(@"Logging",
 				  @"Verbose puts TDLib's own chatter into the system log, which "
 				  @"is where a connection problem shows up. It is noisy and it "
@@ -316,6 +655,20 @@
 			}),
 		]),
 	];
+}
+
+- (void)openResolvedChat:(int64_t)chatId title:(NSString *)title {
+	if (!chatId){
+		[TGAlertSheet showMessage:@"TDLib did not resolve that id to a chat."
+							title:title inView:self.view];
+		return;
+	}
+	TGChatViewController *chat = [[TGChatViewController alloc] init];
+	chat.chatId = chatId;
+	chat.chatTitle = title;
+	chat.isGroup = YES;
+	chat.hidesBottomBarWhenPushed = YES;
+	[self.navigationController pushViewController:chat animated:YES];
 }
 
 - (void)toast:(NSString *)text {

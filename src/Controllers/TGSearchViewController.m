@@ -17,6 +17,9 @@
 @property (nonatomic, strong) NSArray *frequent;
 /// Where this account was last, under the frequent list.
 @property (nonatomic, strong) NSArray *recent;
+/// Chats opened from search - Telegram's own recently-found log, which is
+/// what the remove and clear buttons act on.
+@property (nonatomic, strong) NSArray *recentlyFound;
 /// Contacts Telegram matched, which is its own section: a person who is not
 /// a chat yet has no row among the chats.
 @property (nonatomic, strong) NSArray *contactHits;
@@ -123,19 +126,33 @@ static const CGFloat kSearchBarWidth = 240.0f;
 		me.recent = rest;
 		[me.tableView reloadData];
 	}];
+	[self loadRecentlyFound];
+}
+
+- (void)loadRecentlyFound {
+	__weak typeof(self) weakSelf = self;
+	[[TGClient shared] searchRecentlyFoundChats:@"" completion:^(NSArray *chats){
+		TGSearchViewController *me = weakSelf;
+		if (!me || me.bar.text.length)
+			return;
+		me.recentlyFound = chats ?: @[];
+		[me.tableView reloadData];
+	}];
 }
 
 /// True while the search is empty, which is when the frequent list is what
 /// the table shows.
 - (BOOL)showsFrequent {
 	return !self.bar.text.length &&
-		   (self.frequent.count > 0 || self.recent.count > 0);
+		   (self.frequent.count > 0 || self.recent.count > 0 ||
+			self.recentlyFound.count > 0);
 }
 
 /// While the search is empty the two sections are the people and the places,
 /// so a row is read out of whichever list its section stands for.
 - (NSDictionary *)emptyStateRowAt:(NSIndexPath *)indexPath {
-	NSArray *list = indexPath.section == 0 ? self.frequent : self.recent;
+	NSArray *list = indexPath.section == 0 ? self.frequent
+			: (indexPath.section == 1 ? self.recent : self.recentlyFound);
 	return indexPath.row < (NSInteger)list.count ? list[indexPath.row] : nil;
 }
 
@@ -149,10 +166,14 @@ static const CGFloat kSearchBarWidth = 240.0f;
 		return;
 	CGPoint where = [hold locationInView:self.tableView];
 	NSIndexPath *path = [self.tableView indexPathForRowAtPoint:where];
-	if (!path || path.section != 0 || path.row >= (NSInteger)self.frequent.count)
+	if (!path || path.row >= (NSInteger)(path.section == 0 ? self.frequent.count
+															 : self.recentlyFound.count))
+		return;
+	if (path.section != 0 && path.section != 2)
 		return;
 
-	NSDictionary *chat = self.frequent[path.row];
+	NSDictionary *chat = path.section == 0 ? self.frequent[path.row]
+										   : self.recentlyFound[path.row];
 	NSString *name = chat[@"title"] ?: @"That chat";
 	__weak typeof(self) weakSelf = self;
 	[TGAlertSheet showConfirm:[NSString stringWithFormat:@"%@ goes out of this list.", name]
@@ -161,13 +182,20 @@ static const CGFloat kSearchBarWidth = 240.0f;
 				  destructive:NO
 					   inView:self.view
 					onConfirm:^{
-		[[TGClient shared] forgetTopChat:[chat[@"id"] longLongValue]];
+		if (path.section == 0)
+			[[TGClient shared] forgetTopChat:[chat[@"id"] longLongValue]];
+		else
+			[[TGClient shared] forgetRecentlyFoundChat:[chat[@"id"] longLongValue]];
 		TGSearchViewController *me = weakSelf;
 		if (!me)
 			return;
-		NSMutableArray *rest = [me.frequent mutableCopy];
+		NSMutableArray *rest = [(path.section == 0 ? me.frequent
+												   : me.recentlyFound) mutableCopy];
 		[rest removeObject:chat];
-		me.frequent = rest;
+		if (path.section == 0)
+			me.frequent = rest;
+		else
+			me.recentlyFound = rest;
 		[me.tableView reloadData];
 	}];
 }
@@ -225,22 +253,30 @@ static const CGFloat kSearchBarWidth = 240.0f;
 #pragma mark - table
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
-	// Chats, people, messages - the people section only while searching.
-	return [self showsFrequent] ? 2 : 3;
+	// Before a query: people, places and the recently-found log. While
+	// searching the same three slots are chats, contacts and messages.
+	return [self showsFrequent] ? 3 : 3;
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-	if ([self showsFrequent])
-		return section == 0 ? self.frequent.count : self.recent.count;
+	if ([self showsFrequent]){
+		if (section == 0) return self.frequent.count;
+		if (section == 1) return self.recent.count;
+		// The last row is the clear action; it exists only when there is a
+		// log to clear.
+		return self.recentlyFound.count ? self.recentlyFound.count + 1 : 0;
+	}
 	if (section == 0) return self.chatHits.count;
 	if (section == 1) return self.contactHits.count;
 	return self.messageHits.count;
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
-	if ([self showsFrequent])
-		return section == 0 ? (self.frequent.count ? @"People" : nil)
-							: (self.recent.count ? @"Recent" : nil);
+	if ([self showsFrequent]){
+		if (section == 0) return self.frequent.count ? @"People" : nil;
+		if (section == 1) return self.recent.count ? @"Recent" : nil;
+		return self.recentlyFound.count ? @"Recently Found" : nil;
+	}
 	if (section == 0)
 		return self.chatHits.count ? @"Chats" : nil;
 	if (section == 1)
@@ -309,6 +345,16 @@ static const CGFloat kSearchBarWidth = 240.0f;
 	cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
 
 	if ([self showsFrequent]) {
+		// The last row of the recently-found section is the clear action.
+		if (indexPath.section == 2 &&
+			indexPath.row >= (NSInteger)self.recentlyFound.count){
+			cell.textLabel.text = @"Clear Recently Found";
+			cell.textLabel.textColor = [theme destructiveColour];
+			cell.detailTextLabel.text = nil;
+			cell.imageView.image = nil;
+			cell.accessoryType = UITableViewCellAccessoryNone;
+			return cell;
+		}
 		NSDictionary *c = [self emptyStateRowAt:indexPath];
 		cell.textLabel.text = c[@"title"];
 		cell.detailTextLabel.text = c[@"previewText"];
@@ -371,6 +417,21 @@ static const CGFloat kSearchBarWidth = 240.0f;
 			chat.chatTitle = name ?: @"";
 			chat.hidesBottomBarWhenPushed = YES;
 			[me.navigationController pushViewController:chat animated:YES];
+		}];
+		return;
+	}
+
+	if (fromFrequent && indexPath.section == 2 &&
+		indexPath.row >= (NSInteger)self.recentlyFound.count){
+		__weak typeof(self) weakSelf = self;
+		[TGAlertSheet showConfirm:@"Every chat in the recently-found list is "
+								  @"forgotten. The chats themselves stay."
+							title:@"Clear Recently Found"
+						   action:@"Clear" destructive:YES inView:self.view
+						onConfirm:^{
+			[[TGClient shared] clearRecentlyFoundChats];
+			weakSelf.recentlyFound = @[];
+			[weakSelf.tableView reloadData];
 		}];
 		return;
 	}

@@ -102,8 +102,9 @@
 	[theme styleNavigationBar:self.navigationController.navigationBar];
 }
 
-/// A topic made: the name asked for, then one of TDLib's seven forum hues.
-/// The general topic TDLib makes itself; this only makes named ones.
+/// A topic made: the name asked for, one of TDLib's six forum hues, then an
+/// optional emoji from the set any account may use. The general topic TDLib
+/// makes itself; this only makes named ones.
 - (void)createTopicTapped {
 	__weak typeof(self) weakSelf = self;
 	[TGAlertSheet showInput:@"New Topic"
@@ -117,25 +118,55 @@
 				[NSCharacterSet whitespaceAndNewlineCharacterSet]];
 		if (!what.length)
 			return;
-		[TGAlertSheet showChoices:@[@"Red", @"Orange", @"Violet", @"Green",
-									@"Cyan", @"Blue", @"Pink"]
+		// The order matches TGForumTopicColour in the client; the server
+		// accepts these six values and nothing else.
+		[TGAlertSheet showChoices:@[@"Blue", @"Orange", @"Violet", @"Green",
+									@"Pink", @"Red"]
 							title:@"Icon colour"
-				 destructiveIndex:-1
+				  destructiveIndex:-1
 						   inView:weakSelf.view
 						 onChoice:^(NSInteger colour){
-			[[TGClient shared] createForumTopicInChat:weakSelf.chatId
-												 name:what
-										   iconColour:colour
-										   completion:^(int64_t threadId, NSString *made){
-				if (!threadId){
-					[TGAlertSheet showMessage:@"Only a forum supergroup holds "
-											  @"topics, and only an "
-											  @"administrator makes one."
-										title:@"New Topic" inView:weakSelf.view];
-					return;
-				}
-				[weakSelf reloadTopics];
+			[weakSelf chooseTopicIconWithCompletion:^(int64_t emojiId){
+				[[TGClient shared] createForumTopicInChat:weakSelf.chatId
+													 name:what
+											   iconColour:colour
+											  iconEmojiId:emojiId
+											   completion:^(int64_t threadId, NSString *made){
+					if (!threadId){
+						[TGAlertSheet showMessage:@"Only a forum supergroup holds "
+												  @"topics, and only an "
+												  @"administrator makes one."
+											title:@"New Topic" inView:weakSelf.view];
+						return;
+					}
+					[weakSelf reloadTopics];
+				}];
 			}];
+		}];
+	}];
+}
+
+/// The default set is everything TDLib lets a non-Premium account use, so a
+/// picker built from it cannot ask for an icon the server will refuse. The
+/// first row is a real answer: 0 keeps the colour and drops the emoji.
+- (void)chooseTopicIconWithCompletion:(void (^)(int64_t emojiId))completion {
+	__weak typeof(self) weakSelf = self;
+	[[TGClient shared] forumTopicDefaultIconsWithCompletion:^(NSArray *icons){
+		TGTopicsViewController *me = weakSelf;
+		if (!me)
+			return;
+		NSMutableArray *titles = [NSMutableArray arrayWithObject:@"No icon"];
+		for (NSDictionary *icon in icons)
+			[titles addObject:icon[@"emoji"] ?: @"?"];
+		[TGAlertSheet showChoices:titles
+							title:@"Topic icon"
+				  destructiveIndex:-1
+						   inView:me.view
+						 onChoice:^(NSInteger index){
+			int64_t emojiId = index > 0
+				? [icons[index - 1][@"id"] longLongValue] : 0;
+			if (completion)
+				completion(emojiId);
 		}];
 	}];
 }
@@ -157,9 +188,9 @@
 		return;
 
 	__weak typeof(self) weakSelf = self;
-	[TGAlertSheet showChoices:@[@"Rename", @"Pin", @"Close", @"Delete"]
+	[TGAlertSheet showChoices:@[@"Rename", @"Icon", @"Pin", @"Close", @"Delete"]
 						title:name
-			 destructiveIndex:3
+			  destructiveIndex:4
 					   inView:self.view
 					 onChoice:^(NSInteger index){
 		void (^refresh)(void) = ^{
@@ -167,11 +198,13 @@
 		};
 		if (index == 0)
 			[weakSelf renameTopic:threadId name:name];
-		else if (index == 1){
+		else if (index == 1)
+			[weakSelf changeIconOfTopic:threadId];
+		else if (index == 2){
 			[[TGClient shared] toggleForumTopic:threadId inChat:weakSelf.chatId pinned:YES];
 			refresh();
 		}
-		else if (index == 2){
+		else if (index == 3){
 			[[TGClient shared] toggleForumTopic:threadId inChat:weakSelf.chatId closed:YES];
 			refresh();
 		}
@@ -186,6 +219,30 @@
 				[[TGClient shared] deleteForumTopic:threadId inChat:weakSelf.chatId];
 				refresh();
 			}];
+	}];
+}
+
+/// Changing only the icon; the rename sheet owns the name. TDLib keeps the
+/// General topic's icon to itself, so the refusal message says so.
+- (void)changeIconOfTopic:(int64_t)threadId {
+	__weak typeof(self) weakSelf = self;
+	[self chooseTopicIconWithCompletion:^(int64_t emojiId){
+		[[TGClient shared] setForumTopicIcon:emojiId
+								   threadId:threadId
+									 inChat:weakSelf.chatId
+								 completion:^(BOOL ok){
+			TGTopicsViewController *me = weakSelf;
+			if (!me)
+				return;
+			if (ok)
+				[me reloadTopics];
+			else
+				[TGAlertSheet showMessage:@"Telegram refused the icon. Only "
+										  @"an administrator or the topic's "
+										  @"maker changes one, and the "
+										  @"General topic keeps its own."
+									title:@"Topic icon" inView:me.view];
+		}];
 	}];
 }
 

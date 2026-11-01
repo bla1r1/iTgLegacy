@@ -3,9 +3,11 @@
 #import "TGStatusText.h"
 #import "TGStyle.h"
 #import "TGAlertSheet.h"
+#import "TGSnackbar.h"
 #import "TGContactsViewController.h"
 #import "TGChatViewController.h"
 #import "TGProfilePhotosViewController.h"
+#import "TGChatToolsViewController.h"
 
 /// The glyph on an action tile, over the word that names it.
 static const CGFloat kTileGlyph = TGMetricMenuGlyph;
@@ -189,6 +191,7 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 		if (iCanEdit){
 			[choices addObject:theyAreAdmin ? @"Dismiss as Admin"
 											: @"Promote to Admin"];
+			[choices addObject:@"Set Member Tag"];
 			[choices addObject:@"Clear Their Reactions"];
 			[choices addObject:@"Clear Their Messages"];
 			[choices addObject:@"Remove from Group"];
@@ -399,6 +402,19 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 		[[TGClient shared] setMember:userId inChat:chatId status:@"member"
 						  completion:report];
 
+	} else if ([action isEqualToString:@"Set Member Tag"]){
+		[TGAlertSheet showInput:@"Member Tag"
+						message:@"A short title shown beside their name in this chat."
+					placeholder:@"Tag" text:nil action:@"Save" inView:self.view
+					 onSubmit:^(NSString *tag){
+			[[TGClient shared] setMemberTag:tag forUser:userId inChat:chatId
+					completion:^(BOOL ok){
+				[TGAlertSheet showMessage:(ok ? @"Tag saved."
+											   : @"Telegram refused that tag.")
+									title:@"Member Tag" inView:weakSelf.view];
+			}];
+		}];
+
 	} else if ([action isEqualToString:@"Clear Their Reactions"]){
 		NSDictionary *sender = @{@"@type" : @"messageSenderUser", @"user_id" : @(userId)};
 		[TGAlertSheet showConfirm:
@@ -511,10 +527,22 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 		[items addObject:@{@"title" : @"Join to Send", @"icon" : @"select"}];
 		[items addObject:@{@"title" : @"All History", @"icon" : @"folder"}];
 		[items addObject:@{@"title" : @"Welcome Messages", @"icon" : @"edit"}];
+		// A channel's readers answer into a group of their own; the same
+		// menu owns the switch, because it is the channel's setting.
+		[items addObject:@{@"title" : @"Direct Messages", @"icon" : @"chat"}];
+		// An exported history from another client comes in through the chat
+		// it belongs to, not through Settings.
+		[items addObject:@{@"title" : @"Import Messages", @"icon" : @"data"}];
 		[items addObject:@{@"title" : @"Clear by Date", @"icon" : @"delete",
 						   @"destructive" : @YES}];
 		[items addObject:@{@"title" : @"Send as", @"icon" : @"user"}];
+		[items addObject:@{@"title" : @"Chat Tools", @"icon" : @"folder"}];
+		[items addObject:@{@"title" : @"Group Stickers", @"icon" : @"star"}];
+		[items addObject:@{@"title" : @"Custom Emoji Stickers", @"icon" : @"star"}];
 	}
+	// A note kept in the chat without being sent to anyone. It is the only
+	// way to make a message that never leaves this device.
+	[items addObject:@{@"title" : @"Add Local Note", @"icon" : @"edit"}];
 	if ([[TGClient shared] chatIsSavedMessages:self.chatId])
 		[items insertObject:@{@"title" : @"Topics", @"icon" : @"folder"} atIndex:0];
 	if (self.onJumpToDateTapped)
@@ -573,7 +601,8 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 		}
 
 		NSMutableArray *choices = [NSMutableArray arrayWithObjects:
-				@"Copy Link", @"Create Extra Link", @"All Links...", nil];
+				@"Copy Link", @"Create Extra Link", @"Create Subscription Link",
+				@"All Links...", @"Link Counts", nil];
 		[TGAlertSheet showChoices:choices
 							title:primary
 				 destructiveIndex:-1
@@ -598,7 +627,15 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 				}];
 				return;
 			}
-			[weakSelf showAllInviteLinks];
+			if (index == 2){
+				[weakSelf createSubscriptionLink];
+				return;
+			}
+			if (index == 3){
+				[weakSelf showAllInviteLinks];
+				return;
+			}
+			[weakSelf showInviteLinkCounts];
 		}];
 	}];
 }
@@ -621,55 +658,238 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 
 		NSMutableArray *rows = [NSMutableArray array];
 		for (NSDictionary *link in links)
-			[rows addObject:[NSString stringWithFormat:@"%@%@",
+			[rows addObject:[NSString stringWithFormat:@"%@%@  ·  %@ joined",
 					[link[@"revoked"] boolValue] ? @"(revoked) " : @"",
-					link[@"link"]]];
+					link[@"link"], link[@"members"] ?: @(0)]];
+		// Housekeeping rides at the bottom so a revoked link has somewhere
+		// to be deleted from the same sheet that lists it.
+		[rows addObject:@"Link Counts"];
+		[rows addObject:@"Delete All Revoked Links"];
 
 		[TGAlertSheet showChoices:rows
 							title:@"All Links"
-				 destructiveIndex:-1
+				 destructiveIndex:(NSInteger)rows.count - 1
 						   inView:me.view
 						 onChoice:^(NSInteger index){
 			TGProfileViewController *again = weakSelf;
-			NSDictionary *link = links[index];
-			NSString *url = link[@"link"];
-			if ([link[@"revoked"] boolValue] || !url.length)
+			if (!again)
 				return;
+			if (index == (NSInteger)links.count){
+				[again showInviteLinkCounts];
+				return;
+			}
+			if (index == (NSInteger)links.count + 1){
+				[again deleteAllRevokedLinks];
+				return;
+			}
+			[again showActionsForInviteLink:links[index] inChat:chatId];
+		}];
+	}];
+}
 
-			void (^refresh)(void) = ^{
-				[weakSelf showAllInviteLinks];
-			};
-			NSString *action = [link[@"primary"] boolValue] ? @"Replace" : @"Revoke";
-			NSString *warn = [link[@"primary"] boolValue]
-					? @"The common link stops working and a new one takes "
-					  @"its place."
-					: @"The link above stops working at once, and it does "
-					  @"not come back.";
-			[TGAlertSheet showConfirm:warn
-								title:url
-							   action:action
-						  destructive:YES
-							   inView:again.view
-							onConfirm:^{
-				if ([link[@"primary"] boolValue]){
+/// One link's actions: the details getChatInviteLink answers, who joined
+/// through it, the fields the two edit calls change, and revoking or deleting
+/// it. A revoked link can only be deleted, which is why both words share the
+/// sheet.
+- (void)showActionsForInviteLink:(NSDictionary *)link inChat:(int64_t)chatId {
+	NSString *url = link[@"link"];
+	if (!url.length)
+		return;
+
+	__weak typeof(self) weakSelf = self;
+	[[TGClient shared] inviteLink:url inChat:chatId completion:^(NSDictionary *info){
+		TGProfileViewController *me = weakSelf;
+		if (!me)
+			return;
+		NSDictionary *fresh = info ?: link;
+		BOOL primary = [fresh[@"primary"] boolValue];
+		BOOL revoked = [fresh[@"revoked"] boolValue];
+		id subscriptionValue = fresh[@"subscription"];
+		BOOL subscription = subscriptionValue &&
+				subscriptionValue != [NSNull null];
+
+		NSMutableArray *choices = [NSMutableArray arrayWithObject:@"Copy Link"];
+		[choices addObject:@"Members"];
+		if (!revoked)
+			[choices addObject:subscription ? @"Rename Link" : @"Edit Name & Limit"];
+		[choices addObject:(revoked ? @"Delete Link" : (primary ? @"Replace" : @"Revoke"))];
+
+		[TGAlertSheet showChoices:choices title:url destructiveIndex:-1
+						   inView:me.view onChoice:^(NSInteger index){
+			NSString *action = choices[index];
+			if ([action isEqualToString:@"Copy Link"]){
+				[UIPasteboard generalPasteboard].string = url;
+				[TGAlertSheet showMessage:@"Copied." title:nil inView:me.view];
+				return;
+			}
+			if ([action isEqualToString:@"Members"]){
+				[me showMembersOfInviteLink:url inChat:chatId];
+				return;
+			}
+			if ([action isEqualToString:@"Rename Link"]){
+				[TGAlertSheet showInput:@"Rename Link" message:nil
+							placeholder:@"Name" text:fresh[@"name"] ?: @""
+								 action:@"Save" inView:me.view
+							 onSubmit:^(NSString *name){
+					[[TGClient shared] editSubscriptionInviteLink:url inChat:chatId
+							name:name completion:^(BOOL ok){
+						[TGAlertSheet showMessage:(ok ? @"Link renamed."
+											   : @"Telegram refused the edit.")
+											title:@"Invite Link" inView:weakSelf.view];
+					}];
+				}];
+				return;
+			}
+			if ([action isEqualToString:@"Edit Name & Limit"]){
+				[TGAlertSheet showInput:@"Edit Link"
+								message:@"Leave the limit empty for no limit."
+							placeholder:@"Name" text:fresh[@"name"] ?: @""
+								 action:@"Next" inView:me.view
+							 onSubmit:^(NSString *name){
+					[TGAlertSheet showConfirm:@"Set a member limit?" title:@"Member Limit"
+									   action:@"Set Limit" destructive:NO
+									   inView:weakSelf.view onConfirm:^{
+						[TGAlertSheet showInput:@"Member Limit" message:nil
+									placeholder:@"0 for no limit" text:@"0"
+										 action:@"Save" inView:weakSelf.view
+									 onSubmit:^(NSString *limitText){
+							[[TGClient shared] editInviteLink:url inChat:chatId
+									name:name expiration:0
+									memberLimit:limitText.integerValue
+									joinRequest:NO completion:^(BOOL ok){
+								[TGAlertSheet showMessage:(ok ? @"Link updated."
+															   : @"Telegram refused the edit.")
+														title:@"Invite Link" inView:weakSelf.view];
+							}];
+						}];
+					}];
+				}];
+				return;
+			}
+			if ([action isEqualToString:@"Delete Link"]){
+				[[TGClient shared] deleteRevokedInviteLink:url inChat:chatId
+										 completion:^(BOOL ok){
+					[TGAlertSheet showMessage:(ok ? @"The revoked link is gone."
+												   : @"Telegram refused the delete.")
+												title:@"Invite Link" inView:weakSelf.view];
+				}];
+				return;
+			}
+
+			NSString *warn = primary
+					? @"The common link stops working and a new one takes its place."
+					: @"The link above stops working at once, and it does not come back.";
+			[TGAlertSheet showConfirm:warn title:url action:(primary ? @"Replace" : @"Revoke")
+					  destructive:YES inView:me.view onConfirm:^{
+				if (primary){
 					[[TGClient shared] replacePrimaryInviteLinkForChat:chatId
-															completion:^(NSString *made){
+													completion:^(NSString *made){
 						[TGAlertSheet showMessage:(made.length ? made
 								: @"Telegram refused to replace the link.")
 											title:@"Invite Link" inView:weakSelf.view];
 					}];
 					return;
 				}
-				[[TGClient shared] revokeInviteLink:url
-											 inChat:chatId
+				[[TGClient shared] revokeInviteLink:url inChat:chatId
 										 completion:^(BOOL ok){
 					if (!ok)
-						[TGAlertSheet showMessage:@"Telegram refused to revoke "
-												  @"that link."
+						[TGAlertSheet showMessage:@"Telegram refused to revoke that link."
 											title:@"Revoke" inView:weakSelf.view];
 					else
-						refresh();
+						[weakSelf showAllInviteLinks];
 				}];
+			}];
+		}];
+	}];
+}
+
+- (void)showMembersOfInviteLink:(NSString *)url inChat:(int64_t)chatId {
+	__weak typeof(self) weakSelf = self;
+	[[TGClient shared] membersOfInviteLink:url inChat:chatId
+								completion:^(NSArray *members){
+		TGProfileViewController *me = weakSelf;
+		if (!me)
+			return;
+		if (!members.count){
+			[TGAlertSheet showMessage:@"Nobody has joined through this link yet."
+								title:@"Link Members" inView:me.view];
+			return;
+		}
+		NSMutableArray *rows = [NSMutableArray array];
+		for (NSDictionary *member in members){
+			NSDate *date = [NSDate dateWithTimeIntervalSince1970:
+					[member[@"date"] doubleValue]];
+			NSString *when = [NSDateFormatter localizedStringFromDate:date
+					dateStyle:NSDateFormatterMediumStyle timeStyle:NSDateFormatterNoStyle];
+			[rows addObject:[NSString stringWithFormat:@"%@ · joined %@",
+					member[@"name"] ?: @"Member", when]];
+		}
+		[TGAlertSheet showChoices:rows title:@"Link Members"
+				destructiveIndex:-1 inView:me.view onChoice:^(NSInteger index){
+			(void)index;
+		}];
+	}];
+}
+
+- (void)showInviteLinkCounts {
+	int64_t chatId = self.chatId;
+	__weak typeof(self) weakSelf = self;
+	[[TGClient shared] inviteLinkCountsForChat:chatId completion:^(NSArray *counts){
+		TGProfileViewController *me = weakSelf;
+		if (!me)
+			return;
+		if (!counts.count){
+			[TGAlertSheet showMessage:@"Telegram returned no link counts."
+								title:@"Link Counts" inView:me.view];
+			return;
+		}
+		NSMutableArray *rows = [NSMutableArray array];
+		for (NSDictionary *count in counts)
+			[rows addObject:[NSString stringWithFormat:@"%@: %@ active, %@ revoked",
+					count[@"name"] ?: @"Administrator",
+					count[@"active"] ?: @(0), count[@"revoked"] ?: @(0)]];
+		[TGAlertSheet showChoices:rows title:@"Link Counts"
+				destructiveIndex:-1 inView:me.view onChoice:^(NSInteger index){
+			(void)index;
+		}];
+	}];
+}
+
+- (void)deleteAllRevokedLinks {
+	int64_t chatId = self.chatId;
+	__weak typeof(self) weakSelf = self;
+	int64_t myId = [[TGClient shared].me[@"id"] longLongValue];
+	[TGAlertSheet showConfirm:@"Every revoked link this account made in this "
+							  @"chat is deleted permanently."
+						title:@"Delete All Revoked Links"
+					   action:@"Delete" destructive:YES inView:self.view
+					onConfirm:^{
+		[[TGClient shared] deleteAllRevokedInviteLinks:chatId creator:myId
+				completion:^(BOOL ok){
+			[TGAlertSheet showMessage:(ok ? @"Revoked links deleted."
+										   : @"Telegram refused the delete.")
+								title:@"Invite Links" inView:weakSelf.view];
+		}];
+	}];
+}
+
+- (void)createSubscriptionLink {
+	int64_t chatId = self.chatId;
+	__weak typeof(self) weakSelf = self;
+	[TGAlertSheet showInput:@"Subscription Link"
+					message:@"A monthly Star subscription in this channel."
+				placeholder:@"Name (optional)" text:nil action:@"Create"
+					 inView:self.view onSubmit:^(NSString *name){
+		[TGAlertSheet showInput:@"Stars Per Month" message:nil
+					placeholder:@"1" text:@"1" action:@"Create"
+					 inView:weakSelf.view onSubmit:^(NSString *stars){
+			[[TGClient shared] createSubscriptionInviteLink:chatId name:name
+					stars:MAX(stars.integerValue, 1) period:2592000
+					completion:^(NSString *link){
+				[TGAlertSheet showMessage:(link.length ? link
+						: @"Telegram refused a subscription link - the chat must be "
+						  @"a channel and this account its admin.")
+									title:@"Subscription Link" inView:weakSelf.view];
 			}];
 		}];
 	}];
@@ -695,12 +915,26 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 		NSMutableArray *rows = [NSMutableArray array];
 		for (NSDictionary *request in requests)
 			[rows addObject:request[@"name"] ?: @"?"];
+		[rows addObject:@"Approve All Requests"];
+		[rows addObject:@"Decline All Requests"];
 
 		[TGAlertSheet showChoices:rows
 							title:@"Join Requests"
-				 destructiveIndex:-1
+				 destructiveIndex:(NSInteger)rows.count - 1
 						   inView:me.view
 						 onChoice:^(NSInteger index){
+			if (index == (NSInteger)requests.count ||
+				index == (NSInteger)requests.count + 1){
+				BOOL approve = index == (NSInteger)requests.count;
+				[[TGClient shared] processAllJoinRequests:chatId link:@""
+						approve:approve completion:^(BOOL ok){
+					[TGAlertSheet showMessage:(ok ? @"Every request was answered."
+												   : @"Telegram refused the batch.")
+										title:@"Join Requests" inView:weakSelf.view];
+					[weakSelf showJoinRequests];
+				}];
+				return;
+			}
 			int64_t userId = [requests[index][@"id"] longLongValue];
 			NSString *name = requests[index][@"name"] ?: @"them";
 			[TGAlertSheet showChoices:@[@"Accept", @"Decline"]
@@ -841,6 +1075,13 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 		return;
 	}
 
+	if ([title isEqualToString:@"Group Stickers"] ||
+		[title isEqualToString:@"Custom Emoji Stickers"]){
+		[self chooseStickerSetForGroupCustomEmoji:
+				[title isEqualToString:@"Custom Emoji Stickers"]];
+		return;
+	}
+
 	if ([title isEqualToString:@"Auto-delete messages"]){
 		int64_t chatId = self.chatId;
 		[TGAlertSheet showChoices:@[@"Off", @"1 day", @"1 week", @"1 month"]
@@ -850,6 +1091,72 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 						 onChoice:^(NSInteger index){
 			static const NSInteger seconds[4] = {0, 86400, 604800, 2592000};
 			[[TGClient shared] setChat:chatId autoDeleteSeconds:seconds[index]];
+		}];
+		return;
+	}
+
+	if ([title isEqualToString:@"Add Local Note"]){
+		int64_t chatId = self.chatId;
+		__weak typeof(self) weakSelf = self;
+		[TGAlertSheet showInput:@"Add Local Note"
+						message:@"Kept in this chat on this device; never sent."
+					placeholder:@"Note"
+						   text:nil
+						 action:@"Add"
+						 inView:self.view
+					   onSubmit:^(NSString *text){
+			[[TGClient shared] addLocalTextMessage:text toChat:chatId
+										completion:^(int64_t messageId){
+				TGProfileViewController *me = weakSelf;
+				if (!me)
+					return;
+				[TGSnackbar showInView:me.view
+								  text:(messageId ? @"Note added"
+												  : @"Telegram refused the note")
+							   seconds:2 onCommit:nil];
+			}];
+		}];
+		return;
+	}
+
+	if ([title isEqualToString:@"Import Messages"]){
+		int64_t chatId = self.chatId;
+		__weak typeof(self) weakSelf = self;
+		[TGAlertSheet showInput:@"Import Messages"
+						message:@"Name a history file in this app's Documents "
+								@"folder. Its media files go in the same folder."
+					placeholder:@"export.json"
+						   text:nil
+						 action:@"Next"
+						 inView:self.view
+					   onSubmit:^(NSString *name){
+			[weakSelf beginImportFromPath:name inChat:chatId];
+		}];
+		return;
+	}
+
+	if ([title isEqualToString:@"Direct Messages"]){
+		int64_t chatId = self.chatId;
+		__weak typeof(self) weakSelf = self;
+		[TGAlertSheet showChoices:@[@"Off", @"On, free", @"On, 1 star per message"]
+							title:@"Channel Direct Messages"
+				  destructiveIndex:-1
+						   inView:self.view
+						 onChoice:^(NSInteger index){
+			BOOL enabled = index > 0;
+			NSInteger stars = index > 1 ? 1 : 0;
+			[[TGClient shared] setDirectMessagesEnabled:enabled
+											  paidStars:stars
+												 inChat:chatId
+											 completion:^(BOOL ok){
+				TGProfileViewController *me = weakSelf;
+				if (!me)
+					return;
+				[TGSnackbar showInView:me.view
+								  text:(ok ? @"Direct messages updated"
+										   : @"Only the channel's owner changes this")
+							   seconds:2 onCommit:nil];
+			}];
 		}];
 		return;
 	}
@@ -931,6 +1238,16 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 
 	if ([title isEqualToString:@"Invite Link"]){
 		[self showInviteLink];
+		return;
+	}
+
+	if ([title isEqualToString:@"Chat Tools"]){
+		TGChatToolsViewController *tools = [[TGChatToolsViewController alloc] init];
+		tools.chatId = self.chatId;
+		tools.chatTitle = self.name;
+		tools.isGroup = YES;
+		tools.hidesBottomBarWhenPushed = YES;
+		[self.navigationController pushViewController:tools animated:YES];
 		return;
 	}
 
@@ -1445,6 +1762,146 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 										title:(chatTitle ?: @"Send as")
 									   inView:me.view];
 			}];
+		}];
+	}];
+}
+
+/// Reads an export file's opening lines so Telegram can name it, asks the
+/// chat's own confirmation sentence, then imports it. Paths are relative to
+/// Documents, which is the folder iTunes file sharing exposes.
+- (void)beginImportFromPath:(NSString *)name inChat:(int64_t)chatId {
+	NSString *trimmed = [name stringByTrimmingCharactersInSet:
+			[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+	if (!trimmed.length)
+		return;
+	NSString *path = trimmed;
+	if (!path.isAbsolutePath){
+		NSString *documents = [NSSearchPathForDirectoriesInDomains(
+				NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
+		path = [documents stringByAppendingPathComponent:trimmed];
+	}
+	if (![[NSFileManager defaultManager] fileExistsAtPath:path]){
+		[TGAlertSheet showMessage:[NSString stringWithFormat:
+				@"No file at %@. Put the export in the app's Documents folder "
+				@"first; iTunes file sharing shows it.", path]
+							title:@"Import Messages" inView:self.view];
+		return;
+	}
+	NSStringEncoding encoding = NSUTF8StringEncoding;
+	NSError *error = nil;
+	NSString *contents = [NSString stringWithContentsOfFile:path
+			usedEncoding:&encoding error:&error];
+	if (!contents)
+		contents = [NSString stringWithContentsOfFile:path
+				encoding:NSUTF8StringEncoding error:nil];
+	if (!contents.length){
+		[TGAlertSheet showMessage:@"The file is not text this app can read."
+							title:@"Import Messages" inView:self.view];
+		return;
+	}
+	NSArray *lines = [contents componentsSeparatedByString:@"\n"];
+	NSUInteger headCount = MIN((NSUInteger)100, lines.count);
+	NSString *head = [[lines subarrayWithRange:NSMakeRange(0, headCount)]
+			componentsJoinedByString:@"\n"];
+
+	__weak typeof(self) weakSelf = self;
+	[[TGClient shared] messageFileTypeForHead:head
+								   completion:^(NSDictionary *fileType){
+		TGProfileViewController *me = weakSelf;
+		if (!me)
+			return;
+		NSString *kind = fileType[@"kind"] ?: @"unknown";
+		NSString *who = fileType[@"title"];
+		[[TGClient shared] importConfirmationTextForChat:chatId
+											  completion:^(NSString *text){
+			TGProfileViewController *again = weakSelf;
+			if (!again)
+				return;
+			NSString *title = [kind isEqualToString:@"private"]
+					? [NSString stringWithFormat:@"Import chat with %@",
+							who.length ? who : @"them"]
+					: ([kind isEqualToString:@"group"]
+							? [NSString stringWithFormat:@"Import group %@",
+									who.length ? who : @""]
+							: @"Import messages");
+			NSString *body = text.length ? text
+					: @"This file looks like a history export. Importing "
+					  @"adds its messages to this chat.";
+			[TGAlertSheet showConfirm:body
+								title:title
+							   action:@"Import"
+						  destructive:YES
+							   inView:again.view
+							onConfirm:^{
+				[[TGClient shared] importMessagesFromFile:path
+											attachedFiles:@[]
+												 intoChat:chatId
+											   completion:^(BOOL ok){
+					TGProfileViewController *last = weakSelf;
+					if (!last)
+						return;
+					[TGSnackbar showInView:last.view
+									  text:(ok ? @"Import started"
+											   : @"Telegram refused the import")
+								   seconds:2 onCommit:nil];
+				}];
+			}];
+		}];
+	}];
+}
+
+/// A group's sticker shelf and its custom emoji shelf are two settings on
+/// the supergroup. Both are chosen from the packs this account owns: a pack
+/// somebody else owns can be installed but not made the group's shelf.
+- (void)chooseStickerSetForGroupCustomEmoji:(BOOL)customEmoji {
+	int64_t chatId = self.chatId;
+	__weak typeof(self) weakSelf = self;
+	[[TGClient shared] ownedStickerSetsWithCompletion:^(NSArray *sets){
+		TGProfileViewController *me = weakSelf;
+		if (!me)
+			return;
+		NSMutableArray *titles = [NSMutableArray arrayWithObject:@"None"];
+		NSMutableArray *ids = [NSMutableArray arrayWithObject:@(0)];
+		for (NSDictionary *set in sets){
+			NSString *type = set[@"stickerType"] ?: @"";
+			BOOL isCustom = [type isEqualToString:@"stickerTypeCustomEmoji"];
+			if (customEmoji != isCustom)
+				continue;
+			int64_t setId = [set[@"id"] longLongValue];
+			if (!setId)
+				continue;
+			[titles addObject:[NSString stringWithFormat:@"%@  ·  %lu stickers",
+					set[@"title"] ?: @"Pack",
+					(unsigned long)[set[@"count"] unsignedIntegerValue]]];
+			[ids addObject:@(setId)];
+		}
+		NSString *title = customEmoji ? @"Custom Emoji Stickers" : @"Group Stickers";
+		if (titles.count == 1){
+			[TGAlertSheet showMessage:
+					(customEmoji ? @"This account owns no custom emoji packs."
+								 : @"This account owns no sticker packs.")
+								  title:title inView:me.view];
+			return;
+		}
+		[TGAlertSheet showChoices:titles title:title
+					message:(customEmoji
+							? @"Used for the group's emoji status and reactions."
+							: @"Shown above the composer for everyone here.")
+			 destructiveIndex:-1 inView:me.view
+					 onChoice:^(NSInteger index){
+			int64_t setId = [ids[(NSUInteger)index] longLongValue];
+			void (^done)(BOOL) = ^(BOOL ok){
+				[TGAlertSheet showMessage:(ok ? @"The group's shelf is updated."
+											  : @"Telegram refused the shelf; only "
+												@"an administrator can change it.")
+									  title:title inView:me.view];
+			};
+			if (customEmoji)
+				[[TGClient shared] setSupergroupCustomEmojiStickerSet:setId
+						inChat:chatId completion:done];
+			else
+				[[TGClient shared] setSupergroupStickerSet:setId
+						inChat:chatId completion:done];
 		}];
 	}];
 }

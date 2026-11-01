@@ -844,28 +844,38 @@ static void answerG(TGClient *c, NSDictionary *answer) {
 
 #pragma mark - the topics a forum makes and minds
 
-- (void)testCreateForumTopic_TheNameAndOneOfSevenHues {
+- (void)testCreateForumTopic_TheNameHueAndOptionalEmoji {
 	TGClient *c = G();
 	__block NSInteger calls = 0;
-	[c createForumTopicInChat:-70 name:@"" iconColour:3 completion:^(int64_t threadId, NSString *name){
+	[c createForumTopicInChat:-70 name:@"" iconColour:3 iconEmojiId:0
+				   completion:^(int64_t threadId, NSString *name){
 		calls++; XCTAssertEqual(threadId, 0LL);
 	}];
 	XCTAssertEqual(countG(c, @"createForumTopic"), (NSUInteger)0);
 
-	[c createForumTopicInChat:-70 name:@"Ideas" iconColour:11 completion:nil];
+	[c createForumTopicInChat:-70 name:@"Ideas" iconColour:0 iconEmojiId:0
+				   completion:nil];
 	NSDictionary *r = lastG(c, @"createForumTopic");
 	XCTAssertEqual([r[@"chat_id"] longLongValue], -70LL);
 	XCTAssertEqualObjects(r[@"name"], @"Ideas");
 	XCTAssertFalse([r[@"is_name_implicit"] boolValue]);
-	// The palette is seven hues; a colour past its end wraps rather than
-	// being refused, which is what makes the menu's 0-6 safe.
-	XCTAssertEqual([r[@"icon"][@"color"] integerValue], 4);
 	XCTAssertEqualObjects(r[@"icon"][@"@type"], @"forumTopicIcon");
+	// TDLib takes the RGB value, not the palette index. The six hues are the
+	// only ones the server accepts; a colour past the end wraps so the menu
+	// cannot send anything else.
+	XCTAssertEqual([r[@"icon"][@"color"] integerValue], 0x6FB9F0);
+	XCTAssertEqual([r[@"icon"][@"custom_emoji_id"] longLongValue], 0LL);
+
+	[c createForumTopicInChat:-70 name:@"Ideas" iconColour:11 iconEmojiId:501
+				   completion:nil];
+	r = lastG(c, @"createForumTopic");
+	XCTAssertEqual([r[@"icon"][@"color"] integerValue], 0xFB6F5F);
+	XCTAssertEqual([r[@"icon"][@"custom_emoji_id"] longLongValue], 501LL);
 
 	// The answer is the topic's own record: its thread id is what every
 	// later edit answers through.
 	__block int64_t threadId = 0;
-	[c createForumTopicInChat:-70 name:@"Ideas" iconColour:1
+	[c createForumTopicInChat:-70 name:@"Ideas" iconColour:1 iconEmojiId:0
 				   completion:^(int64_t made, NSString *name){
 		threadId = made;
 	}];
@@ -873,6 +883,49 @@ static void answerG(TGClient *c, NSDictionary *answer) {
 				 @"name" : @"Ideas"});
 	XCTAssertEqual(threadId, 42LL);
 	XCTAssertEqual(calls, (NSInteger)1);
+}
+
+/// The default set is a sticker set: only the emoji character and the id in
+/// its full type are what the picker can use. A row without either is skipped.
+- (void)testForumTopicDefaultIcons_ReadsTheEmojiAndItsId {
+	TGClient *c = G();
+	__block NSArray *got = nil;
+	[c forumTopicDefaultIconsWithCompletion:^(NSArray *icons){ got = icons; }];
+	XCTAssertEqual(countG(c, @"getForumTopicDefaultIcons"), (NSUInteger)1);
+	answerG(c, @{@"@type" : @"stickers", @"stickers" : @[
+		@{@"@type" : @"sticker", @"emoji" : @"👍",
+		  @"full_type" : @{@"@type" : @"stickerFullTypeCustomEmoji",
+						   @"custom_emoji_id" : @(501)}},
+		@{@"@type" : @"sticker", @"emoji" : @"",
+		  @"full_type" : @{@"@type" : @"stickerFullTypeCustomEmoji",
+						   @"custom_emoji_id" : @(502)}},
+	]});
+	XCTAssertEqual(got.count, (NSUInteger)1);
+	XCTAssertEqual([got[0][@"id"] longLongValue], 501LL);
+	XCTAssertEqualObjects(got[0][@"emoji"], @"👍");
+}
+
+/// An empty name keeps the old one, so the icon can change on its own; 0 is
+/// still an edit because it is how an emoji is removed.
+- (void)testSetForumTopicIcon_EditsOnlyTheIcon {
+	TGClient *c = G();
+	__block BOOL ok = NO;
+	[c setForumTopicIcon:501 threadId:42 inChat:-70 completion:^(BOOL made){
+		ok = made;
+	}];
+	NSDictionary *r = lastG(c, @"editForumTopic");
+	XCTAssertEqual([r[@"chat_id"] longLongValue], -70LL);
+	XCTAssertEqual([r[@"forum_topic_id"] integerValue], 42);
+	XCTAssertEqualObjects(r[@"name"], @"");
+	XCTAssertTrue([r[@"edit_icon_custom_emoji"] boolValue]);
+	XCTAssertEqual([r[@"icon_custom_emoji_id"] longLongValue], 501LL);
+	answerG(c, @{@"@type" : @"ok"});
+	XCTAssertTrue(ok);
+
+	[c setForumTopicIcon:0 threadId:42 inChat:-70 completion:nil];
+	r = lastG(c, @"editForumTopic");
+	XCTAssertTrue([r[@"edit_icon_custom_emoji"] boolValue]);
+	XCTAssertEqual([r[@"icon_custom_emoji_id"] longLongValue], 0LL);
 }
 
 - (void)testRenameForumTopic_TheIconRidesOnlyWhenItChanges {

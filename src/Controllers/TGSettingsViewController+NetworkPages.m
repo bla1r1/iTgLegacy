@@ -221,6 +221,18 @@ static NSString *TGChatNameForId(NSNumber *chatId) {
 			[weakSelf runFolderActionFor:folder];
 		})];
 	}
+	if (!weakSelf.folderTagsLoaded){
+		weakSelf.folderTagsEnabled = YES;
+		weakSelf.folderTagsLoaded = YES;
+	}
+	[rows addObject:TGSwitchRow(@"Folder Tags", weakSelf.folderTagsEnabled,
+			^(BOOL on){
+		weakSelf.folderTagsEnabled = on;
+		[[TGClient shared] toggleFolderTags:on];
+	})];
+	[rows addObject:TGActionRow(@"Add Folder by Link", ^{
+		[weakSelf addFolderByInviteLink];
+	})];
 	[rows addObject:TGActionRow(@"Create New Folder", ^{
 		[TGAlertSheet showInput:@"New Folder"
 						message:@"Folders appear as a strip above the chat list."
@@ -277,13 +289,15 @@ static NSString *TGChatNameForId(NSNumber *chatId) {
 	if (!folderId)
 		return;
 
+	NSArray *choices = @[@"Rename", @"Add a Chat", @"Remove a Chat",
+						 @"Invite Links...", @"Suggested New Chats",
+						 @"Default Icon", @"Chat Count", @"Delete Folder"];
 	__weak typeof(self) weakSelf = self;
-	[TGAlertSheet showChoices:@[@"Rename", @"Add a Chat", @"Remove a Chat",
-								@"Delete Folder"]
-						title:title
-			 destructiveIndex:3
-					   inView:self.view
-					 onChoice:^(NSInteger index){
+	[TGAlertSheet showChoices:choices
+							title:title
+				 destructiveIndex:7
+						   inView:self.view
+						 onChoice:^(NSInteger index){
 		TGSettingsViewController *me = weakSelf;
 		if (index == 0){
 			[TGAlertSheet showInput:@"Rename Folder" message:nil
@@ -299,19 +313,227 @@ static NSString *TGChatNameForId(NSNumber *chatId) {
 			[me addChatToFolder:folderId named:title];
 		} else if (index == 2){
 			[me removeChatFromFolder:folderId named:title];
+		} else if (index == 3){
+			[me showInviteLinksForFolder:folderId named:title];
+		} else if (index == 4){
+			[me showNewChatsForFolder:folderId named:title];
+		} else if (index == 5){
+			[me showDefaultIconForFolder:folder];
+		} else if (index == 6){
+			[me showChatCountForFolder:folder];
 		} else {
-			[TGAlertSheet showConfirm:[NSString stringWithFormat:
-							@"%@ goes away. The chats in it stay where they are.",
-							title]
-								title:@"Delete Folder"
-							   action:@"Delete"
-						  destructive:YES
-							   inView:me.view
-							onConfirm:^{
-				[[TGClient shared] deleteFolder:folderId leavingChats:@[]];
-				[me toast:[NSString stringWithFormat:@"%@ deleted.", title]];
-			}];
+			[me confirmDeleteFolder:folderId named:title];
 		}
+	}];
+}
+
+/// Deleting a folder can take chats with it, and Telegram names the ones it
+/// suggests leaving: pinned and always-included chats. The prompt offers both
+/// readings rather than assuming either.
+- (void)confirmDeleteFolder:(NSInteger)folderId named:(NSString *)title {
+	__weak typeof(self) weakSelf = self;
+	[[TGClient shared] chatsToLeaveForFolder:folderId completion:^(NSArray *suggested){
+		TGSettingsViewController *me = weakSelf;
+		if (!me)
+			return;
+		void (^remove)(NSArray *) = ^(NSArray *leave){
+			[[TGClient shared] deleteFolder:folderId leavingChats:leave];
+			[me toast:[NSString stringWithFormat:@"%@ deleted.", title]];
+		};
+		if (!suggested.count){
+			[TGAlertSheet showConfirm:[NSString stringWithFormat:
+							@"%@ goes away. The chats in it stay where they are.", title]
+								title:@"Delete Folder"
+							   action:@"Delete" destructive:YES inView:me.view
+							onConfirm:^{ remove(@[]); }];
+			return;
+		}
+		NSMutableArray *names = [NSMutableArray array];
+		for (NSNumber *chatId in suggested)
+			[names addObject:TGChatNameForId(chatId)];
+		[TGAlertSheet showChoices:@[@"Delete and Keep Chats",
+									[NSString stringWithFormat:@"Delete and Leave %lu",
+											(unsigned long)names.count]]
+							title:title
+				 message:[NSString stringWithFormat:
+						 @"Also in this folder: %@. They can be left with it.",
+						 [names componentsJoinedByString:@", "]]
+		 destructiveIndex:1 inView:me.view onChoice:^(NSInteger index){
+			remove(index == 0 ? @[] : suggested);
+		}];
+	}];
+}
+
+- (void)showDefaultIconForFolder:(NSDictionary *)folder {
+	__weak typeof(self) weakSelf = self;
+	[[TGClient shared] folderDetails:[folder[@"id"] integerValue]
+							 completion:^(NSDictionary *current){
+		if (!current){
+			[weakSelf toast:@"That folder is gone."];
+			return;
+		}
+		[[TGClient shared] defaultIconNameForFolder:current
+										 completion:^(NSString *name){
+			[TGAlertSheet showMessage:[NSString stringWithFormat:
+					@"Telegram would draw %@ for this folder.", name]
+								title:@"Default Icon" inView:weakSelf.view];
+		}];
+	}];
+}
+
+- (void)showChatCountForFolder:(NSDictionary *)folder {
+	__weak typeof(self) weakSelf = self;
+	[[TGClient shared] folderDetails:[folder[@"id"] integerValue]
+							 completion:^(NSDictionary *current){
+		if (!current){
+			[weakSelf toast:@"That folder is gone."];
+			return;
+		}
+		[[TGClient shared] chatCountForFolder:current completion:^(NSInteger count){
+			[TGAlertSheet showMessage:[NSString stringWithFormat:
+					@"About %ld chats match this folder right now.", (long)count]
+								title:@"Chat Count" inView:weakSelf.view];
+		}];
+	}];
+}
+
+- (void)showNewChatsForFolder:(NSInteger)folderId named:(NSString *)title {
+	__weak typeof(self) weakSelf = self;
+	[[TGClient shared] newChatsForFolder:folderId completion:^(NSArray *chatIds){
+		TGSettingsViewController *me = weakSelf;
+		if (!me)
+			return;
+		if (!chatIds.count){
+			[TGAlertSheet showMessage:@"Its owner has added nothing new."
+								title:title inView:me.view];
+			return;
+		}
+		NSMutableArray *names = [NSMutableArray array];
+		for (NSNumber *chatId in chatIds)
+			[names addObject:TGChatNameForId(chatId)];
+		[TGAlertSheet showConfirm:[NSString stringWithFormat:
+						@"%@ added these chats to the shared folder: %@. Add them?",
+						title, [names componentsJoinedByString:@", "]]
+							title:@"Suggested New Chats" action:@"Add"
+					  destructive:NO inView:me.view onConfirm:^{
+			[[TGClient shared] processNewChats:chatIds forFolder:folderId
+									completion:^(BOOL ok){
+				[me toast:(ok ? @"Chats added to the folder."
+							  : @"Telegram refused that change.")];
+			}];
+		}];
+	}];
+}
+
+- (void)showInviteLinksForFolder:(NSInteger)folderId named:(NSString *)title {
+	__weak typeof(self) weakSelf = self;
+	[[TGClient shared] inviteLinksForFolder:folderId completion:^(NSArray *links){
+		TGSettingsViewController *me = weakSelf;
+		if (!me)
+			return;
+		NSMutableArray *rows = [NSMutableArray arrayWithObject:@"Create New Link"];
+		for (NSDictionary *link in links)
+			[rows addObject:[NSString stringWithFormat:@"%@%@",
+					[link[@"name"] length] ? [link[@"name"] stringByAppendingString:@" · "] : @"",
+					link[@"link"]]];
+		[TGAlertSheet showChoices:rows title:title destructiveIndex:-1
+						   inView:me.view onChoice:^(NSInteger index){
+			if (index == 0){
+				[me createInviteLinkForFolder:folderId named:title];
+				return;
+			}
+			[me showActionsForFolderLink:links[index - 1] folder:folderId
+								   named:title];
+		}];
+	}];
+}
+
+- (void)createInviteLinkForFolder:(NSInteger)folderId named:(NSString *)title {
+	__weak typeof(self) weakSelf = self;
+	[[TGClient shared] chatsForFolderInviteLink:folderId completion:^(NSArray *chatIds){
+		[[TGClient shared] createInviteLinkForFolder:folderId name:title
+											chatIds:chatIds
+										 completion:^(NSString *link){
+			[TGAlertSheet showMessage:(link.length ? link
+					: @"Telegram refused a link - a folder link needs only "
+					  @"pinned and included chats.")
+								title:@"Folder Invite Link" inView:weakSelf.view];
+		}];
+	}];
+}
+
+- (void)showActionsForFolderLink:(NSDictionary *)link
+						  folder:(NSInteger)folderId named:(NSString *)title {
+	NSString *url = link[@"link"];
+	if (!url.length)
+		return;
+	__weak typeof(self) weakSelf = self;
+	[TGAlertSheet showChoices:@[@"Copy Link", @"Rename", @"Delete"]
+							title:url destructiveIndex:2 inView:self.view
+						 onChoice:^(NSInteger index){
+		if (index == 0){
+			[UIPasteboard generalPasteboard].string = url;
+			[weakSelf toast:@"Copied."];
+			return;
+		}
+		if (index == 1){
+			[TGAlertSheet showInput:@"Rename Folder Link" message:nil
+						placeholder:@"Name" text:link[@"name"] ?: @""
+							 action:@"Save" inView:weakSelf.view
+						 onSubmit:^(NSString *name){
+				[[TGClient shared] chatsForFolderInviteLink:folderId
+						completion:^(NSArray *chatIds){
+					[[TGClient shared] editInviteLinkForFolder:folderId link:url
+							name:name chatIds:chatIds completion:^(BOOL ok){
+						[weakSelf toast:(ok ? @"Link renamed."
+											: @"Telegram refused the edit.")];
+					}];
+				}];
+			}];
+			return;
+		}
+		[TGAlertSheet showConfirm:@"The link stops working for everyone."
+							title:title action:@"Delete" destructive:YES
+						   inView:weakSelf.view onConfirm:^{
+			[[TGClient shared] deleteInviteLinkForFolder:folderId link:url
+					completion:^(BOOL ok){
+				[weakSelf toast:(ok ? @"Link deleted."
+									: @"Telegram refused the delete.")];
+			}];
+		}];
+	}];
+}
+
+- (void)addFolderByInviteLink {
+	__weak typeof(self) weakSelf = self;
+	[TGAlertSheet showInput:@"Add Folder by Link"
+					message:nil placeholder:@"t.me/addlist/…"
+						 text:[UIPasteboard generalPasteboard].string
+					 action:@"Check" inView:self.view
+				 onSubmit:^(NSString *link){
+		NSString *url = [link hasPrefix:@"http"] ? link
+				: [@"https://" stringByAppendingString:link];
+		[[TGClient shared] checkFolderInviteLink:url completion:^(NSDictionary *folder){
+			TGSettingsViewController *me = weakSelf;
+			if (!me)
+				return;
+			if (!folder){
+				[TGAlertSheet showMessage:@"That folder link answers nothing."
+									title:@"Add Folder" inView:me.view];
+				return;
+			}
+			NSArray *missing = folder[@"missing"] ?: @[];
+			NSString *say = [NSString stringWithFormat:@"%@ · %lu chats to add",
+					folder[@"name"] ?: @"Shared folder",
+					(unsigned long)missing.count];
+			[TGAlertSheet showConfirm:say title:@"Add Folder" action:@"Add"
+						  destructive:NO inView:me.view onConfirm:^{
+				[[TGClient shared] addFolderByInviteLink:url chatIds:missing
+											 completion:^(BOOL ok){
+					[me toast:(ok ? @"Folder added." : @"Telegram refused the folder.")];
+				}];
+			}];
+		}];
 	}];
 }
 

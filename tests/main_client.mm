@@ -21,7 +21,9 @@
 #import "TGClientAccountTests.m"
 #import "TGClientComposeTests.m"
 #import "TGClientBareTests.m"
+#import "TGClientStickerAuthoringTests.m"
 #import "TGClientThreadsTests.m"
+#import "TGClientChatToolsTests.m"
 #import "TGMessageStreamStoreTests.m"
 #import "TGThemeFileTests.m"
 #import "TGSVGPathTests.m"
@@ -29,6 +31,7 @@
 #import "TGP0MigrationTests.mm"
 #import "TGP1MigrationTests.mm"
 #import "TGStickerBudgetTests.m"
+#import "TGStickerImageTests.m"
 #import "TGClientMessagesFunctionsTests.m"
 
 int main(int argc, char *argv[]) {

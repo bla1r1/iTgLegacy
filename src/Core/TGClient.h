@@ -13,6 +13,7 @@
 #import "TGClient+Account.h"
 #import "TGClient+Auth.h"
 #import "TGClient+Chats.h"
+#import "TGClient+ChatTools.h"
 #import "TGClient+Downloads.h"
 #import "TGClient+Files.h"
 #import "TGClient+Groups.h"

@@ -67,4 +67,14 @@
 						 date:(NSInteger)date
 					completion:(void (^)(NSDictionary *message))completion;
 
+/// A Saved Messages topic's messages, oldest first. The chat pushes its
+/// threadId through this rather than the message-thread call.
+- (void)historyForSavedTopic:(int64_t)topicId
+			   fromMessageId:(int64_t)fromMessageId
+					   limit:(NSInteger)limit
+				  completion:(void (^)(NSArray *messages))completion;
+
+/// Empties a Saved Messages topic; the topic itself stays.
+- (void)deleteSavedTopicHistory:(int64_t)topicId;
+
 @end

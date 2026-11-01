@@ -2,6 +2,8 @@
 // UIImage+WebP - decode WebP images with libwebp.
 //
 #import "UIImage+WebP.h"
+#import "TGStickerImage.h"
+#import "TGStyle.h"
 #import "WebP.framework/Headers/decode.h"
 
 /// CGDataProvider owns the buffer once created and frees it through this.
@@ -59,6 +61,35 @@ static void tgFreePixels(void *info, const void *data, size_t size) {
 	// needs a Lottie player, which this app does not have, so the caller falls
 	// back to the sticker's emoji.
 	return nil;
+}
+
+/// Drawing through UIKit first, rather than handing `CGImage` straight to
+/// the encoder, applies the EXIF orientation a camera roll picture carries:
+/// `CGImage` has no such field, and a sideways sticker is the bug that
+/// follows from ignoring it. The bitmap is already the square Telegram
+/// wants, so the encoder only has to compress it.
++ (NSData *)webPDataFromImage:(UIImage *)image quality:(CGFloat)quality {
+	if (!image)
+		return nil;
+	CGSize size = image.size;
+	if (size.width <= 0 || size.height <= 0)
+		return nil;
+
+	CGFloat side = TGMetricStickerSide;
+	UIGraphicsBeginImageContextWithOptions(CGSizeMake(side, side), NO, 1.0f);
+	if (!UIGraphicsGetCurrentContext())
+		return nil;
+	CGFloat scale = MIN(side / size.width, side / size.height);
+	CGFloat drawWidth = size.width * scale;
+	CGFloat drawHeight = size.height * scale;
+	[image drawInRect:CGRectMake((side - drawWidth) / 2.0f,
+								 (side - drawHeight) / 2.0f,
+								 drawWidth, drawHeight)];
+	UIImage *padded = UIGraphicsGetImageFromCurrentImageContext();
+	UIGraphicsEndImageContext();
+	if (!padded)
+		return nil;
+	return TGStickerImageWebPData(padded.CGImage, (size_t)side, (float)quality);
 }
 
 @end

@@ -158,4 +158,17 @@ FOUNDATION_EXPORT NSString *TGMemberStatusName(NSDictionary *status);
 
 - (void)processJoinRequest:(int64_t)userId inChat:(int64_t)chatId approve:(BOOL)approve;
 
+/// The sticker pack a supergroup shows above its composer. `setId` is a pack
+/// id from getOwnedStickerSets; 0 clears it. A basic group has nowhere to
+/// put one, so the answer is NO rather than a request Telegram would refuse.
+- (void)setSupergroupStickerSet:(int64_t)setId
+						inChat:(int64_t)chatId
+					completion:(void (^)(BOOL ok))completion;
+
+/// The custom emoji pack a supergroup uses for reactions and its emoji
+/// status. Same id shape and same basic-group refusal as the regular one.
+- (void)setSupergroupCustomEmojiStickerSet:(int64_t)setId
+									inChat:(int64_t)chatId
+								completion:(void (^)(BOOL ok))completion;
+
 @end

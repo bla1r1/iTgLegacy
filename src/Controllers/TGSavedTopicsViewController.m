@@ -106,12 +106,12 @@
 	NSMutableArray *items = [@[pinned ? @"Unpin" : @"Pin", @"Jump to Date",
 							   @"Tags...", @"Unpin All"] mutableCopy];
 	[items addObjectsFromArray:@[@"Clear Before Today", @"Clear Before Week",
-								 @"Clear Before Month"]];
+								 @"Clear Before Month", @"Clear Everything"]];
 
 	__weak typeof(self) weakSelf = self;
 	[TGAlertSheet showChoices:items
 						title:name
-			 destructiveIndex:(NSInteger)[items indexOfObject:@"Clear Before Month"]
+			 destructiveIndex:(NSInteger)[items indexOfObject:@"Clear Everything"]
 					   inView:self.view
 					 onChoice:^(NSInteger index){
 		NSString *what = items[(NSUInteger)index];
@@ -144,6 +144,21 @@
 		}
 		// Clearing "before when" is a whole date range - days ago - and
 		// every deletion keeps what came after it.
+		if ([what isEqualToString:@"Clear Everything"]){
+			[TGAlertSheet showConfirm:[NSString stringWithFormat:
+					@"Every message in %@ is deleted, on every device. The topic "
+					@"itself stays.",
+					(name.length ? name : @"this topic")]
+								title:@"Clear Everything"
+							   action:@"Clear"
+						  destructive:YES
+							   inView:weakSelf.view
+							onConfirm:^{
+				[[TGClient shared] deleteSavedTopicHistory:topicId];
+				[weakSelf reloadRows];
+			}];
+			return;
+		}
 		NSString *say = [NSString stringWithFormat:
 				@"Everything in %@ before that is deleted, on every device.",
 				(name.length ? name : @"this topic")];

@@ -391,4 +391,187 @@
 	}];
 }
 
+#pragma mark - effects, import, prepared messages
+
+- (void)messageEffectWithId:(int64_t)effectId
+				 completion:(void (^)(NSDictionary *effect))completion {
+	[self request:@{@"@type" : @"getMessageEffect", @"effect_id" : @(effectId)}
+	   completion:^(NSDictionary *result){
+		if (!completion)
+			return;
+		if (![result[@"@type"] isEqualToString:@"messageEffect"]){
+			completion(nil);
+			return;
+		}
+		completion(@{
+			@"emoji"   : result[@"emoji"] ?: @"",
+			@"premium" : result[@"is_premium"] ?: @NO,
+			@"kind"    : result[@"type"][@"@type"] ?: @"",
+		});
+	}];
+}
+
+- (void)messageFileTypeForHead:(NSString *)head
+					completion:(void (^)(NSDictionary *fileType))completion {
+	if (!head.length){
+		if (completion) completion(nil);
+		return;
+	}
+	[self request:@{@"@type" : @"getMessageFileType", @"message_file_head" : head}
+	   completion:^(NSDictionary *result){
+		if (!completion)
+			return;
+		NSString *type = result[@"@type"];
+		if ([type isEqualToString:@"messageFileTypePrivate"])
+			completion(@{@"kind" : @"private",
+						 @"title" : result[@"name"] ?: @""});
+		else if ([type isEqualToString:@"messageFileTypeGroup"])
+			completion(@{@"kind" : @"group",
+						 @"title" : result[@"title"] ?: @""});
+		else
+			completion(@{@"kind" : @"unknown", @"title" : @""});
+	}];
+}
+
+- (void)importConfirmationTextForChat:(int64_t)chatId
+						   completion:(void (^)(NSString *text))completion {
+	[self request:@{@"@type" : @"getMessageImportConfirmationText",
+					@"chat_id" : @(chatId)}
+	   completion:^(NSDictionary *result){
+		if (!completion)
+			return;
+		completion([result[@"@type"] isEqualToString:@"text"]
+				? (result[@"text"] ?: @"") : @"");
+	}];
+}
+
+- (void)importMessagesFromFile:(NSString *)path
+				 attachedFiles:(NSArray *)attachedPaths
+					  intoChat:(int64_t)chatId
+					completion:(void (^)(BOOL ok))completion {
+	if (!path.length){
+		if (completion) completion(NO);
+		return;
+	}
+	NSMutableArray *attached = [NSMutableArray array];
+	for (NSString *file in attachedPaths)
+		if ([file isKindOfClass:NSString.class] && file.length)
+			[attached addObject:@{@"@type" : @"inputFileLocal",
+								  @"path" : file}];
+	[self request:@{
+		@"@type"          : @"importMessages",
+		@"chat_id"        : @(chatId),
+		@"message_file"   : @{@"@type" : @"inputFileLocal", @"path" : path},
+		@"attached_files" : attached,
+	} completion:^(NSDictionary *result){
+		if (completion)
+			completion(![result[@"@type"] isEqualToString:@"error"]);
+	}];
+}
+
+- (void)preparedInlineMessageFromBot:(int64_t)botUserId
+				   preparedMessageId:(NSString *)preparedMessageId
+						  completion:(void (^)(NSDictionary *prepared))completion {
+	if (!preparedMessageId.length){
+		if (completion) completion(nil);
+		return;
+	}
+	[self request:@{
+		@"@type"               : @"getPreparedInlineMessage",
+		@"bot_user_id"         : @(botUserId),
+		@"prepared_message_id" : preparedMessageId,
+	} completion:^(NSDictionary *result){
+		if (!completion)
+			return;
+		if (![result[@"@type"] isEqualToString:@"preparedInlineMessage"]){
+			completion(nil);
+			return;
+		}
+		completion(@{
+			@"id"         : result[@"id"] ?: @"",
+			@"result"     : result[@"result"] ?: @{},
+			@"allowUsers" : result[@"chat_types"][@"allow_user_chats"] ?: @NO,
+			@"allowGroups": result[@"chat_types"][@"allow_group_chats"] ?: @NO,
+			@"allowBots"  : result[@"chat_types"][@"allow_bot_chats"] ?: @NO,
+			@"allowChannels" : result[@"chat_types"][@"allow_channel_chats"] ?: @NO,
+		});
+	}];
+}
+
+- (void)savePreparedInlineMessageForUser:(int64_t)userId
+									text:(NSString *)text
+								   title:(NSString *)title
+							  completion:(void (^)(NSString *preparedMessageId))completion {
+	if (!text.length){
+		if (completion) completion(nil);
+		return;
+	}
+	NSDictionary *result = @{
+		@"@type"               : @"inputInlineQueryResultArticle",
+		@"id"                  : @"legacy-prepared",
+		@"url"                 : @"",
+		@"title"               : title.length ? title : text,
+		@"description"         : text,
+		@"thumbnail_url"       : @"",
+		@"thumbnail_width"     : @0,
+		@"thumbnail_height"    : @0,
+		@"reply_markup"        : [NSNull null],
+		@"input_message_content" : @{@"@type" : @"inputMessageText",
+									 @"text" : TGFormattedText(text)},
+	};
+	[self request:@{
+		@"@type"       : @"savePreparedInlineMessage",
+		@"user_id"     : @(userId),
+		@"result"      : result,
+		@"chat_types"  : @{@"@type" : @"targetChatTypes",
+						   @"allow_user_chats" : @YES,
+						   @"allow_bot_chats" : @NO,
+						   @"allow_group_chats" : @YES,
+						   @"allow_channel_chats" : @YES},
+	} completion:^(NSDictionary *answer){
+		if (!completion)
+			return;
+		BOOL ok = [answer[@"@type"] isEqualToString:@"preparedInlineMessageId"];
+		completion(ok ? answer[@"id"] : nil);
+	}];
+}
+
+- (void)sendTextDraft:(NSString *)text
+			   toChat:(int64_t)chatId
+				topic:(int64_t)topicId
+			  draftId:(int64_t)draftId
+			   canStop:(BOOL)canStop
+				  keep:(BOOL)keepOnStop
+		   completion:(void (^)(BOOL ok))completion {
+	[self request:@{
+		@"@type"          : @"sendTextMessageDraft",
+		@"chat_id"        : @(chatId),
+		@"forum_topic_id" : @(topicId),
+		@"draft_id"       : @(draftId),
+		@"can_stop"       : @(canStop),
+		@"keep_on_stop"   : @(keepOnStop),
+		@"text"           : text.length ? TGFormattedText(text) : [NSNull null],
+	} completion:^(NSDictionary *result){
+		if (completion)
+			completion(![result[@"@type"] isEqualToString:@"error"]);
+	}];
+}
+
+- (void)stopTextDraft:(int64_t)draftId
+			   inChat:(int64_t)chatId
+				topic:(int64_t)topicId
+		   completion:(void (^)(BOOL ok))completion {
+	[self request:@{
+		@"@type"     : @"stopPendingMessage",
+		@"chat_id"   : @(chatId),
+		@"topic_id"  : topicId ? @{@"@type" : @"messageTopicForum",
+									@"forum_topic_id" : @(topicId)}
+							  : (id)[NSNull null],
+		@"draft_id"  : @(draftId),
+	} completion:^(NSDictionary *result){
+		if (completion)
+			completion(![result[@"@type"] isEqualToString:@"error"]);
+	}];
+}
+
 @end

@@ -336,6 +336,16 @@
 			weakSelf.passwordKnown = YES;
 			[weakSelf rebuild];
 		}];
+		[[TGClient shared] newChatPrivacySettingsWithCompletion:^(NSDictionary *settings){
+			weakSelf.newChatAllowUnknown =
+					[settings[@"allow_new_chats_from_unknown_users"] boolValue];
+			weakSelf.newChatPrivacyLoaded = YES;
+			[weakSelf rebuild];
+		}];
+		NSNumber *savedPersonal =
+				[NSUserDefaults.standardUserDefaults objectForKey:@"TGPersonalChatId"];
+		if (savedPersonal)
+			weakSelf.personalChatId = savedPersonal.longLongValue;
 		// TDLib stores the negative, so the row and the option are opposites.
 		[[TGClient shared] optionValue:@"disable_top_chats" completion:^(id value){
 			weakSelf.suggestFrequent = ![value boolValue];

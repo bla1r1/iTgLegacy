@@ -41,6 +41,14 @@ static NSDictionary *lastM(TGClient *c, NSString *type) {
 	return found;
 }
 
+static NSUInteger countM(TGClient *c, NSString *type) {
+	NSUInteger n = 0;
+	for (NSData *d in c.outbox)
+		if ([decodeM(d)[@"@type"] isEqualToString:type])
+			n++;
+	return n;
+}
+
 static void answerM(TGClient *c, NSDictionary *answer) {
 	NSDictionary *sent = nil;
 	for (NSData *d in c.outbox)
@@ -565,4 +573,505 @@ static NSDictionary *plain(NSDictionary *d) {
 	NSString *back = TGBase64Encode(payload);
 	XCTAssertTrue([TGBase64Decode(back) isEqual:payload]);
 }
+
+#pragma mark - the message as a record
+
+- (void)testAddLocalMessage_KeepsTheNoteInTheChat {
+	TGClient *c = M();
+	__block int64_t made = -1;
+	[c addLocalTextMessage:@"" toChat:41 completion:^(int64_t messageId){
+		made = messageId;
+	}];
+	XCTAssertEqual(countM(c, @"addLocalMessage"), (NSUInteger)0);
+	XCTAssertEqual(made, 0LL);
+
+	[c addLocalTextMessage:@"remember this" toChat:41
+				completion:^(int64_t messageId){ made = messageId; }];
+	NSDictionary *r = lastM(c, @"addLocalMessage");
+	XCTAssertEqualObjects(r[@"chat_id"], @(41));
+	XCTAssertEqualObjects(r[@"sender_id"][@"@type"], @"messageSenderUser");
+	XCTAssertEqual([r[@"sender_id"][@"user_id"] longLongValue], 1001LL);
+	XCTAssertEqualObjects(r[@"input_message_content"][@"text"][@"text"],
+						  @"remember this");
+	answerM(c, plain(@{@"@type" : @"message", @"id" : @(77)}));
+	XCTAssertEqual(made, 77LL);
+}
+
+- (void)testClickAnimatedEmoji_AnswersWithTheStickerEmoji {
+	TGClient *c = M();
+	__block NSString *emoji = nil;
+	[c clickAnimatedEmojiMessage:55 inChat:41 completion:^(NSString *got){
+		emoji = got;
+	}];
+	NSDictionary *r = lastM(c, @"clickAnimatedEmojiMessage");
+	XCTAssertEqualObjects(r[@"chat_id"], @(41));
+	XCTAssertEqualObjects(r[@"message_id"], @(55));
+	// The wrapped shape TDLib's JSON uses for some builds.
+	answerM(c, plain(@{@"@type" : @"sticker",
+						@"sticker" : @{@"@type" : @"sticker", @"emoji" : @"🎲"}}));
+	XCTAssertEqualObjects(emoji, @"🎲");
+
+	// And the bare Sticker object other builds answer with.
+	[c clickAnimatedEmojiMessage:55 inChat:41 completion:^(NSString *got){
+		emoji = got;
+	}];
+	answerM(c, plain(@{@"@type" : @"sticker", @"emoji" : @"🎯"}));
+	XCTAssertEqualObjects(emoji, @"🎯");
+
+	[c clickAnimatedEmojiMessage:55 inChat:41 completion:^(NSString *got){
+		emoji = got;
+	}];
+	answerM(c, @{@"@type" : @"error", @"code" : @(404),
+				 @"message" : @"Not Found"});
+	XCTAssertNil(emoji);
+}
+
+- (void)testClearReplyMarkup_SendsAnEmptyKeyboard {
+	TGClient *c = M();
+	__block BOOL ok = NO;
+	[c clearReplyMarkupOfMessage:55 inChat:41 completion:^(BOOL made){ ok = made; }];
+	NSDictionary *r = lastM(c, @"editMessageReplyMarkup");
+	XCTAssertEqualObjects(r[@"@type"], @"editMessageReplyMarkup");
+	XCTAssertEqualObjects(r[@"reply_markup"][@"@type"], @"replyMarkupInlineKeyboard");
+	XCTAssertEqual([r[@"reply_markup"][@"rows"] count], (NSUInteger)0);
+	answerM(c, plain(@{@"@type" : @"ok"}));
+	XCTAssertTrue(ok);
+
+	[c clearReplyMarkupOfMessage:55 inChat:41 completion:^(BOOL made){ ok = made; }];
+	answerM(c, @{@"@type" : @"error", @"code" : @(400),
+				 @"message" : @"BOT_METHOD_INVALID"});
+	XCTAssertFalse(ok);
+}
+
+- (void)testCallbackQueryMessage_NamesAllThreeIdsAndFlattens {
+	TGClient *c = M();
+	__block NSDictionary *got = nil;
+	[c callbackQueryMessage:55 inChat:41 callbackQueryId:9001
+				 completion:^(NSDictionary *message){ got = message; }];
+	NSDictionary *r = lastM(c, @"getCallbackQueryMessage");
+	XCTAssertEqualObjects(r[@"chat_id"], @(41));
+	XCTAssertEqualObjects(r[@"message_id"], @(55));
+	XCTAssertEqualObjects(r[@"callback_query_id"], @(9001));
+	answerM(c, plain(@{@"@type" : @"message", @"id" : @(55),
+						@"content" : @{@"@type" : @"messageText",
+									   @"text" : @{@"@type" : @"formattedText",
+												   @"text" : @"from the bot"}}}));
+	XCTAssertEqualObjects(got[@"text"], @"from the bot");
+
+	[c callbackQueryMessage:55 inChat:41 callbackQueryId:9001
+				 completion:^(NSDictionary *message){ got = message; }];
+	answerM(c, @{@"@type" : @"error", @"code" : @(400),
+				 @"message" : @"QUERY_ID_INVALID"});
+	XCTAssertNil(got);
+}
+
+- (void)testLocalMessage_ReadsTheCacheOnly {
+	TGClient *c = M();
+	__block NSDictionary *got = nil;
+	[c localMessageWithId:55 inChat:41 completion:^(NSDictionary *message){
+		got = message;
+	}];
+	NSDictionary *r = lastM(c, @"getMessageLocally");
+	XCTAssertEqualObjects(r[@"chat_id"], @(41));
+	XCTAssertEqualObjects(r[@"message_id"], @(55));
+	answerM(c, plain(@{@"@type" : @"message", @"id" : @(55),
+						@"content" : @{@"@type" : @"messageText",
+									   @"text" : @{@"@type" : @"formattedText",
+												   @"text" : @"cached"}}}));
+	XCTAssertEqualObjects(got[@"text"], @"cached");
+
+	[c localMessageWithId:55 inChat:41 completion:^(NSDictionary *message){
+		got = message;
+	}];
+	answerM(c, @{@"@type" : @"error", @"code" : @(404),
+				 @"message" : @"Not Found"});
+	XCTAssertNil(got);
+}
+
+- (void)testMessagePosition_SendsTheEmptyFilterAndNullTopic {
+	TGClient *c = M();
+	__block NSInteger position = 0;
+	[c positionOfMessage:55 inChat:41 thread:0 completion:^(NSInteger found){
+		position = found;
+	}];
+	NSDictionary *r = lastM(c, @"getChatMessagePosition");
+	XCTAssertEqualObjects(r[@"filter"][@"@type"], @"searchMessagesFilterEmpty");
+	XCTAssertTrue(r[@"topic_id"] == [NSNull null]);
+	answerM(c, plain(@{@"@type" : @"count", @"count" : @(7)}));
+	XCTAssertEqual(position, 7);
+
+	// A forum topic is named by its own MessageTopic, not left chat-wide.
+	c.chatsById[@(41)] = [@{@"id" : @(41), @"isForum" : @YES} mutableCopy];
+	[c positionOfMessage:55 inChat:41 thread:77 completion:^(NSInteger found){
+		position = found;
+	}];
+	r = lastM(c, @"getChatMessagePosition");
+	XCTAssertEqualObjects(r[@"topic_id"][@"@type"], @"messageTopicForum");
+	XCTAssertEqualObjects(r[@"topic_id"][@"forum_topic_id"], @(77));
+	answerM(c, plain(@{@"@type" : @"count", @"count" : @(3)}));
+	XCTAssertEqual(position, 3);
+
+	// Saved Messages topics have their own MessageTopic spelling.
+	c.chatsById[@(41)] = [@{@"id" : @(41), @"isSaved" : @YES} mutableCopy];
+	[c positionOfMessage:55 inChat:41 thread:12 completion:^(NSInteger found){
+		position = found;
+	}];
+	r = lastM(c, @"getChatMessagePosition");
+	XCTAssertEqualObjects(r[@"topic_id"][@"@type"], @"messageTopicSavedMessages");
+	XCTAssertEqualObjects(r[@"topic_id"][@"saved_messages_topic_id"], @(12));
+}
+
+- (void)testSparsePositions_ClampsTheLimitAndNamesTheSavedTopic {
+	TGClient *c = M();
+	__block NSArray *ids = nil;
+	[c sparsePositionsInChat:41 fromMessageId:55 thread:0 limit:1
+				  completion:^(NSArray *found){ ids = found; }];
+	NSDictionary *r = lastM(c, @"getChatSparseMessagePositions");
+	// TDLib refuses a limit under 50; the client lifts it rather than
+	// letting the request die.
+	XCTAssertEqualObjects(r[@"limit"], @(50));
+	XCTAssertEqualObjects(r[@"saved_messages_topic_id"], @(0));
+	answerM(c, plain(@{@"@type" : @"messagePositions", @"total_count" : @(2),
+						@"positions" : @[@(90), @(80)]}));
+	XCTAssertEqualObjects(ids, (@[@(90), @(80)]));
+
+	// The schema's only topic field is the Saved Messages one. A forum
+	// topic cannot narrow this call, so its map stays chat-wide.
+	c.chatsById[@(41)] = [@{@"id" : @(41), @"isForum" : @YES} mutableCopy];
+	[c sparsePositionsInChat:41 fromMessageId:55 thread:77 limit:50
+				  completion:nil];
+	XCTAssertEqualObjects(lastM(c, @"getChatSparseMessagePositions")[@"saved_messages_topic_id"],
+						  @(0));
+
+	c.chatsById[@(41)] = [@{@"id" : @(41), @"isSaved" : @YES} mutableCopy];
+	[c sparsePositionsInChat:41 fromMessageId:55 thread:12 limit:50
+				  completion:nil];
+	XCTAssertEqualObjects(lastM(c, @"getChatSparseMessagePositions")[@"saved_messages_topic_id"],
+						  @(12));
+}
+
+- (void)testMessageStatistics_IsNilUnlessItIsTheStatisticsObject {
+	TGClient *c = M();
+	__block NSDictionary *stats = nil;
+	[c statisticsOfMessage:55 inChat:41 completion:^(NSDictionary *found){
+		stats = found;
+	}];
+	NSDictionary *r = lastM(c, @"getMessageStatistics");
+	XCTAssertEqualObjects(r[@"is_dark"], @NO);
+	answerM(c, plain(@{@"@type" : @"messageStatistics",
+						@"message_interaction_graph" : @{@"@type" : @"statisticalGraphData",
+														@"json_data" : @"{}"},
+						@"message_reaction_graph" : @{@"@type" : @"statisticalGraphData",
+													 @"json_data" : @"{}"}}));
+	XCTAssertNotNil(stats[@"message_interaction_graph"]);
+
+	[c statisticsOfMessage:55 inChat:41 completion:^(NSDictionary *found){
+		stats = found;
+	}];
+	answerM(c, @{@"@type" : @"error", @"code" : @(400),
+				 @"message" : @"CHAT_STATISTICS_FORBIDDEN"});
+	XCTAssertNil(stats);
+}
+
+- (void)testViewMetrics_ClampsRatioAndSendsTheReport {
+	TGClient *c = M();
+	__block BOOL ok = NO;
+	[c reportViewOfMessage:55 inChat:41 timeInViewMs:1000
+		 activeTimeInViewMs:1000 heightRatio:2500 seenRangeRatio:1200
+				completion:^(BOOL made){ ok = made; }];
+	NSDictionary *r = lastM(c, @"sendMessageViewMetrics");
+	XCTAssertEqualObjects(r[@"time_in_view_ms"], @(1000));
+	XCTAssertEqualObjects(r[@"height_to_viewport_ratio_per_mille"], @(1000));
+	XCTAssertEqualObjects(r[@"seen_range_ratio_per_mille"], @(1000));
+	answerM(c, plain(@{@"@type" : @"ok"}));
+	XCTAssertTrue(ok);
+}
+
+- (void)testSetReactions_NamesTheEmojiAndIsABotRequest {
+	TGClient *c = M();
+	__block BOOL ok = NO;
+	[c setReactions:@[@"👍", @""] onMessage:55 inChat:41
+		 completion:^(BOOL made){ ok = made; }];
+	NSDictionary *r = lastM(c, @"setMessageReactions");
+	NSArray *types = r[@"reaction_types"];
+	XCTAssertEqual(types.count, (NSUInteger)1);
+	XCTAssertEqualObjects(types[0][@"@type"], @"reactionTypeEmoji");
+	XCTAssertEqualObjects(types[0][@"emoji"], @"👍");
+	answerM(c, plain(@{@"@type" : @"ok"}));
+	XCTAssertTrue(ok);
+
+	[c setReactions:@[@"👍"] onMessage:55 inChat:41 completion:^(BOOL made){ ok = made; }];
+	answerM(c, @{@"@type" : @"error", @"code" : @(400),
+				 @"message" : @"BOT_METHOD_INVALID"});
+	XCTAssertFalse(ok);
+}
+
+- (void)testMessageEffect_ReadsTheEmojiAndPremiumFlag {
+	TGClient *c = M();
+	__block NSDictionary *effect = nil;
+	[c messageEffectWithId:123 completion:^(NSDictionary *found){ effect = found; }];
+	XCTAssertEqualObjects(lastM(c, @"getMessageEffect")[@"effect_id"], @(123));
+	answerM(c, plain(@{@"@type" : @"messageEffect", @"id" : @(123),
+						@"emoji" : @"🔥", @"is_premium" : @YES,
+						@"type" : @{@"@type" : @"messageEffectTypeEmojiReaction"}}));
+	XCTAssertEqualObjects(effect[@"emoji"], @"🔥");
+	XCTAssertTrue([effect[@"premium"] boolValue]);
+
+	[c messageEffectWithId:123 completion:^(NSDictionary *found){ effect = found; }];
+	answerM(c, @{@"@type" : @"error", @"code" : @(404),
+				 @"message" : @"Not Found"});
+	XCTAssertNil(effect);
+}
+
+- (void)testMessageFileType_NamesPrivateGroupAndUnknown {
+	TGClient *c = M();
+	__block NSDictionary *type = nil;
+	[c messageFileTypeForHead:@"" completion:^(NSDictionary *found){ type = found; }];
+	XCTAssertEqual(countM(c, @"getMessageFileType"), (NSUInteger)0);
+	XCTAssertNil(type);
+
+	[c messageFileTypeForHead:@"{\"name\":\"Alex\"}" completion:^(NSDictionary *found){
+		type = found;
+	}];
+	XCTAssertEqualObjects(lastM(c, @"getMessageFileType")[@"message_file_head"],
+						  @"{\"name\":\"Alex\"}");
+	answerM(c, plain(@{@"@type" : @"messageFileTypePrivate", @"name" : @"Alex"}));
+	XCTAssertEqualObjects(type[@"kind"], @"private");
+	XCTAssertEqualObjects(type[@"title"], @"Alex");
+
+	[c messageFileTypeForHead:@"{\"name\":\"Club\"}" completion:^(NSDictionary *found){
+		type = found;
+	}];
+	answerM(c, plain(@{@"@type" : @"messageFileTypeGroup", @"title" : @"Club"}));
+	XCTAssertEqualObjects(type[@"kind"], @"group");
+
+	[c messageFileTypeForHead:@"what" completion:^(NSDictionary *found){ type = found; }];
+	answerM(c, plain(@{@"@type" : @"messageFileTypeUnknown"}));
+	XCTAssertEqualObjects(type[@"kind"], @"unknown");
+}
+
+- (void)testImportConfirmation_AndTheImportItself {
+	TGClient *c = M();
+	__block NSString *said = nil;
+	[c importConfirmationTextForChat:41 completion:^(NSString *text){ said = text; }];
+	XCTAssertEqualObjects(lastM(c, @"getMessageImportConfirmationText")[@"chat_id"], @(41));
+	answerM(c, plain(@{@"@type" : @"text", @"text" : @"Import 10 messages?"}));
+	XCTAssertEqualObjects(said, @"Import 10 messages?");
+
+	__block BOOL ok = NO;
+	[c importMessagesFromFile:@"/tmp/export.json"
+				attachedFiles:@[@"/tmp/1.jpg"]
+					 intoChat:41
+				   completion:^(BOOL made){ ok = made; }];
+	NSDictionary *r = lastM(c, @"importMessages");
+	XCTAssertEqualObjects(r[@"message_file"][@"@type"], @"inputFileLocal");
+	XCTAssertEqualObjects(r[@"message_file"][@"path"], @"/tmp/export.json");
+	XCTAssertEqualObjects(r[@"attached_files"][0][@"path"], @"/tmp/1.jpg");
+	answerM(c, plain(@{@"@type" : @"ok"}));
+	XCTAssertTrue(ok);
+}
+
+- (void)testPreparedInlineMessage_ReadsTheBotResult {
+	TGClient *c = M();
+	__block NSDictionary *prepared = nil;
+	[c preparedInlineMessageFromBot:1001 preparedMessageId:@"p-1"
+						 completion:^(NSDictionary *found){ prepared = found; }];
+	NSDictionary *r = lastM(c, @"getPreparedInlineMessage");
+	XCTAssertEqualObjects(r[@"bot_user_id"], @(1001));
+	XCTAssertEqualObjects(r[@"prepared_message_id"], @"p-1");
+	answerM(c, plain(@{@"@type" : @"preparedInlineMessage",
+						@"id" : @"prep-9",
+						@"result" : @{@"@type" : @"inlineQueryResultArticle"},
+						@"chat_types" : @{@"allow_user_chats" : @YES,
+										  @"allow_group_chats" : @NO}}));
+	XCTAssertEqualObjects(prepared[@"id"], @"prep-9");
+	XCTAssertTrue([prepared[@"allowUsers"] boolValue]);
+	XCTAssertFalse([prepared[@"allowGroups"] boolValue]);
+}
+
+- (void)testSavePreparedInlineMessage_BuildsAnArticle {
+	TGClient *c = M();
+	__block NSString *preparedId = nil;
+	[c savePreparedInlineMessageForUser:7 text:@"Hello" title:@"Greeting"
+							 completion:^(NSString *found){ preparedId = found; }];
+	NSDictionary *r = lastM(c, @"savePreparedInlineMessage");
+	XCTAssertEqualObjects(r[@"user_id"], @(7));
+	XCTAssertEqualObjects(r[@"result"][@"@type"], @"inputInlineQueryResultArticle");
+	XCTAssertEqualObjects(r[@"result"][@"title"], @"Greeting");
+	XCTAssertEqualObjects(r[@"result"][@"input_message_content"][@"text"][@"text"],
+						  @"Hello");
+	answerM(c, plain(@{@"@type" : @"preparedInlineMessageId",
+						@"id" : @"p-2", @"expiration_date" : @(0)}));
+	XCTAssertEqualObjects(preparedId, @"p-2");
+
+	[c savePreparedInlineMessageForUser:7 text:@"" title:@"Greeting"
+							 completion:^(NSString *found){ preparedId = found; }];
+	XCTAssertNil(preparedId);
+}
+
+- (void)testTextDraft_SendsAndStopsTheStream {
+	TGClient *c = M();
+	__block BOOL ok = NO;
+	[c sendTextDraft:@"Thinking" toChat:41 topic:0 draftId:777 canStop:YES
+				keep:NO completion:^(BOOL made){ ok = made; }];
+	NSDictionary *r = lastM(c, @"sendTextMessageDraft");
+	XCTAssertEqualObjects(r[@"chat_id"], @(41));
+	XCTAssertEqualObjects(r[@"forum_topic_id"], @(0));
+	XCTAssertEqualObjects(r[@"draft_id"], @(777));
+	XCTAssertEqualObjects(r[@"can_stop"], @YES);
+	XCTAssertEqualObjects(r[@"keep_on_stop"], @NO);
+	XCTAssertEqualObjects(r[@"text"][@"text"], @"Thinking");
+	answerM(c, plain(@{@"@type" : @"ok"}));
+	XCTAssertTrue(ok);
+
+	[c stopTextDraft:777 inChat:41 topic:0 completion:^(BOOL made){ ok = made; }];
+	r = lastM(c, @"stopPendingMessage");
+	XCTAssertEqualObjects(r[@"draft_id"], @(777));
+	XCTAssertTrue(r[@"topic_id"] == [NSNull null]);
+	answerM(c, plain(@{@"@type" : @"ok"}));
+	XCTAssertTrue(ok);
+}
+
+- (void)testDirectMessagesGroup_CarriesTheSwitchAndPrice {
+	TGClient *c = M();
+	__block BOOL ok = NO;
+	[c setDirectMessagesEnabled:YES paidStars:1 inChat:41
+					 completion:^(BOOL made){ ok = made; }];
+	NSDictionary *r = lastM(c, @"setChatDirectMessagesGroup");
+	XCTAssertEqualObjects(r[@"chat_id"], @(41));
+	XCTAssertEqualObjects(r[@"is_enabled"], @YES);
+	XCTAssertEqualObjects(r[@"paid_message_star_count"], @(1));
+	answerM(c, plain(@{@"@type" : @"ok"}));
+	XCTAssertTrue(ok);
+
+	// Off says zero stars, whatever the old price was.
+	[c setDirectMessagesEnabled:NO paidStars:5 inChat:41 completion:nil];
+	r = lastM(c, @"setChatDirectMessagesGroup");
+	XCTAssertEqualObjects(r[@"is_enabled"], @NO);
+	XCTAssertEqualObjects(r[@"paid_message_star_count"], @(0));
+}
+
+#pragma mark - the deprecated history spellings still have a path
+
+- (void)testTopicHistory_UsesTheForumCallAndFallsBackToTheThreadCall {
+	TGClient *c = M();
+	__block NSArray *got = nil;
+	[c historyForChat:41 thread:77 limit:20 completion:^(NSArray *messages){
+		got = messages;
+	}];
+	NSDictionary *r = lastM(c, @"getForumTopicHistory");
+	XCTAssertEqualObjects(r[@"chat_id"], @(41));
+	XCTAssertEqualObjects(r[@"forum_topic_id"], @(77));
+	answerM(c, plain(@{@"@type" : @"messages", @"total_count" : @(1),
+						@"messages" : @[@{@"@type" : @"message", @"id" : @(5),
+										  @"content" : @{@"@type" : @"messageText",
+														 @"text" : @{@"@type" : @"formattedText",
+																	 @"text" : @"in the topic"}}}]}));
+	XCTAssertEqual(got.count, (NSUInteger)1);
+	XCTAssertEqualObjects(got[0][@"text"], @"in the topic");
+
+	// A plain thread has no forum id: the topic call refuses, and the
+	// message-thread call is still what answers it.
+	[c.outbox removeAllObjects];
+	[c historyForChat:41 thread:88 limit:20 completion:^(NSArray *messages){
+		got = messages;
+	}];
+	answerM(c, @{@"@type" : @"error", @"code" : @(400),
+				 @"message" : @"TOPIC_ID_INVALID"});
+	r = lastM(c, @"getMessageThreadHistory");
+	XCTAssertEqualObjects(r[@"message_id"], @(88));
+	answerM(c, plain(@{@"@type" : @"messages", @"total_count" : @(1),
+						@"messages" : @[@{@"@type" : @"message", @"id" : @(6),
+										  @"content" : @{@"@type" : @"messageText",
+														 @"text" : @{@"@type" : @"formattedText",
+																	 @"text" : @"in the thread"}}}]}));
+	XCTAssertEqualObjects(got[0][@"text"], @"in the thread");
+}
+
+- (void)testSavedTopicHistory_UsesItsOwnCallAndClears {
+	TGClient *c = M();
+	c.chatsById[@(41)] = [@{@"id" : @(41), @"isSaved" : @YES} mutableCopy];
+	__block NSArray *got = nil;
+	[c historyForChat:41 thread:12 limit:20 completion:^(NSArray *messages){
+		got = messages;
+	}];
+	NSDictionary *r = lastM(c, @"getSavedMessagesTopicHistory");
+	XCTAssertEqualObjects(r[@"saved_messages_topic_id"], @(12));
+	XCTAssertEqualObjects(r[@"limit"], @(20));
+	answerM(c, plain(@{@"@type" : @"messages", @"total_count" : @(1),
+						@"messages" : @[@{@"@type" : @"message", @"id" : @(7),
+										  @"content" : @{@"@type" : @"messageText",
+														 @"text" : @{@"@type" : @"formattedText",
+																	 @"text" : @"saved note"}}}]}));
+	XCTAssertEqualObjects(got[0][@"text"], @"saved note");
+
+	[c deleteSavedTopicHistory:12];
+	XCTAssertEqualObjects(lastM(c, @"deleteSavedMessagesTopicHistory")[@"saved_messages_topic_id"],
+						  @(12));
+}
+
+- (void)testPersonalChatHistory_ClampsTheLimit {
+	TGClient *c = M();
+	__block NSArray *got = nil;
+	[c personalChatHistoryForUser:7 limit:99 completion:^(NSArray *messages){
+		got = messages;
+	}];
+	NSDictionary *r = lastM(c, @"getPersonalChatHistory");
+	XCTAssertEqualObjects(r[@"user_id"], @(7));
+	XCTAssertEqualObjects(r[@"limit"], @(20));
+	answerM(c, plain(@{@"@type" : @"messages", @"total_count" : @(1),
+						@"messages" : @[@{@"@type" : @"message", @"id" : @(8),
+										  @"content" : @{@"@type" : @"messageText",
+														 @"text" : @{@"@type" : @"formattedText",
+																	 @"text" : @"bot view"}}}]}));
+	XCTAssertEqualObjects(got[0][@"text"], @"bot view");
+}
+
+- (void)testInlineMessageEdits_NameTheInlineIdAndTheNewContent {
+	TGClient *c = M();
+	__block BOOL ok = NO;
+
+	[c editInlineMessageText:@"AAH" text:@"new words"
+				  completion:^(BOOL made){ ok = made; }];
+	NSDictionary *r = lastM(c, @"editInlineMessageText");
+	XCTAssertEqualObjects(r[@"inline_message_id"], @"AAH");
+	XCTAssertEqualObjects(r[@"input_message_content"][@"text"][@"text"], @"new words");
+	answerM(c, plain(@{@"@type" : @"ok"}));
+	XCTAssertTrue(ok);
+
+	[c editInlineMessageCaption:@"AAH" caption:@"new caption"
+					 completion:^(BOOL made){ ok = made; }];
+	r = lastM(c, @"editInlineMessageCaption");
+	XCTAssertEqualObjects(r[@"caption"][@"text"], @"new caption");
+	answerM(c, plain(@{@"@type" : @"ok"}));
+	XCTAssertTrue(ok);
+
+	[c clearInlineMessageReplyMarkup:@"AAH" completion:^(BOOL made){ ok = made; }];
+	r = lastM(c, @"editInlineMessageReplyMarkup");
+	XCTAssertEqualObjects(r[@"reply_markup"][@"@type"], @"replyMarkupInlineKeyboard");
+	answerM(c, plain(@{@"@type" : @"ok"}));
+	XCTAssertTrue(ok);
+
+	[c editInlineMessagePhoto:@"AAH" photoId:55 caption:@"shot"
+				   completion:^(BOOL made){ ok = made; }];
+	r = lastM(c, @"editInlineMessageMedia");
+	XCTAssertEqualObjects(r[@"input_message_content"][@"@type"], @"inputMessagePhoto");
+	XCTAssertEqualObjects(r[@"input_message_content"][@"photo"][@"id"], @(55));
+	answerM(c, plain(@{@"@type" : @"ok"}));
+	XCTAssertTrue(ok);
+
+	[c editInlineMessageLiveLocation:@"AAH" latitude:1.5 longitude:2.5
+						  completion:^(BOOL made){ ok = made; }];
+	r = lastM(c, @"editInlineMessageLiveLocation");
+	XCTAssertEqualObjects(r[@"location"][@"location"][@"latitude"], @(1.5));
+	XCTAssertEqualObjects(r[@"location"][@"location"][@"longitude"], @(2.5));
+	answerM(c, plain(@{@"@type" : @"ok"}));
+	XCTAssertTrue(ok);
+
+	// An empty id is not worth a request; the sheet never sends one, and
+	// the guard keeps a malformed one from reaching the wire.
+	[c editInlineMessageText:@"" text:@"x" completion:^(BOOL made){ ok = made; }];
+	XCTAssertFalse(ok);
+}
+
 @end

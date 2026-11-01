@@ -187,21 +187,32 @@
 		}];
 	};
 
-	// A login Telegram has not seen confirmed is the one thing this list can
-	// act on besides signing out; the update that announced it is what put
-	// the word on the row.
-	if (![session[@"isUnconfirmed"] boolValue]){
-		signOut();
-		return;
-	}
-	[TGAlertSheet showChoices:@[@"Confirm This Device", @"Sign Out"]
+	// A session's two switches are worth reaching from its row: a device that
+	// should not accept secret chats can be told so without signing it out,
+	// and a login Telegram has not seen confirmed gets its Confirm beside them.
+	BOOL canAccept = [session[@"canAcceptSecretChats"] boolValue];
+	NSString *secretTitle = canAccept ? @"Stop Accepting Secret Chats"
+									  : @"Accept Secret Chats";
+	NSMutableArray *choices = [NSMutableArray array];
+	if ([session[@"isUnconfirmed"] boolValue])
+		[choices addObject:@"Confirm This Device"];
+	[choices addObject:secretTitle];
+	[choices addObject:@"Sign Out"];
+
+	[TGAlertSheet showChoices:choices
 						title:session[@"name"]
-			 destructiveIndex:1
+			 destructiveIndex:(NSInteger)choices.count - 1
 					   inView:self.view
 					 onChoice:^(NSInteger index){
-		if (index == 0){
+		NSString *choice = choices[index];
+		if ([choice isEqualToString:@"Confirm This Device"]){
 			[[TGClient shared] confirmSession:sessionId];
 			[weakSelf performSelector:@selector(refresh) withObject:nil afterDelay:1.0];
+			return;
+		}
+		if ([choice isEqualToString:secretTitle]){
+			[[TGClient shared] toggleSession:sessionId canAcceptSecretChats:!canAccept];
+			[weakSelf performSelector:@selector(refresh) withObject:nil afterDelay:0.5];
 			return;
 		}
 		signOut();

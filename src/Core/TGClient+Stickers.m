@@ -99,7 +99,14 @@ NSArray *TGFlattenStickerSets(NSArray *sets) {
 		info[@"count"] = set[@"count"] ?: @(0);
 		info[@"installed"] = @([set[@"is_installed"] boolValue]);
 		info[@"archived"] = @([set[@"is_archived"] boolValue]);
-		info[@"shortName"] = set[@"short_name"] ?: @"";
+		info[@"owned"] = @([set[@"is_owned"] boolValue]);
+		// td_api settled on "name"; older fixtures and the search answer
+		// this file has always read use "short_name". Both are the same
+		// string, and a pack with neither is unnamed rather than wrong.
+		info[@"shortName"] = set[@"name"] ?: (set[@"short_name"] ?: @"");
+		// The editor and the group picker have to tell a custom emoji pack
+		// from an ordinary one; the type is the only field that does it.
+		info[@"stickerType"] = set[@"sticker_type"][@"@type"] ?: @"stickerTypeRegular";
 		if (covers.count)
 			info[@"cover"] = covers.firstObject;
 		[out addObject:info];
@@ -420,6 +427,556 @@ NSArray *TGFlattenStickerSets(NSArray *sets) {
 				@"height"    : animation[@"height"] ?: @0,
 			},
 		},
+	}];
+}
+
+#pragma mark - authoring a pack
+
+/// The InputFile every sticker request names. A file id is enough: the
+/// editor has just uploaded the file, so TDLib already knows the bytes.
+static NSDictionary *TGStickerFile(int64_t fileId) {
+	return @{@"@type" : @"inputFileId", @"id" : @(fileId)};
+}
+
+/// The three formats a pack may hold. A name the caller got wrong becomes
+/// WebP, which is the static default rather than a silent .tgs upload.
+static NSDictionary *TGStickerFormat(NSString *name) {
+	NSString *type = @"stickerFormatWebp";
+	if ([name isEqualToString:@"tgs"])
+		type = @"stickerFormatTgs";
+	else if ([name isEqualToString:@"webm"])
+		type = @"stickerFormatWebm";
+	return @{@"@type" : type};
+}
+
+/// A sticker type from the word the editor shows.
+static NSDictionary *TGStickerType(NSString *name) {
+	NSString *type = @"stickerTypeRegular";
+	if ([name isEqualToString:@"mask"])
+		type = @"stickerTypeMask";
+	else if ([name isEqualToString:@"customEmoji"])
+		type = @"stickerTypeCustomEmoji";
+	return @{@"@type" : type};
+}
+
+/// One TDLib sticker with the two ids the flat pack drops: the custom emoji
+/// it stands for and the set it belongs to. Used only by the custom emoji
+/// screens, where those ids are the whole point.
+static NSArray *TGCustomEmojiStickerList(NSArray *stickers) {
+	NSMutableArray *out = [NSMutableArray array];
+	for (NSDictionary *sticker in stickers){
+		if (![sticker isKindOfClass:NSDictionary.class])
+			continue;
+		NSDictionary *info = TGStickerInfo(sticker);
+		if (!info)
+			continue;
+		NSMutableDictionary *row = [info mutableCopy];
+		// TDLib writes int64 either as a JSON number or as a string when it
+		// is too large for a double; both become one NSNumber here so the
+		// same id can be passed straight back to a request.
+		row[@"customEmojiId"] = @([sticker[@"full_type"][@"custom_emoji_id"]
+				longLongValue]);
+		row[@"setId"] = @([sticker[@"set_id"] longLongValue]);
+		row[@"format"] = sticker[@"format"][@"@type"] ?: @"";
+		[out addObject:row];
+	}
+	return out;
+}
+
+- (int64_t)stickerOwnerUserId {
+	return [self.me[@"id"] longLongValue];
+}
+
+- (void)ownedStickerSetsWithCompletion:(void (^)(NSArray *))completion {
+	[self request:@{@"@type" : @"getOwnedStickerSets",
+					@"offset_sticker_set_id" : @(0),
+					@"limit" : @(100)}
+	   completion:^(NSDictionary *result){
+		if (completion) completion(TGFlattenStickerSets(result[@"sets"]));
+	}];
+}
+
+- (void)checkStickerSetName:(NSString *)name
+				 completion:(void (^)(NSString *, NSString *))completion {
+	if (!name.length){
+		if (completion) completion(@"invalid", @"A pack needs a short name.");
+		return;
+	}
+	[self request:@{@"@type" : @"checkStickerSetName", @"name" : name}
+	   completion:^(NSDictionary *result){
+		if (!completion)
+			return;
+		NSString *type = result[@"@type"] ?: @"error";
+		if ([type isEqualToString:@"checkStickerSetNameResultOk"]){
+			completion(@"ok", @"This name is free.");
+			return;
+		}
+		if ([type isEqualToString:@"checkStickerSetNameResultNameOccupied"]){
+			completion(@"occupied", @"That name is taken by another pack.");
+			return;
+		}
+		if ([type isEqualToString:@"checkStickerSetNameResultNameInvalid"]){
+			completion(@"invalid", @"Use 1 to 64 letters, numbers and "
+					@"underscores, starting with a letter.");
+			return;
+		}
+		completion(@"invalid", result[@"message"] ?: @"Telegram refused the name.");
+	}];
+}
+
+- (void)suggestStickerSetNameForTitle:(NSString *)title
+						   completion:(void (^)(NSString *))completion {
+	if (!title.length){
+		if (completion) completion(@"");
+		return;
+	}
+	[self request:@{@"@type" : @"getSuggestedStickerSetName", @"title" : title}
+	   completion:^(NSDictionary *result){
+		if (completion) completion(result[@"text"] ?: @"");
+	}];
+}
+
+- (void)stickerSetNameForId:(int64_t)setId completion:(void (^)(NSString *))completion {
+	if (!setId){
+		if (completion) completion(@"");
+		return;
+	}
+	[self request:@{@"@type" : @"getStickerSetName", @"set_id" : @(setId)}
+	   completion:^(NSDictionary *result){
+		if (completion) completion(result[@"text"] ?: @"");
+	}];
+}
+
+- (void)searchStickerSetNamed:(NSString *)name
+				  ignoreCache:(BOOL)ignoreCache
+				   completion:(void (^)(NSDictionary *))completion {
+	if (!name.length){
+		if (completion) completion(nil);
+		return;
+	}
+	[self request:@{@"@type" : @"searchStickerSet",
+					@"name" : name,
+					@"ignore_cache" : @(ignoreCache)}
+	   completion:^(NSDictionary *result){
+		if (!completion)
+			return;
+		if (![result[@"@type"] isEqualToString:@"stickerSet"] || !result[@"id"]){
+			completion(nil);
+			return;
+		}
+		NSDictionary *flat = TGFlattenStickerSets(@[result]).firstObject;
+		NSMutableDictionary *set = [flat mutableCopy];
+		set[@"name"] = result[@"name"] ?: name;
+		set[@"stickers"] = TGStickerList(result[@"stickers"]);
+		completion(set);
+	}];
+}
+
+- (NSDictionary *)newStickerWithFileId:(NSInteger)fileId
+								format:(NSString *)format
+								emojis:(NSString *)emojis
+							  keywords:(NSArray *)keywords
+						  maskPosition:(NSDictionary *)maskPosition {
+	NSMutableDictionary *sticker = [NSMutableDictionary dictionary];
+	sticker[@"@type"] = @"newSticker";
+	sticker[@"sticker"] = TGStickerFile(fileId);
+	sticker[@"format"] = TGStickerFormat(format);
+	sticker[@"emojis"] = emojis ?: @"";
+	sticker[@"keywords"] = keywords ?: @[];
+	if (maskPosition)
+		sticker[@"mask_position"] = maskPosition;
+	return sticker;
+}
+
+- (void)createStickerSetNamed:(NSString *)name
+						title:(NSString *)title
+				  stickerType:(NSString *)type
+					 stickers:(NSArray *)stickers
+				   completion:(void (^)(NSDictionary *))completion {
+	if (!name.length || !title.length){
+		if (completion) completion(nil);
+		return;
+	}
+	[self request:@{@"@type" : @"createNewStickerSet",
+					@"user_id" : @([self stickerOwnerUserId]),
+					@"title" : title,
+					@"name" : name,
+					@"sticker_type" : TGStickerType(type),
+					@"needs_repainting" : @NO,
+					@"stickers" : stickers ?: @[],
+					@"source" : @"legacy"}
+	   completion:^(NSDictionary *result){
+		if (!completion)
+			return;
+		if (![result[@"@type"] isEqualToString:@"stickerSet"] || !result[@"id"]){
+			completion(nil);
+			return;
+		}
+		NSDictionary *flat = TGFlattenStickerSets(@[result]).firstObject;
+		NSMutableDictionary *set = [flat mutableCopy];
+		set[@"name"] = result[@"name"] ?: name;
+		set[@"stickers"] = TGStickerList(result[@"stickers"]);
+		completion(set);
+	}];
+}
+
+- (void)deleteStickerSetNamed:(NSString *)name completion:(void (^)(BOOL))completion {
+	if (!name.length){
+		if (completion) completion(NO);
+		return;
+	}
+	[self request:@{@"@type" : @"deleteStickerSet", @"name" : name}
+	   completion:^(NSDictionary *result){
+		BOOL ok = ![result[@"@type"] isEqualToString:@"error"];
+		if (!ok)
+			NSLog(@"deleteStickerSet %@: %@", name, result[@"message"]);
+		if (completion) completion(ok);
+	}];
+}
+
+- (void)addStickerToSetNamed:(NSString *)name
+					 sticker:(NSDictionary *)sticker
+				  completion:(void (^)(BOOL))completion {
+	if (!name.length || !sticker){
+		if (completion) completion(NO);
+		return;
+	}
+	[self request:@{@"@type" : @"addStickerToSet",
+					@"user_id" : @([self stickerOwnerUserId]),
+					@"name" : name,
+					@"sticker" : sticker}
+	   completion:^(NSDictionary *result){
+		BOOL ok = ![result[@"@type"] isEqualToString:@"error"];
+		if (!ok)
+			NSLog(@"addStickerToSet %@: %@", name, result[@"message"]);
+		if (completion) completion(ok);
+	}];
+}
+
+- (void)removeStickerFileId:(NSInteger)fileId completion:(void (^)(BOOL))completion {
+	if (fileId <= 0){
+		if (completion) completion(NO);
+		return;
+	}
+	[self request:@{@"@type" : @"removeStickerFromSet",
+					@"sticker" : TGStickerFile(fileId)}
+	   completion:^(NSDictionary *result){
+		BOOL ok = ![result[@"@type"] isEqualToString:@"error"];
+		if (!ok)
+			NSLog(@"removeStickerFromSet %ld: %@", (long)fileId, result[@"message"]);
+		if (completion) completion(ok);
+	}];
+}
+
+- (void)replaceStickerInSetNamed:(NSString *)name
+					  oldFileId:(NSInteger)oldFileId
+					  newSticker:(NSDictionary *)sticker
+					  completion:(void (^)(BOOL))completion {
+	if (!name.length || oldFileId <= 0 || !sticker){
+		if (completion) completion(NO);
+		return;
+	}
+	[self request:@{@"@type" : @"replaceStickerInSet",
+					@"user_id" : @([self stickerOwnerUserId]),
+					@"name" : name,
+					@"old_sticker" : TGStickerFile(oldFileId),
+					@"new_sticker" : sticker}
+	   completion:^(NSDictionary *result){
+		BOOL ok = ![result[@"@type"] isEqualToString:@"error"];
+		if (!ok)
+			NSLog(@"replaceStickerInSet %@: %@", name, result[@"message"]);
+		if (completion) completion(ok);
+	}];
+}
+
+- (void)setStickerFileId:(NSInteger)fileId
+		   positionInSet:(NSInteger)position
+			  completion:(void (^)(BOOL))completion {
+	if (fileId <= 0 || position < 0){
+		if (completion) completion(NO);
+		return;
+	}
+	[self request:@{@"@type" : @"setStickerPositionInSet",
+					@"sticker" : TGStickerFile(fileId),
+					@"position" : @(position)}
+	   completion:^(NSDictionary *result){
+		BOOL ok = ![result[@"@type"] isEqualToString:@"error"];
+		if (completion) completion(ok);
+	}];
+}
+
+- (void)setStickerFileId:(NSInteger)fileId
+				  emojis:(NSString *)emojis
+			  completion:(void (^)(BOOL))completion {
+	if (fileId <= 0){
+		if (completion) completion(NO);
+		return;
+	}
+	[self request:@{@"@type" : @"setStickerEmojis",
+					@"sticker" : TGStickerFile(fileId),
+					@"emojis" : emojis ?: @""}
+	   completion:^(NSDictionary *result){
+		BOOL ok = ![result[@"@type"] isEqualToString:@"error"];
+		if (!ok)
+			NSLog(@"setStickerEmojis %ld: %@", (long)fileId, result[@"message"]);
+		if (completion) completion(ok);
+	}];
+}
+
+- (void)setStickerFileId:(NSInteger)fileId
+				keywords:(NSArray *)keywords
+			  completion:(void (^)(BOOL))completion {
+	if (fileId <= 0){
+		if (completion) completion(NO);
+		return;
+	}
+	[self request:@{@"@type" : @"setStickerKeywords",
+					@"sticker" : TGStickerFile(fileId),
+					@"keywords" : keywords ?: @[]}
+	   completion:^(NSDictionary *result){
+		BOOL ok = ![result[@"@type"] isEqualToString:@"error"];
+		if (!ok)
+			NSLog(@"setStickerKeywords %ld: %@", (long)fileId, result[@"message"]);
+		if (completion) completion(ok);
+	}];
+}
+
+- (void)setStickerFileId:(NSInteger)fileId
+			maskPosition:(NSDictionary *)maskPosition
+			  completion:(void (^)(BOOL))completion {
+	if (fileId <= 0){
+		if (completion) completion(NO);
+		return;
+	}
+	// td_api: "pass null to remove mask position". The JSON tree cannot hold
+	// a nil value, so the absence is written as NSNull and TDLib reads it
+	// back as the null the function expects.
+	id position = maskPosition ?: (id)[NSNull null];
+	[self request:@{@"@type" : @"setStickerMaskPosition",
+					@"sticker" : TGStickerFile(fileId),
+					@"mask_position" : position}
+	   completion:^(NSDictionary *result){
+		BOOL ok = ![result[@"@type"] isEqualToString:@"error"];
+		if (!ok)
+			NSLog(@"setStickerMaskPosition %ld: %@", (long)fileId, result[@"message"]);
+		if (completion) completion(ok);
+	}];
+}
+
+- (void)setStickerSetNamed:(NSString *)name
+					 title:(NSString *)title
+				completion:(void (^)(BOOL))completion {
+	if (!name.length || !title.length){
+		if (completion) completion(NO);
+		return;
+	}
+	[self request:@{@"@type" : @"setStickerSetTitle",
+					@"name" : name,
+					@"title" : title}
+	   completion:^(NSDictionary *result){
+		BOOL ok = ![result[@"@type"] isEqualToString:@"error"];
+		if (!ok)
+			NSLog(@"setStickerSetTitle %@: %@", name, result[@"message"]);
+		if (completion) completion(ok);
+	}];
+}
+
+- (void)setStickerSetNamed:(NSString *)name
+		 thumbnailAtPath:(NSString *)path
+				  format:(NSString *)format
+			  completion:(void (^)(BOOL))completion {
+	if (!name.length || !path.length){
+		if (completion) completion(NO);
+		return;
+	}
+	[self request:@{@"@type" : @"setStickerSetThumbnail",
+					@"user_id" : @([self stickerOwnerUserId]),
+					@"name" : name,
+					@"thumbnail" : @{@"@type" : @"inputFileLocal", @"path" : path},
+					@"format" : TGStickerFormat(format)}
+	   completion:^(NSDictionary *result){
+		BOOL ok = ![result[@"@type"] isEqualToString:@"error"];
+		if (!ok)
+			NSLog(@"setStickerSetThumbnail %@: %@", name, result[@"message"]);
+		if (completion) completion(ok);
+	}];
+}
+
+- (void)uploadStickerAtPath:(NSString *)path
+					 format:(NSString *)format
+				 completion:(void (^)(NSInteger))completion {
+	if (!path.length){
+		if (completion) completion(0);
+		return;
+	}
+	[self request:@{@"@type" : @"uploadStickerFile",
+					@"user_id" : @([self stickerOwnerUserId]),
+					@"sticker_format" : TGStickerFormat(format),
+					@"sticker" : @{@"@type" : @"inputFileLocal", @"path" : path}}
+	   completion:^(NSDictionary *result){
+		NSInteger fileId = 0;
+		if ([result[@"@type"] isEqualToString:@"file"])
+			fileId = [result[@"id"] integerValue];
+		else
+			NSLog(@"uploadStickerFile: %@", result[@"message"] ?: result[@"@type"]);
+		if (completion) completion(fileId);
+	}];
+}
+
+#pragma mark - emoji metadata and outlines
+
+- (void)stickerEmojisForFileId:(NSInteger)fileId
+					completion:(void (^)(NSArray *))completion {
+	if (fileId <= 0){
+		if (completion) completion(@[]);
+		return;
+	}
+	[self request:@{@"@type" : @"getStickerEmojis",
+					@"sticker" : TGStickerFile(fileId)}
+	   completion:^(NSDictionary *result){
+		if (completion) completion(result[@"emojis"] ?: @[]);
+	}];
+}
+
+- (void)allStickerEmojisForQuery:(NSString *)query
+						  chatId:(int64_t)chatId
+					 stickerType:(NSString *)type
+						mainOnly:(BOOL)mainOnly
+					  completion:(void (^)(NSArray *))completion {
+	[self request:@{@"@type" : @"getAllStickerEmojis",
+					@"sticker_type" : TGStickerType(type),
+					@"query" : query ?: @"",
+					@"chat_id" : @(chatId),
+					@"return_only_main_emoji" : @(mainOnly)}
+	   completion:^(NSDictionary *result){
+		if (completion) completion(result[@"emojis"] ?: @[]);
+	}];
+}
+
+- (void)stickerOutlineForFileId:(NSInteger)fileId
+					 completion:(void (^)(NSArray *, NSInteger))completion {
+	if (fileId <= 0){
+		if (completion) completion(@[], 0);
+		return;
+	}
+	[self request:@{@"@type" : @"getStickerOutline",
+					@"sticker_file_id" : @(fileId),
+					@"for_animated_emoji" : @NO,
+					@"for_clicked_animated_emoji_message" : @NO}
+	   completion:^(NSDictionary *result){
+		if (!completion)
+			return;
+		NSArray *paths = [result[@"paths"] isKindOfClass:NSArray.class]
+				? result[@"paths"] : @[];
+		NSInteger points = 0;
+		for (NSDictionary *path in paths){
+			NSArray *commands = path[@"commands"];
+			if ([commands isKindOfClass:NSArray.class])
+				points += (NSInteger)commands.count;
+		}
+		completion(paths, points);
+	}];
+}
+
+- (void)stickerOutlineSvgPathForFileId:(NSInteger)fileId
+							completion:(void (^)(NSString *))completion {
+	if (fileId <= 0){
+		if (completion) completion(@"");
+		return;
+	}
+	[self request:@{@"@type" : @"getStickerOutlineSvgPath",
+					@"sticker_file_id" : @(fileId),
+					@"for_animated_emoji" : @NO,
+					@"for_clicked_animated_emoji_message" : @NO}
+	   completion:^(NSDictionary *result){
+		if (completion) completion(result[@"text"] ?: @"");
+	}];
+}
+
+#pragma mark - custom emoji
+
+- (void)customEmojiStickersForIds:(NSArray *)ids
+					   completion:(void (^)(NSArray *))completion {
+	if (!ids.count){
+		if (completion) completion(@[]);
+		return;
+	}
+	[self request:@{@"@type" : @"getCustomEmojiStickers",
+					@"custom_emoji_ids" : ids}
+	   completion:^(NSDictionary *result){
+		if (completion) completion(TGCustomEmojiStickerList(result[@"stickers"]));
+	}];
+}
+
+- (void)defaultProfilePhotoCustomEmojiStickersWithCompletion:
+		(void (^)(NSArray *))completion {
+	[self request:@{@"@type" : @"getDefaultProfilePhotoCustomEmojiStickers"}
+	   completion:^(NSDictionary *result){
+		if (completion) completion(TGCustomEmojiStickerList(result[@"stickers"]));
+	}];
+}
+
+- (void)defaultChatPhotoCustomEmojiStickersWithCompletion:
+		(void (^)(NSArray *))completion {
+	[self request:@{@"@type" : @"getDefaultChatPhotoCustomEmojiStickers"}
+	   completion:^(NSDictionary *result){
+		if (completion) completion(TGCustomEmojiStickerList(result[@"stickers"]));
+	}];
+}
+
+- (void)defaultBackgroundCustomEmojiStickersWithCompletion:
+		(void (^)(NSArray *))completion {
+	[self request:@{@"@type" : @"getDefaultBackgroundCustomEmojiStickers"}
+	   completion:^(NSDictionary *result){
+		if (completion) completion(TGCustomEmojiStickerList(result[@"stickers"]));
+	}];
+}
+
+- (void)greetingStickersWithCompletion:(void (^)(NSArray *))completion {
+	[self request:@{@"@type" : @"getGreetingStickers"}
+	   completion:^(NSDictionary *result){
+		if (completion) completion(TGStickerList(result[@"stickers"]));
+	}];
+}
+
+- (void)setCustomEmojiStickerSetNamed:(NSString *)name
+				   thumbnailCustomEmojiId:(int64_t)customEmojiId
+						  completion:(void (^)(BOOL))completion {
+	// custom_emoji_id 0 is td_api's "remove the thumbnail", not a missing
+	// argument: refusing it would leave a pack unable to clear its picture.
+	if (!name.length){
+		if (completion) completion(NO);
+		return;
+	}
+	[self request:@{@"@type" : @"setCustomEmojiStickerSetThumbnail",
+					@"name" : name,
+					@"custom_emoji_id" : @(customEmojiId)}
+	   completion:^(NSDictionary *result){
+		BOOL ok = ![result[@"@type"] isEqualToString:@"error"];
+		if (!ok)
+			NSLog(@"setCustomEmojiStickerSetThumbnail %@: %@", name, result[@"message"]);
+		if (completion) completion(ok);
+	}];
+}
+
+- (void)viewTrendingStickerSets:(NSArray *)setIds {
+	if (!setIds.count)
+		return;
+	// Fire and forget: marking a shelf seen changes nothing this screen draws
+	// once, and a reordered answer would arrive after the next shelf anyway.
+	[self request:@{@"@type" : @"viewTrendingStickerSets",
+					@"sticker_set_ids" : setIds}
+	   completion:^(NSDictionary *result){
+		if ([result[@"@type"] isEqualToString:@"error"])
+			NSLog(@"viewTrendingStickerSets: %@", result[@"message"]);
+	}];
+}
+
+- (void)clearRecentStickersAttached:(BOOL)attached {
+	[self request:@{@"@type" : @"clearRecentStickers", @"is_attached" : @(attached)}
+	   completion:^(NSDictionary *result){
+		if ([result[@"@type"] isEqualToString:@"error"])
+			NSLog(@"clearRecentStickers: %@", result[@"message"]);
 	}];
 }
 

@@ -190,6 +190,8 @@ static const CGFloat TGMetricBotKeyHeight        = 40.0f;
 static const NSInteger TGMetricBotKeyRowsShown   = 4;
 static const CGFloat TGMetricStackQRTop          = 64.0f;
 static const CGFloat TGMetricUploadPhotoSide     = 640.0f;
+/// Telegram's square for a static sticker and for a sticker set thumbnail.
+static const CGFloat TGMetricStickerSide         = 512.0f;
 static const CGFloat TGMetricTextMeasureHeight   = 10000.0f;
 static const CGFloat TGMetricAttachTick         = 18.0f;
 static const CGFloat TGMetricTicksWidth         = 15.0f;

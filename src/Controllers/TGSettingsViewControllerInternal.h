@@ -166,6 +166,14 @@ static inline NSString *TGBytes(long long bytes) {
 /// The folders page: the account's own folders and Telegram's suggestions,
 /// each loaded once the page opens.
 @property (nonatomic, strong) NSArray *recommendedFolders;
+/// Chat folder tags: the setting lives on Telegram's side, so the switch
+/// starts on and remembers the last move for this launch.
+@property (nonatomic, assign) BOOL folderTagsEnabled;
+@property (nonatomic, assign) BOOL folderTagsLoaded;
+/// Privacy: who may write first, and the chat shown as this account's own.
+@property (nonatomic, assign) BOOL newChatAllowUnknown;
+@property (nonatomic, assign) BOOL newChatPrivacyLoaded;
+@property (nonatomic, assign) int64_t personalChatId;
 /// The proxy page: every proxy TDLib knows, and whether one is on.
 @property (nonatomic, strong) NSArray *proxies;
 /// The downloads page: the list Telegram keeps, and how many are running.
@@ -212,6 +220,7 @@ static inline NSString *TGBytes(long long bytes) {
 - (void)uploadProfilePhoto:(UIImage *)image;
 - (void)pickProfilePhoto;
 - (void)clearTemporaryFiles;
+- (void)openResolvedChat:(int64_t)chatId title:(NSString *)title;
 
 - (NSArray *)buildSections;
 - (NSArray *)rootSections;

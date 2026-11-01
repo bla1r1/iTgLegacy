@@ -80,6 +80,38 @@
 	return [[TGClient shared] animationSearchEmojis];
 }
 
+- (void)stickerEmojisForFileId:(NSInteger)fileId
+					completion:(void (^)(NSArray *))completion {
+	[[TGClient shared] stickerEmojisForFileId:fileId completion:completion];
+}
+
+- (void)allStickerEmojisForQuery:(NSString *)query
+					  completion:(void (^)(NSArray *))completion {
+	// An empty chat id asks across the installed shelf rather than one
+	// chat's own picker, which is what the hold card wants.
+	[[TGClient shared] allStickerEmojisForQuery:query chatId:0
+								   stickerType:@"regular" mainOnly:NO
+									completion:completion];
+}
+
+- (void)stickerOutlineForFileId:(NSInteger)fileId
+					 completion:(void (^)(NSArray *, NSInteger))completion {
+	[[TGClient shared] stickerOutlineForFileId:fileId completion:completion];
+}
+
+- (void)stickerOutlineSvgPathForFileId:(NSInteger)fileId
+							completion:(void (^)(NSString *))completion {
+	[[TGClient shared] stickerOutlineSvgPathForFileId:fileId completion:completion];
+}
+
+- (void)viewTrendingStickerSets:(NSArray *)setIds {
+	[[TGClient shared] viewTrendingStickerSets:setIds];
+}
+
+- (void)clearRecentStickers {
+	[[TGClient shared] clearRecentStickersAttached:NO];
+}
+
 #pragma mark - commands
 
 - (void)reorderInstalledStickerSets:(NSArray *)setIds {

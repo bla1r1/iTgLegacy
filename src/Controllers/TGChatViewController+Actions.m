@@ -176,6 +176,21 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 
 	[items addObject:@{@"title" : @"Copy Link", @"icon" : @"copy"}];
 
+	// A dice or a ball is a message whose whole point is the tap.
+	if ([m[@"kind"] isEqualToString:@"messageAnimatedEmoji"])
+		[items addObject:@{@"title" : @"Click Emoji", @"icon" : @"react"}];
+	// A bot's buttons are the message's furniture; a bot account can take
+	// them off, and the row is where that interaction already lives.
+	if ([m[@"inlineRows"] count])
+		[items addObject:@{@"title" : @"Clear Buttons", @"icon" : @"delete",
+						   @"destructive" : @YES}];
+	// The record of the message itself: what is cached, where it sits, what
+	// the channel's graphs say, and the view report TDLib wants.
+	[items addObject:@{@"title" : @"Message Info", @"icon" : @"data"}];
+	[items addObject:@{@"title" : @"Shared Media Map", @"icon" : @"data"}];
+	if ([m[@"effectId"] longLongValue] > 0)
+		[items addObject:@{@"title" : @"Message Effect", @"icon" : @"react"}];
+
 	// Closing a poll is the sender's to do, and only while it is still open.
 	if (mine && [m[@"pollOptions"] count] && ![m[@"pollClosed"] boolValue])
 		[items addObject:@{@"title" : @"Stop Poll", @"icon" : @"select"}];
@@ -584,6 +599,60 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 			}];
 		}];
 
+	} else if ([action isEqualToString:@"Click Emoji"]){
+		int64_t chatId = self.chatId;
+		__weak typeof(self) weakSelf = self;
+		[[TGClient shared] clickAnimatedEmojiMessage:messageId inChat:chatId
+										 completion:^(NSString *emoji){
+			TGChatViewController *me = weakSelf;
+			if (!me)
+				return;
+			[TGSnackbar showInView:me.view
+							  text:(emoji.length
+									? [NSString stringWithFormat:@"%@ rolled", emoji]
+									: @"No animation this time")
+						   seconds:2 onCommit:nil];
+		}];
+
+	} else if ([action isEqualToString:@"Message Info"]){
+		[self showInfoOfActionMessage];
+
+	} else if ([action isEqualToString:@"Shared Media Map"]){
+		[self showSparsePositionsOfActionMessage];
+
+	} else if ([action isEqualToString:@"Clear Buttons"]){
+		int64_t chatId = self.chatId;
+		__weak typeof(self) weakSelf = self;
+		[[TGClient shared] clearReplyMarkupOfMessage:messageId inChat:chatId
+										 completion:^(BOOL ok){
+			TGChatViewController *me = weakSelf;
+			if (!me)
+				return;
+			[TGSnackbar showInView:me.view
+							  text:(ok ? @"Buttons removed"
+									   : @"Telegram refused that")
+						   seconds:2 onCommit:nil];
+		}];
+
+	} else if ([action isEqualToString:@"Message Effect"]){
+		int64_t effectId = [m[@"effectId"] longLongValue];
+		__weak typeof(self) weakSelf = self;
+		[[TGClient shared] messageEffectWithId:effectId
+									completion:^(NSDictionary *effect){
+			TGChatViewController *me = weakSelf;
+			if (!me)
+				return;
+			if (!effect){
+				[TGAlertSheet showMessage:@"Telegram has no effect with that id."
+									title:@"Message Effect" inView:me.view];
+				return;
+			}
+			NSString *premium = [effect[@"premium"] boolValue] ? @" (Premium)" : @"";
+			[TGAlertSheet showMessage:[NSString stringWithFormat:@"%@%@",
+					effect[@"emoji"] ?: @"", premium]
+								title:@"Message Effect" inView:me.view];
+		}];
+
 	} else if ([action isEqualToString:@"Copy Link"]){
 		__weak typeof(self) weakSelf = self;
 		[[TGClient shared] linkToMessage:messageId inChat:self.chatId
@@ -692,6 +761,193 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 	self.actionMessage = nil;
 }
 
+/// One graph as a line: an error, a loading token, or the sums of its
+/// series. The chart arrives as JSON; nothing here invents a number it does
+/// not contain.
+static NSString *TGStatGraphLine(NSDictionary *graph, NSString *label) {
+	if (![graph isKindOfClass:NSDictionary.class])
+		return nil;
+	NSString *error = graph[@"error_message"];
+	if ([error isKindOfClass:NSString.class] && error.length)
+		return [NSString stringWithFormat:@"%@: %@", label, error];
+	if ([graph[@"token"] isKindOfClass:NSString.class])
+		return [NSString stringWithFormat:@"%@: still loading", label];
+	NSString *json = graph[@"json_data"];
+	NSData *data = [json dataUsingEncoding:NSUTF8StringEncoding];
+	NSDictionary *chart = data.length
+			? [NSJSONSerialization JSONObjectWithData:data
+					options:NSJSONReadingAllowFragments error:nil] : nil;
+	NSArray *columns = [chart isKindOfClass:NSDictionary.class]
+			? chart[@"columns"] : nil;
+	if ([columns isKindOfClass:NSArray.class] && columns.count > 1){
+		NSMutableString *parts = [NSMutableString string];
+		for (NSUInteger i = 1; i < columns.count; i++){
+			NSArray *series = [columns[i] isKindOfClass:NSArray.class]
+					? columns[i] : nil;
+			if (!series.count)
+				continue;
+			double total = 0;
+			for (NSUInteger j = 1; j < series.count; j++)
+				total += [series[j] doubleValue];
+			NSString *name = [series[0] isKindOfClass:NSString.class]
+					? series[0]
+					: [NSString stringWithFormat:@"Series %lu", (unsigned long)i];
+			[parts appendFormat:@"%@ %.0f  ", name, total];
+		}
+		if (parts.length)
+			return [NSString stringWithFormat:@"%@: %@", label, parts];
+	}
+	return [NSString stringWithFormat:@"%@: chart available", label];
+}
+
+/// The message's own record, gathered in one sheet: what is cached, where it
+/// sits, the channel graphs, the effect it carries, and the view report TDLib
+/// asks for whenever a message has been seen. Any of those can be refused
+/// without taking the rest down - the sheet says which.
+- (void)showInfoOfActionMessage {
+	NSDictionary *m = self.actionMessage;
+	int64_t messageId = [m[@"id"] longLongValue];
+	if (!messageId)
+		return;
+	int64_t chatId = self.chatId;
+
+	// How much of the viewport the row takes, which is the ratio TDLib
+	// stores. A row that cannot be found still reports as fully seen.
+	NSInteger heightPerMille = 1000;
+	for (NSInteger row = 0; row < (NSInteger)self.messages.count; row++){
+		if ([self.messages[row][@"id"] longLongValue] != messageId)
+			continue;
+		CGRect rect = [self.table rectForRowAtIndexPath:
+				[NSIndexPath indexPathForRow:row inSection:0]];
+		CGFloat viewport = CGRectGetHeight(self.table.bounds);
+		if (viewport > 0)
+			heightPerMille = (NSInteger)(CGRectGetHeight(rect) / viewport * 1000);
+		break;
+	}
+	if (heightPerMille <= 0)
+		heightPerMille = 1000;
+
+	dispatch_group_t group = dispatch_group_create();
+	__block NSString *localLine = @"Local copy: not cached";
+	__block NSInteger position = 0;
+	__block NSDictionary *statistics = nil;
+	__block NSString *effectLine = nil;
+	int64_t effectId = [m[@"effectId"] longLongValue];
+	__weak typeof(self) weakSelf = self;
+
+	dispatch_group_enter(group);
+	[[TGClient shared] localMessageWithId:messageId inChat:chatId
+							   completion:^(NSDictionary *local){
+		if (local){
+			NSString *text = local[@"text"];
+			localLine = text.length
+					? [NSString stringWithFormat:@"Local copy: %@", text]
+					: @"Local copy: cached";
+		}
+		dispatch_group_leave(group);
+	}];
+
+	dispatch_group_enter(group);
+	[[TGClient shared] positionOfMessage:messageId inChat:chatId
+								  thread:self.threadId
+							  completion:^(NSInteger found){
+		position = found;
+		dispatch_group_leave(group);
+	}];
+
+	dispatch_group_enter(group);
+	[[TGClient shared] statisticsOfMessage:messageId inChat:chatId
+								completion:^(NSDictionary *found){
+		statistics = found;
+		dispatch_group_leave(group);
+	}];
+
+	if (effectId > 0){
+		dispatch_group_enter(group);
+		[[TGClient shared] messageEffectWithId:effectId
+									completion:^(NSDictionary *effect){
+			if (effect)
+				effectLine = [NSString stringWithFormat:@"Effect: %@%@",
+						effect[@"emoji"] ?: @"",
+						[effect[@"premium"] boolValue] ? @" (Premium)" : @""];
+			dispatch_group_leave(group);
+		}];
+	}
+
+	// The message is on screen while its menu is open, which is the thing
+	// this report is for; one second is TDLib's own floor for counting it.
+	// It does not hold the sheet open: the report is a side effect.
+	[[TGClient shared] reportViewOfMessage:messageId inChat:chatId
+							  timeInViewMs:1000
+						activeTimeInViewMs:1000
+							   heightRatio:heightPerMille
+						 seenRangeRatio:1000
+								completion:nil];
+
+	dispatch_group_notify(group, dispatch_get_main_queue(), ^{
+		TGChatViewController *me = weakSelf;
+		if (!me)
+			return;
+		NSMutableArray *lines = [NSMutableArray arrayWithObject:localLine];
+		if (position > 0)
+			[lines addObject:[NSString stringWithFormat:@"Position: %ld in this chat",
+					(long)position]];
+		else
+			[lines addObject:@"Position: not counted here"];
+		if (effectLine.length)
+			[lines addObject:effectLine];
+		NSString *interaction = TGStatGraphLine(
+				statistics[@"message_interaction_graph"], @"Views");
+		NSString *reactions = TGStatGraphLine(
+				statistics[@"message_reaction_graph"], @"Reactions");
+		if (interaction.length)
+			[lines addObject:interaction];
+		if (reactions.length)
+			[lines addObject:reactions];
+		if (!statistics)
+			[lines addObject:@"Statistics: not a channel post, or not "
+							  @"released to this account"];
+		[TGAlertSheet showMessage:[lines componentsJoinedByString:@"\n"]
+							title:@"Message Info" inView:me.view];
+	});
+}
+
+/// The sparse positions a shared-media scroll is built from, shown as the
+/// ids Telegram returned. A chat with no positions says so rather than
+/// opening an empty list.
+- (void)showSparsePositionsOfActionMessage {
+	NSDictionary *m = self.actionMessage;
+	int64_t messageId = [m[@"id"] longLongValue];
+	if (!messageId)
+		return;
+	int64_t chatId = self.chatId;
+	__weak typeof(self) weakSelf = self;
+	[[TGClient shared] sparsePositionsInChat:chatId fromMessageId:messageId
+									  thread:self.threadId limit:200
+								  completion:^(NSArray *ids){
+		TGChatViewController *me = weakSelf;
+		if (!me)
+			return;
+		if (!ids.count){
+			[TGAlertSheet showMessage:@"Telegram returned no positions from here."
+								title:@"Shared Media Map" inView:me.view];
+			return;
+		}
+		NSMutableArray *rows = [NSMutableArray array];
+		for (NSNumber *position in ids)
+			[rows addObject:[NSString stringWithFormat:@"Message %lld",
+					(long long)[position longLongValue]]];
+		[TGAlertSheet showChoices:rows
+							title:[NSString stringWithFormat:@"%lu positions",
+									(unsigned long)rows.count]
+				  destructiveIndex:-1
+						   inView:me.view
+						 onChoice:^(NSInteger index){
+			int64_t target = [ids[index] longLongValue];
+			[me showMessageId:target gone:nil];
+		}];
+	}];
+}
 /// Their six, in their order. One reaction at a time is all this screen
 /// offers; picking a second replaces the first on Telegram's side.
 - (void)askReactionForMessage:(int64_t)messageId {

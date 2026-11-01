@@ -275,6 +275,7 @@ static NSArray *TGPacksFrom(NSDictionary *target) {
 				@"ip"         : session[@"ip_address"] ?: session[@"ip"] ?: @"",
 				@"isCurrent"  : session[@"is_current"] ?: @NO,
 				@"isUnconfirmed" : session[@"is_unconfirmed"] ?: @NO,
+				@"canAcceptSecretChats" : session[@"can_accept_secret_chats"] ?: @YES,
 				@"lastActive" : session[@"last_active_date"] ?: @0,
 			}];
 		}

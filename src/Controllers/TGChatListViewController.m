@@ -552,6 +552,37 @@ static const CGFloat kRowGlyph     = 28.0f;
 	if (![link hasPrefix:@"http"])
 		link = [@"https://" stringByAppendingString:link];
 	__weak typeof(self) weakSelf = self;
+
+	// A folder link is a different object behind the same t.me host. It is
+	// checked first and adopted, not joined: addChatFolderByInviteLink is
+	// what turns it into a pill on this screen.
+	if ([link rangeOfString:@"/addlist/"].location != NSNotFound){
+		[[TGClient shared] checkFolderInviteLink:link completion:^(NSDictionary *folder){
+			TGChatListViewController *me = weakSelf;
+			if (!me)
+				return;
+			if (!folder){
+				[TGAlertSheet showMessage:@"That folder link answers nothing."
+									title:@"Folder Link" inView:me.view];
+				return;
+			}
+			NSArray *missing = folder[@"missing"] ?: @[];
+			NSString *say = [NSString stringWithFormat:@"%@ · %lu chats to add",
+					folder[@"name"] ?: @"Shared folder",
+					(unsigned long)missing.count];
+			[TGAlertSheet showConfirm:say title:@"Folder Link" action:@"Add"
+						  destructive:NO inView:me.view onConfirm:^{
+				[[TGClient shared] addFolderByInviteLink:link chatIds:missing
+											 completion:^(BOOL ok){
+					if (!ok)
+						[TGAlertSheet showMessage:@"Telegram refused that folder."
+											title:@"Folder Link" inView:weakSelf.view];
+				}];
+			}];
+		}];
+		return;
+	}
+
 	[[TGClient shared] checkInviteLink:link completion:
 			^(NSString *title, NSInteger members, BOOL alreadyMember){
 		TGChatListViewController *me = weakSelf;

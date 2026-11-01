@@ -275,4 +275,35 @@
 	}];
 }
 
+/// A Saved Messages topic's history has its own call; getChatHistory with a
+/// thread id does not know what a saved topic is.
+- (void)historyForSavedTopic:(int64_t)topicId
+			   fromMessageId:(int64_t)fromMessageId
+					   limit:(NSInteger)limit
+				  completion:(void (^)(NSArray *messages))completion {
+	[self request:@{@"@type" : @"getSavedMessagesTopicHistory",
+					@"saved_messages_topic_id" : @(topicId),
+					@"from_message_id" : @(fromMessageId),
+					@"offset" : @(0),
+					@"limit" : @(limit)}
+	   completion:^(NSDictionary *result){
+		NSArray *msgs = result[@"messages"];
+		if (![msgs isKindOfClass:NSArray.class]){
+			if (completion) completion(@[]);
+			return;
+		}
+		NSMutableArray *out = [NSMutableArray arrayWithCapacity:msgs.count];
+		for (NSDictionary *m in [[msgs reverseObjectEnumerator] allObjects])
+			[out addObject:TGFlattenMessage(m)];
+		if (completion) completion(out);
+	}];
+}
+
+/// Everything in a Saved Messages topic goes. The range calls cover a day;
+/// this is the topic itself, which is what "empty it" means.
+- (void)deleteSavedTopicHistory:(int64_t)topicId {
+	[self send:@{@"@type" : @"deleteSavedMessagesTopicHistory",
+				 @"saved_messages_topic_id" : @(topicId)}];
+}
+
 @end

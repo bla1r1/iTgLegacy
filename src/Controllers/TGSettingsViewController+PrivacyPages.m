@@ -5,6 +5,8 @@
 #import "TGSettingsViewControllerInternal.h"
 #import "TGAlertSheet.h"
 #import "TGSessionsViewController.h"
+#import "TGChatViewController.h"
+#import "TGListViewController.h"
 
 @implementation TGSettingsViewController (PrivacyPages)
 
@@ -34,6 +36,34 @@
 		TGSection(@"Message previews",
 				  @"With previews off a notification says who wrote, not what "
 				  @"they wrote.", preview),
+		TGSection(@"Per-chat exceptions", nil, @[
+			TGTapRow(@"Chats With Custom Settings", nil, ^{
+				[[TGClient shared] notificationExceptionsWithCompletion:^(NSArray *chats){
+					NSMutableArray *rows = [NSMutableArray array];
+					for (NSDictionary *chat in chats){
+						[rows addObject:@{@"title" : chat[@"title"] ?: @"Chat",
+										  @"detail" : @"Open",
+										  @"tap" : ^{
+							TGChatViewController *vc = [[TGChatViewController alloc] init];
+							vc.chatId = [chat[@"id"] longLongValue];
+							vc.chatTitle = chat[@"title"];
+							vc.isGroup = [chat[@"isGroup"] boolValue];
+							vc.hidesBottomBarWhenPushed = YES;
+							[weakSelf.navigationController pushViewController:vc animated:YES];
+						}}];
+					}
+					TGListViewController *list = [[TGListViewController alloc] init];
+					list.listTitle = @"Notification Exceptions";
+					list.rows = rows;
+					list.emptyText = @"Every chat uses the default settings.";
+					list.listFooter = @"Muted chats, chats with a custom sound, and "
+									  @"chats whose previews differ from their scope.";
+					list.hidesBottomBarWhenPushed = YES;
+					[weakSelf.navigationController pushViewController:list animated:YES];
+				}];
+			}),
+		]),
+
 		TGSection(nil,
 				  @"Undoes every exception you have set on an individual chat, "
 				  @"on every device.",
@@ -133,6 +163,29 @@
 			}),
 		]),
 
+		TGSection(@"New chats",
+				  @"Who may write first, the chat shown as your own, and the "
+				  @"public or idle chats that shape those limits.", @[
+			TGSwitchRow(@"Messages From Unknown Users",
+					weakSelf.newChatAllowUnknown, ^(BOOL on){
+				weakSelf.newChatAllowUnknown = on;
+				[[TGClient shared] setNewChatPrivacyAllowUnknown:on
+													  completion:^(BOOL ok){
+					if (!ok)
+						[weakSelf toast:@"Telegram refused that setting."];
+				}];
+			}),
+			TGTapRow(@"Personal Chat", weakSelf.personalChatId ? @"Set" : @"None", ^{
+				[weakSelf choosePersonalChat];
+			}),
+			TGTapRow(@"Inactive Groups", nil, ^{
+				[weakSelf showInactiveGroups];
+			}),
+			TGTapRow(@"My Public Chats", nil, ^{
+				[weakSelf showPublicChats];
+			}),
+		]),
+
 		TGSection(@"Who can see", nil, rules),
 
 		TGSection(@"Contacts",
@@ -198,6 +251,130 @@
 		})];
 	}
 	return @[TGSection(nil, nil, rows)];
+}
+
+
+- (void)choosePersonalChat {
+	__weak typeof(self) weakSelf = self;
+	[[TGClient shared] suitablePersonalChatsWithCompletion:^(NSArray *chats){
+		TGSettingsViewController *me = weakSelf;
+		if (!me)
+			return;
+		if (!chats.count){
+			[TGAlertSheet showMessage:@"Telegram named no suitable channels."
+								title:@"Personal Chat" inView:me.view];
+			return;
+		}
+		NSMutableArray *titles = [NSMutableArray arrayWithObject:@"None"];
+		for (NSDictionary *chat in chats)
+			[titles addObject:chat[@"title"] ?: @"Channel"];
+		[TGAlertSheet showChoices:titles title:@"Personal Chat"
+				destructiveIndex:-1 inView:me.view onChoice:^(NSInteger index){
+			int64_t chatId = index == 0 ? 0 : [chats[index - 1][@"id"] longLongValue];
+			[[TGClient shared] setPersonalChat:chatId completion:^(BOOL ok){
+				if (!ok){
+					[TGAlertSheet showMessage:@"Telegram refused that chat."
+										title:@"Personal Chat" inView:me.view];
+					return;
+				}
+				me.personalChatId = chatId;
+				[NSUserDefaults.standardUserDefaults setObject:@(chatId)
+													   forKey:@"TGPersonalChatId"];
+				[me rebuild];
+			}];
+		}];
+	}];
+}
+
+- (void)showInactiveGroups {
+	__weak typeof(self) weakSelf = self;
+	[[TGClient shared] inactiveSupergroupChatsWithCompletion:^(NSArray *chats){
+		TGSettingsViewController *me = weakSelf;
+		if (!me)
+			return;
+		NSMutableArray *rows = [NSMutableArray array];
+		for (NSDictionary *chat in chats){
+			[rows addObject:@{@"title" : chat[@"title"] ?: @"Group",
+							  @"detail" : @"Open",
+							  @"tap" : ^{
+				TGChatViewController *vc = [[TGChatViewController alloc] init];
+				vc.chatId = [chat[@"id"] longLongValue];
+				vc.chatTitle = chat[@"title"];
+				vc.isGroup = YES;
+				vc.hidesBottomBarWhenPushed = YES;
+				[me.navigationController pushViewController:vc animated:YES];
+			}}];
+		}
+		TGListViewController *list = [[TGListViewController alloc] init];
+		list.listTitle = @"Inactive Groups";
+		list.rows = rows;
+		list.emptyText = @"No supergroups have gone quiet.";
+		list.listFooter = @"Groups and channels you have not opened for a while, "
+						  @"which can be left when the joined-chat limit is reached.";
+		list.hidesBottomBarWhenPushed = YES;
+		[me.navigationController pushViewController:list animated:YES];
+	}];
+}
+
+- (void)showPublicChats {
+	__weak typeof(self) weakSelf = self;
+	[[TGClient shared] createdPublicChatsOfType:@"username" completion:^(NSArray *chats){
+		TGSettingsViewController *me = weakSelf;
+		if (!me)
+			return;
+		[[TGClient shared] checkCreatedPublicChatsLimitForType:@"username"
+				completion:^(BOOL ok, NSString *reason){
+			NSMutableArray *rows = [NSMutableArray arrayWithObject:@{
+				@"title" : @"Check a Username",
+				@"detail" : @"For a new public chat",
+				@"tap" : ^{ [me checkUsernameForChat:@{@"id" : @(0)}]; },
+			}];
+			for (NSDictionary *chat in chats){
+				[rows addObject:@{@"title" : chat[@"title"] ?: @"Channel",
+								  @"detail" : @"Check a username",
+								  @"tap" : ^{ [me checkUsernameForChat:chat]; }}];
+			}
+			TGListViewController *list = [[TGListViewController alloc] init];
+			list.listTitle = @"My Public Chats";
+			list.rows = rows;
+			list.emptyText = @"This account owns no public chats yet.";
+			list.listFooter = ok
+					? @"The account can still create a public chat."
+					: (reason ?: @"The public-chat limit is reached.");
+			list.hidesBottomBarWhenPushed = YES;
+			[me.navigationController pushViewController:list animated:YES];
+		}];
+	}];
+}
+
+- (void)checkUsernameForChat:(NSDictionary *)chat {
+	__weak typeof(self) weakSelf = self;
+	int64_t chatId = [chat[@"id"] longLongValue];
+	[TGAlertSheet showInput:@"Check Username"
+					message:@"Ask Telegram whether this @name is free for the chat."
+				placeholder:@"username" text:nil action:@"Check"
+					 inView:self.view onSubmit:^(NSString *username){
+		[[TGClient shared] checkUsername:username forChat:chatId
+							  completion:^(NSString *result){
+			NSString *say = nil;
+			if ([result isEqualToString:@"ok"])
+				say = @"That username is free for this chat.";
+			else if ([result isEqualToString:@"occupied"])
+				say = @"Someone else has that username.";
+			else if ([result isEqualToString:@"invalid"])
+				say = @"Telegram does not accept that username.";
+			else if ([result isEqualToString:@"purchasable"])
+				say = @"That username is for sale, not free.";
+			else if ([result isEqualToString:@"tooMany"])
+				say = @"This account already owns too many public chats.";
+			else if ([result isEqualToString:@"unavailable"])
+				say = @"Public groups are unavailable to this account.";
+			else
+				say = @"Telegram did not answer.";
+			[TGAlertSheet showMessage:say title:@"Check Username"
+							   inView:weakSelf.view];
+		}];
+	}];
 }
 
 @end

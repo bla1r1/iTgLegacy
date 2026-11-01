@@ -29,8 +29,24 @@ static NSString *TGSecretStateName(NSString *type) {
 	}
 	[self request:@{@"@type" : @"createNewSecretChat", @"user_id" : @(userId)}
 	   completion:^(NSDictionary *result){
+		int64_t chatId = [result[@"id"] longLongValue];
+		NSNumber *secretChatId = result[@"type"][@"secret_chat_id"];
+		// The compatibility path travels with creation: createSecretChat is
+		// the older spelling that turns the inner id back into the chat, and
+		// running it here means a caller on an older layer still gets a chat
+		// id even when createNewSecretChat's answer is the other shape.
+		if (secretChatId && chatId){
+			[self request:@{@"@type" : @"createSecretChat",
+							@"secret_chat_id" : secretChatId}
+			   completion:^(NSDictionary *resolved){
+				int64_t resolvedId = [resolved[@"id"] longLongValue];
+				if (completion)
+					completion(resolvedId ? resolvedId : chatId);
+			}];
+			return;
+		}
 		if (completion)
-			completion([result[@"id"] longLongValue]);
+			completion(chatId);
 	}];
 }
 

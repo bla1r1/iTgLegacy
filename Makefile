@@ -214,6 +214,7 @@ APP_SRC_M := \
 	src/Core/TGClient+Account.m \
 	src/Core/TGClient+Proxy.m \
 	src/Core/TGClient+Groups.m \
+	src/Core/TGClient+ChatTools.m \
 	src/Core/TGClient+Downloads.m \
 	src/Core/TGClient+Secret.m \
 	src/Core/TGClient+Stickers.m \
@@ -286,9 +287,14 @@ APP_SRC_M := \
 	src/Controllers/TGNewContactViewController.m \
 	src/Controllers/TGTopicsViewController.m \
 	src/Controllers/TGSavedTopicsViewController.m \
+	src/Controllers/TGStickerPacksViewController.m \
+	src/Controllers/TGStickerEditorViewController.m \
+	src/Controllers/TGStickerGalleryViewController.m \
 	src/Controllers/TGScheduledViewController.m \
 	src/Controllers/TGForwardPicker.m \
 	src/Controllers/TGCallViewController.m \
+	src/Controllers/TGListViewController.m \
+	src/Controllers/TGChatToolsViewController.m \
 	src/Controllers/TGProfileViewController.m \
 	src/Controllers/TGProfileViewController+Actions.m \
 	src/Controllers/TGProfileViewController+Media.m \
@@ -311,6 +317,7 @@ APP_SRC_M := \
 	src/Calls/TGCallMessages.m \
 	src/Calls/TGCallReflector.m \
 	src/Media/UIImage+WebP.m \
+	src/Media/TGStickerImage.m \
 	src/Media/TGWebMDecoder.m \
 	src/Views/TGMediaViewer.m \
 	src/Audio/TGMusicPlayer.m

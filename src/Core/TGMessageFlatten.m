@@ -568,6 +568,9 @@ NSDictionary *TGFlattenMessage(NSDictionary *m) {
 		// Several photos sent together share an album id; the chat draws them
 		// as one block rather than as unrelated messages.
 		@"albumId"   : m[@"media_album_id"] ?: @"",
+		// The effect the sender attached; its id is what getMessageEffect
+		// answers for. 0 is most messages.
+		@"effectId"  : m[@"effect_id"] ?: @(0),
 		// "\U0001F44D 3" per reaction, joined - enough to show under a bubble.
 		@"reactions" : TGReactionSummary(m) ?: @"",
 		// Your own reaction, so the menu can offer to take it off.

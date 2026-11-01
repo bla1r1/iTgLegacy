@@ -676,6 +676,14 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 
 	[[TGStickerStore shared] trendingStickerSetsWithCompletion:^(NSArray *sets){
 		trending = TGPackSearchTiles(sets);
+		// The shelf is on screen now, so it is seen: Telegram drops what has
+		// been viewed from the next recommendation. This is the write half of
+		// the trending read, and it belongs where the read is drawn.
+		NSMutableArray *ids = [NSMutableArray array];
+		for (NSDictionary *set in (sets ?: @[]))
+			if (set[@"id"])
+				[ids addObject:set[@"id"]];
+		[[TGStickerStore shared] viewTrendingStickerSets:ids];
 		show();
 	}];
 }
@@ -1127,6 +1135,12 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 			[items addObject:@{@"title" : @"Archived Packs...", @"icon" : @"folder"}];
 			[actions addObject:@"archived"];
 		}
+		// Filing and outline are facts about the sticker, not about the set
+		// it is in: both work wherever the card was opened.
+		[items addObject:@{@"title" : @"Emoji Tags...", @"icon" : @"star"}];
+		[actions addObject:@"emojis"];
+		[items addObject:@{@"title" : @"Sticker Outline...", @"icon" : @"edit"}];
+		[actions addObject:@"outline"];
 	}
 
 	UIView *host = self.window ?: (self.superview ?: self);
@@ -1204,6 +1218,14 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 			[weakSelf showArchivedPacks];
 			return;
 		}
+		else if ([action isEqualToString:@"emojis"]){
+			[weakSelf showEmojiTagsOfStickerWithFileId:fileId title:item[@"emoji"]];
+			return;
+		}
+		else if ([action isEqualToString:@"outline"]){
+			[weakSelf showOutlineOfStickerWithFileId:fileId];
+			return;
+		}
 		else if ([action isEqualToString:@"savegif"])
 			[[TGStickerStore shared] saveAnimationFileId:fileId saved:YES];
 		else if ([action isEqualToString:@"unsavegif"])
@@ -1219,6 +1241,76 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 						  panel.tab == TGEmojiPanelTabGIFs))
 				[panel selectTab:panel.tab];
 		});
+	}];
+}
+
+/// The tags a sticker is filed under, straight from Telegram: the sticker's
+/// own list, and every emoji in the installed sets that matches the first of
+/// them. The second list is how the shelf is explorable from one sticker.
+- (void)showEmojiTagsOfStickerWithFileId:(NSInteger)fileId title:(NSString *)emoji {
+	__weak typeof(self) weakSelf = self;
+	[[TGStickerStore shared] stickerEmojisForFileId:fileId completion:^(NSArray *own){
+		TGEmojiPanel *me = weakSelf;
+		if (!me)
+			return;
+		NSString *query = own.count ? own.firstObject : (emoji ?: @"");
+		[[TGStickerStore shared] allStickerEmojisForQuery:query completion:^(NSArray *all){
+			TGEmojiPanel *panel = weakSelf;
+			if (!panel)
+				return;
+			NSString *first = own.count
+					? [own componentsJoinedByString:@" "] : @"none";
+			NSString *rest = all.count
+					? [all componentsJoinedByString:@" "] : @"none";
+			NSString *message = [NSString stringWithFormat:
+					@"Filed under: %@\n\nEvery tag matching %@:\n%@",
+					first, query.length ? query : @"this sticker", rest];
+			[TGAlertSheet showMessage:message
+								  title:@"Emoji Tags"
+								 inView:(panel.window ?: panel)];
+		}];
+	}];
+}
+
+/// The outline the vector pipeline publishes, plus the SVG path for it.
+/// This card shows what Telegram sent rather than a guessed shape, which is
+/// the honest reading on a device with no general vector fill.
+- (void)showOutlineOfStickerWithFileId:(NSInteger)fileId {
+	__weak typeof(self) weakSelf = self;
+	[[TGStickerStore shared] stickerOutlineForFileId:fileId completion:
+			^(NSArray *paths, NSInteger points){
+		TGEmojiPanel *me = weakSelf;
+		if (!me)
+			return;
+		[[TGStickerStore shared] stickerOutlineSvgPathForFileId:fileId
+				completion:^(NSString *svg){
+			TGEmojiPanel *panel = weakSelf;
+			if (!panel)
+				return;
+			NSString *path = svg ?: @"";
+			NSString *shown = path.length > 240
+					? [[path substringToIndex:240] stringByAppendingString:@"..."]
+					: path;
+			NSString *message = [NSString stringWithFormat:
+					@"%lu closed paths, %ld points.\n\n%@",
+					(unsigned long)paths.count, (long)points,
+					shown.length ? shown : @"Telegram sent no SVG path."];
+			UIView *host = panel.window ?: panel;
+			if (!path.length){
+				[TGAlertSheet showMessage:message title:@"Sticker Outline" inView:host];
+				return;
+			}
+			[TGAlertSheet showChoices:@[@"Copy SVG Path", @"Done"]
+								title:@"Sticker Outline"
+								message:message
+					 destructiveIndex:-1
+							   inView:host
+							 onChoice:^(NSInteger index){
+				if (index == 0){
+					[UIPasteboard generalPasteboard].string = path;
+				}
+			}];
+		}];
 	}];
 }
 

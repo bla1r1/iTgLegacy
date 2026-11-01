@@ -216,8 +216,12 @@
 	if (!text.length)
 		return;
 	[[TGClient shared] sendText:text toChat:self.chatId thread:self.threadId];
-	if ([self.replyKeyboard[@"oneTime"] boolValue])
+	if ([self.replyKeyboard[@"oneTime"] boolValue]){
+		// A one-time keyboard is spent; TDLib wants the markup dropped so a
+		// reload of the chat does not bring the dead keys back.
+		[[TGClient shared] dismissReplyMarkupInChat:self.chatId];
 		[self hideBotKeyboard];
+	}
 }
 
 @end
