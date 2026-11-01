@@ -299,6 +299,7 @@ static const CGFloat kFieldWidth = 290.0f;
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
 	if (section == 1) return @"Name";
 	if (section == 2) return @"Bio";
+	if (section == 3) return @"Account";
 	if (section == 4) return @"Profile";
 	return nil;
 }
@@ -310,7 +311,7 @@ static const CGFloat kFieldWidth = 290.0f;
 		return @"Any details such as age, occupation or city. Only contacts "
 			   @"can see this.";
 	if (section == 3)
-		return @"Only contacts can see your birthday.";
+		return @"Your public username, the number you signed in with, and the birthday only contacts see.";
 	if (section == 4)
 		return @"The tab your profile opens on, for everyone who looks at it.";
 	return nil;
@@ -369,9 +370,13 @@ static const CGFloat kFieldWidth = 290.0f;
 
 		NSDictionary *me = [TGClient shared].me;
 		if (path.row == 0){
-			cell.textLabel.text = @"Birthday";
-			cell.detailTextLabel.text = [self birthdayText];
+			// Telegram puts the public name first: it is the row people
+			// come here to change, and its own screen owns the switches.
+			cell.textLabel.text = @"Username";
+			cell.detailTextLabel.text = [me[@"username"] length]
+					? [NSString stringWithFormat:@"@%@", me[@"username"]] : @"none";
 			cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+			cell.selectionStyle = UITableViewCellSelectionStyleBlue;
 		} else if (path.row == 1){
 			cell.textLabel.text = @"Phone Number";
 			cell.detailTextLabel.text = [me[@"phone"] length]
@@ -379,14 +384,9 @@ static const CGFloat kFieldWidth = 290.0f;
 			// Changing a number is a whole login flow; this shows it.
 			cell.selectionStyle = UITableViewCellSelectionStyleNone;
 		} else {
-			cell.textLabel.text = @"Username";
-			cell.detailTextLabel.text = [me[@"username"] length]
-					? [NSString stringWithFormat:@"@%@", me[@"username"]] : @"none";
-			// The list of names, their switches and their order live on one
-			// screen; this row opens it rather than pretending one string is
-			// the whole of the account's usernames.
+			cell.textLabel.text = @"Birthday";
+			cell.detailTextLabel.text = [self birthdayText];
 			cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
-			cell.selectionStyle = UITableViewCellSelectionStyleBlue;
 		}
 		return cell;
 	}
@@ -456,9 +456,9 @@ static const CGFloat kFieldWidth = 290.0f;
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)path {
 	[tableView deselectRowAtIndexPath:path animated:YES];
-	if (path.section == 3 && path.row == 0)
+	if (path.section == 3 && path.row == 2)
 		[self editBirthday];
-	if (path.section == 3 && path.row == 2){
+	if (path.section == 3 && path.row == 0){
 		TGUsernameSettingsViewController *usernames =
 				[[TGUsernameSettingsViewController alloc] init];
 		usernames.hidesBottomBarWhenPushed = YES;

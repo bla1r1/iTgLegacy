@@ -3,6 +3,7 @@
 #import "TGStatusText.h"
 #import "TGStyle.h"
 #import "TGAlertSheet.h"
+#import "TGMemberAvatarStore.h"
 #import "TGDevShowcase.h"
 #import "TGFastDate.h"
 #import "TGOptions.h"
@@ -338,6 +339,9 @@ static NSDictionary *TGChatSnapshotRow(NSDictionary *chat) {
 		self.listStoryAvatar.frame = CGRectMake(x, TGCenteredOrigin(kListTitleHeight,
 				kListStorySide), kListStorySide, kListStorySide);
 		UIImage *image = story[@"avatarImage"];
+		NSNumber *fileId = story[@"photoFileId"];
+		if (!image && fileId)
+			image = self.avatars[fileId];
 		if (!image){
 			NSString *title = [story[@"title"] isKindOfClass:NSString.class]
 					? story[@"title"] : @"?";
@@ -347,6 +351,20 @@ static NSDictionary *TGChatSnapshotRow(NSDictionary *chat) {
 									 colourId:[story[@"chatId"] longLongValue]];
 		}
 		[self.listStoryAvatar setImage:image forState:UIControlStateNormal];
+		if (!story[@"avatarImage"] && !story[@"isOwn"]){
+			int64_t userId = [story[@"chatId"] longLongValue];
+			__weak typeof(self) weakSelf = self;
+			[[TGMemberAvatarStore shared] loadAvatarForUser:userId
+													 side:kListStorySide
+											   completion:^(UIImage *loaded){
+				if (!loaded)
+					return;
+				dispatch_async(dispatch_get_main_queue(), ^{
+					[weakSelf.listStoryAvatar setImage:loaded
+											  forState:UIControlStateNormal];
+				});
+			}];
+		}
 		x += kListStorySide + kListStoryGap;
 	}
 	self.listTitleLabel.frame = CGRectMake(x, top, text.width, TGMetricLineRow);
@@ -387,11 +405,10 @@ static NSDictionary *TGChatSnapshotRow(NSDictionary *chat) {
 	UIButton *edit = [UIButton buttonWithType:UIButtonTypeCustom];
 	edit.frame = CGRectMake(TGMetricZero, TGMetricZero, kBarEditWidth, kBarEditHeight);
 	edit.layer.cornerRadius = TGHalf(kBarEditHeight);
-	edit.layer.borderWidth = TGMetricHairline;
-	edit.layer.borderColor = [[TGTheme shared] separatorColour].CGColor;
+	edit.backgroundColor = [[TGTheme shared] barControlFillColour];
 	edit.titleLabel.font = TGFontCaptionStrong();
 	[edit setTitle:@"Edit" forState:UIControlStateNormal];
-	[edit setTitleColor:[[TGTheme shared] barTitleColour] forState:UIControlStateNormal];
+	[edit setTitleColor:[[TGTheme shared] barButtonColour] forState:UIControlStateNormal];
 	[edit addTarget:self action:@selector(toggleChatListEditing)
    forControlEvents:UIControlEventTouchUpInside];
 	self.editButton = edit;
@@ -403,16 +420,20 @@ static NSDictionary *TGChatSnapshotRow(NSDictionary *chat) {
 	UIButton *add = [UIButton buttonWithType:UIButtonTypeCustom];
 	add.frame = CGRectMake(TGMetricZero, kBarControlTop, kBarControlSide, kBarControlSide);
 	add.layer.cornerRadius = TGHalf(kBarControlSide);
+	// A filled disc, not a hole in the bar: the plus is a story action and
+	// has to read as a button over the blue bar.
+	add.backgroundColor = [[TGTheme shared] barControlFillColour];
+	add.clipsToBounds = YES;
 	CAShapeLayer *ring = [CAShapeLayer layer];
 	ring.frame = add.bounds;
 	ring.path = CGPathCreateWithEllipseInRect(add.bounds, NULL);
 	ring.fillColor = [UIColor clearColor].CGColor;
-	ring.strokeColor = [[TGTheme shared] barTitleColour].CGColor;
+	ring.strokeColor = [[TGTheme shared] barButtonColour].CGColor;
 	ring.lineWidth = TGMetricHairline;
 	ring.lineDashPattern = @[@3, @3];
 	[add.layer addSublayer:ring];
 	[add setImage:[TGIcons glyphNamed:@"plus"
-							   colour:[[TGTheme shared] barTitleColour]
+							   colour:[[TGTheme shared] barButtonColour]
 								 side:TGMetricMenuGlyph]
 		 forState:UIControlStateNormal];
 	[add addTarget:self action:@selector(openStoryComposer)
@@ -446,25 +467,127 @@ static NSDictionary *TGChatSnapshotRow(NSDictionary *chat) {
 					 forState:UIControlStateNormal];
 	self.navigationItem.rightBarButtonItem.customView.hidden = self.editingChats;
 
-	UINavigationController *nav = self.navigationController;
 	if (!self.editingChats){
-		[nav setToolbarHidden:YES animated:YES];
+		[self.editBar removeFromSuperview];
+		self.editBar = nil;
 		return;
 	}
-	UIBarButtonItem *space = [[UIBarButtonItem alloc]
-			initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace
-								 target:nil action:nil];
-	UIBarButtonItem *delete = [[UIBarButtonItem alloc] initWithTitle:@"Delete"
-			style:UIBarButtonItemStyleBordered target:self
-			action:@selector(deleteSelectedChats)];
-	UIBarButtonItem *archive = [[UIBarButtonItem alloc] initWithTitle:@"Archive"
-			style:UIBarButtonItemStyleBordered target:self
-			action:@selector(archiveSelectedChats)];
-	UIBarButtonItem *mute = [[UIBarButtonItem alloc] initWithTitle:@"Mute"
-			style:UIBarButtonItemStyleBordered target:self
-			action:@selector(muteSelectedChats)];
-	[nav setToolbarItems:@[delete, space, archive, space, mute] animated:NO];
-	[nav setToolbarHidden:NO animated:YES];
+	if (!self.editBar){
+		CGFloat h = TGMetricRow;
+		UIView *host = self.tabBarController.view ?: self.view;
+		CGFloat bottom = host.bounds.size.height;
+		if (self.tabBarController && !self.tabBarController.tabBar.hidden)
+			bottom = CGRectGetMinY(self.tabBarController.tabBar.frame);
+		self.editBar = [[UIToolbar alloc] initWithFrame:CGRectMake(0,
+				bottom - h, host.bounds.size.width, h)];
+		self.editBar.autoresizingMask = UIViewAutoresizingFlexibleWidth |
+				UIViewAutoresizingFlexibleTopMargin;
+		[host addSubview:self.editBar];
+	}
+	[self refreshEditToolbar];
+}
+
+/// The toolbar follows the selection: Mute reads Unmute when every selected
+/// chat is already silent, Pin reads Unpin, and Read flips the same way.
+- (void)refreshEditToolbar {
+	NSArray *selected = [self selectedChatIndexes];
+	BOOL allMuted = selected.count > 0;
+	BOOL allPinned = selected.count > 0;
+	BOOL allUnread = selected.count > 0;
+	for (NSDictionary *chat in selected){
+		allMuted = allMuted && [chat[@"isMuted"] boolValue];
+		allPinned = allPinned && [chat[@"isPinned"] boolValue];
+		BOOL unread = [chat[@"unread"] integerValue] > 0 ||
+				[chat[@"markedUnread"] boolValue];
+		allUnread = allUnread && unread;
+	}
+	UIBarButtonItem *all = [[UIBarButtonItem alloc]
+			initWithTitle:(selected.count == (NSInteger)[self visibleChats].count
+					? @"None" : @"All")
+					style:UIBarButtonItemStyleBordered target:self
+				   action:@selector(selectAllChats)];
+	UIBarButtonItem *delete = [[UIBarButtonItem alloc]
+			initWithBarButtonSystemItem:UIBarButtonSystemItemTrash
+								 target:self action:@selector(deleteSelectedChats)];
+	UIBarButtonItem *mute = [[UIBarButtonItem alloc]
+			initWithTitle:(allMuted ? @"Unmute" : @"Mute")
+					style:UIBarButtonItemStyleBordered target:self
+				   action:@selector(muteSelectedChats)];
+	UIBarButtonItem *pin = [[UIBarButtonItem alloc]
+			initWithTitle:(allPinned ? @"Unpin" : @"Pin")
+					style:UIBarButtonItemStyleBordered target:self
+				   action:@selector(pinSelectedChats)];
+	UIBarButtonItem *read = [[UIBarButtonItem alloc]
+			initWithTitle:(allUnread ? @"Read" : @"Unread")
+					style:UIBarButtonItemStyleBordered target:self
+				   action:@selector(readSelectedChats)];
+	UIBarButtonItem *archive = [[UIBarButtonItem alloc]
+			initWithTitle:@"Archive" style:UIBarButtonItemStyleBordered
+				   target:self action:@selector(archiveSelectedChats)];
+	if (self.editBar)
+		[self.editBar setItems:@[all, delete, mute, pin, read, archive] animated:NO];
+}
+
+- (void)selectAllChats {
+	NSInteger header = [self headerRows].count;
+	NSInteger total = (NSInteger)[self visibleChats].count;
+	BOOL all = [self.tableView.indexPathsForSelectedRows count] == (NSUInteger)total;
+	for (NSInteger i = 0; i < total; i++){
+		NSIndexPath *path = [NSIndexPath indexPathForRow:i + header inSection:0];
+		if (all)
+			[self.tableView deselectRowAtIndexPath:path animated:NO];
+		else
+			[self.tableView selectRowAtIndexPath:path animated:NO
+								   scrollPosition:UITableViewScrollPositionNone];
+	}
+	[self refreshEditToolbar];
+}
+
+- (void)pinSelectedChats {
+	NSArray *selected = [self selectedChatIndexes];
+	if (!selected.count)
+		return;
+	NSMutableSet *chosen = [NSMutableSet set];
+	for (NSDictionary *chat in selected)
+		[chosen addObject:chat[@"id"]];
+	BOOL allPinned = YES;
+	for (NSDictionary *chat in selected)
+		allPinned = allPinned && [chat[@"isPinned"] boolValue];
+
+	NSMutableArray *order = [NSMutableArray array];
+	for (NSDictionary *chat in [self visibleChats])
+		if ([chat[@"isPinned"] boolValue] && ![chosen containsObject:chat[@"id"]])
+			[order addObject:chat[@"id"]];
+	if (!allPinned){
+		for (NSDictionary *chat in selected)
+			if (![order containsObject:chat[@"id"]])
+				[order insertObject:chat[@"id"] atIndex:0];
+	}
+	[[TGClient shared] setPinnedChatIds:order];
+	[self finishChatEditingAction];
+}
+
+- (void)readSelectedChats {
+	NSArray *selected = [self selectedChatIndexes];
+	if (!selected.count)
+		return;
+	BOOL allUnread = YES;
+	for (NSDictionary *chat in selected)
+		allUnread = allUnread && ([chat[@"unread"] integerValue] > 0 ||
+				[chat[@"markedUnread"] boolValue]);
+	for (NSDictionary *chat in selected){
+		int64_t chatId = [chat[@"id"] longLongValue];
+		if (allUnread){
+			NSNumber *lastId = chat[@"lastId"];
+			if ([lastId longLongValue])
+				[[TGClient shared] markRead:@[lastId] inChat:chatId];
+			else
+				[[TGClient shared] setChat:chatId markedUnread:NO];
+		} else {
+			[[TGClient shared] setChat:chatId markedUnread:YES];
+		}
+	}
+	[self finishChatEditingAction];
 }
 
 - (NSArray *)selectedChatIndexes {
@@ -486,7 +609,8 @@ static NSDictionary *TGChatSnapshotRow(NSDictionary *chat) {
 	[self.tableView setEditing:NO animated:YES];
 	[self.editButton setTitle:@"Edit" forState:UIControlStateNormal];
 	self.navigationItem.rightBarButtonItem.customView.hidden = NO;
-	[self.navigationController setToolbarHidden:YES animated:YES];
+	[self.editBar removeFromSuperview];
+	self.editBar = nil;
 	[self reload];
 }
 
@@ -1419,6 +1543,7 @@ static dispatch_semaphore_t TGAvtDecodeGate(NSInteger cap) {
 							TGChatListViewController *me = weakSelf;
 							if (!me) { dispatch_semaphore_signal(gate); return; }
 							me.avatars[fileId] = img;
+							[me refreshListTitleView];
 							[me reloadTableDebounced];
 							dispatch_semaphore_signal(gate);
 						});
@@ -1645,6 +1770,15 @@ static NSString *TGChatDate(NSTimeInterval unix) {
 	return cell;
 }
 
+- (void)tableView:(UITableView *)tableView didDeselectRowAtIndexPath:(NSIndexPath *)indexPath {
+	if (!self.editingChats)
+		return;
+	UITableViewCell *cell = [tableView cellForRowAtIndexPath:indexPath];
+	if ([cell isKindOfClass:TGChatCell.class])
+		((TGChatCell *)cell).editCheck.hidden = YES;
+	[self refreshEditToolbar];
+}
+
 - (BOOL)tableView:(UITableView *)tableView canEditRowAtIndexPath:(NSIndexPath *)indexPath {
 	return indexPath.row >= (NSInteger)[self headerRows].count;
 }
@@ -1703,8 +1837,16 @@ static NSString *TGChatDate(NSTimeInterval unix) {
 }
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
-	if (self.editingChats)
+	if (self.editingChats){
+		UITableViewCell *cell = [tableView cellForRowAtIndexPath:indexPath];
+		if ([cell isKindOfClass:TGChatCell.class]){
+			TGChatCell *chatCell = (TGChatCell *)cell;
+			chatCell.editCheck.hidden = NO;
+			[chatCell.contentView bringSubviewToFront:chatCell.editCheck];
+		}
+		[self refreshEditToolbar];
 		return;
+	}
 	[tableView deselectRowAtIndexPath:indexPath animated:YES];
 
 	NSArray *header = [self headerRows];

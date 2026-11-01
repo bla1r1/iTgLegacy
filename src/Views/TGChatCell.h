@@ -18,6 +18,7 @@ static const CGFloat kAvatar    = TGMetricChatAvatar;
 @property (nonatomic, strong) UIImageView *pin;   // pinned to the top
 @property (nonatomic, strong) UIImageView *muteIcon;   // beside the title of a muted chat
 @property (nonatomic, strong) UIView *separator;   // starts under the text, not the picture
+@property (nonatomic, strong) UILabel *editCheck;    // the blue tick in chat-list Edit
 
 /// The preview, with whoever wrote it ("Ivan:", "You:") in the title colour
 /// ahead of the text, the way their list sets the speaker apart.

@@ -40,6 +40,11 @@
 	return [UIColor whiteColor];
 }
 
+- (UIColor *)barControlFillColour {
+	///< a control that sits on the bar, not beside it
+	return TGRole(@"barControlFill", [UIColor colorWithWhite:1.0f alpha:0.18f]);
+}
+
 - (UIColor *)accentColour {
 	///< buttons, links, unread badges
 	return TGRole(@"accent", TG_BLUE_DARK4);

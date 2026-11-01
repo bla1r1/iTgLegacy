@@ -108,19 +108,37 @@ static const CGFloat kChoiceGlyphGap = TGMetricPadMedium;
 	UIButton *button = [UIButton buttonWithType:UIButtonTypeCustom];
 	button.frame = frame;
 	button.titleLabel.font = bold ? TGFontHeader() : TGFontInput();
-	[button setTitle:title forState:UIControlStateNormal];
 	[button setTitleColor:[[TGTheme shared] accentColour] forState:UIControlStateNormal];
 	[button setTitleColor:[[TGTheme shared] secondaryTextColour] forState:UIControlStateHighlighted];
 	[button setTitleShadowColor:[[TGTheme shared] etchedTextShadowColour] forState:UIControlStateNormal];
 	button.titleLabel.shadowOffset = CGSizeMake(0, 1.0f);
 	if (glyph.length){
-		[button setImage:[TGIcons glyphNamed:glyph
-									  colour:[[TGTheme shared] accentColour]
-										side:kChoiceGlyph]
-				forState:UIControlStateNormal];
-		button.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeft;
-		button.imageEdgeInsets = UIEdgeInsetsMake(0, kChoiceGlyphInset, 0, 0);
-		button.titleEdgeInsets = UIEdgeInsetsMake(0, kChoiceGlyphGap, 0, 0);
+		// Draw the glyph and the word as separate views. A stock UIButton's
+		// image/title insets move the pair together on iOS 6, which left the
+		// icon touching the text; this keeps a real gutter between them.
+		[button setTitle:@"" forState:UIControlStateNormal];
+		UIImageView *icon = [[UIImageView alloc] initWithFrame:CGRectMake(
+				kChoiceGlyphInset, TGCenteredOrigin(frame.size.height, kChoiceGlyph),
+				kChoiceGlyph, kChoiceGlyph)];
+		icon.image = [TGIcons glyphNamed:glyph
+								  colour:[[TGTheme shared] accentColour]
+									side:kChoiceGlyph];
+		icon.contentMode = UIViewContentModeCenter;
+		[button addSubview:icon];
+
+		CGFloat textX = kChoiceGlyphInset + kChoiceGlyph + kChoiceGlyphGap;
+		UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(textX, 0,
+				frame.size.width - textX - kChoiceGlyphInset, frame.size.height)];
+		label.text = title;
+		label.font = bold ? TGFontHeader() : TGFontInput();
+		label.textColor = [[TGTheme shared] accentColour];
+		label.backgroundColor = [UIColor clearColor];
+		label.shadowColor = [[TGTheme shared] etchedTextShadowColour];
+		label.shadowOffset = CGSizeMake(0, 1.0f);
+		[button addSubview:label];
+		button.accessibilityLabel = title;
+	} else {
+		[button setTitle:title forState:UIControlStateNormal];
 	}
 	return button;
 }

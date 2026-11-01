@@ -25,6 +25,7 @@
 @property (nonatomic, assign) NSInteger folderId;     // 0 = no folder
 @property (nonatomic, assign) BOOL editingChats;
 @property (nonatomic, strong) UIButton *editButton;
+@property (nonatomic, strong) UIToolbar *editBar;
 // A folder pill being dragged to a new slot: where on the pill the finger
 // grabbed it, and the frame it lifted from.
 @property (nonatomic, assign) CGFloat folderDragOffset;

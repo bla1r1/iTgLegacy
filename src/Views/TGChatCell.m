@@ -78,6 +78,17 @@ static UIFont *TGChatCellTitleFont(void) {
 	self.badge.layer.cornerRadius = TGHalf(TGMetricChatBadgeHeight);
 	self.badge.clipsToBounds = YES;
 	self.badge.layer.shouldRasterize = YES;
+
+	self.editCheck = [[UILabel alloc] init];
+	self.editCheck.text = @"\u2713";
+	self.editCheck.font = TGFontCaptionStrong();
+	self.editCheck.textColor = [UIColor whiteColor];
+	self.editCheck.backgroundColor = [theme accentColour];
+	self.editCheck.textAlignment = NSTextAlignmentCenter;
+	self.editCheck.layer.cornerRadius = TGHalf(TGMetricChatBadgeHeight);
+	self.editCheck.clipsToBounds = YES;
+	self.editCheck.hidden = YES;
+	[self.contentView addSubview:self.editCheck];
 	self.badge.layer.rasterizationScale = scale;
 	self.badge.hidden = YES;
 	[self.contentView addSubview:self.badge];
@@ -186,6 +197,10 @@ static UIFont *TGChatCellTitleFont(void) {
 	self.previewLabel.frame = CGRectMake(kTextLeft, kSecondLineTop, previewW,
 			MIN(ceilf(fit.height), kPreviewMax - TGMetricPadTiny));
 
+	CGFloat checkSide = TGMetricChatBadgeHeight;
+	self.editCheck.frame = CGRectMake(w - checkSide - TGMetricPad,
+			TGCenteredOrigin(h, checkSide), checkSide, checkSide);
+
 	CGFloat hair = TGMetricHairline;
 	self.separator.frame = CGRectMake(kTextLeft, h - hair, w - kTextLeft, hair);
 }
@@ -201,6 +216,28 @@ static UIFont *TGChatCellTitleFont(void) {
 	self.onlineDot.backgroundColor = [theme onlineColour];
 	self.onlineDot.layer.borderColor = [theme listBackgroundColour].CGColor;
 	self.separator.backgroundColor = [theme separatorColour];
+}
+
+- (void)setEditing:(BOOL)editing animated:(BOOL)animated {
+	[super setEditing:editing animated:animated];
+	[self updateEditCheck];
+}
+
+- (void)setSelected:(BOOL)selected animated:(BOOL)animated {
+	[super setSelected:selected animated:animated];
+	[self updateEditCheck];
+}
+
+- (void)updateEditCheck {
+	self.editCheck.hidden = !(self.editing && self.selected);
+	self.dateLabel.hidden = self.editing;
+	[self setNeedsLayout];
+}
+
+- (void)prepareForReuse {
+	[super prepareForReuse];
+	self.editCheck.hidden = YES;
+	self.dateLabel.hidden = NO;
 }
 
 @end

@@ -175,6 +175,7 @@ typedef NS_ENUM(NSInteger, TGButtonStyle) {
 - (UIColor *)barTitleColour;
 - (UIColor *)barSubtitleColour;     ///< subtitle in chat navigation header
 - (UIColor *)barButtonColour;       ///< buttons/items in navigation bar
+- (UIColor *)barControlFillColour;  ///< translucent fill for nav-bar controls
 - (UIColor *)accentColour;          ///< buttons, links, unread badges
 - (UIColor *)onAccentColour;        ///< text and icons rendered over accentColour / badges
 - (UIColor *)destructiveColour;     ///< delete actions, red alerts
