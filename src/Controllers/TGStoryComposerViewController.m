@@ -160,19 +160,66 @@ static const NSInteger kStorySectionPublish = 2;
 	}
 
 	if (indexPath.row == 0){
-		cell.textLabel.text = self.mediaPath ? @"Change Media" : @"Choose Photo or Video";
-		cell.detailTextLabel.text = self.mediaPath
-				? (self.isVideo ? @"Video" : @"Photo") : @"Required";
+		cell.textLabel.text = self.mediaPath ? @"" : @"Choose Photo or Video";
+		cell.detailTextLabel.text = self.mediaPath ? nil : @"Required";
+		cell.accessoryView = nil;
+
 		if (!self.previewView){
-			self.previewView = [[UIImageView alloc] initWithFrame:CGRectMake(0, 0,
-					TGMetricStoryThumb, TGMetricStoryThumb)];
+			self.previewView = [[UIImageView alloc] initWithFrame:CGRectZero];
 			self.previewView.contentMode = UIViewContentModeScaleAspectFill;
 			self.previewView.clipsToBounds = YES;
-			self.previewView.layer.cornerRadius = TGMetricCornerSmall;
 			self.previewView.backgroundColor = [[TGTheme shared] fileTileColour];
 		}
-		self.previewView.image = self.previewImage;
-		cell.accessoryView = self.previewView;
+		if (self.mediaPath){
+			if (self.previewView.superview != cell.contentView){
+				[self.previewView removeFromSuperview];
+				[cell.contentView addSubview:self.previewView];
+			}
+			CGFloat cellWidth = cell.contentView.bounds.size.width > 0
+					? cell.contentView.bounds.size.width
+					: tableView.bounds.size.width - TGDoubled(TGMetricPadMedium);
+			self.previewView.frame = CGRectMake(0, 0, cellWidth,
+					kStoryPreviewRow);
+			self.previewView.image = self.previewImage;
+
+			UILabel *change = (UILabel *)[cell.contentView viewWithTag:6];
+			if (!change){
+				change = [[UILabel alloc] initWithFrame:CGRectZero];
+				change.tag = 6;
+				change.font = TGFontCaptionStrong();
+				change.textColor = [UIColor whiteColor];
+				change.backgroundColor = [[TGTheme shared] mediaOverlayColour];
+				change.textAlignment = NSTextAlignmentCenter;
+				[cell.contentView addSubview:change];
+			}
+			change.text = @"Change Media";
+			change.hidden = NO;
+			change.frame = CGRectMake(TGMetricPadLarge,
+					kStoryPreviewRow - TGMetricLineCaption - TGMetricPadSmall,
+					TGMetricStoryBubble + TGMetricPadLarge, TGMetricLineCaption);
+
+			UILabel *duration = (UILabel *)[cell.contentView viewWithTag:7];
+			if (!duration){
+				duration = [[UILabel alloc] initWithFrame:CGRectZero];
+				duration.tag = 7;
+				duration.font = TGFontCaption();
+				duration.textColor = [UIColor whiteColor];
+				duration.backgroundColor = [[TGTheme shared] mediaOverlayColour];
+				duration.textAlignment = NSTextAlignmentCenter;
+				[cell.contentView addSubview:duration];
+			}
+			duration.text = self.isVideo && self.videoDuration > 0
+					? [NSString stringWithFormat:@"%.0fs", self.videoDuration] : @"";
+			duration.hidden = !self.isVideo || self.videoDuration <= 0;
+			duration.frame = CGRectMake(cellWidth -
+					TGMetricStoryBubble - TGMetricPadLarge,
+					kStoryPreviewRow - TGMetricLineCaption - TGMetricPadSmall,
+					TGMetricStoryBubble, TGMetricLineCaption);
+		} else {
+			[self.previewView removeFromSuperview];
+			[cell.contentView viewWithTag:6].hidden = YES;
+			[cell.contentView viewWithTag:7].hidden = YES;
+		}
 		return cell;
 	}
 	if (indexPath.row == 1){

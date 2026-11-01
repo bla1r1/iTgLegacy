@@ -11,6 +11,8 @@
 // not covered here (see the PR report).
 #import "TGTestRunner.h"
 #import "TGMessageLayout.h"
+#include <string.h>
+#include <time.h>
 
 static NSString *kWord = @"Supercalifragilisticexpialidocious";
 static NSString *kWord2 = @"antidisestablishmentarianism";
@@ -389,6 +391,43 @@ static NSString *kWord2 = @"antidisestablishmentarianism";
 	XCTAssertNil(cache[@1]);
 	XCTAssertNil(cache[@3]);
 	XCTAssertNil(cache[@4]);
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+#pragma mark - bubble stamp
+
+- (void)testMessageStamp_NoDateIsAnEmptyLine {
+	XCTAssertEqualObjects(TGMessageStamp(0, NO), @"");
+	XCTAssertEqualObjects(TGMessageStamp(-1, YES), @"");
+}
+
+- (void)testMessageStamp_ClockIsTheLocalHourAndMinute {
+	struct tm value;
+	memset(&value, 0, sizeof(value));
+	value.tm_year = 124;   // 2024
+	value.tm_mon = 0;
+	value.tm_mday = 2;
+	value.tm_hour = 9;
+	value.tm_min = 5;
+	value.tm_isdst = -1;
+	NSTimeInterval stamp = (NSTimeInterval)mktime(&value);
+	XCTAssertEqualObjects(TGMessageStamp(stamp, NO), @"09:05");
+}
+
+- (void)testMessageStamp_EditedComesAfterTheClock {
+	struct tm value;
+	memset(&value, 0, sizeof(value));
+	value.tm_year = 124;
+	value.tm_mon = 4;
+	value.tm_mday = 6;
+	value.tm_hour = 23;
+	value.tm_min = 40;
+	value.tm_isdst = -1;
+	NSTimeInterval stamp = (NSTimeInterval)mktime(&value);
+	NSString *line = TGMessageStamp(stamp, YES);
+	XCTAssertEqualObjects(line, @"23:40 edited");
+	XCTAssertFalse([line hasPrefix:@"edited"],
+			@"Telegram appends the mark; a prefix reads as a different clock");
 }
 
 @end

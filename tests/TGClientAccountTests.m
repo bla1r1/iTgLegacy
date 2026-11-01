@@ -237,12 +237,17 @@ static void answerA(TGClient *c, NSDictionary *answer) {
 	__block NSArray *photos = nil;
 	[c userProfilePhotos:1001 completion:^(NSArray *found){ photos = found; }];
 	answerA(c, @{@"@type" : @"chatPhotos", @"total_count" : @(2), @"photos" : @[
-			@{@"id" : @"7788", @"small" : @{@"id" : @(31)}},
+			@{@"id" : @"7788", @"small" : @{@"id" : @(31)}, @"date" : @(1600000000)},
 			@{@"id" : @"7789", @"small" : @{@"id" : @(32)}}]});
 
 	XCTAssertEqual(photos.count, (NSUInteger)2);
 	XCTAssertEqual([photos[0][@"photoId"] longLongValue], 7788LL);
 	XCTAssertEqual([photos[0][@"fileId"] integerValue], (NSInteger)31);
+	// The gallery dates a photo instead of numbering it, so the date has to
+	// survive the same flatten that keeps the id and the file.
+	XCTAssertEqual([photos[0][@"date"] doubleValue], 1600000000.0);
+	XCTAssertEqual([photos[1][@"date"] doubleValue], 0.0,
+			@"a photo with no date is still a row and says nothing about when");
 }
 
 /// A photo with no file behind it cannot be drawn, and one with no id of its

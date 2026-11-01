@@ -18,6 +18,9 @@ static const NSUInteger kPhotoCacheCap = 50;
 @interface TGContactsViewController ()
 @property (nonatomic, strong) TGEmptyView *emptyView;
 @property (nonatomic, strong) NSArray *users;
+/// The same contacts split by their first letter, so the list reads like
+/// Telegram's address book instead of one long run of names.
+@property (nonatomic, strong) NSArray *sections;
 /// Bounded: a long contact list scrolled end to end used to hold every
 /// avatar it had ever decoded, and fifty is more than a screen holds.
 @property (nonatomic, strong) TGImageLruCache *photos;   // fileId -> UIImage
@@ -131,6 +134,47 @@ static NSArray *TGImportedContactsFromVCards(NSString *text) {
 	return out;
 }
 
+static NSString *TGContactName(NSDictionary *u);
+
+/// A name's section letter. Anything that is not a letter lands in "#", the
+/// way the phone's address book groups punctuation and emoji.
+static NSString *TGContactSectionTitle(NSString *name) {
+	NSString *trimmed = [name stringByTrimmingCharactersInSet:
+			[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+	if (!trimmed.length)
+		return @"#";
+	NSString *first = [[trimmed substringToIndex:1] uppercaseString];
+	unichar c = [first characterAtIndex:0];
+	if ((c >= 'A' && c <= 'Z') || (c >= 0x0400 && c <= 0x04FF))
+		return first;
+	return @"#";
+}
+
+/// Contacts grouped in the order the list already sorted them. The "#"
+/// bucket always comes last, so it does not push A down the screen.
+static NSArray *TGContactSections(NSArray *users) {
+	NSMutableArray *sections = [NSMutableArray array];
+	NSMutableDictionary *byTitle = [NSMutableDictionary dictionary];
+	for (NSDictionary *user in users){
+		NSString *title = TGContactSectionTitle(TGContactName(user));
+		NSMutableArray *bucket = byTitle[title];
+		if (!bucket){
+			bucket = [NSMutableArray array];
+			byTitle[title] = bucket;
+			[sections addObject:@{@"title" : title, @"users" : bucket}];
+		}
+		[bucket addObject:user];
+	}
+	// "#" is appended last; then the letters are already in sorted-name order.
+	NSArray *sorted = [sections sortedArrayUsingComparator:^NSComparisonResult(id a, id b){
+		NSString *ta = a[@"title"], *tb = b[@"title"];
+		if ([ta isEqualToString:@"#"]) return NSOrderedDescending;
+		if ([tb isEqualToString:@"#"]) return NSOrderedAscending;
+		return [ta localizedCaseInsensitiveCompare:tb];
+	}];
+	return sorted;
+}
+
 @implementation TGContactsViewController
 
 - (void)viewDidLoad {
@@ -163,6 +207,7 @@ static NSArray *TGImportedContactsFromVCards(NSString *text) {
 	}
 	[[TGTheme shared] styleNavigationBar:self.navigationController.navigationBar];
 	self.users = @[];
+	self.sections = @[];
 	self.photos = [[TGImageLruCache alloc] initWithCapacity:kPhotoCacheCap];
 	self.photosRequested = [NSMutableSet set];
 	self.tableView.rowHeight = TGMetricPersonRow;
@@ -260,8 +305,9 @@ static NSArray *TGImportedContactsFromVCards(NSString *text) {
 			[list addObjectsFromArray:[TGDevShowcase allShowcaseContacts]];
 		}
 		me.users = [list sortedArrayUsingComparator:^NSComparisonResult(id a, id b){
-			return [a[@"first_name"] localizedCaseInsensitiveCompare:b[@"first_name"]];
+			return [TGContactName(a) localizedCaseInsensitiveCompare:TGContactName(b)];
 		}];
+		me.sections = TGContactSections(me.users);
 		[me.tableView reloadData];
 		[me fetchMissingPhotos];
 
@@ -340,8 +386,45 @@ static NSString *TGContactName(NSDictionary *u) {
 	return u[@"phone"] ?: @"";
 }
 
+- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
+	return (NSInteger)self.sections.count;
+}
+
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-	return self.users.count;
+	if (section < 0 || section >= (NSInteger)self.sections.count)
+		return 0;
+	return [self.sections[(NSUInteger)section][@"users"] count];
+}
+
+- (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
+	if (section < 0 || section >= (NSInteger)self.sections.count)
+		return nil;
+	return self.sections[(NSUInteger)section][@"title"];
+}
+
+- (NSArray *)sectionIndexTitlesForTableView:(UITableView *)tableView {
+	// A short list reads worse with a rail down the side; Telegram keeps it
+	// for an address book that is actually long.
+	if (self.sections.count < 8)
+		return nil;
+	NSMutableArray *titles = [NSMutableArray array];
+	for (NSDictionary *section in self.sections)
+		[titles addObject:section[@"title"]];
+	return titles;
+}
+
+- (NSInteger)tableView:(UITableView *)tableView
+ sectionForSectionIndexTitle:(NSString *)title atIndex:(NSInteger)index {
+	return index;
+}
+
+- (NSDictionary *)userAtIndexPath:(NSIndexPath *)indexPath {
+	if (indexPath.section < 0 || indexPath.section >= (NSInteger)self.sections.count)
+		return nil;
+	NSArray *users = self.sections[(NSUInteger)indexPath.section][@"users"];
+	if (indexPath.row < 0 || indexPath.row >= (NSInteger)users.count)
+		return nil;
+	return users[(NSUInteger)indexPath.row];
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
@@ -351,7 +434,9 @@ static NSString *TGContactName(NSDictionary *u) {
 		cell = [[TGContactCell alloc] initWithStyle:UITableViewCellStyleSubtitle
 									reuseIdentifier:reuse];
 
-	NSDictionary *u = self.users[indexPath.row];
+	NSDictionary *u = [self userAtIndexPath:indexPath];
+	if (!u)
+		return cell;
 	NSString *name = TGContactName(u);
 	UIColor *bg = [[TGTheme shared] listBackgroundColour];
 	cell.backgroundColor = bg;
@@ -361,8 +446,14 @@ static NSString *TGContactName(NSDictionary *u) {
 	cell.textLabel.font = TGFontBody();
 	cell.detailTextLabel.backgroundColor = bg;
 	cell.detailTextLabel.opaque = YES;
-	cell.detailTextLabel.text = [u[@"phone"] length]
-		? [NSString stringWithFormat:@"+%@", u[@"phone"]] : @"";
+	// Telegram puts the @name under a contact who has one and the number
+	// under everyone else. The number is still what a call needs, so it is
+	// the fallback rather than a second line that would not fit this row.
+	if ([u[@"username"] length])
+		cell.detailTextLabel.text = [@"@" stringByAppendingString:u[@"username"]];
+	else
+		cell.detailTextLabel.text = [u[@"phone"] length]
+				? [NSString stringWithFormat:@"+%@", u[@"phone"]] : @"";
 	cell.detailTextLabel.font = TGFontCaption();
 	cell.detailTextLabel.textColor = [[TGTheme shared] secondaryTextColour];
 	cell.textLabel.textColor = [[TGTheme shared] primaryTextColour];
@@ -482,7 +573,9 @@ static NSString *TGContactName(NSDictionary *u) {
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
 	[tableView deselectRowAtIndexPath:indexPath animated:YES];
 
-	NSDictionary *u = self.users[indexPath.row];
+	NSDictionary *u = [self userAtIndexPath:indexPath];
+	if (!u)
+		return;
 	if ([self isPicking]){
 		NSNumber *userId = u[@"id"];
 		if ([self.picked containsObject:userId])

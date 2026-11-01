@@ -13,6 +13,7 @@
 #import "TGAlertSheet.h"
 #import "TGDevShowcase.h"
 #import "TGFileInfoViewController.h"
+#import "TGForwardPicker.h"
 
 // The chrome sits over the picture rather than beside it, which is what makes
 // the picture the whole screen. Both strips fade out on a tap and come back on
@@ -25,10 +26,6 @@ static const NSInteger kZoomTag = 0x7001;
 /// bottom bar carries the caption, Save, and - on a video - a transport strip
 /// under both. These are this viewer's own, named here rather than in TGStyle.
 static const CGFloat kChromeInset   = TGMetricPadSmall;
-static const CGFloat kCounterTop    = TGMetricPadWide;
-static const CGFloat kDateTop       = 36.0f;
-static const CGFloat kButtonWidth   = 62.0f;
-static const CGFloat kButtonHeight  = 30.0f;
 static const CGFloat kCaptionInset  = TGMetricPadMedium + TGMetricPadTiny;
 static const CGFloat kCaptionHeight = 34.0f;
 static const CGFloat kSaveWidth     = 68.0f;
@@ -77,6 +74,9 @@ static const CGFloat kThumbStripH   = 54.0f;
 @property (nonatomic, strong) UIView *bottomBar;
 @property (nonatomic, strong) UILabel *counterLabel;
 @property (nonatomic, strong) UILabel *dateLabel;
+@property (nonatomic, strong) UIImageView *authorAvatar;
+@property (nonatomic, strong) UIButton *moreButton;
+@property (nonatomic, strong) NSNumber *avatarFileId;
 @property (nonatomic, strong) UILabel *captionLabel;
 @property (nonatomic, strong) UIScrollView *thumbStrip;
 @property (nonatomic, strong) NSMutableArray *thumbButtons;
@@ -183,7 +183,8 @@ static const CGFloat kThumbStripH   = 54.0f;
 	}
 
 	UITapGestureRecognizer *single = [[UITapGestureRecognizer alloc]
-			initWithTarget:self action:@selector(toggleChrome)];
+			initWithTarget:self action:@selector(tapAt:)];
+	single.delegate = self;
 	[self.backdrop addGestureRecognizer:single];
 
 	// Two taps is how a picture is zoomed everywhere else, and this viewer
@@ -254,6 +255,7 @@ static const CGFloat kThumbStripH   = 54.0f;
 
 	[self.topBar removeFromSuperview];   self.topBar = nil;
 	self.counterLabel = nil;             self.dateLabel = nil;
+	self.authorAvatar = nil;             self.moreButton = nil;
 	[self.bottomBar removeFromSuperview]; self.bottomBar = nil;
 	self.captionLabel = nil;             self.playButton = nil;
 	self.scrubber = nil;                 self.timeLabel = nil;
@@ -273,36 +275,63 @@ static const CGFloat kThumbStripH   = 54.0f;
 	self.topBar.backgroundColor = plate;
 	[self.backdrop addSubview:self.topBar];
 
-	self.counterLabel = [[UILabel alloc] initWithFrame:
-			CGRectMake(TGMetricViewerTitleSide, kCounterTop,
-					bounds.size.width - TGDoubled(TGMetricViewerTitleSide), TGMetricLineBody)];
-	self.counterLabel.font = TGFontBodyStrong();
-	self.counterLabel.textAlignment = NSTextAlignmentCenter;
-	self.counterLabel.textColor = [UIColor whiteColor];
-	self.counterLabel.backgroundColor = [UIColor clearColor];
-	[self.topBar addSubview:self.counterLabel];
-
-	self.dateLabel = [[UILabel alloc] initWithFrame:
-			CGRectMake(TGMetricViewerTitleSide, kDateTop,
-					bounds.size.width - TGDoubled(TGMetricViewerTitleSide), TGMetricLineMicro)];
-	self.dateLabel.font = TGFontMicro();
-	self.dateLabel.textAlignment = NSTextAlignmentCenter;
-	self.dateLabel.textColor = [[TGTheme shared] secondaryTextColour];
-	self.dateLabel.backgroundColor = [UIColor clearColor];
-	[self.topBar addSubview:self.dateLabel];
-
 	UIButton *close = [UIButton buttonWithType:UIButtonTypeCustom];
-	close.frame = CGRectMake(kChromeInset, TGCenteredOrigin(kTopBar, kButtonHeight),
-			kButtonWidth, kButtonHeight);
-	[close setTitle:@"Done" forState:UIControlStateNormal];
-	close.titleLabel.font = TGFontBody();
-	[close setBackgroundImage:[TGTheme buttonImageForStyle:TGButtonStyleSecondary highlighted:NO height:kButtonHeight] forState:UIControlStateNormal];
-	[close setBackgroundImage:[TGTheme buttonImageForStyle:TGButtonStyleSecondary highlighted:YES height:kButtonHeight] forState:UIControlStateHighlighted];
-	close.layer.cornerRadius = TGMetricCornerControl;
-	close.clipsToBounds = YES;
+	close.frame = CGRectMake(kChromeInset,
+			TGCenteredOrigin(kTopBar, TGMetricViewerHeaderIcon),
+			TGMetricViewerHeaderIcon, TGMetricViewerHeaderIcon);
+	[close setImage:[TGIcons glyphNamed:@"close" colour:[UIColor whiteColor]
+								  side:TGMetricPadLarge]
+		   forState:UIControlStateNormal];
 	[close addTarget:self action:@selector(dismiss)
 	 forControlEvents:UIControlEventTouchUpInside];
 	[self.topBar addSubview:close];
+
+	self.moreButton = [UIButton buttonWithType:UIButtonTypeCustom];
+	self.moreButton.frame = CGRectMake(
+			bounds.size.width - kChromeInset - TGMetricViewerHeaderIcon,
+			TGCenteredOrigin(kTopBar, TGMetricViewerHeaderIcon),
+			TGMetricViewerHeaderIcon, TGMetricViewerHeaderIcon);
+	[self.moreButton setImage:[TGIcons glyphNamed:@"more" colour:[UIColor whiteColor]
+										   side:TGMetricPadLarge]
+					 forState:UIControlStateNormal];
+	[self.moreButton addTarget:self action:@selector(moreTapped)
+			  forControlEvents:UIControlEventTouchUpInside];
+	[self.topBar addSubview:self.moreButton];
+
+	self.authorAvatar = [[UIImageView alloc] initWithFrame:CGRectMake(
+			CGRectGetMaxX(close.frame) + TGMetricViewerHeaderGap,
+			TGCenteredOrigin(kTopBar, TGMetricViewerAvatarSide),
+			TGMetricViewerAvatarSide, TGMetricViewerAvatarSide)];
+	self.authorAvatar.contentMode = UIViewContentModeScaleAspectFill;
+	self.authorAvatar.clipsToBounds = YES;
+	self.authorAvatar.layer.cornerRadius = TGHalf(TGMetricViewerAvatarSide);
+	self.authorAvatar.backgroundColor = [[TGTheme shared] fileTileColour];
+	[self.topBar addSubview:self.authorAvatar];
+
+	CGFloat labelsX = CGRectGetMaxX(self.authorAvatar.frame) + TGMetricViewerHeaderGap;
+	CGFloat labelsW = CGRectGetMinX(self.moreButton.frame) - labelsX -
+			TGMetricViewerHeaderGap;
+	CGFloat labelsTop = TGCenteredOrigin(kTopBar,
+			TGMetricLineBody + TGMetricLineMicro);
+
+	self.counterLabel = [[UILabel alloc] initWithFrame:
+			CGRectMake(labelsX, labelsTop, labelsW, TGMetricLineBody)];
+	self.counterLabel.font = TGFontBodyStrong();
+	self.counterLabel.textAlignment = NSTextAlignmentLeft;
+	self.counterLabel.textColor = [UIColor whiteColor];
+	self.counterLabel.backgroundColor = [UIColor clearColor];
+	self.counterLabel.lineBreakMode = NSLineBreakByTruncatingTail;
+	[self.topBar addSubview:self.counterLabel];
+
+	self.dateLabel = [[UILabel alloc] initWithFrame:
+			CGRectMake(labelsX, labelsTop + TGMetricLineBody, labelsW,
+					TGMetricLineMicro)];
+	self.dateLabel.font = TGFontMicro();
+	self.dateLabel.textAlignment = NSTextAlignmentLeft;
+	self.dateLabel.textColor = [[TGTheme shared] secondaryTextColour];
+	self.dateLabel.backgroundColor = [UIColor clearColor];
+	self.dateLabel.lineBreakMode = NSLineBreakByTruncatingTail;
+	[self.topBar addSubview:self.dateLabel];
 
 	self.bottomBar = [[UIView alloc] initWithFrame:
 			CGRectMake(0, bounds.size.height - kBottomBar, bounds.size.width, kBottomBar)];
@@ -461,18 +490,59 @@ static const CGFloat kThumbStripH   = 54.0f;
 }
 
 - (void)thumbTapped:(UIButton *)btn {
-	NSInteger idx = btn.tag;
-	if (idx == self.index || idx < 0 || idx >= (NSInteger)self.items.count)
-		return;
+	[self gotoPage:btn.tag animated:YES];
+}
 
+/// One page-change path for the thumb strip, the tap zones and a programmatic
+/// move. Leaving a video's page stops it first, which is what keeps a movie
+/// from playing behind a picture two pages away.
+- (void)gotoPage:(NSInteger)idx animated:(BOOL)animated {
+	if (idx < 0 || idx >= (NSInteger)self.items.count || idx == self.index)
+		return;
 	if (self.moviePage != NSNotFound && idx != self.moviePage)
 		[self stopMovie];
 
 	self.index = idx;
-	[self.pager setContentOffset:CGPointMake(self.pager.bounds.size.width * idx, 0) animated:YES];
+	[self.pager setContentOffset:CGPointMake(self.pager.bounds.size.width * idx, 0)
+						animated:animated];
 	[self loadPagesAround:idx];
 	[self refreshChrome];
-	[self updateThumbStripSelection:YES];
+	[self updateThumbStripSelection:animated];
+}
+
+/// Telegram's viewer splits the picture into three: the left third goes back,
+/// the right third goes on, and the middle shows or hides the chrome. A tap
+/// on a control never reaches here - the delegate below refuses it.
+- (void)tapAt:(UITapGestureRecognizer *)tap {
+	if (self.items.count < 2){
+		[self toggleChrome];
+		return;
+	}
+	CGPoint where = [tap locationInView:self.backdrop];
+	CGFloat width = self.backdrop.bounds.size.width;
+	if (where.x < width / 3.0f){
+		if (self.index > 0)
+			[self gotoPage:self.index - 1 animated:YES];
+		return;
+	}
+	if (where.x > width - width / 3.0f){
+		if (self.index < (NSInteger)self.items.count - 1)
+			[self gotoPage:self.index + 1 animated:YES];
+		return;
+	}
+	[self toggleChrome];
+}
+
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gesture
+		shouldReceiveTouch:(UITouch *)touch {
+	// A tap, a hold or a drag that starts on a button belongs to the button.
+	UIView *view = touch.view;
+	while (view && view != self.backdrop){
+		if ([view isKindOfClass:UIControl.class])
+			return NO;
+		view = view.superview;
+	}
+	return YES;
 }
 
 - (void)toggleChrome {
@@ -487,21 +557,20 @@ static const CGFloat kThumbStripH   = 54.0f;
 - (void)refreshChrome {
 	NSDictionary *item = self.items[self.index];
 
-	self.counterLabel.text = [NSString stringWithFormat:@"%ld of %lu",
-			(long)(self.index + 1), (unsigned long)self.items.count];
-
 	static NSDateFormatter *when = nil;
 	if (!when){
 		when = [[NSDateFormatter alloc] init];
 		when.dateStyle = NSDateFormatterMediumStyle;
 		when.timeStyle = NSDateFormatterShortStyle;
 	}
-	NSString *sender = [[TGMediaStore shared] nameForUserId:
-			[item[@"senderId"] longLongValue]];
+	int64_t senderId = [item[@"senderId"] longLongValue];
+	NSString *sender = [[TGMediaStore shared] nameForUserId:senderId];
 	NSString *date = [when stringFromDate:
 			[NSDate dateWithTimeIntervalSince1970:[item[@"date"] doubleValue]]];
-	self.dateLabel.text = sender.length
-			? [NSString stringWithFormat:@"%@ - %@", sender, date] : date;
+	self.counterLabel.text = sender.length ? sender : @"Media";
+	self.dateLabel.text = [NSString stringWithFormat:@"%ld of %lu · %@",
+			(long)(self.index + 1), (unsigned long)self.items.count, date];
+	[self refreshAvatarForUserId:senderId title:sender];
 
 	self.captionLabel.text = item[@"text"] ?: @"";
 
@@ -513,6 +582,49 @@ static const CGFloat kThumbStripH   = 54.0f;
 	self.captionLabel.frame = CGRectMake(kCaptionInset, kChromeInset,
 			self.backdrop.bounds.size.width - TGMetricViewerCaptionMarginRight,
 			(isVideo || isAnim) ? kCaptionHeight - TGMetricPadSmall : kCaptionHeight);
+}
+
+/// The header's picture follows the sender, not the message: every page from
+/// one person in a group carries the same face. A photo id is read from the
+/// account map; the initials stand in until it arrives.
+- (void)refreshAvatarForUserId:(int64_t)userId title:(NSString *)title {
+	self.avatarFileId = nil;
+	NSString *initial = title.length
+			? [title substringToIndex:1].uppercaseString : @"?";
+	self.authorAvatar.image = [TGIcons avatarWithInitials:initial
+													size:TGMetricViewerAvatarSide
+												colourId:userId];
+	if (userId <= 0)
+		return;
+	NSNumber *fileId = [[TGMediaStore shared] photoFileIdForUserId:userId];
+	if (![fileId isKindOfClass:NSNumber.class] || fileId.integerValue <= 0)
+		return;
+	self.avatarFileId = fileId;
+
+	__weak typeof(self) weakSelf = self;
+	__weak UIImageView *weakAvatar = self.authorAvatar;
+	[[TGMediaStore shared] downloadFile:fileId.integerValue
+							  priority:TGDownloadPriorityOnScreen
+							completion:^(NSString *path){
+		if (!path.length)
+			return;
+		dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_LOW, 0), ^{
+			UIImage *image = [UIImage imageWithContentsOfFile:path];
+			if (!image)
+				return;
+			image = [TGIcons decodedImage:image
+					fittingSize:CGSizeMake(TGMetricViewerAvatarSide,
+										   TGMetricViewerAvatarSide)
+							 fill:YES scale:[UIScreen mainScreen].scale];
+			if (!image)
+				return;
+			dispatch_async(dispatch_get_main_queue(), ^{
+				TGMediaViewer *me = weakSelf;
+				if (me && [me.avatarFileId isEqual:fileId])
+					weakAvatar.image = image;
+			});
+		});
+	}];
 }
 
 #pragma mark - pages
@@ -932,6 +1044,186 @@ static const CGFloat kThumbStripH   = 54.0f;
 	self.scrubber.value = 0;
 }
 
+#pragma mark - the More sheet
+
+/// The view controller a share sheet or the forward picker presents from.
+/// The viewer is not one - it lives in the window directly - so the top of
+/// the window's own stack stands in.
+- (UIViewController *)hostController {
+	UIWindow *window = self.window ?: [UIApplication sharedApplication].keyWindow;
+	UIViewController *top = window.rootViewController;
+	while (top.presentedViewController)
+		top = top.presentedViewController;
+	return top;
+}
+
+/// Telegram's gallery keeps file actions behind the header's More button, not
+/// behind a hold: the hold is the message menu, this is what can be done with
+/// the picture itself.
+- (void)moreTapped {
+	NSDictionary *m = [self currentItem];
+	if (!m)
+		return;
+
+	NSMutableArray *choices = [NSMutableArray arrayWithObjects:
+			@"Share", @"Forward", @"Copy Caption", nil];
+	NSInteger destructive = -1;
+	if ([self currentFileId]){
+		[choices addObject:@"Save to Camera Roll"];
+		[choices addObject:@"Add to Downloads"];
+		[choices addObject:@"File Info"];
+		[choices addObject:@"Delete from Device"];
+		destructive = (NSInteger)choices.count - 1;
+	}
+	if ([m[@"hasStickers"] boolValue])
+		[choices addObject:@"Sticker Packs..."];
+
+	__weak typeof(self) weakSelf = self;
+	[TGAlertSheet showChoices:choices title:@"Media"
+			 destructiveIndex:destructive inView:self.backdrop
+					 onChoice:^(NSInteger index){
+		TGMediaViewer *me = weakSelf;
+		if (!me)
+			return;
+		NSString *what = choices[(NSUInteger)index];
+		if ([what isEqualToString:@"Share"])
+			[me shareCurrent];
+		else if ([what isEqualToString:@"Forward"])
+			[me forwardCurrent];
+		else if ([what isEqualToString:@"Copy Caption"])
+			[me copyCaption];
+		else if ([what isEqualToString:@"Save to Camera Roll"])
+			[me saveCurrent];
+		else if ([what isEqualToString:@"Add to Downloads"])
+			[me addCurrentToDownloads];
+		else if ([what isEqualToString:@"File Info"])
+			[me showFileInfo];
+		else if ([what isEqualToString:@"Delete from Device"])
+			[me deleteCurrentFromDevice];
+		else if ([what isEqualToString:@"Sticker Packs..."])
+			[me showStickerPacksOfFile:[me currentFileId].integerValue];
+	}];
+}
+
+- (void)shareCurrent {
+	UIImage *image = self.originals[@(self.index)];
+	if (!image){
+		UIView *page = self.pages[@(self.index)];
+		image = [(UIImageView *)[page viewWithTag:kZoomTag + 1] image];
+	}
+	if (image){
+		[self presentShareItems:@[image]];
+		return;
+	}
+
+	NSNumber *fileId = [self currentFileId];
+	if (!fileId){
+		[self copyCaption];
+		return;
+	}
+	__weak typeof(self) weakSelf = self;
+	[[TGMediaStore shared] downloadFile:fileId.integerValue completion:^(NSString *path){
+		dispatch_async(dispatch_get_main_queue(), ^{
+			TGMediaViewer *me = weakSelf;
+			if (!me)
+				return;
+			if (!path.length){
+				[TGAlertSheet showMessage:@"The file is not downloaded yet."
+									  title:@"Share" inView:me.backdrop];
+				return;
+			}
+			[me presentShareItems:@[[NSURL fileURLWithPath:path]]];
+		});
+	}];
+}
+
+- (void)presentShareItems:(NSArray *)items {
+	UIViewController *top = [self hostController];
+	if (!top || !items.count)
+		return;
+	UIActivityViewController *share = [[UIActivityViewController alloc]
+			initWithActivityItems:items applicationActivities:nil];
+	if (UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPad &&
+		[share respondsToSelector:@selector(popoverPresentationController)]){
+		share.popoverPresentationController.sourceView = self.backdrop;
+		share.popoverPresentationController.sourceRect = CGRectMake(
+				TGHalf(self.backdrop.bounds.size.width),
+				TGHalf(self.backdrop.bounds.size.height), 0, 0);
+	}
+	[top presentViewController:share animated:YES completion:nil];
+}
+
+- (void)forwardCurrent {
+	NSDictionary *m = [self currentItem];
+	int64_t messageId = [m[@"id"] longLongValue];
+	int64_t fromChat = self.chatId;
+	if (!messageId || !fromChat){
+		[TGAlertSheet showMessage:@"This item cannot be forwarded from the viewer."
+							  title:@"Forward" inView:self.backdrop];
+		return;
+	}
+	UIViewController *top = [self hostController];
+	if (!top)
+		return;
+
+	TGForwardPicker *picker = [[TGForwardPicker alloc] init];
+	__weak typeof(self) weakSelf = self;
+	picker.onPicked = ^(int64_t toChatId){
+		if (!toChatId)
+			return;
+		[[TGClient shared] forwardMessages:@[@(messageId)]
+								  fromChat:fromChat toChat:toChatId];
+		TGMediaViewer *me = weakSelf;
+		UIView *host = me.backdrop ?: [UIApplication sharedApplication].keyWindow;
+		[TGSnackbar showInView:host text:@"Forwarded" seconds:2 onCommit:nil];
+	};
+	UINavigationController *nav = [[UINavigationController alloc]
+			initWithRootViewController:picker];
+	[top presentViewController:nav animated:YES completion:nil];
+}
+
+- (void)copyCaption {
+	NSString *caption = [self currentItem][@"text"];
+	if (!caption.length){
+		[TGAlertSheet showMessage:@"This item has no caption."
+							  title:@"Copy Caption" inView:self.backdrop];
+		return;
+	}
+	[UIPasteboard generalPasteboard].string = caption;
+	[TGSnackbar showInView:self.backdrop text:@"Caption copied" seconds:2 onCommit:nil];
+}
+
+- (void)addCurrentToDownloads {
+	NSNumber *fileId = [self currentFileId];
+	NSDictionary *m = [self currentItem];
+	if (!fileId || !m)
+		return;
+	[[TGClient shared] addFileToDownloads:fileId.integerValue
+								   inChat:self.chatId
+								  message:[m[@"id"] longLongValue]];
+	[TGSnackbar showInView:self.backdrop text:@"Added to Downloads" seconds:2
+				  onCommit:nil];
+}
+
+- (void)showFileInfo {
+	NSNumber *fileId = [self currentFileId];
+	if (!fileId)
+		return;
+	dispatch_async(dispatch_get_main_queue(), ^{
+		[TGFileInfoViewController presentForFile:fileId.integerValue
+										fromView:self.backdrop];
+	});
+}
+
+- (void)deleteCurrentFromDevice {
+	NSNumber *fileId = [self currentFileId];
+	if (!fileId)
+		return;
+	[[TGClient shared] deleteLocalFile:fileId.integerValue];
+	[TGSnackbar showInView:self.backdrop text:@"Deleted from this device"
+					 seconds:2 onCommit:nil];
+}
+
 #pragma mark - saving
 
 /// The flattened message on screen, or nil past the ends of the album.
@@ -1036,6 +1328,30 @@ static const CGFloat kThumbStripH   = 54.0f;
 }
 
 - (void)saveCurrent {
+	NSDictionary *item = [self currentItem];
+	BOOL isVideo = [item[@"kind"] isEqualToString:@"messageVideo"];
+	if (isVideo){
+		NSNumber *fileId = [self currentFileId];
+		if (!fileId)
+			return;
+		__weak typeof(self) weakSelf = self;
+		[[TGMediaStore shared] downloadFile:fileId.integerValue completion:^(NSString *path){
+			dispatch_async(dispatch_get_main_queue(), ^{
+				TGMediaViewer *me = weakSelf;
+				if (!me)
+					return;
+				if (!path.length){
+					[TGAlertSheet showMessage:@"The video is not downloaded yet."
+										  title:@"Save" inView:me.backdrop];
+					return;
+				}
+				UISaveVideoAtPathToSavedPhotosAlbum(path, me,
+						@selector(video:didFinishSavingWithError:contextInfo:), NULL);
+			});
+		}];
+		return;
+	}
+
 	UIImage *image = self.originals[@(self.index)];
 	if (!image){
 		UIView *page = self.pages[@(self.index)];
@@ -1045,6 +1361,13 @@ static const CGFloat kThumbStripH   = 54.0f;
 		return;
 	UIImageWriteToSavedPhotosAlbum(image, self,
 			@selector(image:didFinishSavingWithError:contextInfo:), NULL);
+}
+
+- (void)video:(NSString *)path didFinishSavingWithError:(NSError *)error
+   contextInfo:(void *)contextInfo {
+	[TGAlertSheet showMessage:(error ? @"Could not save" : @"Saved to Camera Roll")
+						title:nil
+					   inView:(self.backdrop ?: [UIApplication sharedApplication].keyWindow)];
 }
 
 - (void)image:(UIImage *)image didFinishSavingWithError:(NSError *)error

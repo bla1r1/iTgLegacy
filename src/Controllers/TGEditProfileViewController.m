@@ -18,7 +18,6 @@ static const CGFloat kFieldWidth = 290.0f;
 		UIImagePickerControllerDelegate, UINavigationControllerDelegate>
 @property (nonatomic, strong) UITextField *firstField;
 @property (nonatomic, strong) UITextField *lastField;
-@property (nonatomic, strong) UITextField *usernameField;
 @property (nonatomic, strong) UITextField *bioField;
 @property (nonatomic, strong) UIImageView *photoView;
 @property (nonatomic, assign) NSInteger birthDay;
@@ -49,10 +48,7 @@ static const CGFloat kFieldWidth = 290.0f;
 
 	NSDictionary *me = [TGClient shared].me;
 	self.firstField    = [self fieldWithPlaceholder:@"First name" text:me[@"first_name"]];
-	self.lastField     = [self fieldWithPlaceholder:@"Last name"  text:me[@"last_name"]];
-	self.usernameField = [self fieldWithPlaceholder:@"username"   text:me[@"username"]];
-	self.usernameField.autocapitalizationType = UITextAutocapitalizationTypeNone;
-	self.usernameField.autocorrectionType = UITextAutocorrectionTypeNo;
+	self.lastField     = [self fieldWithPlaceholder:@"Last name (optional)" text:me[@"last_name"]];
 	self.bioField      = [self fieldWithPlaceholder:@"A few words about you" text:nil];
 
 	__weak typeof(self) weakSelf = self;
@@ -95,7 +91,7 @@ static const CGFloat kFieldWidth = 290.0f;
 }
 
 - (void)updateFieldAppearances {
-	NSArray *fields = @[self.firstField, self.lastField, self.usernameField, self.bioField];
+	NSArray *fields = @[self.firstField, self.lastField, self.bioField];
 	UIKeyboardAppearance kb = UIKeyboardAppearanceDefault;
 	for (UITextField *f in fields) {
 		if (!f) continue;
@@ -103,8 +99,7 @@ static const CGFloat kFieldWidth = 290.0f;
 		f.keyboardAppearance = kb;
 	}
 	[self setPlaceholder:@"First name" on:self.firstField];
-	[self setPlaceholder:@"Last name" on:self.lastField];
-	[self setPlaceholder:@"username" on:self.usernameField];
+	[self setPlaceholder:@"Last name (optional)" on:self.lastField];
 	[self setPlaceholder:@"A few words about you" on:self.bioField];
 }
 
@@ -150,19 +145,9 @@ static const CGFloat kFieldWidth = 290.0f;
 									month:self.birthMonth
 									 year:self.birthYear];
 
-	NSString *username = [self.usernameField.text
-			stringByReplacingOccurrencesOfString:@"@" withString:@""];
-	NSDictionary *me = [TGClient shared].me;
-	if (![username isEqualToString:me[@"username"] ?: @""]){
-		// A username can be taken, which is the one failure worth reporting.
-		[[TGClient shared] setUsername:username completion:^(BOOL ok){
-			if (!ok){
-				[TGAlertSheet showMessage:@"That username is not available."
-									title:@"Username"
-								   inView:[UIApplication sharedApplication].keyWindow];
-			}
-		}];
-	}
+	// The username is not a field on this screen: it has its own list, with
+	// the switches and order Telegram keeps. Saving here must not overwrite
+	// that with a hidden copy of one of the names.
 	[self.navigationController popViewControllerAnimated:YES];
 }
 
@@ -178,8 +163,7 @@ static const CGFloat kFieldWidth = 290.0f;
 	[[TGTheme shared] styleNavigationBar:self.navigationController.navigationBar];
 	[self applyTheme];
 	// The fields are built once and outlive a theme change.
-	for (UITextField *field in @[self.firstField, self.lastField,
-								 self.usernameField, self.bioField]){
+	for (UITextField *field in @[self.firstField, self.lastField, self.bioField]){
 		field.textColor = [[TGTheme shared] primaryTextColour];
 		[self setPlaceholder:field.attributedPlaceholder.string ?: field.placeholder
 						  on:field];

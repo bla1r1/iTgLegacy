@@ -99,6 +99,26 @@ static const CGFloat   kStoryGridGap   = TGMetricCollageGap;
 
 /// The description the group profile's details section reads.
 @property (nonatomic, copy) NSString *chatDescription;
+/// A group's total member count. The member list is capped at what Telegram
+/// returned first, so the header cannot count the rows.
+@property (nonatomic, assign) NSInteger memberCount;
+/// "owner", "admin", "member" or nil while getChatMember is still running.
+/// Used for the same gating Group Settings does: only an administrator's
+/// menu offers adding people or deleting the group.
+@property (nonatomic, copy) NSString *myStatus;
+@property (nonatomic, strong) NSDictionary *myRights;
+@property (nonatomic, assign) BOOL canManage;
+@property (nonatomic, assign) BOOL canInvite;
+@property (nonatomic, assign) BOOL isGroup;
+@property (nonatomic, assign) BOOL isChannel;
+@property (nonatomic, strong) NSDictionary *chatPermissions;
+/// The invite link the info card and menu copy; kept apart from the rows so
+/// a reload can name it without rebuilding the card.
+@property (nonatomic, copy) NSString *inviteLink;
+
+- (void)loadOwnRole;
+- (void)updateGroupStatus;
+- (BOOL)isOwner;
 
 @end
 
@@ -108,6 +128,8 @@ static const CGFloat   kStoryGridGap   = TGMetricCollageGap;
 - (void)actionTileTapped:(UIButton *)tile;
 - (void)showMoreMenuFrom:(UIView *)tile;
 - (void)runMoreAction:(NSString *)title;
+- (void)addMemberTapped;
+- (void)messageTapped;
 
 @end
 

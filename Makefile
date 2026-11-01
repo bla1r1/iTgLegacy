@@ -281,6 +281,7 @@ APP_SRC_M := \
 	src/Controllers/TGChatListViewController+Actions.m \
 	src/Controllers/TGChatListViewController+Search.m \
 	src/Views/TGChatCell.m \
+	src/Views/TGChatListRowGeometry.m \
 	src/Views/TGStoriesCell.m \
 	src/Views/TGEmojiData.m \
 	src/Views/TGEmojiPanel.m \

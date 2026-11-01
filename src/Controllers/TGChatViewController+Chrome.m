@@ -71,7 +71,7 @@ static NSString *TGDayTitle(NSTimeInterval stamp) {
 		}
 		if (self.unreadFromId && [m[@"id"] longLongValue] == self.unreadFromId)
 			[out addObject:@{@"service" : @YES, @"separator" : @"unread",
-							 @"text" : @"Unread Messages", @"date" : m[@"date"] ?: @0}];
+							 @"text" : @"Unread messages", @"date" : m[@"date"] ?: @0}];
 		[out addObject:m];
 	}
 	return out;

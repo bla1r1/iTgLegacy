@@ -9,12 +9,24 @@
 #import "TGStoryViewerViewController.h"
 #import "TGStoryComposerViewController.h"
 #import "TGStoriesMenuViewController.h"
+#import "TGChatListRowGeometry.h"
 
 // Height of the folder pill strip above the chat list (official-style tabs).
 static const CGFloat kFolderTabRow = TGMetricFolderTabRow;
 /// The mute and pin marks on a row are drawn at this side and then fitted into
 /// the smaller box the cell gives them, which is what keeps their strokes even.
 static const CGFloat kRowGlyph     = 28.0f;
+/// The title view's box: the name, then the connection line under it. 200 pt
+/// is the chat header's width on the same 320 pt bar, so neither nav button
+/// loses its target to a long folder name.
+static const CGFloat kListTitleWidth  = 200.0f;
+static const CGFloat kListTitleHeight = TGMetricRow;
+/// The archive pill's tag, outside the folder indexes (100 + slot).
+static const NSInteger kFolderArchiveTag = 1000;
+/// A folder pill's side padding, its widest form and the gap to the next pill.
+static const CGFloat kFolderPillPad = 26.0f;
+static const CGFloat kFolderPillMax = 150.0f;
+static const CGFloat kFolderPillGap = 6.0f;
 
 @implementation TGChatListViewController
 
@@ -96,6 +108,8 @@ static NSDictionary *TGChatSnapshotRow(NSDictionary *chat) {
 	[super viewDidLoad];
 
 	self.title = self.showsArchive ? @"Archived" : @"Chats";
+	[self buildListTitleView];
+	[self refreshListTitleView];
 	// The last list is drawn before TDLib answers, so a cold start is the
 	// previous conversation list rather than a blank screen.
 	self.cachedChats = (self.showsArchive || self.folderId != 0)
@@ -139,6 +153,7 @@ static NSDictionary *TGChatSnapshotRow(NSDictionary *chat) {
 		weakSelf.tableView.separatorColor = [[TGTheme shared] separatorColour];
 		[[TGTheme shared] styleTabBar:weakSelf.tabBarController.tabBar];
 		[weakSelf styleSearchBar];
+		[weakSelf refreshListTitleView];
 		[weakSelf rebuildTableHeader];
 		[weakSelf.tableView reloadData];
 	}];
@@ -156,17 +171,70 @@ static NSDictionary *TGChatSnapshotRow(NSDictionary *chat) {
 		[weakSelf.tableView reloadData];
 	};
 	[TGClient shared].onConnectionState = ^(TGConnectionState state, NSString *text){
-		NSString *line = TGNetworkSubtitleForState((NSInteger)state, text);
-		// The list title reads "Chats"/"Archived"/the folder while the
-		// connection is fine; the network names it otherwise. Before, READY
-		// reset the title to "Chats" and a chosen folder got erased (B4).
-		// The strip banner the states once drew over the rows is gone: the
-		// nav-bar title carries the state in the chat list and the open
-		// chat's header says its own line, the way the original Telegram
-		// coloured it - no strip over real rows.
-		weakSelf.title = line ?: [weakSelf titleForCurrentList];
+		// The list keeps its name; the network line is the second line of the
+		// title view. Replacing the title took a chosen folder away on every
+		// reconnect (B4), and the state is not what the screen is.
+		weakSelf.connectionLine = TGNetworkSubtitleForState((NSInteger)state, text);
+		[weakSelf refreshListTitleView];
 	};
 	[self reload];
+}
+
+/// The two lines at the top of the list. The name is always there; the
+/// connection line appears under it only while TDLib is not ready, the way the
+/// official client keeps "Chats" and breathes "Connecting..." beneath it.
+- (void)buildListTitleView {
+	UIView *box = [[UIView alloc] initWithFrame:CGRectMake(TGMetricZero, TGMetricZero,
+			kListTitleWidth, kListTitleHeight)];
+	box.backgroundColor = [UIColor clearColor];
+
+	UILabel *name = [[UILabel alloc] initWithFrame:CGRectMake(TGMetricZero,
+			TGMetricBorderWidth, kListTitleWidth, TGMetricLineRow)];
+	name.font = TGFontHeader();
+	name.textColor = [[TGTheme shared] barTitleColour];
+	name.backgroundColor = [UIColor clearColor];
+	name.textAlignment = NSTextAlignmentCenter;
+	name.lineBreakMode = NSLineBreakByTruncatingTail;
+	name.shadowColor = [[TGTheme shared] navBarTextShadowColour];
+	name.shadowOffset = TGMetricShadowOffsetNav;
+	[box addSubview:name];
+
+	UILabel *subtitle = [[UILabel alloc] initWithFrame:CGRectMake(TGMetricZero,
+			TGMetricBorderWidth + TGMetricLineRow, kListTitleWidth,
+			TGMetricLineMicro)];
+	subtitle.font = TGFontMeta();
+	subtitle.textColor = [[TGTheme shared] barSubtitleColour];
+	subtitle.backgroundColor = [UIColor clearColor];
+	subtitle.textAlignment = NSTextAlignmentCenter;
+	subtitle.lineBreakMode = NSLineBreakByTruncatingTail;
+	subtitle.hidden = YES;
+	[box addSubview:subtitle];
+
+	self.listTitleView = box;
+	self.listTitleLabel = name;
+	self.listSubtitleLabel = subtitle;
+	self.navigationItem.titleView = box;
+}
+
+- (void)refreshListTitleView {
+	if (!self.listTitleView)
+		[self buildListTitleView];
+
+	NSString *name = [self titleForCurrentList];
+	BOOL hasLine = self.connectionLine.length > 0;
+	self.title = name;
+	self.listTitleLabel.text = name;
+	self.listSubtitleLabel.text = hasLine ? self.connectionLine : @"";
+	self.listSubtitleLabel.hidden = !hasLine;
+	// One line centres itself in the bar; two share it, the name on top and
+	// the network beneath, which is the same stack the chat header uses.
+	self.listTitleLabel.frame = CGRectMake(TGMetricZero,
+			hasLine ? TGMetricBorderWidth : TGCenteredOrigin(kListTitleHeight,
+					TGMetricLineRow),
+			kListTitleWidth, TGMetricLineRow);
+	self.listTitleLabel.textColor = [[TGTheme shared] barTitleColour];
+	self.listTitleLabel.shadowColor = [[TGTheme shared] navBarTextShadowColour];
+	self.listSubtitleLabel.textColor = [[TGTheme shared] barSubtitleColour];
 }
 
 /// A horizontal strip of folder pills, the way the official clients show
@@ -187,14 +255,14 @@ static NSDictionary *TGChatSnapshotRow(NSDictionary *chat) {
 		if (i > 0)
 			title = [folders[i - 1] isKindOfClass:NSDictionary.class]
 					? folders[i - 1][@"title"] : nil;
-		NSString *label = (i == 0) ? @"All chats" : nil;
+		NSString *label = (i == 0) ? @"All" : nil;
 		if (!label)
 			label = [title isKindOfClass:NSString.class] && title.length
 					? title : @"Folder";
 		BOOL active = (i == 0 && self.folderId == 0) ||
 				(i > 0 && [folders[i - 1] isKindOfClass:NSDictionary.class] &&
 				 [folders[i - 1][@"id"] integerValue] == self.folderId);
-		CGFloat w = MIN([label sizeWithFont:font].width + 26, 150);
+		CGFloat w = MIN([label sizeWithFont:font].width + kFolderPillPad, kFolderPillMax);
 		UIButton *pill = [UIButton buttonWithType:UIButtonTypeCustom];
 		// One expression for the height, used again for the radius below: a
 		// capsule is half of whatever this comes to.
@@ -229,15 +297,44 @@ static NSDictionary *TGChatSnapshotRow(NSDictionary *chat) {
 			[pill addGestureRecognizer:drag];
 		}
 		[strip addSubview:pill];
-		x += w + 6;
+		x += w + kFolderPillGap;
+	}
+
+	// The archive is a list too, and the strip is where the folders are
+	// switched; leaving it out meant a small account had no archive at all
+	// until the list grew past the point that used to reveal the strip.
+	if ([TGClient shared].archivedChats.count > 0){
+		NSString *label = @"Archived";
+		CGFloat w = MIN([label sizeWithFont:font].width + kFolderPillPad, kFolderPillMax);
+		UIButton *pill = [UIButton buttonWithType:UIButtonTypeCustom];
+		CGFloat pillHeight = kFolderTabRow - TGDoubled(TGMetricFolderPillInset);
+		pill.frame = CGRectMake(x, TGMetricFolderPillInset, w, pillHeight);
+		pill.tag = kFolderArchiveTag;
+		[pill setTitle:label forState:UIControlStateNormal];
+		pill.titleLabel.font = font;
+		pill.titleLabel.lineBreakMode = NSLineBreakByTruncatingTail;
+		pill.layer.cornerRadius = TGHalf(pillHeight);
+		[pill setBackgroundColor:[[TGTheme shared] cardBackgroundColour]];
+		[pill setTitleColor:[[TGTheme shared] primaryTextColour]
+				   forState:UIControlStateNormal];
+		pill.layer.borderWidth = TGMetricHairline;
+		pill.layer.borderColor = [[TGTheme shared] separatorColour].CGColor;
+		[pill addTarget:self action:@selector(folderTabTapped:)
+			  forControlEvents:UIControlEventTouchUpInside];
+		[strip addSubview:pill];
+		x += w + kFolderPillGap;
 	}
 
 	strip.contentSize = CGSizeMake(x, kFolderTabRow);
 }
 
-/// The rightmost pill (index folders.count + 1) opens the archive; every
-/// other index is a regular folder switch.
+/// The archive pill carries a tag outside the folder indexes, so it never
+/// goes through runFolderChoice:; every other index is a regular switch.
 - (void)folderTabTapped:(UIButton *)pill {
+	if (pill.tag == kFolderArchiveTag){
+		[self openArchive];
+		return;
+	}
 	NSLog(@"TGClient: B3 pill tag=%ld folders=%lu", (long)pill.tag,
 			(unsigned long)[TGClient shared].folders.count);
 	[self runFolderChoice:pill.tag - 100];
@@ -762,8 +859,8 @@ static NSDictionary *TGChatSnapshotRow(NSDictionary *chat) {
 		if (!self.emptyView) {
 			self.emptyView = [TGEmptyView emptyViewWithFrame:self.view.bounds
 			                                           image:[TGIcons emptyChatsIllustration]
-			                                           title:@"No Conversations"
-			                                        subtitle:@"Tap the compose button to start\nmessaging your friends and channels."
+			                                           title:@"No chats yet"
+			                                        subtitle:@"Start a conversation, join a group,\nor follow a channel."
 			                                     buttonTitle:@"Start Messaging"
 			                                          target:self
 			                                          action:@selector(composeTapped)];
@@ -785,7 +882,7 @@ static NSDictionary *TGChatSnapshotRow(NSDictionary *chat) {
 	if (self.searchResults || self.showsArchive || self.folderId != 0)
 		return @[];
 	NSMutableArray *rows = [NSMutableArray arrayWithObject:@"stories"];
-	if ([TGClient shared].archivedChats.count > 0 && self.chats.count > 9)
+	if ([TGClient shared].archivedChats.count > 0)
 		[rows addObject:@"archive"];
 	return rows;
 }
@@ -1102,9 +1199,9 @@ static NSString *TGChatDate(NSTimeInterval unix) {
 		}
 		BOOL isArchive = [header[indexPath.row] isEqualToString:@"archive"];
 		cell.titleLabel.text = isArchive ? @"Archived Chats" : @"Saved Messages";
+		NSUInteger archived = [TGClient shared].archivedChats.count;
 		cell.previewLabel.text = isArchive
-				? [NSString stringWithFormat:@"%lu chats",
-						(unsigned long)[TGClient shared].archivedChats.count]
+				? TGChatListArchiveSubtitle(archived)
 				: @"Your own notes and forwards";
 		cell.dateLabel.text = @"";
 		cell.badge.hidden = YES;
@@ -1157,7 +1254,9 @@ static NSString *TGChatDate(NSTimeInterval unix) {
 	NSInteger mentions = [c[@"unreadMentions"] integerValue];
 	BOOL anyBadge = unread > 0 || mentions > 0;
 	cell.badge.hidden = !anyBadge;
-	cell.pin.hidden = !([c[@"isPinned"] boolValue] && !anyBadge);
+	// The pin is not a place-holder for the badge: a pinned chat that is also
+	// unread shows both, the count at the edge and the pin beside it.
+	cell.pin.hidden = ![c[@"isPinned"] boolValue];
 	if (!cell.pin.hidden)
 		cell.pin.image = [TGIcons glyphNamed:@"pin" colour:[theme listDateColour]
 									  side:kRowGlyph];

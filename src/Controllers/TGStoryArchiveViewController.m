@@ -106,6 +106,13 @@
 	[[TGTheme shared] styleCell:cell];
 	cell.imageView.image = nil;
 	if (indexPath.row >= (NSInteger)self.stories.count){
+		if (!self.stories.count && !self.loading){
+			cell.textLabel.text = @"No archived stories";
+			cell.detailTextLabel.text = @"Stories that expire and are archived appear here.";
+			cell.accessoryType = UITableViewCellAccessoryNone;
+			cell.selectionStyle = UITableViewCellSelectionStyleNone;
+			return cell;
+		}
 		cell.textLabel.text = self.loading ? @"Loading…" : @"Load More";
 		cell.detailTextLabel.text = nil;
 		cell.accessoryType = UITableViewCellAccessoryNone;
@@ -146,6 +153,8 @@
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
 	[tableView deselectRowAtIndexPath:indexPath animated:YES];
 	if (indexPath.row >= (NSInteger)self.stories.count){
+		if (!self.stories.count && !self.loading)
+			return;
 		[self loadMore];
 		return;
 	}

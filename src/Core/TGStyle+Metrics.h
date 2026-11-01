@@ -138,6 +138,23 @@ static const CGFloat TGMetricViewerBottomBar    = 62.0f;
 static const CGFloat TGMetricViewerTitleSide       = 70.0f;
 static const CGFloat TGMetricViewerCaptionMarginRight = 88.0f;
 static const CGFloat TGMetricViewerScrubberMarginRight = 104.0f;
+/// The author's round picture in the viewer's header, beside their name.
+static const CGFloat TGMetricViewerAvatarSide   = 28.0f;
+static const CGFloat TGMetricViewerHeaderGap    = 8.0f;
+static const CGFloat TGMetricViewerHeaderIcon   = 32.0f;
+
+/// Search's scope row: All, Chats, Messages, Media, Links, Files, Music, Voice.
+static const CGFloat TGMetricSearchScopeRow     = 42.0f;
+static const CGFloat TGMetricSearchScopeHeight  = 28.0f;
+static const CGFloat TGMetricSearchScopeGap     = 6.0f;
+
+/// The file sheet's icon and its hero block.
+static const CGFloat TGMetricFileInfoIcon       = 52.0f;
+static const CGFloat TGMetricFileInfoHero       = 96.0f;
+
+/// A sticker preview square in a pack's grid.
+static const CGFloat TGMetricStickerPreviewCell = 72.0f;
+static const CGFloat TGMetricStickerPreviewGap  = 6.0f;
 static const CGFloat TGMetricEmojiPanelHeight   = 216.0f;
 static const CGFloat TGMetricEmojiStripHeight   = 38.0f;
 static const CGFloat TGMetricEmojiTabsHeight    = 36.0f;
@@ -172,6 +189,13 @@ static const CGFloat TGMetricStoryProgressHeight = 3.0f;
 static const CGFloat TGMetricStoryProgressGap    = 3.0f;
 static const CGFloat TGMetricStoryCloseSide      = 32.0f;
 static const CGFloat TGMetricStoryCloseInset     = 10.0f;
+/// The author's round picture in the viewer's header.
+static const CGFloat TGMetricStoryHeaderAvatar   = 34.0f;
+static const CGFloat TGMetricStoryHeaderGap      = 8.0f;
+/// The two shades that keep the white header and caption readable on a bright
+/// story. They are gradients, not plates, as Telegram's viewer has them.
+static const CGFloat TGMetricStoryShadeTop       = 118.0f;
+static const CGFloat TGMetricStoryShadeBottom    = 190.0f;
 static const CGFloat TGMetricStoryReactionRow    = 44.0f;
 static const CGFloat TGMetricStoryReactionButton = 36.0f;
 static const CGFloat TGMetricStoryReactionGap    = 6.0f;

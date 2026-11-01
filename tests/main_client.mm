@@ -44,6 +44,7 @@
 #import "TGP1MigrationTests.mm"
 #import "TGStickerBudgetTests.m"
 #import "TGStickerImageTests.m"
+#import "TGChatListRowGeometryTests.m"
 #import "TGClientMessagesFunctionsTests.m"
 
 int main(int argc, char *argv[]) {

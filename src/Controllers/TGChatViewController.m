@@ -36,6 +36,10 @@
 #import "TGStyle.h"
 #import "TGAlertSheet.h"
 
+/// The pin in the strip under the bar, and where its two lines begin after it.
+static const CGFloat kPinnedGlyph = 14.0f;
+static const CGFloat kPinnedTextX = TGMetricPadLarge + kPinnedGlyph + TGMetricPadSmall;
+
 #pragma mark - controller
 
 @implementation TGChatViewController
@@ -1120,7 +1124,7 @@
 	self.pinnedBannerHair = nil;
 
 	UIEdgeInsets insets = self.table.contentInset;
-	insets.top = MAX(0, insets.top - 34);
+	insets.top = MAX(0, insets.top - kPinnedBanner);
 	self.table.contentInset = insets;
 	self.table.scrollIndicatorInsets = insets;
 }
@@ -1140,16 +1144,27 @@
 	stripe.backgroundColor = [theme accentColour];
 	[banner addSubview:stripe];
 
-	UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(TGMetricPadLarge, TGMetricPadTiny,
-			b.size.width - TGMetricPinnedBannerTextPadRight, TGMetricLineMicro)];
+	// The pin says what the strip is before the words are read: the mark the
+	// held-message menu uses for Pin. Without it the strip read like a reply
+	// banner that had lost its author.
+	UIImageView *pin = [[UIImageView alloc] initWithFrame:CGRectMake(
+			TGMetricPadLarge, TGCenteredOrigin(kPinnedBanner, kPinnedGlyph),
+			kPinnedGlyph, kPinnedGlyph)];
+	pin.image = [TGIcons glyphNamed:@"pin" colour:[theme accentColour]
+							  side:kPinnedGlyph];
+	pin.contentMode = UIViewContentModeCenter;
+	[banner addSubview:pin];
+
+	UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(kPinnedTextX, TGMetricPadTiny,
+			b.size.width - kPinnedTextX - TGMetricPad, TGMetricLineMicro)];
 	label.text = @"Pinned message";
 	label.font = TGFontMicroStrong();
 	label.textColor = [theme accentColour];
 	label.backgroundColor = [UIColor clearColor];
 	[banner addSubview:label];
 
-	UILabel *body = [[UILabel alloc] initWithFrame:CGRectMake(TGMetricPadLarge, TGMetricPadTiny + TGMetricLineMicro,
-			b.size.width - TGMetricPinnedBannerTextPadRight, TGMetricLineCaption)];
+	UILabel *body = [[UILabel alloc] initWithFrame:CGRectMake(kPinnedTextX, TGMetricPadTiny + TGMetricLineMicro,
+			b.size.width - kPinnedTextX - TGMetricPad, TGMetricLineCaption)];
 	body.text = text;
 	body.font = TGFontCaption();
 	body.textColor = [theme primaryTextColour];
@@ -1177,7 +1192,7 @@
 
 	// Push the message list down so the banner does not cover the first row.
 	UIEdgeInsets insets = self.table.contentInset;
-	insets.top += 34;
+	insets.top += kPinnedBanner;
 	self.table.contentInset = insets;
 	self.table.scrollIndicatorInsets = insets;
 }

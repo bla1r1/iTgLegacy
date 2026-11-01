@@ -152,8 +152,8 @@
 				completion:(void (^)(BOOL ok))completion;
 
 /// Every profile photo an account still has, oldest never first: each row
-/// carries "photoId" (what deleteProfilePhoto answers to) and "fileId" (the
-/// small file to download).
+/// carries "photoId" (what deleteProfilePhoto answers to), "fileId" (the
+/// small file to download) and "date" (when the photo was added).
 - (void)userProfilePhotos:(int64_t)userId
 			   completion:(void (^)(NSArray *photos))completion;
 

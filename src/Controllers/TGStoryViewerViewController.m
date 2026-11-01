@@ -19,6 +19,21 @@ static const NSTimeInterval kStoryStillSeconds = 5.0;
 static const NSTimeInterval kStoryTick = 0.05;
 static const NSInteger kStoryReactionChoices = 6;
 
+/// A story's timestamp as the header says it: seconds, minutes or hours ago.
+/// Telegram uses the short form because the header has one line for it.
+static NSString *TGStoryRelativeTime(NSTimeInterval timestamp) {
+	if (timestamp <= 0)
+		return @"";
+	NSTimeInterval age = [[NSDate date] timeIntervalSince1970] - timestamp;
+	if (age < 60)
+		return @"now";
+	if (age < 3600)
+		return [NSString stringWithFormat:@"%ldm", (long)(age / 60)];
+	if (age < 86400)
+		return [NSString stringWithFormat:@"%ldh", (long)(age / 3600)];
+	return [NSString stringWithFormat:@"%ldd", (long)(age / 86400)];
+}
+
 @interface TGStoryViewerViewController () <UIGestureRecognizerDelegate>
 @property (nonatomic, assign) int64_t chatId;
 @property (nonatomic, copy) NSString *storyTitle;
@@ -28,9 +43,14 @@ static const NSInteger kStoryReactionChoices = 6;
 @property (nonatomic, strong) UIView *progressHost;
 @property (nonatomic, strong) NSMutableArray *progressFills;
 @property (nonatomic, strong) UIImageView *picture;
+@property (nonatomic, strong) UIView *topShade;
+@property (nonatomic, strong) UIView *bottomShade;
 @property (nonatomic, strong) AVPlayer *player;
 @property (nonatomic, strong) AVPlayerLayer *playerLayer;
 @property (nonatomic, strong) UILabel *senderLabel;
+@property (nonatomic, strong) UILabel *timeLabel;
+@property (nonatomic, strong) UIImageView *authorAvatar;
+@property (nonatomic, strong) UIButton *infoButton;
 @property (nonatomic, strong) UILabel *captionLabel;
 @property (nonatomic, strong) UILabel *infoLabel;
 @property (nonatomic, strong) UIView *reactionRail;
@@ -38,6 +58,7 @@ static const NSInteger kStoryReactionChoices = 6;
 @property (nonatomic, assign) NSTimeInterval elapsed;
 @property (nonatomic, assign) NSTimeInterval duration;
 @property (nonatomic, assign) BOOL paused;
+@property (nonatomic, assign) CGPoint dragStart;
 @property (nonatomic, strong) NSArray *reactionEmojis;
 @property (nonatomic, assign) BOOL closed;
 @end
@@ -72,6 +93,11 @@ static const NSInteger kStoryReactionChoices = 6;
 	_picture.backgroundColor = [UIColor clearColor];
 	[self.view addSubview:_picture];
 
+	_topShade = [self shadeViewFromTop:YES];
+	_bottomShade = [self shadeViewFromTop:NO];
+	[self.view addSubview:_topShade];
+	[self.view addSubview:_bottomShade];
+
 	_progressHost = [[UIView alloc] initWithFrame:CGRectZero];
 	_progressHost.backgroundColor = [UIColor clearColor];
 	[self.view addSubview:_progressHost];
@@ -80,7 +106,21 @@ static const NSInteger kStoryReactionChoices = 6;
 	_senderLabel.font = TGFontSubheadStrong();
 	_senderLabel.textColor = [UIColor whiteColor];
 	_senderLabel.backgroundColor = [UIColor clearColor];
+	_senderLabel.lineBreakMode = NSLineBreakByTruncatingTail;
 	[self.view addSubview:_senderLabel];
+
+	_timeLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+	_timeLabel.font = TGFontMicro();
+	_timeLabel.textColor = [[TGTheme shared] secondaryTextColour];
+	_timeLabel.backgroundColor = [UIColor clearColor];
+	[self.view addSubview:_timeLabel];
+
+	_authorAvatar = [[UIImageView alloc] initWithFrame:CGRectZero];
+	_authorAvatar.contentMode = UIViewContentModeScaleAspectFill;
+	_authorAvatar.clipsToBounds = YES;
+	_authorAvatar.layer.cornerRadius = TGHalf(TGMetricStoryHeaderAvatar);
+	_authorAvatar.backgroundColor = [[TGTheme shared] fileTileColour];
+	[self.view addSubview:_authorAvatar];
 
 	_captionLabel = [[UILabel alloc] initWithFrame:CGRectZero];
 	_captionLabel.font = TGFontBody();
@@ -113,6 +153,20 @@ static const NSInteger kStoryReactionChoices = 6;
 	[self.view addSubview:menu];
 	menu.tag = 9002;
 
+	// The views line under the picture is a button: it is where the viewer
+	// list and the story's counters live, and Telegram makes it open them.
+	_infoButton = [UIButton buttonWithType:UIButtonTypeCustom];
+	_infoButton.backgroundColor = [UIColor clearColor];
+	[_infoButton addTarget:self action:@selector(openInfo)
+		  forControlEvents:UIControlEventTouchUpInside];
+	[self.view addSubview:_infoButton];
+
+	// A flick down puts the story away and goes back where it came from.
+	UIPanGestureRecognizer *drag = [[UIPanGestureRecognizer alloc]
+			initWithTarget:self action:@selector(storyDragged:)];
+	drag.delegate = self;
+	[self.view addGestureRecognizer:drag];
+
 	UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc]
 			initWithTarget:self action:@selector(tapAt:)];
 	tap.delegate = self;
@@ -125,9 +179,31 @@ static const NSInteger kStoryReactionChoices = 6;
 
 	[self.view bringSubviewToFront:close];
 	[self.view bringSubviewToFront:menu];
+	[self.view bringSubviewToFront:_infoButton];
 
 	[self loadReactions];
 	[self showCurrentStory];
+}
+
+- (UIView *)shadeViewFromTop:(BOOL)top {
+	UIView *view = [[UIView alloc] initWithFrame:CGRectZero];
+	view.userInteractionEnabled = NO;
+	view.backgroundColor = [UIColor clearColor];
+	CAGradientLayer *gradient = [CAGradientLayer layer];
+	gradient.colors = @[(id)[[TGTheme shared] scrimColour].CGColor,
+						(id)[UIColor clearColor].CGColor];
+	gradient.startPoint = CGPointMake(0.5,
+									  top ? TGMetricZero : TGMetricScaleFull);
+	gradient.endPoint = CGPointMake(0.5,
+									top ? TGMetricScaleFull : TGMetricZero);
+	[view.layer addSublayer:gradient];
+	return view;
+}
+
+- (void)layoutShade:(UIView *)shade {
+	for (CALayer *layer in shade.layer.sublayers)
+		if ([layer isKindOfClass:CAGradientLayer.class])
+			layer.frame = shade.bounds;
 }
 
 - (void)viewWillLayoutSubviews {
@@ -135,6 +211,11 @@ static const NSInteger kStoryReactionChoices = 6;
 	CGFloat width = self.view.bounds.size.width;
 	CGFloat height = self.view.bounds.size.height;
 	_picture.frame = self.view.bounds;
+	self.topShade.frame = CGRectMake(0, 0, width, TGMetricStoryShadeTop);
+	self.bottomShade.frame = CGRectMake(0, height - TGMetricStoryShadeBottom,
+										width, TGMetricStoryShadeBottom);
+	[self layoutShade:self.topShade];
+	[self layoutShade:self.bottomShade];
 	if (_playerLayer)
 		_playerLayer.frame = _picture.bounds;
 
@@ -145,22 +226,34 @@ static const NSInteger kStoryReactionChoices = 6;
 			TGMetricStoryProgressHeight);
 	UIView *close = [self.view viewWithTag:9001];
 	UIView *menu = [self.view viewWithTag:9002];
+	CGFloat headerY = top + TGMetricStoryProgressHeight + TGMetricPadSmall;
 	if (close)
-		close.frame = CGRectMake(side, top + TGMetricStoryProgressHeight +
-				TGMetricPadSmall, TGMetricStoryCloseSide, TGMetricStoryCloseSide);
+		close.frame = CGRectMake(width - side - TGMetricStoryCloseSide, headerY,
+								 TGMetricStoryCloseSide, TGMetricStoryCloseSide);
 	if (menu)
-		menu.frame = CGRectMake(width - side,
-								top + TGMetricStoryProgressHeight + TGMetricPadSmall,
-								TGMetricStoryCloseSide, TGMetricStoryCloseSide);
-	_senderLabel.frame = CGRectMake(side, top + TGMetricStoryProgressHeight +
-			TGMetricStoryViewerNameTop, width - TGDoubled(side),
+		menu.frame = CGRectMake(CGRectGetMinX(close.frame) -
+								TGMetricStoryHeaderGap - TGMetricStoryCloseSide,
+								headerY, TGMetricStoryCloseSide,
+								TGMetricStoryCloseSide);
+	_authorAvatar.frame = CGRectMake(side,
+			headerY + TGCenteredOrigin(TGMetricStoryCloseSide,
+									   TGMetricStoryHeaderAvatar),
+			TGMetricStoryHeaderAvatar, TGMetricStoryHeaderAvatar);
+	CGFloat nameX = CGRectGetMaxX(_authorAvatar.frame) + TGMetricStoryHeaderGap;
+	CGFloat nameW = CGRectGetMinX(menu.frame) - nameX - TGMetricStoryHeaderGap;
+	if (nameW < 0)
+		nameW = 0;
+	_senderLabel.frame = CGRectMake(nameX, headerY, nameW,
 			TGMetricStoryViewerNameHeight);
+	_timeLabel.frame = CGRectMake(nameX, CGRectGetMaxY(_senderLabel.frame),
+			nameW, TGMetricLineMicro);
 	_captionLabel.frame = CGRectMake(TGMetricPadLarge,
 			height - TGMetricStoryReactionRow - TGMetricStoryCaptionBottomOffset,
 			width - TGDoubled(TGMetricPadLarge), TGMetricStoryCaptionHeight);
 	_infoLabel.frame = CGRectMake(TGMetricPadLarge,
 			height - TGMetricStoryReactionRow - TGMetricPadLarge, width -
 			TGDoubled(TGMetricPadLarge), TGMetricLineCaption);
+	_infoButton.frame = _infoLabel.frame;
 	self.reactionRail.frame = CGRectMake(TGMetricPadLarge,
 			height - TGMetricStoryReactionRow - TGMetricPadSmall,
 			width - TGDoubled(TGMetricPadLarge), TGMetricStoryReactionRow);
@@ -209,11 +302,62 @@ static const NSInteger kStoryReactionChoices = 6;
 	}
 	id entry = self.stories[self.index];
 	self.senderLabel.text = self.storyTitle.length ? self.storyTitle : @"Story";
+	[self refreshAuthorAvatar];
+	[self updateHeaderCounterForStory:nil];
 	if ([entry isKindOfClass:NSNumber.class]){
 		[self loadStoryId:[entry intValue]];
 		return;
 	}
 	[self showStory:entry];
+}
+
+- (void)refreshAuthorAvatar {
+	NSString *title = self.senderLabel.text.length ? self.senderLabel.text : @"Story";
+	NSString *initial = title.length ? [title substringToIndex:1].uppercaseString : @"?";
+	self.authorAvatar.image = [TGIcons avatarWithInitials:initial
+												   size:TGMetricStoryHeaderAvatar
+											   colourId:self.chatId];
+
+	NSNumber *fileId = [[TGClient shared] photoFileIdForChat:self.chatId];
+	if (![fileId isKindOfClass:NSNumber.class] || fileId.integerValue <= 0)
+		return;
+	__weak typeof(self) weakSelf = self;
+	__weak UIImageView *weakAvatar = self.authorAvatar;
+	[[TGClient shared] downloadFile:fileId.integerValue
+						   priority:TGDownloadPriorityAvatar
+						 completion:^(NSString *path){
+		if (!path.length)
+			return;
+		dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_LOW, 0), ^{
+			UIImage *image = [UIImage imageWithContentsOfFile:path];
+			if (!image)
+				return;
+			image = [TGIcons decodedImage:image
+					fittingSize:CGSizeMake(TGMetricStoryHeaderAvatar,
+										   TGMetricStoryHeaderAvatar)
+							 fill:YES scale:[UIScreen mainScreen].scale];
+			if (!image)
+				return;
+			dispatch_async(dispatch_get_main_queue(), ^{
+				TGStoryViewerViewController *me = weakSelf;
+				if (me && !me.closed)
+					weakAvatar.image = image;
+			});
+		});
+	}];
+}
+
+/// "2 of 5 · 3h" under the name: the segment row is the count, this says it
+/// in words and adds when the story was posted.
+- (void)updateHeaderCounterForStory:(NSDictionary *)story {
+	NSMutableArray *bits = [NSMutableArray array];
+	if (self.stories.count > 1)
+		[bits addObject:[NSString stringWithFormat:@"%ld of %lu",
+				(long)(self.index + 1), (unsigned long)self.stories.count]];
+	NSString *when = TGStoryRelativeTime([story[@"date"] doubleValue]);
+	if (when.length)
+		[bits addObject:when];
+	self.timeLabel.text = [bits componentsJoinedByString:@" · "];
 }
 
 - (void)loadStoryId:(int32_t)storyId {
@@ -234,6 +378,8 @@ static const NSInteger kStoryReactionChoices = 6;
 - (void)showStory:(NSDictionary *)story {
 	_picture.image = nil;
 	self.senderLabel.text = story[@"title"] ?: self.storyTitle;
+	[self refreshAuthorAvatar];
+	[self updateHeaderCounterForStory:story];
 	NSString *caption = story[@"caption"] ?: @"";
 	self.captionLabel.text = caption;
 	NSInteger viewers = [story[@"viewers"] integerValue];
@@ -566,7 +712,56 @@ static const NSInteger kStoryReactionChoices = 6;
 
 - (void)tapAt:(UITapGestureRecognizer *)tap {
 	CGPoint point = [tap locationInView:self.view];
-	[self advance:(point.x < TGHalf(self.view.bounds.size.width)) ? -1 : 1];
+	// The left third goes back and the rest goes on, as Telegram's stories
+	// do - a 320 pt phone gives 107 pt to each side.
+	[self advance:(point.x < self.view.bounds.size.width / 3.0f) ? -1 : 1];
+}
+
+/// A drag down carries the story with the finger; letting go before the
+/// threshold puts it back and resumes the timer.
+- (void)storyDragged:(UIPanGestureRecognizer *)drag {
+	CGPoint moved = [drag translationInView:self.view];
+
+	if (drag.state == UIGestureRecognizerStateBegan){
+		self.dragStart = self.view.center;
+		[self pause];
+		return;
+	}
+	if (drag.state == UIGestureRecognizerStateChanged){
+		self.view.center = CGPointMake(self.dragStart.x,
+				self.dragStart.y + MAX(0, moved.y));
+		return;
+	}
+	if (drag.state != UIGestureRecognizerStateEnded &&
+		drag.state != UIGestureRecognizerStateCancelled)
+		return;
+
+	CGFloat velocity = [drag velocityInView:self.view].y;
+	if (moved.y > TGMetricViewerDismissDistance ||
+		velocity > TGMetricViewerDismissVelocity){
+		[UIView animateWithDuration:TGAnimationDurationFast animations:^{
+			self.view.center = CGPointMake(self.dragStart.x,
+					self.dragStart.y + self.view.bounds.size.height);
+			self.view.alpha = TGAlphaTransparent;
+		} completion:^(BOOL done){
+			[self finish];
+		}];
+		return;
+	}
+
+	[UIView animateWithDuration:TGAnimationDurationFast animations:^{
+		self.view.center = self.dragStart;
+	} completion:^(BOOL done){
+		[self resume];
+	}];
+}
+
+- (BOOL)gestureRecognizerShouldBegin:(UIGestureRecognizer *)gesture {
+	if ([gesture isKindOfClass:UIPanGestureRecognizer.class]){
+		CGPoint velocity = [(UIPanGestureRecognizer *)gesture velocityInView:self.view];
+		return fabs(velocity.y) > fabs(velocity.x);
+	}
+	return YES;
 }
 
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer

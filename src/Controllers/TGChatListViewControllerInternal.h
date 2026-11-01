@@ -30,6 +30,15 @@
 @property (nonatomic, strong) TGImageLruCache *avatars;   // fileId -> UIImage (cap 50)
 @property (nonatomic, strong) NSMutableSet *avatarsRequested;
 @property (nonatomic, strong) UISearchBar *searchBar;
+/// The navigation bar's two lines: the list's name, and - only while TDLib is
+/// not ready - the connection state beneath it. The state used to replace the
+/// name, so a chosen folder was forgotten by the next reconnect.
+@property (nonatomic, strong) UIView *listTitleView;
+@property (nonatomic, strong) UILabel *listTitleLabel;
+@property (nonatomic, strong) UILabel *listSubtitleLabel;
+@property (nonatomic, copy) NSString *connectionLine;
+- (void)buildListTitleView;
+- (void)refreshListTitleView;
 @property (nonatomic, strong) NSArray *searchResults;   // nil = not searching
 @property (nonatomic, strong) NSDictionary *actionChat; // long-pressed row
 @property (nonatomic, assign) int64_t chatPendingDeletion;

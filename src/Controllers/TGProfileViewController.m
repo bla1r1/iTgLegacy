@@ -59,6 +59,9 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 		_photos = @[];
 		_files = @[];
 		_thumbnailsRequested = [NSMutableSet set];
+		_memberCount = 0;
+		_canManage = NO;
+		_canInvite = NO;
 	}
 	return self;
 }
@@ -141,8 +144,11 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 /// here. The coloured block this replaced is the old design; everything since
 - (void)buildHeader {
 	CGFloat width = self.view.bounds.size.width;
-	CGFloat side = 80;
-	CGFloat height = 16 + side + 8 + 26 + 18 + 10 + kActionTile + 12;
+	CGFloat side = TGMetricProfileAvatar;
+	// Header height is the same stack the constants below lay out: picture,
+	// name, status, then the action plate. Asking them keeps a long group
+	// name from being pushed under the tiles.
+	CGFloat height = kAvatarTop + side + kActionsTop + kActionTile + TGMetricPadMedium;
 
 	UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0, 0, width, height)];
 	header.backgroundColor = [[TGTheme shared] groupedBackgroundColour];
@@ -207,12 +213,14 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 			[weakSelf statusLabelOwnerChanged:nil];
 		}];
 	} else {
+		// The count is known from chatProfile on most opens; only fall back
+		// to the member request while that answer is still on its way.
+		[self updateGroupStatus];
 		__weak typeof(self) weakSelf = self;
 		[[TGClient shared] memberCountForChat:self.chatId completion:^(NSInteger count){
-			if (count > 0){
-				weakSelf.restingStatus = [NSString stringWithFormat:@"%ld members",
-						(long)count];
-				[weakSelf statusLabelOwnerChanged:nil];
+			if (count > 0 && weakSelf.memberCount <= 0){
+				weakSelf.memberCount = count;
+				[weakSelf updateGroupStatus];
 			}
 		}];
 	}
@@ -230,6 +238,82 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 						   priority:TGDownloadPriorityAvatar
 						 completion:^(NSString *path){
 		[TGIcons loadImageAtPath:path into:weakSelf.avatarView];
+	}];
+}
+
+- (void)updateGroupStatus {
+	if (self.userId || self.memberCount <= 0)
+		return;
+	self.restingStatus = [NSString stringWithFormat:@"%ld %@", (long)self.memberCount,
+			self.isChannel ? @"subscribers" : @"members"];
+	[self statusLabelOwnerChanged:nil];
+}
+
+- (BOOL)isOwner {
+	return [self.myStatus isEqualToString:@"owner"];
+}
+
+/// What this account may do in a group. The profile needs the same answer
+/// Group Settings asks for: a plain member must not see an Add Member tile,
+/// and only the owner gets Delete Group rather than Leave Group.
+- (void)loadOwnRole {
+	if (self.userId || !self.chatId)
+		return;
+	int64_t meId = [[TGClient shared].me[@"id"] longLongValue];
+	if (!meId)
+		return;
+	__weak typeof(self) weakSelf = self;
+	// The type tells the profile whether "members" or "subscribers" is the
+	// word, and a basic group's invite right lives on the chat rather than
+	// on a member record. Read it before the member so both answers land in
+	// the same order whichever request finishes first.
+	[[TGClient shared] chatRecordForChat:self.chatId completion:^(NSDictionary *chat){
+		TGProfileViewController *me = weakSelf;
+		if (!me)
+			return;
+		NSString *kind = chat[@"type"][@"@type"];
+		me.isGroup = [kind isEqualToString:@"chatTypeBasicGroup"] ||
+					 [kind isEqualToString:@"chatTypeSupergroup"];
+		me.isChannel = [kind isEqualToString:@"chatTypeSupergroup"] &&
+					   [chat[@"type"][@"is_channel"] boolValue];
+		me.chatPermissions = [chat[@"permissions"] isKindOfClass:NSDictionary.class]
+				? chat[@"permissions"] : @{};
+		[me updateGroupStatus];
+		[me buildHeader];
+
+		[[TGClient shared] chatMember:meId inChat:me.chatId
+							completion:^(NSDictionary *member){
+			TGProfileViewController *again = weakSelf;
+			if (!again)
+				return;
+			NSDictionary *status = [member[@"status"] isKindOfClass:NSDictionary.class]
+					? member[@"status"] : @{};
+			NSString *role = status[@"@type"];
+			again.myStatus = [role isEqualToString:@"chatMemberStatusCreator"] ? @"owner"
+					: ([role isEqualToString:@"chatMemberStatusAdministrator"]
+							? @"admin" : @"member");
+			again.myRights = [status[@"rights"] isKindOfClass:NSDictionary.class]
+					? status[@"rights"] : @{};
+			BOOL owner = [again isOwner];
+			BOOL hadInvite = again.canInvite;
+			again.canManage = owner || [again.myStatus isEqualToString:@"admin"];
+			// A basic group has no administrator rights object; its
+			// permissions are the chat's, and any unrestricted member may
+			// invite. A supergroup asks the member's own rights record.
+			if (again.isGroup && !again.isChannel &&
+					![again.myStatus isEqualToString:@"admin"] && !owner){
+				id canInvite = again.chatPermissions[@"can_invite_users"];
+				again.canInvite = canInvite ? [canInvite boolValue] : YES;
+			} else {
+				again.canInvite = owner ||
+						[again.myRights[@"can_invite_users"] boolValue];
+			}
+			// Only the tile row changes shape with this answer; rebuilding
+			// the header for every role read would re-download the avatar.
+			if (hadInvite != again.canInvite)
+				[again buildHeader];
+			[again reloadTableDebounced];
+		}];
 	}];
 }
 
@@ -259,25 +343,33 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 
 	if (!self.userId){
 		__weak typeof(self) weakSelf = self;
+		[self loadOwnRole];
 		[[TGClient shared] membersOfChat:self.chatId completion:^(NSArray *members){
 			weakSelf.members = members;
 			[weakSelf reloadTableDebounced];
 		}];
 		// Group details: description, member count, invite link.
 		[[TGClient shared] chatProfile:self.chatId completion:^(NSDictionary *info){
-			weakSelf.chatDescription = info[@"description"] ?: @"";
+			TGProfileViewController *me = weakSelf;
+			if (!me)
+				return;
+			me.chatDescription = info[@"description"] ?: @"";
+			me.memberCount = [info[@"members"] integerValue];
+			me.inviteLink = info[@"inviteLink"] ?: @"";
+			[me updateGroupStatus];
 			NSMutableArray *rows = [NSMutableArray array];
 			if ([info[@"description"] length])
 				[rows addObject:@[@"about", info[@"description"]]];
-			if ([info[@"members"] integerValue] > 0)
-				[rows addObject:@[@"members", [info[@"members"] stringValue]]];
+			if (me.memberCount > 0)
+				[rows addObject:@[me.isChannel ? @"subscribers" : @"members",
+						[NSString stringWithFormat:@"%ld", (long)me.memberCount]]];
 			// No administrator count: the member rows carry an Owner or
 			// Admin badge beside the people who hold that role, which says
 			// who they are instead of only how many there are.
-			if ([info[@"inviteLink"] length])
-				[rows addObject:@[@"invite link", info[@"inviteLink"]]];
-			weakSelf.details = rows;
-			[weakSelf reloadTableDebounced];
+			if (me.inviteLink.length)
+				[rows addObject:@[@"invite link", me.inviteLink]];
+			me.details = rows;
+			[me reloadTableDebounced];
 		}];
 		return;
 	}
@@ -393,8 +485,16 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
-	if (section == kSectionMembers && self.members.count)
-		return [NSString stringWithFormat:@"%lu members", (unsigned long)self.members.count];
+	if (section == kSectionMembers){
+		NSInteger count = self.memberCount > 0 ? self.memberCount
+											   : (NSInteger)self.members.count;
+		if (count <= 0)
+			return nil;
+		// Telegram counts the whole group here, even when the list below is
+		// only the first page it returned.
+		return [NSString stringWithFormat:@"%ld %@", (long)count,
+				self.isChannel ? @"subscribers" : @"members"];
+	}
 	return nil;
 }
 

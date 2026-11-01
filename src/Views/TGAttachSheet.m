@@ -1,6 +1,7 @@
 #import "TGAttachSheet.h"
 #import "TGTheme.h"
 #import "TGCapabilities.h"
+#import "TGIcons.h"
 #import <AssetsLibrary/AssetsLibrary.h>
 #import <QuartzCore/QuartzCore.h>
 #import "TGStyle.h"
@@ -9,6 +10,11 @@ static const CGFloat kRow       = TGMetricActionRow;
 static const CGFloat kStrip     = TGMetricAttachStrip;
 static const CGFloat kThumb     = TGMetricAttachThumb;
 static const NSUInteger kRecentPhotos = 24;
+/// A choice row carries the mark for its kind at the leading edge, the way the
+/// official attach sheet does; the title starts after it.
+static const CGFloat kChoiceGlyph = 22.0f;
+static const CGFloat kChoiceGlyphInset = TGMetricPadLarge;
+static const CGFloat kChoiceGlyphGap = TGMetricPadMedium;
 
 @interface TGAttachSheet ()
 @property (nonatomic, strong) UIView *card;
@@ -39,6 +45,7 @@ static const NSUInteger kRecentPhotos = 24;
 
 	BOOL strip = [TGCapabilities canShowRecentPhotos];
 	NSArray *titles = @[@"Photo or Video", @"Location", @"Contact"];
+	NSArray *glyphs = @[@"video", @"pin", @"chat"];
 	CGFloat cardH = (strip ? kStrip : 0) + kRow * titles.count;
 
 	// Two floating cards, the way their attach menu stacks them: the
@@ -63,7 +70,9 @@ static const NSUInteger kRecentPhotos = 24;
 			hair.backgroundColor = [theme separatorColour];
 			[self.card addSubview:hair];
 		}
-		UIButton *button = [self rowButtonTitled:titles[i] bold:NO frame:CGRectMake(0, y, w, kRow)];
+		UIButton *button = [self rowButtonTitled:titles[i] bold:NO
+										   frame:CGRectMake(0, y, w, kRow)
+										   glyph:glyphs[i]];
 		button.tag = (NSInteger)i;
 		[button addTarget:self action:@selector(choiceTapped:) forControlEvents:UIControlEventTouchUpInside];
 		[self.card addSubview:button];
@@ -74,13 +83,14 @@ static const NSUInteger kRecentPhotos = 24;
 	// that appears and shifts the stack while a finger is on it is worse
 	// than a button that was always there.
 	self.cancelCard = [self addCardOfHeight:kRow edgeToEdge:NO];
-	UIButton *cancel = [self rowButtonTitled:@"Cancel" bold:YES frame:self.cancelCard.bounds];
+	UIButton *cancel = [self rowButtonTitled:@"Cancel" bold:YES
+									   frame:self.cancelCard.bounds glyph:nil];
 	[cancel addTarget:self action:@selector(dismiss) forControlEvents:UIControlEventTouchUpInside];
 	[self.cancelCard addSubview:cancel];
 
 	if (strip){
 		self.sendButton = [self rowButtonTitled:@"Send" bold:YES
-										  frame:self.cancelCard.bounds];
+										  frame:self.cancelCard.bounds glyph:nil];
 		self.sendButton.hidden = YES;
 		self.sendButton.backgroundColor = [theme cardBackgroundColour];
 		[self.sendButton addTarget:self action:@selector(sendSelected)
@@ -91,7 +101,7 @@ static const NSUInteger kRecentPhotos = 24;
 	return self;
 }
 
-- (UIButton *)rowButtonTitled:(NSString *)title bold:(BOOL)bold frame:(CGRect)frame {
+- (UIButton *)rowButtonTitled:(NSString *)title bold:(BOOL)bold frame:(CGRect)frame glyph:(NSString *)glyph {
 	UIButton *button = [UIButton buttonWithType:UIButtonTypeCustom];
 	button.frame = frame;
 	button.titleLabel.font = bold ? TGFontHeader() : TGFontInput();
@@ -100,6 +110,15 @@ static const NSUInteger kRecentPhotos = 24;
 	[button setTitleColor:[[TGTheme shared] secondaryTextColour] forState:UIControlStateHighlighted];
 	[button setTitleShadowColor:[[TGTheme shared] etchedTextShadowColour] forState:UIControlStateNormal];
 	button.titleLabel.shadowOffset = CGSizeMake(0, 1.0f);
+	if (glyph.length){
+		[button setImage:[TGIcons glyphNamed:glyph
+									  colour:[[TGTheme shared] accentColour]
+										side:kChoiceGlyph]
+				forState:UIControlStateNormal];
+		button.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeft;
+		button.imageEdgeInsets = UIEdgeInsetsMake(0, kChoiceGlyphInset, 0, 0);
+		button.titleEdgeInsets = UIEdgeInsetsMake(0, kChoiceGlyphGap, 0, 0);
+	}
 	return button;
 }
 

@@ -114,9 +114,8 @@
 
 - (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
 	if (section == 0)
-		return @"The editable username is the one Telegram shows first and the "
-			   @"only one you can change. The others are kept names you can "
-			   @"switch back on.";
+		return @"This is the username Telegram shows first. The names below are "
+			   @"kept on the account and can be switched back on.";
 	if (section == 1 && self.active.count > 1)
 		return @"Tap Edit and drag a row to change the order on your profile.";
 	if (section == 2 && !self.disabled.count)
@@ -144,7 +143,7 @@
 		cell.detailTextLabel.font = TGFontBody();
 		cell.detailTextLabel.textColor = [theme cellDetailColour];
 		if (path.row == 0){
-			cell.textLabel.text = @"Editable Username";
+			cell.textLabel.text = @"Username";
 			cell.detailTextLabel.text = self.editable.length
 					? [@"@" stringByAppendingString:self.editable] : @"None";
 			cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
@@ -271,7 +270,7 @@
 
 	NSString *current = self.editable;
 	__weak typeof(self) weakSelf = self;
-	[TGAlertSheet showInput:@"Editable Username"
+	[TGAlertSheet showInput:@"Username"
 					message:@"The name Telegram shows first. Letters, digits and "
 							@"underscores; 5 to 32 characters."
 				placeholder:@"username"

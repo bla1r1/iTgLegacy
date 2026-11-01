@@ -1,5 +1,6 @@
 #import "TGTextDraw.h"
 #import "TGChatCell.h"
+#import "TGChatListRowGeometry.h"
 #import "TGTheme.h"
 #import <QuartzCore/QuartzCore.h>
 #import "TGStyle.h"
@@ -163,20 +164,23 @@ static UIFont *TGChatCellTitleFont(void) {
 		self.muteIcon.frame = CGRectMake(kTextLeft + titleW + TGMetricBubbleRowInset,
 				kFirstLineTop + TGMetricPadTiny, kMuteGlyph, kMuteGlyph);
 
-	// The second line: the badge (or the pin) at the right edge, and the
-	// preview wrapping onto a second line up to it.
-	CGFloat previewRight = right;
+	// The second line: the unread count at the right edge, the pin beside it,
+	// and the preview wrapping onto a second line up to whichever is leftmost.
+	// The two are not alternatives - a pinned chat with unread messages keeps
+	// both, which is what the official row shows.
+	CGFloat badgeW = 0;
 	if (!self.badge.hidden) {
 		CGSize s = TGChatCellTextSize(self.badge.text, self.badge.font);
-		CGFloat bw = MAX(TGMetricChatBadgeHeight, ceilf(s.width) + kBadgePad);
-		self.badge.frame = CGRectMake(right - bw, TGMetricChatBadgeTop, bw,
-								  TGMetricChatBadgeHeight);
-		previewRight = right - bw - TGMetricPad;
-	} else if (!self.pin.hidden) {
-		self.pin.frame = CGRectMake(right - kPinGlyph, TGMetricChatBadgeTop + TGMetricPadTiny,
-				kPinGlyph, kPinGlyph);
-		previewRight = right - kPinGlyph - TGMetricPad;
+		badgeW = MAX(TGMetricChatBadgeHeight, ceilf(s.width) + kBadgePad);
 	}
+	CGRect badgeFrame = CGRectZero, pinFrame = CGRectZero;
+	CGFloat previewRight = right;
+	TGChatListRowAccessories(right, TGMetricChatBadgeTop,
+			!self.badge.hidden, badgeW, TGMetricChatBadgeHeight,
+			!self.pin.hidden, kPinGlyph, TGMetricPad,
+			&badgeFrame, &pinFrame, &previewRight);
+	self.badge.frame = badgeFrame;
+	self.pin.frame = pinFrame;
 	CGFloat previewW = MAX(0, previewRight - kTextLeft);
 	CGSize fit = [self.previewLabel sizeThatFits:CGSizeMake(previewW, kPreviewMax)];
 	self.previewLabel.frame = CGRectMake(kTextLeft, kSecondLineTop, previewW,

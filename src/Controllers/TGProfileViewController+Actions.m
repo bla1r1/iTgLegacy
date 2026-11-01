@@ -9,6 +9,7 @@
 #import "TGGroupSettingsViewController.h"
 #import "TGGroupMemberActions.h"
 #import "TGGroupCallViewController.h"
+#import "TGContactsViewController.h"
 
 /// The glyph on an action tile, over the word that names it.
 static const CGFloat kTileGlyph = TGMetricMenuGlyph;
@@ -91,9 +92,19 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 - (void)buildActionsIn:(UIView *)header atY:(CGFloat)y {
 	NSMutableArray *tiles = [NSMutableArray array];
 	if (self.userId){
+		// A profile is often reached from a contact or a member list, not
+		// from the chat, so Message is the first thing Telegram offers.
+		if (self.userId != [[TGClient shared].me[@"id"] longLongValue])
+			[tiles addObject:@[@"chat", @"message"]];
 		[tiles addObject:@[@"call",  @"call"]];
 		if ([TGCapabilities canEncodeVideoCall])
 			[tiles addObject:@[@"video", @"video"]];
+	} else if (self.canInvite && !self.isChannel){
+		// The group's equivalent of Message: the one thing a profile does
+		// with people. A plain member does not get it, and neither does an
+		// administrator without the invite right. A channel invites through
+		// its link, not through a picker.
+		[tiles addObject:@[@"plus", @"add"]];
 	}
 	[tiles addObject:@[(self.muted ? @"unmute" : @"mute"),
 					   (self.muted ? @"unmute" : @"mute")]];
@@ -145,6 +156,10 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 		[TGCallViewController presentForUserId:self.userId
 										  name:self.name
 									  outgoing:YES];
+	} else if ([action isEqualToString:@"message"]){
+		[self messageTapped];
+	} else if ([action isEqualToString:@"add"]){
+		[self addMemberTapped];
 	} else if ([action hasSuffix:@"mute"]){
 		self.muted = !self.muted;
 		[[TGClient shared] setChat:self.chatId muted:self.muted];
@@ -154,6 +169,55 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 	} else {
 		[self showMoreMenuFrom:tile];
 	}
+}
+
+/// The Message tile. A profile reached from Contacts has no chat behind it,
+/// and Telegram opens one from here after the same can-send pre-check the
+/// member sheet uses.
+- (void)messageTapped {
+	int64_t userId = self.userId;
+	if (!userId)
+		return;
+	NSString *name = self.name;
+	__weak typeof(self) weakSelf = self;
+	[[TGClient shared] canSendMessageToUser:userId completion:^(NSString *result){
+		TGProfileViewController *me = weakSelf;
+		if (!me)
+			return;
+		if (![result isEqualToString:@"ok"]){
+			NSString *say = [result isEqualToString:@"paidMessages"]
+					? @"They charge for incoming messages, and this account "
+					  @"carries no wallet for that."
+					: ([result isEqualToString:@"userRestrictsNewChats"]
+					   ? @"They set their profile to messages from contacts only."
+					   : @"That profile is gone.");
+			[TGAlertSheet showMessage:say
+								title:name.length ? name : @"Message"
+							   inView:me.view];
+			return;
+		}
+		[[TGClient shared] privateChatWithUser:userId completion:^(int64_t chatId){
+			TGProfileViewController *again = weakSelf;
+			if (!again || !chatId)
+				return;
+			TGChatViewController *chat = [[TGChatViewController alloc] init];
+			chat.chatId = chatId;
+			chat.chatTitle = name ?: @"";
+			chat.hidesBottomBarWhenPushed = YES;
+			[again.navigationController pushViewController:chat animated:YES];
+		}];
+	}];
+}
+
+/// The group's Add tile and its menu row both land here: the contacts picker
+/// in add-to-chat mode, which is the same picker Group Settings uses.
+- (void)addMemberTapped {
+	if (!self.chatId || !self.canInvite || self.isChannel)
+		return;
+	TGContactsViewController *contacts = [[TGContactsViewController alloc] init];
+	contacts.addingToChatId = self.chatId;
+	contacts.hidesBottomBarWhenPushed = YES;
+	[self.navigationController pushViewController:contacts animated:YES];
 }
 
 /// Tapping a member of a group: message them, or - where this account is
@@ -200,7 +264,11 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 	// way in and the rows that are not group management (a note, the date
 	// picker, the chat's own history actions).
 	if (!self.userId){
-		[items addObject:@{@"title" : @"Group Settings", @"icon" : @"privacy"}];
+		[items addObject:@{@"title" : self.isChannel ? @"Channel Settings"
+													 : @"Group Settings",
+						   @"icon" : @"privacy"}];
+		if (self.canInvite && !self.isChannel)
+			[items addObject:@{@"title" : @"Add Members", @"icon" : @"plus"}];
 		[items addObject:@{@"title" : @"Calls", @"icon" : @"call"}];
 		[items addObject:@{@"title" : @"View with Topics", @"icon" : @"folder"}];
 	}
@@ -218,10 +286,20 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 	BOOL isMe = self.userId == [[TGClient shared].me[@"id"] longLongValue];
 	if (self.userId && !isMe)
 		[items addObject:@{@"title" : @"Delete Contact", @"icon" : @"delete", @"destructive" : @YES}];
-	// Owners only; Telegram says so to anyone else, and the menu does not
-	// know the role without asking.
-	if (!self.userId)
-		[items addObject:@{@"title" : @"Delete for Everyone", @"icon" : @"delete", @"destructive" : @YES}];
+	// Leaving and deleting are not the same row. Telegram keeps Delete Group
+	// for the owner, because a group without one cannot be left; everybody
+	// else gets Leave Group. The role arrives with loadOwnRole.
+	if (!self.userId){
+		if ([self isOwner]){
+			[items addObject:@{@"title" : (self.isChannel ? @"Delete Channel"
+														   : @"Delete Group"),
+							   @"icon" : @"delete", @"destructive" : @YES}];
+		} else {
+			[items addObject:@{@"title" : (self.isChannel ? @"Leave Channel"
+														   : @"Leave Group"),
+							   @"icon" : @"delete", @"destructive" : @YES}];
+		}
+	}
 	if (self.userId)
 		[items addObject:@{@"title" : (self.blocked ? @"Unblock" : @"Block"),
 						   @"icon" : @"privacy", @"destructive" : @YES}];
@@ -441,7 +519,8 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 		TGPresentControllerFrom(screen, self);
 		return;
 	}
-	if ([title isEqualToString:@"Group Settings"]){
+	if ([title isEqualToString:@"Group Settings"] ||
+			[title isEqualToString:@"Channel Settings"]){
 		// Build through the runtime class name so a build that somehow lost
 		// the screen says so in the log instead of pushing nil and looking
 		// like a dead row.
@@ -452,8 +531,8 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 			NSLog(@"TGProfile: Group Settings unavailable (class %@, chat %lld)",
 				  settingsClass ? @"present but init returned nil" : @"missing",
 				  self.chatId);
-			[TGAlertSheet showMessage:@"Group Settings could not be opened on this build."
-								title:@"Group Settings" inView:self.view];
+			[TGAlertSheet showMessage:[NSString stringWithFormat:@"%@ could not be opened on this build.", title]
+								title:title inView:self.view];
 			return;
 		}
 		settings.chatId = self.chatId;
@@ -738,11 +817,35 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 		return;
 	}
 
-	if ([title isEqualToString:@"Delete for Everyone"]){
+	if ([title isEqualToString:@"Add Members"]){
+		[self addMemberTapped];
+		return;
+	}
+
+	if ([title isEqualToString:@"Leave Group"] || [title isEqualToString:@"Leave Channel"]){
+		int64_t chatId = self.chatId;
+		NSString *what = self.isChannel ? @"channel" : @"group";
+		[TGAlertSheet showConfirm:[NSString stringWithFormat:
+						@"You will stop receiving messages from this %@.", what]
+							title:title
+						   action:@"Leave"
+					  destructive:YES
+						   inView:self.view
+						onConfirm:^{
+			// deleteChat removes the row and leaves the group in one call,
+			// so a later message cannot put it back on the list.
+			[[TGClient shared] deleteChat:chatId];
+			[self.navigationController popToRootViewControllerAnimated:YES];
+		}];
+		return;
+	}
+
+	if ([title isEqualToString:@"Delete Group"] || [title isEqualToString:@"Delete Channel"] ||
+			[title isEqualToString:@"Delete for Everyone"]){
 		int64_t chatId = self.chatId;
 		__weak typeof(self) weakSelf = self;
 		[TGAlertSheet showConfirm:@"The group and every message in it are deleted for all members. This cannot be undone."
-							title:@"Delete for Everyone"
+							title:title
 						   action:@"Delete"
 					  destructive:YES
 						   inView:self.view
@@ -750,7 +853,7 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 			[[TGClient shared] deleteChatForEveryone:chatId completion:^(NSString *error){
 				TGProfileViewController *me = weakSelf;
 				if (error) {
-					[TGAlertSheet showMessage:error title:@"Delete for Everyone" inView:me.view];
+					[TGAlertSheet showMessage:error title:title inView:me.view];
 					return;
 				}
 				[me.navigationController popToRootViewControllerAnimated:YES];
@@ -770,8 +873,12 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 		return;
 	}
 
-	[[TGClient shared] setUser:self.userId blocked:!self.blocked];
-	self.blocked = !self.blocked;
+	// The last row of a user's menu is Block/Unblock; an unknown title must
+	// not fall through and silently block them.
+	if ([title isEqualToString:@"Block"] || [title isEqualToString:@"Unblock"]){
+		[[TGClient shared] setUser:self.userId blocked:!self.blocked];
+		self.blocked = !self.blocked;
+	}
 }
 
 /// The picker's answer becomes a file, because that is what the photo

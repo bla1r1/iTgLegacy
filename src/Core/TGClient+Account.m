@@ -907,7 +907,8 @@ static NSDictionary *TGFlattenAutosaveScope(NSDictionary *settings) {
 			if (!photoId || !fileId)
 				continue;
 			[out addObject:@{@"photoId" : @(photoId),
-							  @"fileId" : fileId}];
+							  @"fileId" : fileId,
+							  @"date" : photo[@"date"] ?: @(0)}];
 		}
 		if (completion) completion(out);
 	}];

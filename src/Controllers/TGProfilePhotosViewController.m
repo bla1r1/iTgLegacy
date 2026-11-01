@@ -113,8 +113,16 @@ static const CGFloat kEmptyLabelTop = 130.0f;
 	NSDictionary *photo = self.photos[indexPath.row];
 	UIImageView *image = (UIImageView *)[cell.contentView viewWithTag:1];
 	UILabel *label = (UILabel *)[cell.contentView viewWithTag:2];
-	label.text = [NSString stringWithFormat:@"Photo %ld of %lu - swipe to remove",
-			(long)(indexPath.row + 1), (unsigned long)self.photos.count];
+	// Telegram dates a profile photo instead of numbering it. The swipe is
+	// still the delete gesture this OS owns; the row does not need to explain
+	// it in the caption.
+	double date = [photo[@"date"] doubleValue];
+	label.text = date > 0
+			? [NSDateFormatter localizedStringFromDate:
+					[NSDate dateWithTimeIntervalSince1970:date]
+					dateStyle:NSDateFormatterMediumStyle
+					timeStyle:NSDateFormatterNoStyle]
+			: @"Profile photo";
 
 	NSInteger fileId = [photo[@"fileId"] integerValue];
 	image.image = [TGIcons avatarWithInitials:@"?" size:TGMetricProfilePhotoSide

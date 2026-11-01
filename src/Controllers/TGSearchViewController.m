@@ -14,6 +14,12 @@
 
 @interface TGSearchViewController () <UISearchBarDelegate>
 @property (nonatomic, strong) UISearchBar *bar;
+@property (nonatomic, strong) UIView *scopeHost;
+@property (nonatomic, strong) UIScrollView *scopeStrip;
+@property (nonatomic, strong) NSMutableArray *scopeButtons;
+@property (nonatomic, assign) NSInteger scope;
+@property (nonatomic, strong) NSArray *recentQueries;
+@property (nonatomic, strong) UILabel *noResultsView;
 @property (nonatomic, strong) NSArray *chatHits;
 @property (nonatomic, strong) NSArray *messageHits;
 /// Who this account talks to most, shown before anything is typed - their
@@ -54,6 +60,30 @@
 /// Cancel button has somewhere to sit.
 static const CGFloat kSearchBarWidth = 240.0f;
 
+/// Telegram's scopes, in the order its search shows them. The integers are
+/// the tag on each pill; the array index is the same, so a tag is the scope.
+enum {
+	TGSearchScopeAll = 0,
+	TGSearchScopeChats,
+	TGSearchScopeMessages,
+	TGSearchScopeMedia,
+	TGSearchScopeLinks,
+	TGSearchScopeFiles,
+	TGSearchScopeMusic,
+	TGSearchScopeVoice,
+};
+
+static NSArray *TGSearchScopeTitles(void) {
+	return @[@"All", @"Chats", @"Messages", @"Media", @"Links",
+			 @"Files", @"Music", @"Voice"];
+}
+
+/// Old searches live in this app rather than on the account: Telegram stores
+/// the log per device and clears it when the user says so, which is exactly
+/// what NSUserDefaults is.
+static NSString *const kRecentQueriesKey = @"TGSearchRecentQueries";
+static const NSInteger kRecentQueriesLimit = 8;
+
 static NSString *TGPublicPostText(NSDictionary *message) {
 	NSDictionary *content = [message[@"content"] isKindOfClass:NSDictionary.class]
 			? message[@"content"] : nil;
@@ -91,6 +121,9 @@ static NSString *TGPublicPostText(NSDictionary *message) {
 	self.publicLimitExceeded = NO;
 	self.avatars = [NSMutableDictionary dictionary];
 	self.avatarsRequested = [NSMutableSet set];
+	self.scope = TGSearchScopeAll;
+	self.recentQueries = [[NSUserDefaults standardUserDefaults]
+			arrayForKey:kRecentQueriesKey] ?: @[];
 	self.tableView.rowHeight = TGMetricPersonRow;
 	if ([self.tableView respondsToSelector:@selector(setKeyboardDismissMode:)])
 		self.tableView.keyboardDismissMode = UIScrollViewKeyboardDismissModeOnDrag;
@@ -121,6 +154,7 @@ static NSString *TGPublicPostText(NSDictionary *message) {
 	hold.minimumPressDuration = 0.55;
 	[self.tableView addGestureRecognizer:hold];
 
+	[self buildScopeBar];
 	[self loadFrequentChats];
 	[self loadRecentTags];
 	[self loadRecentLinks];
@@ -137,12 +171,177 @@ static NSString *TGPublicPostText(NSDictionary *message) {
 	[self applyTheme];
 }
 
+- (void)viewWillLayoutSubviews {
+	[super viewWillLayoutSubviews];
+	if (self.scopeHost && self.tableView.tableHeaderView == self.scopeHost)
+		[self layoutScopeButtons];
+	[self updateEmptyState];
+}
+
+/// A scope with nothing in it says so where the rows would be. The public
+/// stories row is an action, not a result, so it does not count.
+- (void)updateEmptyState {
+	if (!self.bar.text.length || [self showsFrequent]){
+		if (self.tableView.backgroundView)
+			self.tableView.backgroundView = nil;
+		return;
+	}
+	NSInteger rows = 0;
+	for (NSInteger section = 0; section < [self numberOfSectionsInTableView:self.tableView];
+		 section++){
+		// The public-stories row is an action, not a result, so it does not
+		// keep the no-results label away.
+		if (section == 6)
+			continue;
+		rows += [self tableView:self.tableView numberOfRowsInSection:section];
+	}
+	if (rows > 0){
+		if (self.tableView.backgroundView)
+			self.tableView.backgroundView = nil;
+		return;
+	}
+	if (!self.noResultsView){
+		self.noResultsView = [[UILabel alloc] initWithFrame:CGRectZero];
+		self.noResultsView.font = TGFontBody();
+		self.noResultsView.textColor = [[TGTheme shared] secondaryTextColour];
+		self.noResultsView.textAlignment = NSTextAlignmentCenter;
+		self.noResultsView.numberOfLines = 0;
+		self.noResultsView.backgroundColor = [UIColor clearColor];
+	}
+	NSString *what = self.scope == TGSearchScopeAll
+			? @"results"
+			: [TGSearchScopeTitles()[(NSUInteger)self.scope] lowercaseString];
+	self.noResultsView.text = [NSString stringWithFormat:@"No %@ for \"%@\"", what,
+			self.bar.text];
+	if (self.tableView.backgroundView != self.noResultsView)
+		self.tableView.backgroundView = self.noResultsView;
+}
+
 - (void)applyTheme {
 	TGTheme *theme = [TGTheme shared];
 	self.tableView.backgroundColor = [theme listBackgroundColour];
 	self.tableView.separatorColor = [theme separatorColour];
 	[theme styleSearchBar:self.bar];
 	[theme styleNavigationBar:self.navigationController.navigationBar];
+	if (self.scopeHost){
+		self.scopeHost.backgroundColor = [theme listBackgroundColour];
+		[self styleScopeButtons];
+	}
+}
+
+#pragma mark - scope bar
+
+/// The pills are one row above the results, as Telegram's scopes are. They
+/// only appear once there is a query: an empty search has no scope to narrow.
+- (void)buildScopeBar {
+	TGTheme *theme = [TGTheme shared];
+	CGFloat width = self.view.bounds.size.width;
+
+	self.scopeHost = [[UIView alloc] initWithFrame:CGRectMake(0, 0, width,
+			TGMetricSearchScopeRow)];
+	self.scopeHost.backgroundColor = [theme listBackgroundColour];
+	self.scopeHost.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+
+	self.scopeStrip = [[UIScrollView alloc] initWithFrame:CGRectMake(0, 0, width,
+			TGMetricSearchScopeRow)];
+	self.scopeStrip.showsHorizontalScrollIndicator = NO;
+	self.scopeStrip.showsVerticalScrollIndicator = NO;
+	self.scopeStrip.alwaysBounceHorizontal = YES;
+	self.scopeStrip.backgroundColor = [UIColor clearColor];
+	self.scopeStrip.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+	[self.scopeHost addSubview:self.scopeStrip];
+
+	self.scopeButtons = [NSMutableArray array];
+	NSArray *titles = TGSearchScopeTitles();
+	for (NSInteger i = 0; i < (NSInteger)titles.count; i++){
+		UIButton *pill = [UIButton buttonWithType:UIButtonTypeCustom];
+		pill.tag = i;
+		pill.titleLabel.font = TGFontCaption();
+		pill.layer.cornerRadius = TGHalf(TGMetricSearchScopeHeight);
+		pill.clipsToBounds = YES;
+		[pill addTarget:self action:@selector(scopeTapped:)
+			  forControlEvents:UIControlEventTouchUpInside];
+		[self.scopeStrip addSubview:pill];
+		[self.scopeButtons addObject:pill];
+	}
+	[self styleScopeButtons];
+	[self layoutScopeButtons];
+}
+
+- (void)styleScopeButtons {
+	TGTheme *theme = [TGTheme shared];
+	NSArray *titles = TGSearchScopeTitles();
+	for (UIButton *pill in self.scopeButtons){
+		BOOL selected = (pill.tag == self.scope);
+		[pill setTitle:titles[(NSUInteger)pill.tag] forState:UIControlStateNormal];
+		[pill setTitleColor:(selected ? [theme onAccentColour]
+									 : [theme primaryTextColour])
+				  forState:UIControlStateNormal];
+		pill.backgroundColor = selected ? [theme accentColour]
+									   : [theme cardBackgroundColour];
+	}
+}
+
+- (void)layoutScopeButtons {
+	CGFloat width = self.view.bounds.size.width;
+	CGRect hostFrame = self.scopeHost.frame;
+	hostFrame.size.width = width;
+	self.scopeHost.frame = hostFrame;
+	self.scopeStrip.frame = CGRectMake(0, 0, width, TGMetricSearchScopeRow);
+
+	CGFloat x = TGMetricPad;
+	CGFloat y = TGCenteredOrigin(TGMetricSearchScopeRow,
+								 TGMetricSearchScopeHeight);
+	for (UIButton *pill in self.scopeButtons){
+		NSString *title = [pill titleForState:UIControlStateNormal] ?: @"";
+		CGFloat textWidth = [title sizeWithFont:pill.titleLabel.font].width;
+		CGFloat pillWidth = textWidth + TGDoubled(TGMetricPad);
+		pill.frame = CGRectMake(x, y, pillWidth, TGMetricSearchScopeHeight);
+		x += pillWidth + TGMetricSearchScopeGap;
+	}
+	self.scopeStrip.contentSize = CGSizeMake(x + TGMetricPad,
+											 TGMetricSearchScopeRow);
+}
+
+- (void)setScopeBarVisible:(BOOL)visible {
+	UIView *wanted = visible ? self.scopeHost : nil;
+	if (self.tableView.tableHeaderView == wanted)
+		return;
+	self.tableView.tableHeaderView = wanted;
+	if (visible)
+		[self layoutScopeButtons];
+}
+
+- (void)scopeTapped:(UIButton *)pill {
+	if (pill.tag < 0 || pill.tag >= (NSInteger)TGSearchScopeTitles().count)
+		return;
+	self.scope = pill.tag;
+	[self styleScopeButtons];
+	[self.tableView reloadData];
+	[self.tableView scrollRectToVisible:CGRectMake(0, 0, 1, 1) animated:YES];
+}
+
+#pragma mark - recent query log
+
+- (void)rememberQuery:(NSString *)query {
+	NSString *trimmed = [query stringByTrimmingCharactersInSet:
+			[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+	if (!trimmed.length)
+		return;
+	NSMutableArray *fresh = [NSMutableArray arrayWithObject:trimmed];
+	for (NSString *old in self.recentQueries)
+		if (![old isEqualToString:trimmed] &&
+			(NSInteger)fresh.count < kRecentQueriesLimit)
+			[fresh addObject:old];
+	self.recentQueries = fresh;
+	[[NSUserDefaults standardUserDefaults] setObject:fresh
+											  forKey:kRecentQueriesKey];
+}
+
+- (void)clearRecentQueries {
+	self.recentQueries = @[];
+	[[NSUserDefaults standardUserDefaults] removeObjectForKey:kRecentQueriesKey];
+	[self.tableView reloadData];
 }
 
 - (void)cancel {
@@ -220,7 +419,7 @@ static NSString *TGPublicPostText(NSDictionary *message) {
 	return !self.bar.text.length &&
 		   (self.frequent.count > 0 || self.recent.count > 0 ||
 			self.recentlyFound.count > 0 || self.recentTags.count > 0 ||
-			self.recentLinks.count > 0);
+			self.recentLinks.count > 0 || self.recentQueries.count > 0);
 }
 
 /// While the search is empty the sections are the people, the places, the
@@ -250,6 +449,19 @@ static NSString *TGPublicPostText(NSDictionary *message) {
 	NSIndexPath *path = [self.tableView indexPathForRowAtPoint:where];
 	if (!path)
 		return;
+
+	if (path.section == 5){
+		if (path.row >= (NSInteger)self.recentQueries.count)
+			return;
+		NSString *query = self.recentQueries[path.row];
+		NSMutableArray *rest = [self.recentQueries mutableCopy];
+		[rest removeObject:query];
+		self.recentQueries = rest;
+		[[NSUserDefaults standardUserDefaults] setObject:rest
+												  forKey:kRecentQueriesKey];
+		[self.tableView reloadData];
+		return;
+	}
 
 	if (path.section == 3){
 		if (path.row >= (NSInteger)self.recentTags.count)
@@ -310,6 +522,80 @@ static NSString *TGPublicPostText(NSDictionary *message) {
 	}];
 }
 
+#pragma mark - scope filtering
+
+static BOOL TGSearchKindIsMedia(NSString *kind) {
+	return [kind isEqualToString:@"messagePhoto"] ||
+		   [kind isEqualToString:@"messageVideo"] ||
+		   [kind isEqualToString:@"messageAnimation"] ||
+		   [kind isEqualToString:@"messageVideoNote"];
+}
+
+static BOOL TGSearchKindIsFile(NSString *kind) {
+	return [kind isEqualToString:@"messageDocument"];
+}
+
+static BOOL TGSearchKindIsMusic(NSString *kind) {
+	return [kind isEqualToString:@"messageAudio"];
+}
+
+static BOOL TGSearchKindIsVoice(NSString *kind) {
+	return [kind isEqualToString:@"messageVoiceNote"];
+}
+
+/// TDLib hands search results as whole messages; the scope is a filter over
+/// the same answer rather than a second request, which is why switching a
+/// pill is instant on a 4S.
+static BOOL TGSearchMessageHasLink(NSDictionary *message) {
+	NSString *text = [message[@"text"] isKindOfClass:NSString.class]
+			? message[@"text"] : @"";
+	if (!text.length)
+		return NO;
+	NSString *lower = text.lowercaseString;
+	return [lower rangeOfString:@"http://"].location != NSNotFound ||
+		   [lower rangeOfString:@"https://"].location != NSNotFound ||
+		   [lower rangeOfString:@"www."].location != NSNotFound ||
+		   [lower rangeOfString:@"t.me/"].location != NSNotFound ||
+		   [lower rangeOfString:@"tg://"].location != NSNotFound;
+}
+
+static BOOL TGSearchMessageMatchesScope(NSDictionary *message, NSInteger scope) {
+	NSString *kind = [message[@"kind"] isKindOfClass:NSString.class]
+			? message[@"kind"] : @"";
+	switch (scope){
+		case TGSearchScopeMedia: return TGSearchKindIsMedia(kind);
+		case TGSearchScopeLinks: return TGSearchMessageHasLink(message);
+		case TGSearchScopeFiles: return TGSearchKindIsFile(kind);
+		case TGSearchScopeMusic: return TGSearchKindIsMusic(kind);
+		case TGSearchScopeVoice: return TGSearchKindIsVoice(kind);
+		default: return YES;
+	}
+}
+
+/// The messages the current scope shows. All and Messages are the same list;
+/// the other scopes narrow it by what the message carries.
+- (NSArray *)scopedMessageHits {
+	if (self.scope == TGSearchScopeAll || self.scope == TGSearchScopeMessages)
+		return self.messageHits;
+	NSMutableArray *out = [NSMutableArray array];
+	for (NSDictionary *message in self.messageHits)
+		if (TGSearchMessageMatchesScope(message, self.scope))
+			[out addObject:message];
+	return out;
+}
+
+- (BOOL)scopeShowsChats {
+	return self.scope == TGSearchScopeAll || self.scope == TGSearchScopeChats;
+}
+
+- (BOOL)scopeShowsMessages {
+	return self.scope == TGSearchScopeAll || self.scope >= TGSearchScopeMessages;
+}
+
+- (BOOL)scopeShowsPublic {
+	return self.scope == TGSearchScopeAll;
+}
+
 #pragma mark - searching
 
 - (void)searchBar:(UISearchBar *)searchBar textDidChange:(NSString *)query {
@@ -323,6 +609,9 @@ static NSString *TGPublicPostText(NSDictionary *message) {
 		self.publicLimits = nil;
 		self.publicLimitExceeded = NO;
 		self.pendingPublicQuery = nil;
+		self.scope = TGSearchScopeAll;
+		[self styleScopeButtons];
+		[self setScopeBarVisible:NO];
 		[NSObject cancelPreviousPerformRequestsWithTarget:self
 				selector:@selector(flushPublicSearch) object:nil];
 		// Back to the people and the places rather than to nothing.
@@ -332,6 +621,10 @@ static NSString *TGPublicPostText(NSDictionary *message) {
 		[self.tableView reloadData];
 		return;
 	}
+
+	// A new query starts on All, as Telegram's does; the pills narrow the
+	// same answer once the user picks one.
+	[self setScopeBarVisible:YES];
 
 	// The loaded list first, so there is something on screen before the
 	// server answers; what comes back replaces it.
@@ -483,15 +776,17 @@ static NSString *TGPublicPostText(NSDictionary *message) {
 }
 
 - (void)searchBarSearchButtonClicked:(UISearchBar *)searchBar {
+	[self rememberQuery:searchBar.text];
 	[searchBar resignFirstResponder];
 }
 
 #pragma mark - table
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
-	// Before a query: people, places, recently found, tags and links. While
-	// searching: suggestions, chats, contacts, messages, tags and posts.
-	return [self showsFrequent] ? 5 : 7;
+	// Before a query: people, places, recently found, tags, links and the
+	// recent search log. While searching: suggestions, chats, contacts,
+	// messages, tags, public posts and public stories.
+	return [self showsFrequent] ? 6 : 7;
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
@@ -502,13 +797,26 @@ static NSString *TGPublicPostText(NSDictionary *message) {
 		// there is a log to clear.
 		if (section == 2) return self.recentlyFound.count ? self.recentlyFound.count + 1 : 0;
 		if (section == 3) return self.recentTags.count ? self.recentTags.count + 1 : 0;
-		return self.recentLinks.count;
+		if (section == 4) return self.recentLinks.count;
+		return self.recentQueries.count ? self.recentQueries.count + 1 : 0;
 	}
-	if (section == 0) return self.suggestions.count;
+
+	// A scope is a filter over the same answer: only the sections it names
+	// have rows, and the others collapse to zero rather than being removed,
+	// so a row's index still means the same thing across a switch.
+	if (![self scopeShowsChats]){
+		if (section == 3) return [self scopedMessageHits].count;
+		return 0;
+	}
+	if (section == 0) return self.scope == TGSearchScopeAll ? self.suggestions.count : 0;
 	if (section == 1) return self.chatHits.count;
 	if (section == 2) return self.contactHits.count;
-	if (section == 3) return self.messageHits.count;
-	if (section == 4) return self.hashtagHits.count;
+	if (section == 3)
+		return self.scope == TGSearchScopeChats ? 0 : [self scopedMessageHits].count;
+	if (section == 4)
+		return self.scope == TGSearchScopeChats ? 0 : self.hashtagHits.count;
+	if (![self scopeShowsPublic])
+		return 0;
 	if (section == 6) return 1;
 	return self.publicHits.count +
 			((self.publicNextOffset.length && !self.publicLimitExceeded) ? 1 : 0);
@@ -522,17 +830,30 @@ static NSString *TGPublicPostText(NSDictionary *message) {
 		if (section == 3) return self.recentTags.count ? @"Recent Hashtags" : nil;
 		return self.recentLinks.count ? @"Recently Visited Links" : nil;
 	}
-	if (section == 0) return self.suggestions.count ? @"Suggestions" : nil;
+	if (section == 0) return (self.scope == TGSearchScopeAll && self.suggestions.count)
+			? @"Suggestions" : nil;
 	if (section == 1) return self.chatHits.count ? @"Chats" : nil;
 	if (section == 2) return self.contactHits.count ? @"Contacts" : nil;
-	if (section == 3) return self.messageHits.count ? @"Messages" : nil;
-	if (section == 4) return self.hashtagHits.count ? @"Hashtags" : nil;
-	if (section == 6) return @"Public Stories";
-	return self.publicHits.count ? @"Public Posts" : nil;
+	if (section == 3){
+		if (self.scope == TGSearchScopeChats)
+			return nil;
+		if ([self scopedMessageHits].count)
+			return self.scope == TGSearchScopeAll ? @"Messages"
+					: TGSearchScopeTitles()[(NSUInteger)self.scope];
+		return nil;
+	}
+	if (section == 4)
+		return (self.scope == TGSearchScopeAll && self.hashtagHits.count)
+				? @"Hashtags" : nil;
+	if (section == 6) return self.scope == TGSearchScopeAll ? @"Public Stories" : nil;
+	return (self.scope == TGSearchScopeAll && self.publicHits.count)
+			? @"Public Posts" : nil;
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
 	if ([self showsFrequent] || section != 5 || !self.bar.text.length)
+		return nil;
+	if (self.scope != TGSearchScopeAll)
 		return nil;
 	if (self.publicLimitExceeded){
 		NSInteger wait = [self.publicLimits[@"nextFreeIn"] integerValue];
@@ -581,6 +902,39 @@ static NSString *TGPublicPostText(NSDictionary *message) {
 							  colourId:chatId];
 }
 
+/// The word the user typed is marked where it appears, which is what makes a
+/// long message result readable at a glance. A miss returns nil so the cell
+/// keeps its plain string and no attributed layout is paid for.
+- (NSAttributedString *)highlightedText:(NSString *)text
+								 query:(NSString *)query
+								  font:(UIFont *)font
+								colour:(UIColor *)colour {
+	if (!text.length || !query.length)
+		return nil;
+	NSMutableAttributedString *marked = [[NSMutableAttributedString alloc]
+			initWithString:text attributes:@{
+				NSFontAttributeName : font,
+				NSForegroundColorAttributeName : colour,
+			}];
+	NSRange search = NSMakeRange(0, text.length);
+	UIColor *accent = [[TGTheme shared] accentColour];
+	BOOL any = NO;
+	while (search.length > 0){
+		NSRange found = [text rangeOfString:query options:NSCaseInsensitiveSearch
+									  range:search];
+		if (found.location == NSNotFound)
+			break;
+		[marked addAttribute:NSForegroundColorAttributeName value:accent
+					   range:found];
+		any = YES;
+		NSUInteger next = NSMaxRange(found);
+		if (next >= text.length)
+			break;
+		search = NSMakeRange(next, text.length - next);
+	}
+	return any ? marked : nil;
+}
+
 - (UITableViewCell *)tableView:(UITableView *)tableView
 		 cellForRowAtIndexPath:(NSIndexPath *)indexPath
 {
@@ -608,8 +962,26 @@ static NSString *TGPublicPostText(NSDictionary *message) {
 	cell.detailTextLabel.opaque = YES;
 	cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
 	cell.imageView.image = nil;
+	cell.textLabel.attributedText = nil;
+	cell.detailTextLabel.attributedText = nil;
 
 	if ([self showsFrequent]) {
+		if (indexPath.section == 5){
+			if (indexPath.row >= (NSInteger)self.recentQueries.count){
+				cell.textLabel.text = @"Clear Recent Searches";
+				cell.textLabel.textColor = [theme destructiveColour];
+				cell.detailTextLabel.text = nil;
+				cell.accessoryType = UITableViewCellAccessoryNone;
+				return cell;
+			}
+			cell.textLabel.text = self.recentQueries[(NSUInteger)indexPath.row];
+			cell.textLabel.textColor = [theme primaryTextColour];
+			cell.detailTextLabel.text = @"Recent search";
+			cell.imageView.image = [TGIcons glyphNamed:@"search"
+												colour:[theme secondaryTextColour]
+												  side:TGMetricListAvatar - TGMetricPadLarge];
+			return cell;
+		}
 		// The last row of a log is the clear action.
 		if (indexPath.section == 2 &&
 			indexPath.row >= (NSInteger)self.recentlyFound.count){
@@ -654,7 +1026,12 @@ static NSString *TGPublicPostText(NSDictionary *message) {
 		// A public chat the list has never seen answers with no title until
 		// its own fetch lands; the row says so rather than being blank.
 		NSString *title = [c[@"title"] length] ? c[@"title"] : @"Loading...";
-		cell.textLabel.text = title;
+		cell.textLabel.attributedText = [self highlightedText:title
+														query:self.bar.text
+														 font:TGFontBodyStrong()
+													   colour:[theme primaryTextColour]];
+		if (!cell.textLabel.attributedText)
+			cell.textLabel.text = title;
 		cell.textLabel.textColor = [theme primaryTextColour];
 		cell.detailTextLabel.text = c[@"text"];
 		cell.imageView.image = [self avatarForChat:[c[@"id"] longLongValue]
@@ -671,10 +1048,18 @@ static NSString *TGPublicPostText(NSDictionary *message) {
 											 title:name
 											fileId:nil];
 	} else if (indexPath.section == 3) {
-		NSDictionary *m = self.messageHits[indexPath.row];
+		NSArray *hits = [self scopedMessageHits];
+		if (indexPath.row >= (NSInteger)hits.count)
+			return cell;
+		NSDictionary *m = hits[indexPath.row];
 		cell.textLabel.text = m[@"chatTitle"];
 		cell.textLabel.textColor = [theme primaryTextColour];
-		cell.detailTextLabel.text = m[@"text"];
+		cell.detailTextLabel.attributedText = [self highlightedText:m[@"text"] ?: @""
+															  query:self.bar.text
+															   font:TGFontCaption()
+															 colour:[theme secondaryTextColour]];
+		if (!cell.detailTextLabel.attributedText)
+			cell.detailTextLabel.text = m[@"text"];
 		cell.imageView.image = [self avatarForChat:[m[@"chatId"] longLongValue]
 											 title:m[@"chatTitle"]
 											fileId:nil];
@@ -772,6 +1157,21 @@ static NSString *TGPublicPostText(NSDictionary *message) {
 	[self.bar resignFirstResponder];
 
 	BOOL fromFrequent = [self showsFrequent];
+
+	if (fromFrequent && indexPath.section == 5){
+		if (indexPath.row >= (NSInteger)self.recentQueries.count){
+			__weak typeof(self) weakSelf = self;
+			[TGAlertSheet showConfirm:@"Every remembered search is forgotten. Nothing else changes."
+								title:@"Clear Recent Searches"
+							   action:@"Clear" destructive:YES inView:self.view
+							onConfirm:^{ [weakSelf clearRecentQueries]; }];
+			return;
+		}
+		NSString *query = self.recentQueries[(NSUInteger)indexPath.row];
+		self.bar.text = query;
+		[self searchBar:self.bar textDidChange:query];
+		return;
+	}
 
 	if (fromFrequent && indexPath.section == 3){
 		if (indexPath.row >= (NSInteger)self.recentTags.count){
@@ -876,7 +1276,7 @@ static NSString *TGPublicPostText(NSDictionary *message) {
 
 	NSDictionary *row = fromFrequent ? [self emptyStateRowAt:indexPath]
 			: (indexPath.section == 1 ? self.chatHits[indexPath.row]
-									  : self.messageHits[indexPath.row]);
+									  : [self scopedMessageHits][indexPath.row]);
 	int64_t chatId = [((fromFrequent || indexPath.section == 1)
 			? row[@"id"] : row[@"chatId"]) longLongValue];
 	if (!chatId)
@@ -885,6 +1285,7 @@ static NSString *TGPublicPostText(NSDictionary *message) {
 	// Opening a chat from search is what puts it in the recently-found list,
 	// which is the other half of what this screen shows when it is empty.
 	[[TGClient shared] rememberFoundChat:chatId];
+	[self rememberQuery:self.bar.text];
 
 	TGChatViewController *chat = [[TGChatViewController alloc] init];
 	chat.chatId = chatId;

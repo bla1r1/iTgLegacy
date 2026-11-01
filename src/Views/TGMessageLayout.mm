@@ -5,6 +5,8 @@
 #import "TGStyle.h"
 #import "TGLruCache.hpp"
 #import "TGPerf.h"
+#include <time.h>
+#include <string.h>
 
 #ifndef typeof
 #define typeof __typeof__
@@ -481,6 +483,24 @@ NSString *TGDescribeMessageContent(NSDictionary *m) {
 		}
 	}
 	return @"...";
+}
+
+NSString *TGMessageStamp(NSTimeInterval timestamp, BOOL edited) {
+	if (timestamp <= 0)
+		return @"";
+	time_t seconds = (time_t)timestamp;
+	struct tm value;
+	if (!localtime_r(&seconds, &value))
+		return @"";
+	char buffer[40];
+	if (edited)
+		snprintf(buffer, sizeof(buffer), "%02d:%02d edited",
+				value.tm_hour, value.tm_min);
+	else
+		snprintf(buffer, sizeof(buffer), "%02d:%02d",
+				value.tm_hour, value.tm_min);
+	return [[NSString alloc] initWithBytes:buffer length:strlen(buffer)
+								  encoding:NSUTF8StringEncoding];
 }
 
 void TGVideoNoteLayoutBottomBar(CGRect bubbleFrame,

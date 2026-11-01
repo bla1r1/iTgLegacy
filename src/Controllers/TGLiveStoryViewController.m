@@ -38,6 +38,11 @@
 	NSMutableArray *rows = [NSMutableArray array];
 	__weak typeof(self) weakSelf = self;
 
+	[rows addObject:@{@"title" : @"Status",
+					  @"detail" : self.groupCallId
+							  ? [NSString stringWithFormat:@"LIVE · story %d · call %d",
+									  self.storyId, self.groupCallId]
+							  : @"Not started"}];
 	[rows addObject:@{@"title" : self.groupCallId ? @"Start Another Live Story"
 												  : @"Start Live Story",
 					  @"detail" : @"Telegram creates the live story",

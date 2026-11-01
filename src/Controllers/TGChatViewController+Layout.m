@@ -60,21 +60,11 @@ UIColor *TGSenderColour(int64_t userId) {
 	return h;
 }
 
-/// "12:29" for incoming, "12:29 ✓✓" for outgoing, "edited" in front when it
-/// applies - the same line Telegram tucks into the corner of the bubble.
+/// "12:29" for incoming, "12:29 ✓✓" for outgoing, "12:29 edited" when the
+/// message has been changed - the line Telegram tucks into the corner of the
+/// bubble. The mark follows the clock; a prefix moves every stamp two words in.
 - (NSString *)stampFor:(NSDictionary *)m {
-	double ts = [m[@"date"] doubleValue];
-	time_t tSec = (time_t)ts;
-	struct tm tmVal;
-	localtime_r(&tSec, &tmVal);
-
-	char buf[32];
-	if ([m[@"edited"] boolValue]) {
-		snprintf(buf, sizeof(buf), "edited %02d:%02d", tmVal.tm_hour, tmVal.tm_min);
-	} else {
-		snprintf(buf, sizeof(buf), "%02d:%02d", tmVal.tm_hour, tmVal.tm_min);
-	}
-	return [[NSString alloc] initWithBytes:buf length:strlen(buf) encoding:NSUTF8StringEncoding];
+	return TGMessageStamp([m[@"date"] doubleValue], [m[@"edited"] boolValue]);
 }
 
 - (CGFloat)timeWidthFor:(NSDictionary *)m {

@@ -109,6 +109,13 @@ extern "C" {
 
 NSString *TGDescribeMessageContent(NSDictionary *m);
 
+/// The clock in the corner of a bubble: "12:29", or "12:29 edited" once the
+/// message has been changed. Telegram appends the mark after the time; a
+/// prefix ("edited 12:29") reads as a different word at the start of the line.
+/// A zero or missing timestamp answers an empty string, which keeps a service
+/// row without a clock from drawing one.
+NSString *TGMessageStamp(NSTimeInterval timestamp, BOOL edited);
+
 void TGVideoNoteLayoutBottomBar(CGRect bubbleFrame,
 								CGFloat durWidth,
 								CGFloat clockWidth,

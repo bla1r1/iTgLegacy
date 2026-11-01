@@ -84,7 +84,9 @@
 	}
 	NSLog(@"TGClient: B3 folder choice=%ld -> id=%lld title=%@", (long)choice,
 			(long long)self.folderId, self.title);
-	// Redraw the pill strip so the newly chosen tab is the filled one.
+	// Redraw the title view and the pill strip so the newly chosen tab is
+	// the filled one and the name above the rows is the folder's.
+	[self refreshListTitleView];
 	[self rebuildTableHeader];
 	[self reload];
 }
@@ -266,6 +268,9 @@
 		return @[];
 	NSDictionary *chat = chats[index];
 	BOOL muted = [chat[@"isMuted"] boolValue];
+	BOOL pinned = [chat[@"isPinned"] boolValue];
+	BOOL unread = [chat[@"markedUnread"] boolValue] ||
+				  [chat[@"unread"] integerValue] > 0;
 
 	__weak typeof(self) weakSelf = self;
 	void (^run)(NSString *) = ^(NSString *choice){
@@ -285,8 +290,21 @@
 									  title:muted ? @"Unmute" : @"Mute"
 									handler:^(id action, NSIndexPath *path){ run(@"Mute"); }];
 	[mute setBackgroundColor:[[TGTheme shared] muteActionColour]];
+	// Pin and read are on the same row as the two destructive verbs in the
+	// official client; leaving them only in the hold menu made the swipe a
+	// different tool rather than a shortcut to the same one.
+	id pin = [rowAction rowActionWithStyle:UITableViewRowActionStyleNormal
+									 title:pinned ? @"Unpin" : @"Pin"
+								   handler:^(id action, NSIndexPath *path){ run(@"Pin"); }];
+	[pin setBackgroundColor:[[TGTheme shared] muteActionColour]];
+	id read = [rowAction rowActionWithStyle:UITableViewRowActionStyleNormal
+									  title:unread ? @"Mark as Read" : @"Mark as Unread"
+									handler:^(id action, NSIndexPath *path){
+		run(unread ? @"Mark as Read" : @"Mark as Unread");
+	}];
+	[read setBackgroundColor:[[TGTheme shared] archiveActionColour]];
 	// Right to left: Delete sits at the edge.
-	return @[delete, archive, mute];
+	return @[delete, archive, mute, pin, read];
 }
 
 @end
