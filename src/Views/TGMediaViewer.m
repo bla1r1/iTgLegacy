@@ -1,5 +1,5 @@
 #import "TGMediaViewer.h"
-#import "TGClient.h"
+#import "TGMediaStore.h"
 #import "TGTheme.h"
 #import "TGIcons.h"
 #import "UIImage+WebP.h"
@@ -407,7 +407,7 @@ static const CGFloat kThumbStripH   = 54.0f;
 
 	__weak typeof(self) weakSelf = self;
 	__weak UIButton *weakBtn = btn;
-	[[TGClient shared] downloadFile:fileId.integerValue priority:TGDownloadPriorityOnScreen completion:^(NSString *path){
+	[[TGMediaStore shared] downloadFile:fileId.integerValue priority:TGDownloadPriorityOnScreen completion:^(NSString *path){
 		if (!path.length) return;
 		dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_LOW, 0), ^{
 			UIImage *img = [UIImage imageWithContentsOfFile:path];
@@ -485,7 +485,7 @@ static const CGFloat kThumbStripH   = 54.0f;
 		when.dateStyle = NSDateFormatterMediumStyle;
 		when.timeStyle = NSDateFormatterShortStyle;
 	}
-	NSString *sender = [[TGClient shared] nameForUserId:
+	NSString *sender = [[TGMediaStore shared] nameForUserId:
 			[item[@"senderId"] longLongValue]];
 	NSString *date = [when stringFromDate:
 			[NSDate dateWithTimeIntervalSince1970:[item[@"date"] doubleValue]]];
@@ -587,7 +587,7 @@ static const CGFloat kThumbStripH   = 54.0f;
 		// fetched when the play button is pressed (or auto-started for GIFs).
 		NSNumber *thumb = item[@"photoId"];
 		if ([thumb isKindOfClass:NSNumber.class]){
-			[[TGClient shared] downloadFile:thumb.integerValue completion:^(NSString *path){
+			[[TGMediaStore shared] downloadFile:thumb.integerValue completion:^(NSString *path){
 				if (!path.length)
 					return;
 				dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
@@ -610,7 +610,7 @@ static const CGFloat kThumbStripH   = 54.0f;
 	[self.requested addObject:fileId];
 
 	__weak typeof(self) weakSelf = self;
-	[[TGClient shared] downloadFile:fileId.integerValue completion:^(NSString *path){
+	[[TGMediaStore shared] downloadFile:fileId.integerValue completion:^(NSString *path){
 		if (!path.length)
 			return;
 		dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
@@ -791,7 +791,7 @@ static const CGFloat kThumbStripH   = 54.0f;
 
 	self.timeLabel.text = @"...";
 	__weak typeof(self) weakSelf = self;
-	[[TGClient shared] downloadFile:fileId.integerValue completion:^(NSString *path){
+	[[TGMediaStore shared] downloadFile:fileId.integerValue completion:^(NSString *path){
 		if (!path.length){
 			weakSelf.timeLabel.text = @"--:--";
 			return;

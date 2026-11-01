@@ -5,7 +5,7 @@
 #import "TGGiftViewer.h"
 #import "TGTheme.h"
 #import "TGIcons.h"
-#import "TGClient.h"
+#import "TGMediaStore.h"
 #import <QuartzCore/QuartzCore.h>
 #import "TGStyle.h"
 
@@ -150,7 +150,7 @@ static NSString *TGGiftStamp(NSNumber *unix) {
 	// the placeholder it wears until the download lands.
 	NSNumber *thumbId = gift[@"thumbFileId"];
 	if ([thumbId isKindOfClass:NSNumber.class] && thumbId.integerValue > 0){
-		[[TGClient shared] downloadFile:thumbId.integerValue
+		[[TGMediaStore shared] downloadFile:thumbId.integerValue
 							   completion:^(NSString *path){
 			if (!path.length)
 				return;
@@ -298,7 +298,7 @@ static NSString *TGGiftStamp(NSNumber *unix) {
 /// in the accent colour, the face downloaded like every other avatar here.
 - (void)addFromRowAtY:(CGFloat)y right:(CGFloat)right gift:(NSDictionary *)gift {
 	NSInteger userId = [gift[@"senderUserId"] longLongValue];
-	NSString *name = [[TGClient shared] nameForUserId:userId];
+	NSString *name = [[TGMediaStore shared] nameForUserId:userId];
 	if (!name.length)
 		name = @"Unknown";
 
@@ -325,10 +325,10 @@ static NSString *TGGiftStamp(NSNumber *unix) {
 	[_card addSubview:face];
 
 	// The cached initials give way to the photo when it lands.
-	NSNumber *fileId = [[TGClient shared] photoFileIdForUserId:userId];
+	NSNumber *fileId = [[TGMediaStore shared] photoFileIdForUserId:userId];
 	if ([fileId isKindOfClass:NSNumber.class] && fileId.integerValue > 0){
 		__weak UIImageView *weakFace = face;
-		[[TGClient shared] downloadFile:fileId.integerValue
+		[[TGMediaStore shared] downloadFile:fileId.integerValue
 							   completion:^(NSString *path){
 			if (!path.length)
 				return;

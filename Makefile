@@ -184,6 +184,8 @@ APP_SRC_M := \
 	src/App/main.m \
 	src/App/TGBench.m \
 	src/Core/TGClient.m \
+	src/Core/TGStickerStore.m \
+	src/Core/TGMediaStore.m \
 	src/Core/TGClient+Auth.m \
 	src/Core/TGClient+Messages.m \
 	src/Core/TGStatusText.m \

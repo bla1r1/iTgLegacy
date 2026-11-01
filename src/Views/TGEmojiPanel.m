@@ -3,7 +3,7 @@
 #import "TGTheme.h"
 #import "TGIcons.h"
 #import "TGPopupMenu.h"
-#import "TGClient.h"
+#import "TGStickerStore.h"
 #import "UIImage+WebP.h"
 #import <QuartzCore/QuartzCore.h>
 #import "TGStyle.h"
@@ -117,7 +117,7 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 @property (nonatomic, assign) NSInteger stripIndex;
 @property (nonatomic, strong) NSMutableSet *requested;   // grid indexes asked for
 
-@property (nonatomic, strong) NSArray *stickerSets;      // installed, as TGClient gives them
+@property (nonatomic, strong) NSArray *stickerSets;      // installed, as the store gives them
 @property (nonatomic, strong) NSString *gifQuery;        // nil for the saved ones
 /// An emoji the sticker tab is searching for, or nil for the usual feed of
 /// favourites, recents and installed sets.
@@ -280,7 +280,7 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 	// has Favourites and Recently Used, because the sets are not here yet.
 	if (tab == TGEmojiPanelTabStickers){
 		__weak typeof(self) weakSelf = self;
-		[[TGClient shared] installedStickerSetsWithCompletion:^(NSArray *sets){
+		[[TGStickerStore shared] installedStickerSetsWithCompletion:^(NSArray *sets){
 			TGEmojiPanel *me = weakSelf;
 			if (!me || me.tab != TGEmojiPanelTabStickers)
 				return;
@@ -512,7 +512,7 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 		for (NSDictionary *set in order)
 			if (set[@"id"])
 				[ids addObject:set[@"id"]];
-		[[TGClient shared] reorderInstalledStickerSets:ids];
+		[[TGStickerStore shared] reorderInstalledStickerSets:ids];
 	}
 }
 
@@ -555,9 +555,9 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 				show(gifs, weakSelf.gifQuery ? @"Nothing found" : @"GIFs you save show up here");
 			};
 			if (self.gifQuery)
-				[[TGClient shared] searchAnimations:self.gifQuery inChat:self.chatId completion:got];
+				[[TGStickerStore shared] searchAnimations:self.gifQuery inChat:self.chatId completion:got];
 			else
-				[[TGClient shared] savedAnimationsWithCompletion:got];
+				[[TGStickerStore shared] savedAnimationsWithCompletion:got];
 			break;
 		}
 	}
@@ -612,11 +612,11 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 		[me setNeedsFeedRelayout];
 	};
 
-	[[TGClient shared] stickersForEmoji:query completion:^(NSArray *stickers){
+	[[TGStickerStore shared] stickersForEmoji:query completion:^(NSArray *stickers){
 		mine = stickers ?: @[];
 		show();
 	}];
-	[[TGClient shared] searchStickersForEmoji:query completion:^(NSArray *stickers){
+	[[TGStickerStore shared] searchStickersForEmoji:query completion:^(NSArray *stickers){
 		// What is already in "Yours" is not worth a second tile.
 		NSMutableSet *known = [NSMutableSet set];
 		for (NSDictionary *sticker in mine)
@@ -634,7 +634,7 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 	// something ends here, given the same query TDLib's set search also
 	// takes. Each entry carries the whole record the install sheet needs -
 	// id, count, covers, and whether it is already installed.
-	[[TGClient shared] searchStickerSetsNamed:query completion:^(NSArray *sets){
+	[[TGStickerStore shared] searchStickerSetsNamed:query completion:^(NSArray *sets){
 		NSMutableArray *found = [NSMutableArray array];
 		for (NSDictionary *set in (sets ?: @[])){
 			if (![set isKindOfClass:NSDictionary.class] || !set[@"id"])
@@ -733,11 +733,11 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 				next(slot + 1);
 		};
 		if (slot == 0)
-			[[TGClient shared] favoriteStickersWithCompletion:got];
+			[[TGStickerStore shared] favoriteStickersWithCompletion:got];
 		else if (slot == 1)
-			[[TGClient shared] recentStickersWithCompletion:got];
+			[[TGStickerStore shared] recentStickersWithCompletion:got];
 		else
-			[[TGClient shared] stickersInSet:me.stickerSets[slot - 2][@"id"] completion:got];
+			[[TGStickerStore shared] stickersInSet:me.stickerSets[slot - 2][@"id"] completion:got];
 	};
 	next(0);
 }
@@ -1032,7 +1032,7 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 		apply(cached);
 		return;
 	}
-	[[TGClient shared] downloadFile:fileId completion:^(NSString *path){
+	[[TGStickerStore shared] downloadFile:fileId completion:^(NSString *path){
 		if (!path.length)
 			return;
 		dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_LOW, 0), ^{
@@ -1127,7 +1127,7 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 		[header addSubview:thumb];
 		[header addSubview:lottie];
 
-		[[TGClient shared] downloadFile:fileId priority:TGDownloadPriorityOnScreen completion:^(NSString *path){
+		[[TGStickerStore shared] downloadFile:fileId priority:TGDownloadPriorityOnScreen completion:^(NSString *path){
 			if (!path) return;
 			dispatch_async(dispatch_get_main_queue(), ^{
 				if ([lottie loadTGSFile:path]) {
@@ -1145,7 +1145,7 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 		if (cached) preview.image = cached;
 		[header addSubview:preview];
 
-		[[TGClient shared] downloadFile:fileId priority:TGDownloadPriorityOnScreen completion:^(NSString *path){
+		[[TGStickerStore shared] downloadFile:fileId priority:TGDownloadPriorityOnScreen completion:^(NSString *path){
 			if (!path) return;
 			dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
 				UIImage *img = TGPanelDecode(path);
@@ -1168,17 +1168,17 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 			return;
 		NSString *action = actions[choice];
 		if ([action isEqualToString:@"fav"])
-			[[TGClient shared] setSticker:fileId favourite:YES];
+			[[TGStickerStore shared] setSticker:fileId favourite:YES];
 		else if ([action isEqualToString:@"unfav"])
-			[[TGClient shared] setSticker:fileId favourite:NO];
+			[[TGStickerStore shared] setSticker:fileId favourite:NO];
 		else if ([action isEqualToString:@"unrecent"])
-			[[TGClient shared] removeRecentSticker:fileId];
+			[[TGStickerStore shared] removeRecentSticker:fileId];
 		else if ([action isEqualToString:@"unset"])
-			[[TGClient shared] setStickerSet:setId installed:NO archived:NO];
+			[[TGStickerStore shared] setStickerSet:setId installed:NO archived:NO];
 		else if ([action isEqualToString:@"savegif"])
-			[[TGClient shared] saveAnimationFileId:fileId saved:YES];
+			[[TGStickerStore shared] saveAnimationFileId:fileId saved:YES];
 		else if ([action isEqualToString:@"unsavegif"])
-			[[TGClient shared] saveAnimationFileId:fileId saved:NO];
+			[[TGStickerStore shared] saveAnimationFileId:fileId saved:NO];
 
 		// The answers come back as updates the panel does not listen for, so
 		// re-read the feed shortly after. A removed pack also changes the
@@ -1209,7 +1209,7 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 		TGEmojiPanel *panel = weakSelf;
 		if (index != 0 || !panel)
 			return;
-		[[TGClient shared] setStickerSet:set[@"id"] installed:YES archived:NO];
+		[[TGStickerStore shared] setStickerSet:set[@"id"] installed:YES archived:NO];
 		dispatch_after(dispatch_time(DISPATCH_TIME_NOW,
 				(int64_t)(TGAnimationDurationHighlight * NSEC_PER_SEC)),
 				dispatch_get_main_queue(), ^{

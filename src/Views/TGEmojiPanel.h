@@ -10,9 +10,9 @@
 @protocol TGEmojiPanelDelegate <NSObject>
 - (void)emojiPanel:(TGEmojiPanel *)panel didPickEmoji:(NSString *)emoji;
 - (void)emojiPanelDidBackspace:(TGEmojiPanel *)panel;
-/// A sticker in the shape TGClient's sticker calls give ("fileId", ...).
+/// A sticker in the shape TGStickerStore's sticker reads give ("fileId", ...).
 - (void)emojiPanel:(TGEmojiPanel *)panel didPickSticker:(NSDictionary *)sticker;
-/// A GIF in the shape TGClient's animation calls give.
+/// A GIF in the shape TGStickerStore's animation reads give.
 - (void)emojiPanel:(TGEmojiPanel *)panel didPickAnimation:(NSDictionary *)animation;
 @end
 
