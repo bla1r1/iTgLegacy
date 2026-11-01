@@ -26,6 +26,7 @@ static TGPopupMenu *sOpenMenu = nil;
 	NSArray *_items;
 	void (^_choice)(NSInteger, NSString *);
 	void (^_reactionChoice)(NSString *);
+	void (^_defaultReactionChoice)(NSString *);
 	NSTimeInterval _shownAt;
 }
 @end
@@ -66,6 +67,9 @@ static TGPopupMenu *sOpenMenu = nil;
 		return;
 	[self dismiss];
 
+	// The header is the reason this variant exists - an animated sticker or
+	// an emoji glyph above the rows - so it is drawn as the card, not handed
+	// to the system sheet where a header has nowhere to go.
 	TGPopupMenu *menu = [[TGPopupMenu alloc] initWithFrame:host.bounds];
 	[menu buildWithItems:items atPoint:point headerView:headerView reactions:nil selectedReaction:nil];
 	menu->_choice = [choice copy];
@@ -86,7 +90,21 @@ static TGPopupMenu *sOpenMenu = nil;
            inView:(UIView *)host
         reactions:(NSArray<NSString *> *)reactions
    selectedReaction:(NSString *)selectedReaction
-       onReaction:(void (^)(NSString *emoji))reactionChoice
+       onReaction:(void (^)(NSString *))reactionChoice
+         onChoice:(void (^)(NSInteger, NSString *))choice
+{
+	[self showItems:items atPoint:point inView:host reactions:reactions
+		   selectedReaction:selectedReaction onReaction:reactionChoice
+		onDefaultReaction:nil onChoice:choice];
+}
+
++ (void)showItems:(NSArray *)items
+          atPoint:(CGPoint)point
+           inView:(UIView *)host
+        reactions:(NSArray<NSString *> *)reactions
+   selectedReaction:(NSString *)selectedReaction
+       onReaction:(void (^)(NSString *))reactionChoice
+onDefaultReaction:(void (^)(NSString *))defaultChoice
          onChoice:(void (^)(NSInteger, NSString *))choice
 {
 	if ((!items.count && !reactions.count) || !host)
@@ -97,6 +115,7 @@ static TGPopupMenu *sOpenMenu = nil;
 	[menu buildWithItems:items atPoint:point headerView:nil reactions:reactions selectedReaction:selectedReaction];
 	menu->_choice = [choice copy];
 	menu->_reactionChoice = [reactionChoice copy];
+	menu->_defaultReactionChoice = [defaultChoice copy];
 	menu->_shownAt = [NSDate timeIntervalSinceReferenceDate];
 	[host addSubview:menu];
 	sOpenMenu = menu;
@@ -160,6 +179,17 @@ static TGPopupMenu *sOpenMenu = nil;
 			[TGPopupMenu dismiss];
 			if (rChoice) {
 				rChoice(emoji);
+			}
+		};
+		_reactionPicker.onDefaultRequested = ^(NSString *emoji){
+			TGPopupMenu *strongSelf = weakSelf;
+			if (!strongSelf) return;
+			void (^dChoice)(NSString *) = strongSelf->_defaultReactionChoice;
+			// Promote first: the bar is still on screen under the finger,
+			// so the answer to the hold is visible before the request lands.
+			[strongSelf->_reactionPicker promoteEmoji:emoji];
+			if (dChoice) {
+				dChoice(emoji);
 			}
 		};
 	}

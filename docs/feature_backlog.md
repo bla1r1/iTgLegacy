@@ -12,26 +12,43 @@ sh scripts/tdlib_coverage.sh --wired    # called names a screen can reach
 sh scripts/tdlib_coverage.sh --bare     # called names with no caller
 sh scripts/tdlib_coverage.sh --updates  # dropped updates worth reading
 sh scripts/tdlib_coverage.sh --ignored  # let through, but no branch acts on them
+python3 scripts/tdlib_tiers.py --tier2   # skipped today, buildable later
+python3 scripts/tdlib_tiers.py --tier3   # skipped, and never for this client
 ```
 
 As of 2026-11-01:
 
 | | declared | covered | gap | of it wanted | out of scope |
 |---|---|---|---|---|---|
-| functions | 1076 | 497 (46%) | 579 | 84 | 495 |
-| updates | 197 | 101 (51%) | 96 | 0 | 78 |
-
-Of the 497 functions the app names, all 497 are reachable from a screen and none are bare: every request has a caller in `src/`, not only a method. A test driving a method does not make it wired — that is the point of the split. `scripts/tdlib_wired.py` does the walk; a new `@type` with no caller shows up under `--bare` and is expected to get a UI path, not only a test.
+| functions | 1076 | 538 (50%) | 538 | 43 | 495 |
+| updates | 197 | 104 (53%) | 93 | 0 | 78 |
 
 Functions are counted from string literals in `src/`, updates from the one list in `src/Core/TGUpdateType.h` — anything outside it is thrown away in the receive loop before a Foundation tree is built, so a dropped update leaves no trace in the log either. Both numbers are floors. Where this file and ROADMAP.md disagree, the roadmap wins — it knows the device.
 
-Of the 119 updates let through the filter, 101 have a branch that acts on them; the other 18 are the scaffold in `TG_IGNORED_UPDATES` — names kept in the filter and the dispatch so the screen can be filled in later without hunting for the string, and reported by `--ignored` rather than counted as handled. The 78 dropped updates are out of scope and match the script's `SKIP` pattern.
+Of the 119 updates let through the filter, 104 have a branch that acts on them; the other 15 are the scaffold in `TG_IGNORED_UPDATES` — names kept in the filter and the dispatch so the screen can be filled in later without hunting for the string, and reported by `--ignored` rather than counted as handled. The 78 dropped updates are out of scope and match the script's `SKIP` pattern.
 
 The two halves are not comparable: 1076 functions include every bot, Stars, business and TON call, while the 197 updates are the live state of a client that is running. Updates are the weaker number of the two and the cheaper one to move — Tier 0 below is closed, the global unread total drives the app-icon badge now.
+
+### Tiers at a glance
+
+| Tier | Meaning | Functions |
+|---|---|---|
+| 1 | done: reachable from a screen (`--wired`) | 538 |
+| 2 | not done yet, but buildable: the wanted list plus the skipped-but-possible set (`--relevant` + `--tier2`) | 43 + 194 |
+| 3 | never for this client: bot-account-only, or needs a stack this iOS cannot carry (`--tier3`) | 301 |
+
+The tier split is `scripts/tdlib_tiers.py`; it reads the same skip list the coverage
+script uses, so the two cannot disagree. Tier 2 is not one backlog: the wanted
+half is what the app is missing from the features it already draws, and the
+skipped half is the features it has never drawn.
 
 ---
 
 # Functions
+
+Tier 1 is the whole done half: exactly the names `scripts/tdlib_wired.py --wired`
+prints. The sections below are its record - Tier 0 and Tier 1 were the order the
+work was done in, not a second classification.
 
 ## Tier 0 — visibly broken without it
 
@@ -88,7 +105,36 @@ The two halves are not comparable: 1076 functions include every bot, Stars, busi
 
 ## Tier 2 — wanted, nobody blocked
 
-84 functions in a long tail: usernames/supergroup admin (15), profile/privacy/notes/support (13), emoji/reactions (11), backgrounds/themes (9), diagnostics/network/config (8), notifications/sounds (7), forum topics (6), payments/orders (5), calls/sessions (4), connected websites (3), bot keyboards (2) and poll option properties (1). Run `--relevant` for the exact names and pick with the app in hand.
+43 functions in a long tail: backgrounds/themes (9), diagnostics/network/config (8), notifications/sounds (6), forum topics (5), payments/orders (5), calls/sessions (4), connected websites (3), bot keyboards (2) and poll option properties (1). Run `--relevant` for the exact names and pick with the app in hand.
+
+That is the wanted half. The other half of Tier 2 is 194 functions skipped today because no screen wanted them yet, but they need no new stack:
+
+- stories — 48
+- group and video calls — 42
+- communities, checklists and quick replies — 35
+- business accounts — 28
+- emoji status, profile audio and text styles — 22
+- direct message topics — 9
+- dice, alarms and ephemeral content — 6
+- group anti-spam switches and web proxy carrier — 4
+
+`python3 scripts/tdlib_tiers.py --tier2` lists the names. These are not promises: they are the part of the skip list that a screen and the existing client could carry later.
+
+**Usernames and supergroup administration — done as a wave.** Fifteen functions, every one on a screen:
+
+- **Account usernames** — Edit Profile's Username row opens a list built from `getMe`: the editable name (changed through `setUsername`), every active name with `toggleUsernameIsActive`, every disabled name switched back on the same way, and drag-to-order through `reorderActiveUsernames`. The editable name cannot be switched off, which the switch shows before the request is sent.
+- **Group usernames** — the group profile's More menu gains Group Settings. That screen reads `getSupergroup` and `getSupergroupFullInfo` once and shows the editable name (`setSupergroupUsername`), each name's switch (`toggleSupergroupUsernameIsActive`), drag-to-order (`reorderSupergroupActiveUsernames`), and Disable All (`disableAllSupergroupUsernames`). Telegram's refusal is shown with the server's own message, including `can_set_username` being off.
+- **Group mode** — the same screen carries `toggleSupergroupIsForum`, `toggleSupergroupJoinByRequest`, `toggleSupergroupHasHiddenMembers`, `toggleSupergroupIsBroadcastGroup` (a confirmation, because there is no inverse), `toggleSupergroupHasAutomaticTranslation` and `setSupergroupMainProfileTab` for channels. Values come from the two records above, so the switch names the state it is in.
+- **Default administrator rights** — Settings → Privacy & Security → Default Admin Rights offers Read-only/Standard/Posting/Full presets for groups and channels, built as complete `chatAdministratorRights` objects and sent through `setDefaultGroupAdministratorRights` / `setDefaultChannelAdministratorRights`. Both requests are bot-only in this TDLib; a user account sees Telegram's refusal, and the row remembers only a preset the server accepted.
+- **Basic group record** — Debug Menu → Chat Resolvers now calls `getBasicGroup` before opening the chat, and shows the group's name, member count, status word, activity and whether it was upgraded, instead of only trying the id.
+69 functions in a long tail: usernames/supergroup admin (14), emoji/reactions (10), backgrounds/themes (7), diagnostics/network/config (8), notifications/sounds (6), forum topics (8), payments/orders (5), calls/sessions (4), connected websites (3), bot keyboards (2), basic-group lookup (1) and poll option properties (1). Run `--relevant` for the exact names and pick with the app in hand.
+
+**Profile, privacy, notes and support — done as a wave.** Fifteen functions, each on a screen:
+
+- **Another person's profile** — the More menu keeps a personal note (`setUserNote`; an empty note removes it, and the note is shown in the info card), suggests a birthday (`suggestUserBirthdate`) or a profile photo (`suggestUserProfilePhoto`), sets or removes the picture only this account sees (`setUserPersonalProfilePhoto`), and opens the sharing card's backdrop list (`getProfileShareThemeBackdrops`) with `setProfileShareTheme`; every answer, including Telegram's refusal, is shown in place.
+- **Own profile** — Edit Profile lists the main profile tab and writes `setMainProfileTab`.
+- **Privacy and Security** — Close Friends opens a contact picker whose whole list is written with `setCloseFriends` after the initial `getCloseFriends`; Read Receipts is `getReadDatePrivacySettings` / `setReadDatePrivacySettings`; Close Birthdays shows the count from `updateContactCloseBirthdays` and `hideContactCloseBirthdays` clears it for 24 hours. The Support row asks `getSupportUser` and opens the chat Telegram names.
+- **Appearance** — the account's accent and profile accent colours are listed from `updateAccentColors` / `updateProfileAccentColors` and written with `setAccentColor` / `setProfileAccentColor`; the selected row follows the server's answer.
 
 **Search, links, web, language and formatting — done as a wave.** Thirty functions, every one on a screen:
 
@@ -96,6 +142,8 @@ The two halves are not comparable: 1076 functions include every bot, Stars, busi
 - **Links** — every external link gets a sheet before it leaves the app: `getLinkWebBrowserType` names the browser Telegram wants, `getExternalLinkInfo` names a sign-in domain and write-access request, and Open goes through `getExternalLink` with that permission. The sheet also reads `getWebPageInstantView` and pushes a native reader (`TGInstantViewController`). Internal t.me/tg:// links are canonicalised through `getInternalLink` before the public-chat, message, invite, sticker-set and phone handlers run, with the old path matcher as the fallback.
 - **Language** — Settings → Language reads `getLanguagePackInfo`, `getLanguagePackStrings` and `getLanguagePackString` for the current pack; installs server packs (`addCustomServerLanguagePack`), creates and edits local ones (`setCustomLanguagePack`, `setCustomLanguagePackString`, `editCustomLanguagePackInfo`), synchronises (`synchronizeLanguagePack`) and deletes (`deleteLanguagePack`). The same page shows `getCountry`, `getPreferredCountryLanguage` and `getCountryFlagEmoji` for the device's country, with a code prompt that re-reads all three. The message Translate row uses `translateText` and falls back to `translateMessageText` when a message has no flattened text.
 - **Formatting** — holding Send while composing adds Preview Formatting, which asks `parseMarkdown` and `getTextEntities` and lists the parsed entities and detected mentions, tags and links before the message is sent.
+
+**Emoji and reactions — done as a wave.** Eleven functions, every one on a screen. The emoji tab's strip is now `getEmojiCategories`: Telegram's names and icons replace the built-in set when the file database answers, and the built-in one stays only as the fallback for a database that is still building. A magnifier beside Recently Used runs `searchEmojis` for the typed word and shows `getKeywordEmojis` as a Suggested section above the Results grid, deduplicated for the grid while keeping TDLib's order. Holding an emoji opens its card: Animated Preview is `getAnimatedEmoji` (or the honest "no animated version"), Reaction Info is `getEmojiReaction` with its title, availability and animation, Custom Reaction Animation plays `getCustomEmojiReactionAnimations`, and Suggest Replacement Link copies or opens `getEmojiSuggestionsUrl`. The reaction bar gains a second verb: holding a reaction makes it the default through `setDefaultReactionType`, promoting it in the open bar and persisting it across devices. Settings → Notifications and Sounds gains a Reactions section with the `setReactionNotificationSettings` switch, the same default as a picker row, and Clear Recently Used Reactions for `clearRecentReactions`. A forum topic's unread reaction count is carried on its row and `readAllForumTopicReactions` clears it when the topic opens.
 
 **Chat wave — done.** 68 chat functions, all reachable from a screen, none skipped:
 
@@ -119,11 +167,16 @@ The two halves are not comparable: 1076 functions include every bot, Stars, busi
 
 **Files, autosave and contacts — done as a wave.** A media viewer's hold menu and a Downloads row open `TGFileInfoViewController`: `getFile` reads the record, `getRemoteFile` re-resolves its remote copy, `getFileDownloadedPrefixSize` shows what is on disk, and `getSuggestedFileName`, `getFileMimeType`, `getFileExtension` and `cleanFileName` fill the name, type and safe-name rows; Copy puts the whole sheet on the clipboard. Data & Storage → File Tools runs TDLib's generation contract end to end: `preliminaryUploadFile` asks TDLib to generate an `inputFileGenerated`, `updateFileGenerationStart` drives `setFileGenerationProgress` + `writeGeneratedFilePart` for every part, `finishFileGeneration` closes it, upload progress rides `updateFile`, and `cancelPreliminaryUploadFile` stops it; `readFilePart` reads the first bytes back. The same page shows `getAutoDownloadSettingsPresets` and applies Low/Medium/High with `setAutoDownloadSettings`. Autosave is a Settings page built from `getAutosaveSettings`, with the private/group/channel photo and video switches writing through `setAutosaveSettings` and `clearAutosaveSettingsExceptions` for the per-chat list. Contacts grows an Import button: a bundled vCard is parsed into `importedContact` rows, uploaded with `changeImportedContacts`, and the account total from `getImportedContactCount` is kept on the list footer. Settings' "Get the App" row opens `getApplicationDownloadLink`.
 
-## Tier 3 — out of scope
+## Tier 3 — never for this client (301)
 
-495 functions skipped by pattern in `scripts/tdlib_coverage.sh`: bots / web apps, gifts, stories, TON wallet, business accounts, group/video calls, Stars / paid media, Premium, boosts, ads, Passport, payments, games, speech recognition, affiliate programs, `test*` and `log*` plumbing.
+Skipped by pattern in `scripts/tdlib_coverage.sh`; `python3 scripts/tdlib_tiers.py --tier3` lists them with their groups:
 
-Reasons: needs a browser this OS can't run, needs a payment stack, or is a server feature designed after these devices shipped. To reconsider one, remove it from `SKIP` — that's the whole edit.
+- payments, Stars, Premium, gifts, boosts and Passport — 166
+- bot accounts, inline mode and callbacks — 87
+- test, log and environment plumbing — 30
+- ads, games and speech recognition — 18
+
+Reasons: a bot account this app never signs into, a payment or wallet stack, or a stack this OS cannot carry (browser engine, speech recogniser). To reconsider one, remove it from `SKIP` and re-run the tier script — that is the whole edit.
 
 ---
 
@@ -170,7 +223,7 @@ Also here, **done** since the second wave: `updateActiveLiveLocationMessages` (e
 
 ## Tier 2 — wanted, nobody blocked
 
-Saved-messages topics and tags, welcome messages, message sender switching, notification sounds, translation flags, `updateChatReplyMarkup`, `updateSpeedLimitNotification`, the default reaction and the GIF search parameters — **done as a wave**: every update with a reader is in the filter, merged or nudged. `updateApplicationVerificationRequired` also acts now: it keeps the request id on the client and posts the notification the Settings row reads. Eighteen names remain in `TG_IGNORED_UPDATES` as the scaffold for screens not drawn yet; `sh scripts/tdlib_coverage.sh --ignored` lists them, and filling one in is a case and a screen.
+Saved-messages topics and tags, welcome messages, message sender switching, notification sounds, translation flags, `updateChatReplyMarkup`, `updateSpeedLimitNotification`, the default reaction and the GIF search parameters — **done as a wave**: every update with a reader is in the filter, merged or nudged. `updateApplicationVerificationRequired` also acts now: it keeps the request id on the client and posts the notification the Settings row reads. Fifteen names remain in `TG_IGNORED_UPDATES` as the scaffold for screens not drawn yet; `sh scripts/tdlib_coverage.sh --ignored` lists them, and filling one in is a case and a screen.
 
 ## Tier 3 — out of scope
 
@@ -180,12 +233,13 @@ Three more joined the pattern deliberately rather than through a screen: `update
 
 ## Pick these first
 
-The update half is in two states. 99 updates act; 18 are scaffold markers in `TG_IGNORED_UPDATES`, each waiting for one screen. The markers worth giving a screen to, in order:
+The update half is in two states. 104 updates act; 15 are scaffold markers in `TG_IGNORED_UPDATES`, each waiting for one screen. The markers worth giving a screen to, in order:
 
 1. Local notification drawing (`updateNotification`, `updateNotificationGroup`, `updateActiveNotifications`, `updateHavePendingNotifications`) — the only way to replace APNs as the delivery path.
-2. `updateAutosaveSettings` (gallery autosave), `updateAccentColors` / `updateProfileAccentColors` / `updateDefaultBackground` / `updateEmojiChatThemes` (theme and background pickers), `updateLanguagePackStrings` (a language pack this OS can carry).
-3. `updateAvailableMessageEffects`, `updateContactCloseBirthdays`, `updateStopMessageDraft`, `updateVideoPublished`, `updateUserSubscription`, `updateFreezeState`, the age-verification pair and `updateApplicationRecaptchaVerificationRequired` — each needs its renderer or account surface first.
-4. The functions half below, still 84 wide — pick from `--relevant` with the app in hand.
+2. `updateAutosaveSettings` (gallery autosave), `updateDefaultBackground` / `updateEmojiChatThemes` (theme and background pickers), `updateLanguagePackStrings` (a language pack this OS can carry).
+3. `updateAvailableMessageEffects`, `updateStopMessageDraft`, `updateVideoPublished`, `updateUserSubscription`, `updateFreezeState`, the age-verification pair and `updateApplicationRecaptchaVerificationRequired` — each needs its renderer or account surface first.
+
+4. The functions half below, still 43 wide — pick from `--relevant` with the app in hand.
 
 ---
 

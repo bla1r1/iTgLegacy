@@ -4,9 +4,11 @@
 //
 #import "TGSettingsViewControllerInternal.h"
 #import "TGAlertSheet.h"
+#import "TGCloseFriendsViewController.h"
 #import "TGSessionsViewController.h"
 #import "TGChatViewController.h"
 #import "TGListViewController.h"
+#import "TGAdminRightsViewController.h"
 
 @implementation TGSettingsViewController (PrivacyPages)
 
@@ -31,11 +33,66 @@
 		})];
 	}
 
+	// Reactions are their own settings record in TDLib, not a scope. The
+	// switch writes one field of it; the default and the recent list are the
+	// two things the reaction bar reads before it draws.
+	NSString *defaultEmoji = [TGClient shared].defaultReactionEmoji ?: @"\U0001F44D";
+	NSArray *reactionRows = @[
+		TGSwitchRow(@"Message Reactions", [TGClient shared].reactionNotificationsEnabled,
+				^(BOOL on){
+			[[TGClient shared] setReactionNotificationsEnabled:on completion:^(BOOL ok){
+				if (!ok)
+					[TGAlertSheet showMessage:@"Telegram refused that setting."
+										 title:@"Reactions"
+										inView:weakSelf.view];
+				[weakSelf loadForPage];
+			}];
+		}),
+		TGTapRow(@"Default Reaction", defaultEmoji, ^{
+			NSArray *choices = [TGReactionPicker defaultReactions];
+			[TGAlertSheet showChoices:choices
+								title:@"Default Reaction"
+							  message:@"The reaction bar leads with this one."
+					   destructiveIndex:-1
+							   inView:weakSelf.view
+							 onChoice:^(NSInteger index){
+				NSString *emoji = choices[(NSUInteger)index];
+				[[TGClient shared] setDefaultReactionEmoji:emoji completion:^(BOOL ok){
+					if (!ok)
+						[TGAlertSheet showMessage:@"Telegram refused that default reaction."
+											 title:@"Reactions"
+											inView:weakSelf.view];
+					[weakSelf loadForPage];
+				}];
+			}];
+		}),
+		TGRedRow(@"Clear Recently Used Reactions", ^{
+			[TGAlertSheet showConfirm:@"The reaction bar forgets the ones you "
+									  @"used last, on every device."
+								title:@"Clear Recent Reactions"
+							   action:@"Clear"
+						  destructive:YES
+							   inView:weakSelf.view
+							onConfirm:^{
+				[[TGClient shared] clearRecentReactionsWithCompletion:^(BOOL ok){
+					if (ok)
+						[TGAlertSheet showMessage:@"Recently used reactions cleared."
+											 title:@"Reactions"
+											inView:weakSelf.view];
+				}];
+			}];
+		}),
+	];
+
 	return @[
 		TGSection(@"Show notifications for", nil, show),
 		TGSection(@"Message previews",
 				  @"With previews off a notification says who wrote, not what "
 				  @"they wrote.", preview),
+		TGSection(@"Reactions",
+				  @"Notification settings for reactions and poll votes live in "
+				  @"the same record; only the message source moves here.",
+				  reactionRows),
 		TGSection(@"Per-chat exceptions", nil, @[
 			TGTapRow(@"Chats With Custom Settings", nil, ^{
 				[[TGClient shared] notificationExceptionsWithCompletion:^(NSArray *chats){
@@ -128,6 +185,12 @@
 					[TGClient shared].pendingApplicationVerificationId ? @"Required" : @"None",
 					^{
 				[weakSelf showApplicationVerification];
+			}),
+			TGTapRow(@"Default Admin Rights", nil, ^{
+				TGAdminRightsViewController *rights =
+						[[TGAdminRightsViewController alloc] init];
+				rights.hidesBottomBarWhenPushed = YES;
+				[weakSelf.navigationController pushViewController:rights animated:YES];
 			}),
 			TGTapRow(@"Active Sessions", nil, ^{
 				TGSessionsViewController *sessions = [[TGSessionsViewController alloc] init];
@@ -230,6 +293,41 @@
 		]),
 
 		TGSection(@"Who can see", nil, rules),
+
+		TGSection(@"Read receipts",
+				  @"Turning this off stops other people seeing when you have "
+				  @"read their messages. It does not stop you seeing theirs.",
+				  @[ weakSelf.readDateLoaded
+						? TGSwitchRow(@"Read Receipts", weakSelf.showReadDate, ^(BOOL on){
+				[[TGClient shared] setReadDateShown:on completion:^(BOOL ok, NSString *error){
+					if (!ok){
+						[TGAlertSheet showMessage:(error ?: @"Telegram refused that.")
+											title:@"Read Receipts" inView:weakSelf.view];
+						[weakSelf rebuild];
+						return;
+					}
+					weakSelf.showReadDate = on;
+					[weakSelf rebuild];
+				}];
+			})
+						: TGTapRow(@"Read Receipts", @"...", nil) ]),
+
+		TGSection(@"Close friends",
+				  @"Close friends are contacts you pick; the list is what "
+				  @"stories and other close-friend features read.",
+				  @[
+			TGTapRow(@"Close Friends",
+					weakSelf.closeFriendsLoaded
+							? [NSString stringWithFormat:@"%ld",
+									(long)weakSelf.closeFriendsCount] : @"...",
+					^{ [weakSelf showCloseFriends]; }),
+			TGTapRow(@"Close Birthdays",
+					weakSelf.closeBirthdayRows.count
+							? [NSString stringWithFormat:@"%lu contacts",
+									(unsigned long)weakSelf.closeBirthdayRows.count]
+							: @"None nearby",
+					^{ [weakSelf hideCloseBirthdays]; }),
+		]),
 
 		TGSection(@"Contacts",
 				  @"Frequent contacts are ranked on Telegram's side; turning "
@@ -418,6 +516,35 @@
 							   inView:weakSelf.view];
 		}];
 	}];
+}
+
+- (void)hideCloseBirthdays {
+	__weak typeof(self) weakSelf = self;
+	[[TGClient shared] hideContactCloseBirthdaysWithCompletion:^(BOOL ok, NSString *error){
+		if (!ok){
+			[TGAlertSheet showMessage:(error ?: @"Telegram refused that.")
+								title:@"Close Birthdays" inView:weakSelf.view];
+			return;
+		}
+		weakSelf.closeBirthdayRows = @[];
+		[weakSelf rebuild];
+		[TGAlertSheet showMessage:@"The close-birthday list is hidden for 24 hours."
+							title:@"Close Birthdays" inView:weakSelf.view];
+	}];
+}
+
+/// The close-friends list is a contact picker, because Telegram accepts only
+/// contacts in setCloseFriends. The controller behind it writes the whole
+/// list back and reports the count that stuck.
+- (void)showCloseFriends {
+	__weak typeof(self) weakSelf = self;
+	TGCloseFriendsViewController *friends = [[TGCloseFriendsViewController alloc] init];
+	friends.onCountChanged = ^(NSInteger count){
+		weakSelf.closeFriendsCount = count;
+		[weakSelf rebuild];
+	};
+	friends.hidesBottomBarWhenPushed = YES;
+	[weakSelf.navigationController pushViewController:friends animated:YES];
 }
 
 @end

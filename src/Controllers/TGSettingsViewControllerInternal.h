@@ -184,6 +184,14 @@ static inline NSString *TGBytes(long long bytes) {
 @property (nonatomic, assign) BOOL newChatAllowUnknown;
 @property (nonatomic, assign) BOOL newChatPrivacyLoaded;
 @property (nonatomic, assign) int64_t personalChatId;
+/// Privacy: the read-date switch and the close-friends count, both read per
+/// open. The contacts with a birthday nearby come from the client's update
+/// cache, so the row can say how many the hide clears.
+@property (nonatomic, assign) BOOL readDateLoaded;
+@property (nonatomic, assign) BOOL showReadDate;
+@property (nonatomic, assign) BOOL closeFriendsLoaded;
+@property (nonatomic, assign) NSInteger closeFriendsCount;
+@property (nonatomic, strong) NSArray *closeBirthdayRows;
 /// The proxy page: every proxy TDLib knows, and whether one is on.
 @property (nonatomic, strong) NSArray *proxies;
 /// The downloads page: the list Telegram keeps, and how many are running.
@@ -194,6 +202,11 @@ static inline NSString *TGBytes(long long bytes) {
 @property (nonatomic, strong) NSDictionary *autoDownloadPresets;
 /// The Autosave page: private/group/channel defaults plus per-chat exceptions.
 @property (nonatomic, strong) NSDictionary *autosaveSettings;
+/// Appearance: the two accent colours this account has selected. -1 is the
+/// profile's "none", which is a real value Telegram sends.
+@property (nonatomic, assign) BOOL accentColorsLoaded;
+@property (nonatomic, assign) NSInteger accentColorId;
+@property (nonatomic, assign) NSInteger profileAccentColorId;
 
 + (NSArray *)privacySettings;
 + (NSArray *)privacyTitles;
@@ -252,6 +265,9 @@ static inline NSString *TGBytes(long long bytes) {
 - (void)deleteCurrentLanguagePack;
 - (void)refreshLanguagePage;
 - (void)askPrivacyRuleAtIndex:(NSUInteger)index;
+- (void)showCloseFriends;
+- (void)hideCloseBirthdays;
+- (void)chooseAccentColorForProfile:(BOOL)profile;
 - (void)chooseTextSize;
 - (void)chooseWallpaper;
 - (void)presentWallpaperPicker;

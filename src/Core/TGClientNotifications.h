@@ -74,3 +74,11 @@ extern NSString *const TGApplicationVerificationRequiredNotification;
 extern NSString *const TGChatActionBarChangedNotification;
 /// A bot's keyboard on a chat changed; userInfo carries "chatId".
 extern NSString *const TGChatReplyMarkupChangedNotification;
+
+/// The accent colours Telegram offers changed, or the list arrived for the
+/// first time. No payload: Appearance re-reads both lists and the selection.
+extern NSString *const TGAccentColorsChangedNotification;
+
+/// The contacts with a birthday nearby changed. No payload; the privacy page
+/// re-reads the count and the list is on the client.
+extern NSString *const TGContactCloseBirthdaysChangedNotification;

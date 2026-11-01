@@ -87,6 +87,12 @@ static const CGFloat   kStoryGridGap   = TGMetricCollageGap;
 @property (nonatomic, strong) NSArray *actionNames;
 @property (nonatomic, assign) BOOL muted;
 @property (nonatomic, strong) NSString *phoneNumber;
+/// The note kept on this person's profile, and whether a private picture is
+/// already set. Both are read back from userFullInfo and change the menu.
+@property (nonatomic, copy) NSString *personalNote;
+@property (nonatomic, assign) BOOL hasPersonalPhoto;
+/// Which user action the photo picker is answering: "suggest", "personal".
+@property (nonatomic, copy) NSString *pendingPhotoAction;
 
 - (void)buildHeader;
 - (void)loadDetails;

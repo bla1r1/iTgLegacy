@@ -202,6 +202,7 @@ APP_SRC_M := \
 	src/App/TGBench.m \
 	src/Core/TGClient.m \
 	src/Core/TGStickerStore.m \
+	src/Core/TGEmojiStore.m \
 	src/Core/TGMediaStore.m \
 	src/Core/TGClient+Auth.m \
 	src/Core/TGClient+Messages.m \
@@ -212,8 +213,10 @@ APP_SRC_M := \
 	src/Core/TGBase64.m \
 	src/Controllers/TGNavController.m \
 	src/Core/TGClient+Account.m \
+	src/Core/TGClient+Profile.m \
 	src/Core/TGClient+Proxy.m \
 	src/Core/TGClient+Groups.m \
+	src/Core/TGClient+Usernames.m \
 	src/Core/TGClient+Language.m \
 	src/Core/TGClient+Search.m \
 	src/Core/TGClient+ChatTools.m \
@@ -287,6 +290,7 @@ APP_SRC_M := \
 	src/Controllers/TGChatViewController+Media.m \
 	src/Controllers/TGChatViewController+Chrome.m \
 	src/Controllers/TGContactsViewController.m \
+	src/Controllers/TGCloseFriendsViewController.m \
 	src/Controllers/TGNewContactViewController.m \
 	src/Controllers/TGTopicsViewController.m \
 	src/Controllers/TGSavedTopicsViewController.m \
@@ -302,6 +306,9 @@ APP_SRC_M := \
 	src/Controllers/TGProfileViewController+Actions.m \
 	src/Controllers/TGProfileViewController+Media.m \
 	src/Controllers/TGEditProfileViewController.m \
+	src/Controllers/TGUsernameSettingsViewController.m \
+	src/Controllers/TGGroupSettingsViewController.m \
+	src/Controllers/TGAdminRightsViewController.m \
 	src/Controllers/TGDeviceViewController.m \
 	src/Controllers/TGStorageViewController.m \
 	src/Controllers/TGFileInfoViewController.m \

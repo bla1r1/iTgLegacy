@@ -300,6 +300,23 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 			if ([info[@"commonGroups"] integerValue] > 0)
 				[more addObject:@[@"groups in common",
 						[info[@"commonGroups"] stringValue]]];
+			// The note is this account's own, and the profile is where it is
+			// read back - the same string setUserNote wrote.
+			weakSelf.personalNote = info[@"note"] ?: @"";
+			if (weakSelf.personalNote.length)
+				[more addObject:@[@"note", weakSelf.personalNote]];
+			weakSelf.hasPersonalPhoto = [info[@"personalPhoto"] longLongValue] != 0;
+			if (weakSelf.hasPersonalPhoto)
+				[more addObject:@[@"personal photo", @"Only you see it"]];
+			if ([info[@"shareTheme"] length])
+				[more addObject:@[@"share theme",
+						[info[@"shareTheme"] isEqualToString:@"profileShareThemeUpgradedGift"]
+								? @"Gift" : @"Custom"]];
+			// The tab this profile opens on is the one Edit Profile set; an
+			// open screen keeps the tab the user has already picked.
+			if (!weakSelf.storedMediaKind.length &&
+					weakSelf.userId == [[TGClient shared].me[@"id"] longLongValue])
+				weakSelf.storedMediaKind = info[@"mainProfileTab"];
 			weakSelf.details = more;
 			[weakSelf reloadTableDebounced];
 		}];

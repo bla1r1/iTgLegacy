@@ -43,6 +43,8 @@ NSString *const TGServiceNotificationReceivedNotification = @"TGServiceNotificat
 NSString *const TGTermsOfServiceReceivedNotification = @"TGTermsOfServiceReceivedNotification";
 NSString *const TGPrivacyRulesChangedNotification = @"TGPrivacyRulesChangedNotification";
 NSString *const TGSessionsChangedNotification = @"TGSessionsChangedNotification";
+NSString *const TGAccentColorsChangedNotification = @"TGAccentColorsChangedNotification";
+NSString *const TGContactCloseBirthdaysChangedNotification = @"TGContactCloseBirthdaysChangedNotification";
 
 @implementation TGClient
 
@@ -727,6 +729,48 @@ NSDictionary *TGFormattedText(NSString *text) {
 				postNotificationName:TGPrivacyRulesChangedNotification object:self];
 		return;
 	}
+	case TGUpdateAccentColors: {
+		// Appearance offers these as the account's accent; the ids are what
+		// setAccentColor takes, and 0-6 stay implicit per the schema.
+		NSArray *ids = obj[@"available_accent_color_ids"];
+		if ([ids isKindOfClass:NSArray.class])
+			self.accentColorIds = ids;
+		[[NSNotificationCenter defaultCenter]
+				postNotificationName:TGAccentColorsChangedNotification object:self];
+		return;
+	}
+	case TGUpdateProfileAccentColors: {
+		NSArray *ids = obj[@"available_accent_color_ids"];
+		if ([ids isKindOfClass:NSArray.class])
+			self.profileAccentColorIds = ids;
+		[[NSNotificationCenter defaultCenter]
+				postNotificationName:TGAccentColorsChangedNotification object:self];
+		return;
+	}
+	case TGUpdateContactCloseBirthdays: {
+		// The count is the only thing the privacy page draws, and hiding the
+		// strip is what an empty answer means. Keep the rows so a future
+		// birthday strip has the names ready.
+		NSMutableArray *rows = [NSMutableArray array];
+		for (NSDictionary *entry in obj[@"close_birthday_users"]){
+			if (![entry isKindOfClass:NSDictionary.class])
+				continue;
+			NSNumber *userId = entry[@"user_id"];
+			if (![userId isKindOfClass:NSNumber.class])
+				continue;
+			NSDictionary *birth = entry[@"birthdate"] ?: @{};
+			[rows addObject:@{
+				@"userId" : userId,
+				@"day"    : birth[@"day"] ?: @0,
+				@"month"  : birth[@"month"] ?: @0,
+				@"year"   : birth[@"year"] ?: @0,
+			}];
+		}
+		self.contactCloseBirthdays = rows;
+		[[NSNotificationCenter defaultCenter]
+				postNotificationName:TGContactCloseBirthdaysChangedNotification object:self];
+		return;
+	}
 	case TGUpdateUnconfirmedSession: {
 		// A login waiting to be confirmed. The devices list is where it can
 		// be confirmed or signed out, so it re-reads while it is open.
@@ -765,12 +809,9 @@ NSDictionary *TGFormattedText(NSString *text) {
 	case TGUpdateUserSubscription:         // no Premium surface
 	case TGUpdateAutosaveSettings:         // no gallery autosave
 	case TGUpdateLanguagePackStrings:      // one language ships so far
-	case TGUpdateAccentColors:             // the app's theme is its own
-	case TGUpdateProfileAccentColors:
 	case TGUpdateDefaultBackground:        // chat backgrounds are not drawn
 	case TGUpdateEmojiChatThemes:
 	case TGUpdateAvailableMessageEffects:  // message effects are not rendered
-	case TGUpdateContactCloseBirthdays:    // no birthday strip to land them on
 	case TGUpdateStopMessageDraft:         // no bot draft streaming to draw
 	case TGUpdateVideoPublished:           // no scheduled video
 		return;
@@ -788,6 +829,11 @@ NSDictionary *TGFormattedText(NSString *text) {
 	case TGUpdateSavedNotificationSounds: {
 		// The settings page re-reads all three scopes and the sounds list;
 		// nothing finer is carried for it to read piecemeal.
+		if ([type isEqualToString:@"updateReactionNotificationSettings"]){
+			NSDictionary *settings = obj[@"notification_settings"];
+			if ([settings isKindOfClass:NSDictionary.class])
+				self.reactionNotificationSettingsValue = settings;
+		}
 		[[NSNotificationCenter defaultCenter]
 				postNotificationName:TGNotificationSettingsChangedNotification object:self];
 		if ([type isEqualToString:@"updateChatDefaultDisableNotification"])

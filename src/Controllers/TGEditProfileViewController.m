@@ -6,6 +6,7 @@
 #import <QuartzCore/QuartzCore.h>
 #import "TGStyle.h"
 #import "TGAlertSheet.h"
+#import "TGUsernameSettingsViewController.h"
 
 // Profile editing: avatar photo, names, bio, birthday, and username.
 static const CGFloat kPhotoSide = TGMetricProfileAvatar;
@@ -24,6 +25,7 @@ static const CGFloat kFieldWidth = 290.0f;
 @property (nonatomic, assign) NSInteger birthMonth;
 @property (nonatomic, assign) NSInteger birthYear;
 @property (nonatomic, assign) BOOL birthdayChanged;
+@property (nonatomic, copy) NSString *mainProfileTab;
 @property (nonatomic, strong) TGSheet *birthdaySheet;
 @property (nonatomic, strong) UIDatePicker *birthdayPicker;
 @end
@@ -66,6 +68,11 @@ static const CGFloat kFieldWidth = 290.0f;
 		weakSelf.birthDay = day;
 		weakSelf.birthMonth = month;
 		weakSelf.birthYear = year;
+		[weakSelf.tableView reloadData];
+	}];
+
+	[[TGClient shared] myMainProfileTabWithCompletion:^(NSString *tab){
+		weakSelf.mainProfileTab = tab;
 		[weakSelf.tableView reloadData];
 	}];
 
@@ -303,11 +310,12 @@ static const CGFloat kFieldWidth = 290.0f;
 
 #pragma mark - table
 
-- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView { return 4; }
+- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView { return 5; }
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
 	if (section == 1) return @"Name";
 	if (section == 2) return @"Bio";
+	if (section == 4) return @"Profile";
 	return nil;
 }
 
@@ -319,6 +327,8 @@ static const CGFloat kFieldWidth = 290.0f;
 			   @"can see this.";
 	if (section == 3)
 		return @"Only contacts can see your birthday.";
+	if (section == 4)
+		return @"The tab your profile opens on, for everyone who looks at it.";
 	return nil;
 }
 
@@ -326,6 +336,7 @@ static const CGFloat kFieldWidth = 290.0f;
 	if (section == 0) return 1;    // the picture
 	if (section == 1) return 2;    // first, last
 	if (section == 2) return 1;    // bio
+	if (section == 4) return 1;    // main profile tab
 	return 3;                      // birthday, number, username
 }
 
@@ -340,6 +351,27 @@ static const CGFloat kFieldWidth = 290.0f;
 
 	if (path.section == 0)
 		return [self photoCellFor:tableView];
+
+	if (path.section == 4){
+		UITableViewCell *cell = [[UITableViewCell alloc]
+				initWithStyle:UITableViewCellStyleValue1 reuseIdentifier:nil];
+		[theme styleCell:cell];
+		cell.textLabel.font = TGFontRow();
+		cell.detailTextLabel.font = TGFontBody();
+		cell.detailTextLabel.textColor = [theme cellDetailColour];
+		cell.textLabel.text = @"Main Profile Tab";
+		static NSArray *names = nil;
+		if (!names)
+			names = @[@"posts", @"gifts", @"media", @"files",
+					  @"links", @"music", @"voice", @"gifs"];
+		NSString *tab = self.mainProfileTab.length ? self.mainProfileTab : @"posts";
+		NSUInteger index = [names indexOfObject:tab];
+		cell.detailTextLabel.text = index == NSNotFound ? tab
+				: [tab stringByReplacingCharactersInRange:NSMakeRange(0, 1)
+						withString:[[tab substringToIndex:1] uppercaseString]];
+		cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+		return cell;
+	}
 
 	// The last card carries values rather than fields: a number cannot be
 	// typed here at all, and a username needs its own screen to check itself.
@@ -366,7 +398,11 @@ static const CGFloat kFieldWidth = 290.0f;
 			cell.textLabel.text = @"Username";
 			cell.detailTextLabel.text = [me[@"username"] length]
 					? [NSString stringWithFormat:@"@%@", me[@"username"]] : @"none";
-			cell.selectionStyle = UITableViewCellSelectionStyleNone;
+			// The list of names, their switches and their order live on one
+			// screen; this row opens it rather than pretending one string is
+			// the whole of the account's usernames.
+			cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+			cell.selectionStyle = UITableViewCellSelectionStyleBlue;
 		}
 		return cell;
 	}
@@ -438,6 +474,41 @@ static const CGFloat kFieldWidth = 290.0f;
 	[tableView deselectRowAtIndexPath:path animated:YES];
 	if (path.section == 3 && path.row == 0)
 		[self editBirthday];
+	if (path.section == 3 && path.row == 2){
+		TGUsernameSettingsViewController *usernames =
+				[[TGUsernameSettingsViewController alloc] init];
+		usernames.hidesBottomBarWhenPushed = YES;
+		[self.navigationController pushViewController:usernames animated:YES];
+	}
+	else if (path.section == 4)
+		[self chooseMainProfileTab];
+}
+
+- (void)chooseMainProfileTab {
+	NSArray *tabs = @[@"posts", @"gifts", @"media", @"files",
+					  @"links", @"music", @"voice", @"gifs"];
+	NSArray *titles = @[@"Posts", @"Gifts", @"Media", @"Files",
+						@"Links", @"Music", @"Voice", @"GIFs"];
+	NSString *current = self.mainProfileTab.length ? self.mainProfileTab : @"posts";
+	NSInteger currentIndex = (NSInteger)[tabs indexOfObject:current];
+	__weak typeof(self) weakSelf = self;
+	[TGAlertSheet showChoices:titles
+						title:@"Main Profile Tab"
+			 destructiveIndex:-1
+					   inView:self.view
+					 onChoice:^(NSInteger index){
+		NSString *tab = tabs[(NSUInteger)index];
+		[[TGClient shared] setMainProfileTab:tab completion:^(BOOL ok, NSString *error){
+			if (!ok){
+				[TGAlertSheet showMessage:(error ?: @"Telegram refused that.")
+									title:@"Main Profile Tab" inView:weakSelf.view];
+				return;
+			}
+			weakSelf.mainProfileTab = tab;
+			[weakSelf.tableView reloadData];
+		}];
+	}];
+	(void)currentIndex;
 }
 
 @end

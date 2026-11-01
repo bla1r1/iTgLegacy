@@ -102,11 +102,13 @@ CLIENT_OBJC_SRCS := \
     $(SRC)/Core/TGStatusText.m \
     $(SRC)/Core/TGClient+Proxy.m \
     $(SRC)/Core/TGClient+Groups.m \
+    $(SRC)/Core/TGClient+Usernames.m \
     $(SRC)/Core/TGClient+Language.m \
     $(SRC)/Core/TGClient+Search.m \
     $(SRC)/Core/TGClient+Downloads.m \
     $(SRC)/Core/TGClient+Secret.m \
     $(SRC)/Core/TGClient+Account.m \
+    $(SRC)/Core/TGClient+Profile.m \
     $(SRC)/Core/TGClient+Auth.m \
     $(SRC)/Core/TGThemeFile.m \
     $(SRC)/Core/TGImageLruCache.mm \
@@ -155,6 +157,7 @@ CLIENT_TEST_SRCS := \
     $(TESTS)/TGClientMessagesFunctionsTests.m \
     $(TESTS)/TGMessageParserTests.m \
     $(TESTS)/TGClientAccountTests.m \
+    $(TESTS)/TGClientProfileTests.m \
     $(TESTS)/TGClientComposeTests.m \
     $(TESTS)/TGClientBareTests.m \
     $(TESTS)/TGClientAuthFunctionsTests.m \
@@ -164,6 +167,8 @@ CLIENT_TEST_SRCS := \
     $(TESTS)/TGClientThreadsTests.m \
     $(TESTS)/TGClientChatToolsTests.m \
     $(TESTS)/TGClientSearchLanguageTests.m \
+    $(TESTS)/TGClientUsernamesTests.m \
+    $(TESTS)/TGClientEmojiReactionsTests.m \
     $(TESTS)/TGThemeFileTests.m \
     $(TESTS)/TGUpdatesTests.mm \
     $(TESTS)/TGP1MigrationTests.mm \

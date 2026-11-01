@@ -20,9 +20,17 @@
 - (void)chatsInFolder:(NSInteger)folderId completion:(void (^)(NSArray *chats))completion;
 
 /// Topics of a forum supergroup - a forum holds several independent threads
-/// in one chat. Each entry: "threadId", "name", "text", "unread", "date".
-/// Empty for a chat that is not a forum.
+/// in one chat. Each entry: "threadId", "name", "text", "unread", "date" and
+/// "unreadReactions" - the reactions on the topic's messages nobody opened
+/// yet. Empty for a chat that is not a forum.
 - (void)forumTopicsForChat:(int64_t)chatId completion:(void (^)(NSArray *topics))completion;
+
+/// Clear the reaction marks on a topic. Called when the topic is opened:
+/// reading the messages is what "read" means, and the row's badge has to go
+/// with it rather than waiting for the next history read.
+- (void)readAllForumTopicReactionsInChat:(int64_t)chatId
+                                  topic:(int64_t)threadId
+                             completion:(void (^)(BOOL ok))completion;
 
 /// Making and minding a forum's topics. `colour` indexes the six hues TDLib
 /// accepts, 0-5. `iconEmojiId` is one of the ids `forumTopicDefaultIcons`

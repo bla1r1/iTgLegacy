@@ -381,17 +381,26 @@
 }
 
 - (void)openSupport {
-	// Their support is a chat, not a web page.
+	// Their support is a chat, not a web page. Telegram names the account;
+	// opening a guessed @BotSupport was a second request that could disagree
+	// with the one the server actually named.
 	__weak typeof(self) weakSelf = self;
-	[[TGClient shared] chatWithUsername:@"BotSupport"
-							 completion:^(int64_t chatId, NSString *title){
-		if (!chatId){
-			[TGAlertSheet showMessage:@"Support is not reachable from this "
-									  @"account right now."
+	[[TGClient shared] supportUserWithCompletion:^(NSDictionary *user, NSString *error){
+		if (!user){
+			[TGAlertSheet showMessage:(error ?: @"Support is not reachable "
+									  @"from this account right now.")
 								title:@"Support" inView:weakSelf.view];
 			return;
 		}
-		[weakSelf openChat:chatId title:(title ?: @"Telegram Support")];
+		int64_t userId = [user[@"id"] longLongValue];
+		[[TGClient shared] privateChatWithUser:userId completion:^(int64_t chatId){
+			if (!chatId){
+				[TGAlertSheet showMessage:@"Telegram did not open a chat with support."
+									title:@"Support" inView:weakSelf.view];
+				return;
+			}
+			[weakSelf openChat:chatId title:(user[@"name"] ?: @"Telegram Support")];
+		}];
 	}];
 }
 

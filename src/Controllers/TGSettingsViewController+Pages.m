@@ -937,11 +937,44 @@
 				  @"an account that only ever saw the inner id.", @[
 			TGTapRow(@"Open Basic Group by ID", nil, ^{
 				[TGAlertSheet showInput:@"Basic Group ID" message:nil
-							placeholder:@"Group id" text:nil action:@"Open"
+							placeholder:@"Group id" text:nil action:@"Read"
 								 inView:weakSelf.view onSubmit:^(NSString *text){
-					[[TGClient shared] chatForBasicGroup:text.longLongValue
-											completion:^(int64_t chatId){
-						[weakSelf openResolvedChat:chatId title:@"Basic Group"];
+					int64_t basicGroupId = text.longLongValue;
+					// The record first, so the resolver shows what Telegram
+					// holds for the id - name, members and status - not only
+					// an attempt to open a chat from it.
+					[[TGClient shared] basicGroupInfo:basicGroupId
+							completion:^(NSDictionary *info){
+						if (!info){
+							[TGAlertSheet showMessage:@"TDLib has no basic group "
+													  @"with that id."
+												title:@"Basic Group"
+											   inView:weakSelf.view];
+							return;
+						}
+						NSString *status = [info[@"status"] capitalizedString];
+						NSString *upgraded = [info[@"upgradedTo"] longLongValue]
+								? @"\nIt has been upgraded to a supergroup."
+								: @"";
+						NSString *message = [NSString stringWithFormat:
+								@"%@\n%ld members · %@%@%@",
+								info[@"title"],
+								(long)[info[@"members"] integerValue],
+								status,
+								[info[@"active"] boolValue] ? @"" : @" · inactive",
+								upgraded];
+						[TGAlertSheet showChoices:@[@"Open Chat"]
+											title:@"Basic Group"
+										  message:message
+								 destructiveIndex:-1
+										   inView:weakSelf.view
+										 onChoice:^(NSInteger index){
+							[[TGClient shared] chatForBasicGroup:basicGroupId
+													completion:^(int64_t chatId){
+								[weakSelf openResolvedChat:chatId
+													 title:info[@"title"]];
+							}];
+						}];
 					}];
 				}];
 			}),

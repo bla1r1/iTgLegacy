@@ -287,6 +287,17 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 			[[TGClient shared] reactTo:heldId inChat:me.chatId emoji:emoji];
 		}
 		[me reload];
+	} onDefaultReaction:^(NSString *emoji) {
+		// Telegram keeps the choice; the bar was already promoted in place.
+		[[TGClient shared] setDefaultReactionEmoji:emoji completion:^(BOOL ok){
+			if (ok)
+				return;
+			TGChatViewController *me = weakSelf;
+			if (me)
+				[TGAlertSheet showMessage:@"Telegram refused that default reaction."
+									 title:@"Reaction"
+									inView:me.view];
+		}];
 	} onChoice:^(NSInteger index, NSString *title) {
 		[weakSelf runMessageAction:title];
 	}];

@@ -58,6 +58,10 @@ NSDictionary *TGStickerInfo(NSDictionary *sticker);
 /// The reaction Telegram names as the default, when updateDefaultReactionType
 /// has said; the picker leads with it.
 @property (nonatomic, copy) NSString *reactionDefaultEmoji;
+/// The whole reactionNotificationSettings record Telegram last sent. The
+/// public surface reads it; the setter rebuilds it so one switch does not
+/// clear the sources this screen does not show.
+@property (nonatomic, copy) NSDictionary *reactionNotificationSettingsValue;
 /// The GIF provider and the emoji it suggests, from
 /// updateAnimationSearchParameters. "gif" is the bot every client ships with.
 @property (nonatomic, copy) NSString *gifSearchProvider;
@@ -74,6 +78,14 @@ NSDictionary *TGStickerInfo(NSDictionary *sticker);
 @property (nonatomic, assign) BOOL chatListComplete;
 @property (nonatomic, assign) NSUInteger loadChatsAttempts;
 @property (nonatomic, strong) NSDictionary *me;
+/// Accent ids Telegram says this account may pick. 0-6 are guaranteed by the
+/// schema and fill in until updateAccentColors arrives; the profile list has
+/// the same rule.
+@property (nonatomic, strong) NSArray *accentColorIds;
+@property (nonatomic, strong) NSArray *profileAccentColorIds;
+/// Contacts with a birthday nearby, from updateContactCloseBirthdays. The
+/// privacy page shows the count and hideContactCloseBirthdays empties it.
+@property (nonatomic, strong) NSArray *contactCloseBirthdays;
 @property (nonatomic, assign) TGConnectionState connectionState;
 @property (nonatomic, strong) NSMutableDictionary *pendingRequests;  // @extra -> completion
 @property (nonatomic, assign) NSUInteger requestSeq;

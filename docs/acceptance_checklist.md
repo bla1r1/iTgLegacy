@@ -35,6 +35,18 @@ Zones that were fixed more than once. Column format: check — why it broke befo
 | Panel holds on 3.5" and 4" | f8344fe | 5s and 4S: grid holds, tabs not buried under keyboard | Panel metrics vs. two screen widths |
 | No installed sticker sets doesn't crash the panel | — | Offline: recents strip shown, no crash | Fixture: no installed sets → recents shown |
 
+### Emoji, reactions and topic badges
+
+| Check | Broke in | Device | Host |
+|---|---|---|---|
+| Emoji strip is Telegram's categories, with the built-in set as the offline fallback | — | Open Emoji: strip names and icons match Telegram; cut the network and reopen: built-in strip still draws, no empty tabs | `TGClientEmojiReactionsTests.testEmojiCategories_AsksForTheDefaultsAndReadsTheSource`; premium rows carry no list and are dropped |
+| The magnifier searches and suggests in two sections | — | Emoji → magnifier → "cat": Results fills within 1 s and Suggested sits above it; a repeated glyph appears once; log shows one `searchEmojis` and one `getKeywordEmojis` | `testSearchEmojis_…DropsDuplicateGlyphs`, `testKeywordEmojis_IsTheSuggestedRow` |
+| Held emoji card plays the animation and shows the reaction title | — | Hold 😀 → Animated Preview: plays or says there is none; Reaction Info: title and Available/Not available appear in ≤ 1 s | `testAnimatedEmoji_ReadsTheStickerAndSound`, `testEmojiReaction_ReadsTheTitleAndTheAnimation` |
+| Custom reaction animation and the suggestion link are reachable from the same card | — | Hold an emoji → Custom Reaction Animation plays a TGS; Suggest Replacement Link offers Copy/Open and the copied URL opens the translation platform | `testCustomEmojiReactionAnimations_FlattensTheStickerList`, `testEmojiSuggestionsUrl_IsTheLinksText` |
+| Holding a reaction makes it lead the bar, now and after reopening | — | Hold a message → hold 🔥 in the bar: it jumps to the front, the ring moves with it; reopen the menu: 🔥 still leads; log shows `setDefaultReactionType` | `testSetDefaultReaction_SendsTheEmojiAndLeadsTheBarAtOnce` |
+| Notifications page owns reaction settings and the recent list | — | Settings → Notifications and Sounds → Reactions: the switch flips and survives reopening; Clear Recently Used Reactions empties the bar's recent order after a confirm | `testReactionNotificationSettings_OffKeepsTheSourcesThisScreenDoesNotShow`, `testClearRecentReactions_IsAnswered` |
+| A forum topic's unread reactions show, then clear on open | — | Topics list shows "3 reactions" under the row; open the topic: the badge is gone on return, and the log names `readAllForumTopicReactions` | `testForumTopics_CarryTheUnreadReactionCount`, `testReadAllForumTopicReactions_SendsTheChatAndTopic` |
+
 ### Chat list
 
 | Check | Broke in | Device | Host |
@@ -61,6 +73,18 @@ Zones that were fixed more than once. Column format: check — why it broke befo
 | Temporary password reads state and is created with the 2FA password | — | Privacy & Security → Temporary Password: says active/none and how long; Create asks the password and reports the new lifetime | State and create both flatten has/valid_for; a wrong password is an error |
 | Ownership handover pre-check is shown before the password | — | Group member → Hand Over Ownership: too-new session names the wait and stops; allowed goes on to the password | Four `canTransferOwnership` results and their retry times |
 | Application verification row sends the token for the pending id | — | Settings → Privacy & Security → Application Verification after the update: row says Required and shows the nonce; sending reports accepted/refused | Update keeps id/nonce; `setApplicationVerificationToken` sends both and clears it on ok |
+
+### Usernames and group settings
+
+| Check | Broke in | Device | Host |
+|---|---|---|---|
+| Account names match `getMe`, and one switch moves a name between Active and Disabled | — | Settings → Edit Profile → Username: each `@name` matches the account; switch a disabled name on, reopen: it is under Active; switch it off: back under Disabled ≤ 2 s | `TGClientUsernamesTests`: `accountUsernamesWithCompletion`, `toggleUsernameIsActive` shape and refusal |
+| Edit → drag changes the order Telegram shows | — | Username screen with two active names → Edit → drag the second above the first → Done, reopen: order holds | `TGClientUsernamesTests`: `reorderActiveUsernames` carries the whole list in order |
+| Group Settings shows the group's real mode switches | — | Group profile → More → Group Settings: Forum/Join by Request/Hidden/Translation match the official client; toggling one and reopening shows the new state ≤ 2 s | `TGClientUsernamesTests`: one read of `getSupergroup` + full info, and each toggle's request |
+| Group username change or refusal is the server's sentence | — | Group Settings → Editable Username: a free name becomes the group's `@name`; a taken one shows Telegram's message and the old name stays | `TGClientUsernamesTests`: `setSupergroupUsername` names the supergroup id; error text survives |
+| Disable All keeps the editable name and can be undone | — | Group Settings → Disable All Usernames: other names move to Disabled, the primary stays active; switch one back on | `TGClientUsernamesTests`: `disableAllSupergroupUsernames`, `toggleSupergroupUsernameIsActive` |
+| Default admin rights say what the server did | — | Privacy & Security → Default Admin Rights: choosing Standard sends the rights object; a user account shows Telegram's bot-only refusal and the row keeps "Not set" | `TGClientUsernamesTests`: both presets' full `chatAdministratorRights` object and the refusal path |
+| Basic-group resolver shows the record before opening | — | Debug Menu → Open Basic Group by ID → a valid id: dialog names the group, member count, status and upgrade state; Open Chat then opens it | `TGClientUsernamesTests`: `getBasicGroup` → `createBasicGroupChat`, title and member count flattened |
 
 ### Calls connectivity
 

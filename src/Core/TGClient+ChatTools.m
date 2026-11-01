@@ -1219,6 +1219,9 @@ static NSDictionary *TGFilterFromName(NSString *name) {
 					@"basic_group_id" : @(basicGroupId),
 					@"force" : @NO}
 	   completion:^(NSDictionary *result){
+		// The resolver's row also shows the group's name. Keeping the chat
+		// record is what puts that title in chatsById for the row to read.
+		[self mergeChat:result];
 		if (completion)
 			completion([result[@"id"] longLongValue]);
 	}];

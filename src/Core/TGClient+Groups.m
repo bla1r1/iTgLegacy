@@ -147,6 +147,43 @@ static NSDictionary *TGFlattenInviteLink(NSDictionary *link) {
 
 #pragma mark - who is in it
 
+/// The basic group's record, which is what a basic-group id resolves to before
+/// any chat exists in the local database. `getBasicGroupFullInfo` is the other
+/// half the profile reads; this one carries the member count and the status
+/// word the debug resolver shows beside the name.
+- (void)basicGroupInfo:(int64_t)basicGroupId
+			completion:(void (^)(NSDictionary *info))completion {
+	if (!basicGroupId){
+		if (completion) completion(nil);
+		return;
+	}
+	[self request:@{@"@type" : @"getBasicGroup", @"basic_group_id" : @(basicGroupId)}
+	   completion:^(NSDictionary *group){
+		if ([group[@"@type"] isEqualToString:@"error"]){
+			if (completion) completion(nil);
+			return;
+		}
+		// getBasicGroup carries no name; the chat record does. Resolving it
+		// here means the resolver row can show the group as a name with a
+		// member count rather than as an id with a result.
+		[self request:@{@"@type" : @"createBasicGroupChat",
+						@"basic_group_id" : @(basicGroupId),
+						@"force" : @NO}
+		   completion:^(NSDictionary *chat){
+			[self mergeChat:chat];
+			if (completion)
+				completion(@{
+					@"id"         : group[@"id"] ?: @(basicGroupId),
+					@"title"      : chat[@"title"] ?: @"Basic Group",
+					@"members"    : group[@"member_count"] ?: @(0),
+					@"status"     : TGMemberStatusName(group[@"status"]),
+					@"active"     : group[@"is_active"] ?: @NO,
+					@"upgradedTo" : group[@"upgraded_to_supergroup_id"] ?: @(0),
+				});
+		}];
+	}];
+}
+
 /// `forwardLimit` is how much of the history the new member sees in a basic
 /// group; a supergroup ignores it and shows everything.
 - (void)addUser:(int64_t)userId

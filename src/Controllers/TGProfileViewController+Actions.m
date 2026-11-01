@@ -8,6 +8,7 @@
 #import "TGChatViewController.h"
 #import "TGProfilePhotosViewController.h"
 #import "TGChatToolsViewController.h"
+#import "TGGroupSettingsViewController.h"
 
 /// The glyph on an action tile, over the word that names it.
 static const CGFloat kTileGlyph = TGMetricMenuGlyph;
@@ -533,10 +534,26 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 			[items addObject:@{@"title" : @"Groups in Common", @"icon" : @"folder"}];
 		[items addObject:@{@"title" : @"Start Secret Chat", @"icon" : @"privacy"}];
 	}
+	// The things one person can do to another's profile: a note only this
+	// account reads, a photo or birthday they may accept, the picture only
+	// this account sees, and the card their link opens with.
+	if (self.userId && self.userId != [[TGClient shared].me[@"id"] longLongValue]){
+		[items addObject:@{@"title" : (self.personalNote.length
+				? @"Personal Note" : @"Add Personal Note"), @"icon" : @"edit"}];
+		[items addObject:@{@"title" : @"Suggest Profile Photo", @"icon" : @"react"}];
+		[items addObject:@{@"title" : @"Suggest Birthday", @"icon" : @"star"}];
+		[items addObject:@{@"title" : (self.hasPersonalPhoto
+				? @"Change Personal Photo" : @"Set Personal Photo"), @"icon" : @"user"}];
+		if (self.hasPersonalPhoto)
+			[items addObject:@{@"title" : @"Remove Personal Photo", @"icon" : @"delete",
+							   @"destructive" : @YES}];
+		[items addObject:@{@"title" : @"Share Theme", @"icon" : @"folder"}];
+	}
 	// A group's own management, which was not reachable from anywhere.
 	if (!self.userId){
 		[items addObject:@{@"title" : @"Add Members", @"icon" : @"select"}];
 		[items addObject:@{@"title" : @"Find Member", @"icon" : @"search"}];
+		[items addObject:@{@"title" : @"Group Settings", @"icon" : @"privacy"}];
 		[items addObject:@{@"title" : @"Upgrade to Supergroup", @"icon" : @"folder"}];
 		[items addObject:@{@"title" : @"Group Name", @"icon" : @"edit"}];
 		[items addObject:@{@"title" : @"Group Photo", @"icon" : @"react"}];
@@ -1273,6 +1290,16 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 		return;
 	}
 
+	if ([title isEqualToString:@"Group Settings"]){
+		TGGroupSettingsViewController *settings =
+				[[TGGroupSettingsViewController alloc] init];
+		settings.chatId = self.chatId;
+		settings.chatTitle = self.name;
+		settings.hidesBottomBarWhenPushed = YES;
+		[self.navigationController pushViewController:settings animated:YES];
+		return;
+	}
+
 	/// The picker answers the same way the settings screen's own does: one
 	/// UIImagePicker serves both wallpaper and avatar there, one serves this
 	/// screen's group photo here.
@@ -1503,6 +1530,190 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 		return;
 	}
 
+	if ([title isEqualToString:@"Add Personal Note"] ||
+			[title isEqualToString:@"Personal Note"]){
+		int64_t userId = self.userId;
+		__weak typeof(self) weakSelf = self;
+		void (^write)(void) = ^{
+			[TGAlertSheet showInput:@"Personal Note"
+							message:@"Only you see this. An empty note removes it."
+						placeholder:@"A few words"
+							   text:weakSelf.personalNote
+							 action:@"Save"
+							 inView:weakSelf.view
+						   onSubmit:^(NSString *text){
+				[[TGClient shared] setUserNote:text forUser:userId
+									completion:^(BOOL ok, NSString *error){
+					TGProfileViewController *me = weakSelf;
+					if (!ok){
+						[TGAlertSheet showMessage:(error ?: @"Telegram refused that.")
+											title:@"Personal Note" inView:me.view];
+						return;
+					}
+					me.personalNote = text;
+					[me loadDetails];
+					[TGAlertSheet showMessage:@"Note saved."
+										title:@"Personal Note" inView:me.view];
+				}];
+			}];
+		};
+		if (!self.personalNote.length){
+			write();
+			return;
+		}
+		[TGAlertSheet showChoices:@[@"Edit Note", @"Remove Note"]
+							title:@"Personal Note"
+				 destructiveIndex:1
+						   inView:self.view
+						 onChoice:^(NSInteger index){
+			if (index == 0){
+				write();
+				return;
+			}
+			[[TGClient shared] setUserNote:@"" forUser:userId
+								completion:^(BOOL ok, NSString *error){
+				TGProfileViewController *me = weakSelf;
+				if (!ok){
+					[TGAlertSheet showMessage:(error ?: @"Telegram refused that.")
+										title:@"Personal Note" inView:me.view];
+					return;
+				}
+				me.personalNote = @"";
+				[me loadDetails];
+				[TGAlertSheet showMessage:@"Note removed."
+									title:@"Personal Note" inView:me.view];
+			}];
+		}];
+		return;
+	}
+
+	if ([title isEqualToString:@"Suggest Birthday"]){
+		int64_t userId = self.userId;
+		__weak typeof(self) weakSelf = self;
+		[TGAlertSheet showInput:@"Suggest Birthday"
+						message:@"Telegram asks them to accept it; their profile "
+								@"does not change until they do."
+					placeholder:@"YYYY-MM-DD"
+						   text:nil
+						 action:@"Suggest"
+						 inView:self.view
+					   onSubmit:^(NSString *text){
+			NSArray *parts = [text componentsSeparatedByString:@"-"];
+			NSInteger year = parts.count > 0 ? [parts[0] integerValue] : 0;
+			NSInteger month = parts.count > 1 ? [parts[1] integerValue] : 0;
+			NSInteger day = parts.count > 2 ? [parts[2] integerValue] : 0;
+			if (day < 1 || day > 31 || month < 1 || month > 12){
+				[TGAlertSheet showMessage:@"Write the date as YYYY-MM-DD."
+									title:@"Suggest Birthday" inView:weakSelf.view];
+				return;
+			}
+			[[TGClient shared] suggestBirthdateDay:day month:month year:year
+										  forUser:userId
+									   completion:^(BOOL ok, NSString *error){
+				TGProfileViewController *me = weakSelf;
+				[TGAlertSheet showMessage:(ok
+						? @"Birthday suggested."
+						: (error ?: @"Telegram refused that."))
+									title:@"Suggest Birthday" inView:me.view];
+			}];
+		}];
+		return;
+	}
+
+	if ([title isEqualToString:@"Suggest Profile Photo"] ||
+			[title isEqualToString:@"Set Personal Photo"] ||
+			[title isEqualToString:@"Change Personal Photo"]){
+		self.pendingPhotoAction = [title isEqualToString:@"Suggest Profile Photo"]
+				? @"suggest" : @"personal";
+		UIImagePickerController *picker = [[UIImagePickerController alloc] init];
+		picker.sourceType = UIImagePickerControllerSourceTypePhotoLibrary;
+		picker.delegate = self;
+		[self presentViewController:picker animated:YES completion:nil];
+		return;
+	}
+
+	if ([title isEqualToString:@"Remove Personal Photo"]){
+		int64_t userId = self.userId;
+		__weak typeof(self) weakSelf = self;
+		[TGAlertSheet showConfirm:@"The picture only you see for them is removed."
+							title:@"Remove Personal Photo"
+						   action:@"Remove"
+					  destructive:YES
+						   inView:self.view
+						onConfirm:^{
+			[[TGClient shared] setPersonalProfilePhotoAtPath:nil forUser:userId
+												  completion:^(BOOL ok, NSString *error){
+				TGProfileViewController *me = weakSelf;
+				if (!ok){
+					[TGAlertSheet showMessage:(error ?: @"Telegram refused that.")
+										title:@"Personal Photo" inView:me.view];
+					return;
+				}
+				me.hasPersonalPhoto = NO;
+				[me loadDetails];
+				[TGAlertSheet showMessage:@"Personal photo removed."
+									title:@"Personal Photo" inView:me.view];
+			}];
+		}];
+		return;
+	}
+
+	if ([title isEqualToString:@"Share Theme"]){
+		int64_t userId = self.userId;
+		__weak typeof(self) weakSelf = self;
+		[[TGClient shared] profileShareThemeBackdropsWithCompletion:^(NSArray *backdrops,
+																	   NSString *error){
+			TGProfileViewController *me = weakSelf;
+			if (!me)
+				return;
+			if (error.length){
+				[TGAlertSheet showMessage:error title:@"Share Theme" inView:me.view];
+				return;
+			}
+			NSMutableArray *titles = [NSMutableArray arrayWithObject:@"Default"];
+			for (NSDictionary *backdrop in backdrops)
+				[titles addObject:backdrop[@"name"] ?: @"Backdrop"];
+			if (titles.count == 1){
+				[TGAlertSheet showMessage:@"Telegram did not send any backdrops."
+									title:@"Share Theme" inView:me.view];
+				return;
+			}
+			[TGAlertSheet showChoices:titles
+								title:@"Share Theme"
+							  message:@"The card shown when your link to them is shared."
+					 destructiveIndex:-1
+							   inView:me.view
+							 onChoice:^(NSInteger index){
+				[[TGClient shared] privateChatWithUser:userId completion:^(int64_t chatId){
+					if (!chatId){
+						[TGAlertSheet showMessage:@"Telegram did not open a chat for the theme."
+											title:@"Share Theme" inView:me.view];
+						return;
+					}
+					void (^answer)(BOOL, NSString *) = ^(BOOL ok, NSString *error){
+						[TGAlertSheet showMessage:(ok
+								? @"Share theme updated."
+								: (error ?: @"Telegram refused that."))
+											title:@"Share Theme" inView:me.view];
+						if (ok)
+							[me loadDetails];
+					};
+					if (index == 0){
+						[[TGClient shared] clearProfileShareThemeForChat:chatId
+															  completion:answer];
+						return;
+					}
+					NSDictionary *backdrop = backdrops[(NSUInteger)index - 1];
+					[[TGClient shared] setProfileShareThemeForChat:chatId
+														backdropId:[backdrop[@"id"] integerValue]
+														useDefault:NO
+														completion:answer];
+				}];
+			}];
+		}];
+		return;
+	}
+
 	if ([title isEqualToString:@"Report"]){
 		[self reportThisChatWithOption:nil];
 		return;
@@ -1573,6 +1784,47 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 - (void)imagePickerController:(UIImagePickerController *)picker
 		didFinishPickingMediaWithInfo:(NSDictionary *)info {
 	[picker dismissViewControllerAnimated:YES completion:nil];
+	if (self.pendingPhotoAction.length){
+		NSString *action = self.pendingPhotoAction;
+		self.pendingPhotoAction = nil;
+		UIImage *image = info[UIImagePickerControllerOriginalImage];
+		if (!image)
+			return;
+		UIImage *scaled = [TGIcons decodedImage:image
+								fittingSize:CGSizeMake(TGMetricUploadPhotoSide, TGMetricUploadPhotoSide)
+									   fill:NO scale:TGMetricScaleFull];
+		NSString *path = [NSTemporaryDirectory()
+				stringByAppendingPathComponent:@"profile-suggestion.jpg"];
+		if (![UIImageJPEGRepresentation(scaled, TGCompressionQualityStandard) writeToFile:path atomically:YES]){
+			[TGAlertSheet showMessage:@"Could not prepare the picture."
+								title:@"Profile Photo" inView:self.view];
+			return;
+		}
+		int64_t userId = self.userId;
+		__weak typeof(self) weakSelf = self;
+		BOOL suggest = [action isEqualToString:@"suggest"];
+		void (^answer)(BOOL, NSString *) = ^(BOOL ok, NSString *error){
+			TGProfileViewController *me = weakSelf;
+			if (!ok){
+				[TGAlertSheet showMessage:(error ?: @"Telegram refused that.")
+									title:@"Profile Photo" inView:me.view];
+				return;
+			}
+			[TGAlertSheet showMessage:(suggest
+					? @"Photo suggested."
+					: @"Personal photo saved.")
+								title:@"Profile Photo" inView:me.view];
+			if (!suggest)
+				[me loadDetails];
+		};
+		if (suggest)
+			[[TGClient shared] suggestProfilePhotoAtPath:path forUser:userId
+											  completion:answer];
+		else
+			[[TGClient shared] setPersonalProfilePhotoAtPath:path forUser:userId
+												  completion:answer];
+		return;
+	}
 	if (!self.pickingChatPhoto)
 		return;
 	self.pickingChatPhoto = NO;
@@ -1607,6 +1859,7 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 
 - (void)imagePickerControllerDidCancel:(UIImagePickerController *)picker {
 	self.pickingChatPhoto = NO;
+	self.pendingPhotoAction = nil;
 	[picker dismissViewControllerAnimated:YES completion:nil];
 }
 

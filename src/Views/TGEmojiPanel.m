@@ -1,5 +1,6 @@
 #import "TGEmojiPanel.h"
 #import "TGEmojiData.h"
+#import "TGEmojiStore.h"
 #import "TGTheme.h"
 #import "TGIcons.h"
 #import "TGPopupMenu.h"
@@ -58,6 +59,11 @@ static const CGFloat   kHeaderHeight = TGMetricEmojiHeader;
 static const CGFloat   kPreviewHeaderWidth = 240.0f;
 static const CGFloat   kPreviewHeaderHeight = 130.0f;
 static const CGFloat   kPreviewSide = 110.0f;
+/// The emoji card's header is the glyph alone; an animation preview adds a
+/// caption line under the renderer.
+static const CGFloat   kEmojiCardHeaderHeight = 100.0f;
+static const CGFloat   kEmojiPreviewHeaderHeight = 150.0f;
+static const CGFloat   kEmojiPreviewCaptionHeight = 24.0f;
 
 /// Pictures decoded for the grid and the strip, by file id; shared by every
 /// panel so reopening one draws at once.
@@ -142,6 +148,11 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 
 @property (nonatomic, strong) NSArray *stickerSets;      // installed, as the store gives them
 @property (nonatomic, strong) NSString *gifQuery;        // nil for the saved ones
+/// Telegram's categories once they have arrived. Empty means the built-in set
+/// from TGEmojiData is still what the strip draws.
+@property (nonatomic, strong) NSArray *serverCategories;
+/// The word the emoji tab is searching for, or nil for the category grid.
+@property (nonatomic, strong) NSString *emojiQuery;
 /// An emoji the sticker tab is searching for, or nil for the usual feed of
 /// favourites, recents and installed sets.
 @property (nonatomic, strong) NSString *stickerQuery;
@@ -286,6 +297,7 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 	self.stripIndex = 0;
 	self.gifQuery = nil;
 	self.stickerQuery = nil;
+	self.emojiQuery = nil;
 	self.backspace.hidden = tab != TGEmojiPanelTabEmoji;
 	self.items = @[];
 	self.sections = nil;
@@ -296,6 +308,12 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 		[button setTitleColor:on ? [theme accentColour] : [theme secondaryTextColour]
 					 forState:UIControlStateNormal];
 	}
+
+	// Telegram's categories describe the strip better than the built-in list
+	// when the file database has them. The first draw keeps the built-in set;
+	// the answer rebuilds the strip when it lands.
+	if (tab == TGEmojiPanelTabEmoji)
+		[self loadEmojiCategoriesIfNeeded];
 
 	// Asked for every time the tab is opened, not once: Favourites and the
 	// installed sets change from other clients, and a latched list never
@@ -319,15 +337,49 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 
 #pragma mark - strip
 
+/// The categories the emoji tab draws. Telegram's list is only useful when
+/// its source carries emoji this account may search for; a premium shelf has
+/// no list and would be an empty tab, so it stays out.
+- (NSArray *)emojiCategories {
+	if (!self.serverCategories.count)
+		return TGEmojiCategories();
+	NSMutableArray *out = [NSMutableArray array];
+	for (NSDictionary *category in self.serverCategories){
+		NSArray *emojis = category[@"emojis"];
+		if (![emojis isKindOfClass:NSArray.class] || !emojis.count)
+			continue;
+		[out addObject:category];
+	}
+	return out.count ? out : TGEmojiCategories();
+}
+
+/// Asked on every visit to the tab, answered from the store's cache after the
+/// first one. An empty answer keeps the built-in list on screen.
+- (void)loadEmojiCategoriesIfNeeded {
+	__weak typeof(self) weakSelf = self;
+	[[TGEmojiStore shared] categoriesWithCompletion:^(NSArray *categories){
+		TGEmojiPanel *me = weakSelf;
+		if (!me || me.tab != TGEmojiPanelTabEmoji || !categories.count)
+			return;
+		me.serverCategories = categories;
+		[me reloadStrip];
+		if (!me.emojiQuery.length)
+			[me loadItemsForStripIndex:me.stripIndex];
+	}];
+}
+
 /// The strip entries for the current tab: each is @{"title" or "emoji" or
-/// "thumbId"}. Emoji: Recent, then the categories. Stickers: Recent,
-/// Favourites, then each installed set. GIFs: Saved and Search.
+/// "thumbId"}. Emoji: Recent, the search, then the categories. Stickers:
+/// Recent, Favourites, then each installed set. GIFs: Saved and Search.
 - (NSArray *)stripEntries {
 	switch (self.tab){
 		case TGEmojiPanelTabEmoji: {
-			NSMutableArray *out = [NSMutableArray arrayWithObject:@{@"glyph" : @"recent"}];
-			for (NSDictionary *category in TGEmojiCategories())
-				[out addObject:@{@"emoji" : category[@"icon"]}];
+			// Recent and the magnifier stay put; the categories after them are
+			// Telegram's when it answered and the built-in set until then.
+			NSMutableArray *out = [NSMutableArray arrayWithObjects:
+					@{@"glyph" : @"recent"}, @{@"glyph" : @"search"}, nil];
+			for (NSDictionary *category in [self emojiCategories])
+				[out addObject:@{@"emoji" : category[@"icon"] ?: @""}];
 			return out;
 		}
 		case TGEmojiPanelTabStickers: {
@@ -418,6 +470,12 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 		[self askForStickerSearch];
 		return;
 	}
+	if (self.tab == TGEmojiPanelTabEmoji && button.tag == 1){
+		[self askForEmojiSearch];
+		return;
+	}
+	if (self.tab == TGEmojiPanelTabEmoji && button.tag != 1)
+		self.emojiQuery = nil;   // a category leaves the search behind
 	if (self.tab == TGEmojiPanelTabGIFs)
 		self.gifQuery = nil;   // "Saved"
 
@@ -557,11 +615,18 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 
 	switch (self.tab){
 		case TGEmojiPanelTabEmoji: {
-			NSArray *categories = TGEmojiCategories();
+			NSArray *categories = [self emojiCategories];
 			if (index == 0)
 				show(TGRecentEmoji(), nil);
-			else if (index - 1 < (NSInteger)categories.count)
-				show(categories[index - 1][@"emoji"], nil);
+			else if (index == 1)
+				[self loadEmojiSearch];
+			else if (index - 2 < (NSInteger)categories.count){
+				NSDictionary *category = categories[index - 2];
+				// Telegram's rows carry "emojis"; the built-in set from
+				// TGEmojiData calls the same list "emoji".
+				NSArray *emojis = category[@"emojis"] ?: category[@"emoji"];
+				show(emojis, nil);
+			}
 			break;
 		}
 		case TGEmojiPanelTabStickers:
@@ -584,6 +649,88 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 			break;
 		}
 	}
+}
+
+/// Both halves of an emoji search: TDLib's keyword suggestions and the
+/// emoji search itself. They land as two sections so the row that says why
+/// an emoji matched stays visible instead of being flattened away.
+- (void)loadEmojiSearch {
+	self.generation++;
+	NSUInteger generation = self.generation;
+	NSString *query = self.emojiQuery;
+	if (!query.length){
+		self.items = @[];
+		self.sections = nil;
+		self.emptyLabel.text = @"Search emoji by word";
+		[self reloadGrid];
+		return;
+	}
+
+	self.items = @[];
+	self.sections = nil;
+	self.emptyLabel.text = @"Searching...";
+	[self reloadGrid];
+
+	__weak typeof(self) weakSelf = self;
+	__block NSArray *suggested = @[];
+	__block NSArray *found = @[];
+	__block NSUInteger left = 2;
+
+	void (^show)(void) = ^{
+		TGEmojiPanel *me = weakSelf;
+		if (!me || me.generation != generation || --left > 0)
+			return;
+
+		NSMutableArray *flat = [NSMutableArray array];
+		NSMutableArray *sections = [NSMutableArray array];
+		NSArray *parts = @[suggested, found];
+		NSArray *titles = @[@"Suggested", @"Results"];
+		for (NSUInteger i = 0; i < parts.count; i++){
+			NSArray *part = parts[i];
+			if (!part.count)
+				continue;
+			[sections addObject:[@{@"title"    : titles[i],
+								   @"strip"    : @(-9),
+								   @"location" : @(flat.count),
+								   @"length"   : @(part.count)} mutableCopy]];
+			[flat addObjectsFromArray:part];
+		}
+		me.items = flat;
+		me.sections = sections;
+		me.emptyLabel.text = flat.count
+				? nil : [NSString stringWithFormat:@"No emoji for %@", query];
+		[me setNeedsFeedRelayout];
+	};
+
+	[[TGEmojiStore shared] keywordEmojis:query completion:^(NSArray *emojis){
+		suggested = emojis ?: @[];
+		show();
+	}];
+	[[TGEmojiStore shared] searchEmojis:query completion:^(NSArray *emojis){
+		found = emojis ?: @[];
+		show();
+	}];
+}
+
+/// The panel stands in for the keyboard, so a field would raise it. The
+/// query is asked for in the app's own sheet, as the sticker and GIF tabs do.
+- (void)askForEmojiSearch {
+	__weak typeof(self) weakSelf = self;
+	[TGAlertSheet showInput:@"Search Emoji"
+					message:@"A word, or an emoji to see what it is filed under."
+				placeholder:@"\U0001F603"
+					   text:self.emojiQuery
+					 action:@"Search"
+					 inView:(self.window ?: self)
+				   onSubmit:^(NSString *query){
+		TGEmojiPanel *panel = weakSelf;
+		NSString *what = [query stringByTrimmingCharactersInSet:
+				[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+		panel.emojiQuery = what.length ? what : nil;
+		panel.stripIndex = panel.emojiQuery ? 1 : 0;
+		[panel updateStripHighlight];
+		[panel loadItemsForStripIndex:panel.stripIndex];
+	}];
 }
 
 /// Favourites, then Recently Used, then every installed set, in one scroll.
@@ -1083,7 +1230,9 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 - (void)gridHeld:(UILongPressGestureRecognizer *)hold {
 	BOOL isSticker = self.tab == TGEmojiPanelTabStickers;
 	BOOL isGif = self.tab == TGEmojiPanelTabGIFs;
-	if (hold.state != UIGestureRecognizerStateBegan || (!isSticker && !isGif))
+	BOOL isEmoji = self.tab == TGEmojiPanelTabEmoji;
+	if (hold.state != UIGestureRecognizerStateBegan ||
+			(!isSticker && !isGif && !isEmoji))
 		return;
 	UIButton *button = (UIButton *)hold.view;
 	id item = TGGetButtonItemData(button);
@@ -1091,6 +1240,14 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 	if (!item && index >= 0 && index < (NSInteger)self.items.count)
 		item = self.items[index];
 	if (!item) return;
+
+	// An emoji has no file of its own; holding it opens the metadata card
+	// instead of the sticker actions below.
+	if (isEmoji){
+		NSString *glyph = [item isKindOfClass:NSString.class] ? (NSString *)item : @"";
+		[self showEmojiCardForEmoji:glyph atButton:button];
+		return;
+	}
 
 	NSInteger fileId = [item[@"fileId"] integerValue];
 	if (fileId <= 0){
@@ -1242,6 +1399,202 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 				[panel selectTab:panel.tab];
 		});
 	}];
+}
+
+/// What a held emoji can say about itself. The card is the panel's own
+/// version of the reaction picker's caption: the glyph, the reaction's title
+/// and the animations Telegram publishes for it.
+- (void)showEmojiCardForEmoji:(NSString *)emoji atButton:(UIButton *)button {
+	if (!emoji.length)
+		return;
+
+	UIView *host = self.window ?: (self.superview ?: self);
+	CGPoint where = [self.grid convertPoint:button.center toView:host];
+	self.menuOpenUntil = [NSDate timeIntervalSinceReferenceDate] + 1.0;
+
+	UIView *header = [[UIView alloc] initWithFrame:
+			CGRectMake(0, 0, kPreviewHeaderWidth, kEmojiCardHeaderHeight)];
+	header.backgroundColor = [UIColor clearColor];
+	UILabel *glyph = [[UILabel alloc] initWithFrame:header.bounds];
+	glyph.text = emoji;
+	glyph.font = TGFontEmojiLarge();
+	glyph.textAlignment = NSTextAlignmentCenter;
+	[header addSubview:glyph];
+
+	NSArray *items = @[
+		@{@"title" : @"Animated Preview", @"icon" : @"sticker"},
+		@{@"title" : @"Reaction Info", @"icon" : @"react"},
+		@{@"title" : @"Custom Reaction Animation", @"icon" : @"video"},
+		@{@"title" : @"Suggest Replacement Link...", @"icon" : @"copy"},
+	];
+	__weak typeof(self) weakSelf = self;
+	[TGPopupMenu showItems:items atPoint:where inView:host headerView:header
+				  onChoice:^(NSInteger choice, NSString *title){
+		TGEmojiPanel *me = weakSelf;
+		if (!me)
+			return;
+		if (choice == 0)
+			[me showAnimatedEmoji:emoji];
+		else if (choice == 1)
+			[me showReactionInfoForEmoji:emoji];
+		else if (choice == 2)
+			[me showCustomReactionAnimation];
+		else if (choice == 3)
+			[me showEmojiSuggestionLink];
+	}];
+}
+
+/// The animated version of one emoji, which most of the plain set does not
+/// have; a 404 is the normal answer rather than a failure worth a red sheet.
+- (void)showAnimatedEmoji:(NSString *)emoji {
+	__weak typeof(self) weakSelf = self;
+	[[TGEmojiStore shared] animatedEmojiForEmoji:emoji completion:^(NSDictionary *animated){
+		TGEmojiPanel *me = weakSelf;
+		if (!me)
+			return;
+		if (!animated){
+			[TGAlertSheet showMessage:
+					[NSString stringWithFormat:@"Telegram has no animated %@.", emoji]
+								 title:@"Animated Emoji"
+								inView:(me.window ?: me)];
+			return;
+		}
+		[me showStickerPreview:animated caption:emoji];
+	}];
+}
+
+/// Title, availability, and the animation Telegram plays for the reaction.
+/// A reaction that exists but carries no animation still gets its text card.
+- (void)showReactionInfoForEmoji:(NSString *)emoji {
+	__weak typeof(self) weakSelf = self;
+	[[TGEmojiStore shared] reactionForEmoji:emoji completion:^(NSDictionary *reaction){
+		TGEmojiPanel *me = weakSelf;
+		if (!me)
+			return;
+		if (!reaction){
+			[TGAlertSheet showMessage:
+					[NSString stringWithFormat:@"%@ is not a reaction.", emoji]
+								 title:@"Reaction"
+								inView:(me.window ?: me)];
+			return;
+		}
+		NSString *title = [reaction[@"title"] length] ? reaction[@"title"] : emoji;
+		NSString *caption = [NSString stringWithFormat:@"%@ · %@", title,
+				[reaction[@"active"] boolValue] ? @"Available" : @"Not available"];
+		NSDictionary *animation = reaction[@"animation"];
+		if (animation){
+			[me showStickerPreview:animation caption:caption];
+			return;
+		}
+		[TGAlertSheet showMessage:caption title:@"Reaction" inView:(me.window ?: me)];
+	}];
+}
+
+/// The generic TGS set Telegram ships for custom-emoji reactions. The first
+/// one is the sample: the panel has no custom reaction to name, so playing
+/// the set's own preview is the honest reading.
+- (void)showCustomReactionAnimation {
+	__weak typeof(self) weakSelf = self;
+	[[TGEmojiStore shared] customEmojiReactionAnimationsWithCompletion:^(NSArray *stickers){
+		TGEmojiPanel *me = weakSelf;
+		if (!me)
+			return;
+		NSDictionary *first = stickers.firstObject;
+		if (!first){
+			[TGAlertSheet showMessage:@"Telegram sent no custom reaction animations."
+								 title:@"Custom Reactions"
+								inView:(me.window ?: me)];
+			return;
+		}
+		[me showStickerPreview:first caption:@"Custom reaction animation"];
+	}];
+}
+
+/// The translation platform's link for proposing a better emoji keyword.
+/// It expires after 30 seconds, so it is fetched when the card is opened and
+/// never kept.
+- (void)showEmojiSuggestionLink {
+	__weak typeof(self) weakSelf = self;
+	[[TGEmojiStore shared] suggestionsUrlForLanguage:nil completion:^(NSString *url){
+		TGEmojiPanel *me = weakSelf;
+		if (!me)
+			return;
+		if (!url.length){
+			[TGAlertSheet showMessage:@"Telegram did not return a suggestion link."
+								 title:@"Suggest Emoji"
+								inView:(me.window ?: me)];
+			return;
+		}
+		UIView *host = me.window ?: me;
+		[TGAlertSheet showChoices:@[@"Copy Link", @"Open", @"Cancel"]
+							title:@"Suggest Emoji Replacement"
+						  message:url
+				   destructiveIndex:-1
+						   inView:host
+						 onChoice:^(NSInteger index){
+			if (index == 0){
+				[UIPasteboard generalPasteboard].string = url;
+			} else if (index == 1){
+				NSURL *link = [NSURL URLWithString:url];
+				if (link)
+					[[UIApplication sharedApplication] openURL:link];
+			}
+		}];
+	}];
+}
+
+/// A card with an animated sticker in its header and one line under it. The
+/// renderer is the same one the sticker tab uses, so .tgs and .webm both play
+/// without the card knowing which one it was handed.
+- (void)showStickerPreview:(NSDictionary *)info caption:(NSString *)caption {
+	NSInteger fileId = [info[@"fileId"] integerValue];
+	if (fileId <= 0){
+		[TGAlertSheet showMessage:@"Telegram sent no animation for this."
+							 title:caption
+							inView:(self.window ?: self)];
+		return;
+	}
+
+	UIView *host = self.window ?: (self.superview ?: self);
+	UIView *header = [[UIView alloc] initWithFrame:
+			CGRectMake(0, 0, kPreviewHeaderWidth, kEmojiPreviewHeaderHeight)];
+	header.backgroundColor = [UIColor clearColor];
+
+	CGRect picture = CGRectMake(TGCenteredOrigin(kPreviewHeaderWidth, kPreviewSide),
+			TGMetricPadSmall, kPreviewSide, kPreviewSide);
+	TGLottieView *lottie = [[TGLottieView alloc] initWithFrame:picture];
+	[header addSubview:lottie];
+
+	UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(0,
+			CGRectGetMaxY(picture), kPreviewHeaderWidth, kEmojiPreviewCaptionHeight)];
+	label.text = caption;
+	label.font = TGFontBody();
+	label.textAlignment = NSTextAlignmentCenter;
+	label.textColor = [[TGTheme shared] secondaryTextColour];
+	label.backgroundColor = [UIColor clearColor];
+	[header addSubview:label];
+
+	[[TGStickerStore shared] downloadFile:fileId
+							 priority:TGDownloadPriorityOnScreen
+						   completion:^(NSString *path){
+		if (!path.length)
+			return;
+		dispatch_async(dispatch_get_main_queue(), ^{
+			__weak TGLottieView *weakLottie = lottie;
+			weakLottie.onStickerReady = ^{ [weakLottie play]; };
+			if ([weakLottie loadStickerFile:path])
+				[weakLottie play];
+		});
+	}];
+
+	CGPoint where = [self convertPoint:CGPointMake(CGRectGetMidX(self.bounds),
+			CGRectGetMidY(self.bounds)) toView:host];
+	self.menuOpenUntil = [NSDate timeIntervalSinceReferenceDate] + 1.0;
+	[TGPopupMenu showItems:@[@{@"title" : @"Close", @"icon" : @"close"}]
+				   atPoint:where
+					inView:host
+				headerView:header
+				  onChoice:^(NSInteger index, NSString *title){}];
 }
 
 /// The tags a sticker is filed under, straight from Telegram: the sticker's

@@ -83,6 +83,10 @@ static const NSTimeInterval kReactionAnimDuration = TGAnimationDurationFast;
 		[btn setTitle:emoji forState:UIControlStateNormal];
 		btn.tag = (NSInteger)i;
 		[btn addTarget:self action:@selector(emojiTapped:) forControlEvents:UIControlEventTouchUpInside];
+		// Hold is the second verb: tap reacts, hold asks for this emoji to
+		// lead the bar from now on. It does not take the tap away.
+		[btn addGestureRecognizer:[[UILongPressGestureRecognizer alloc]
+				initWithTarget:self action:@selector(emojiHeld:)]];
 		[self addSubview:btn];
 		[_buttons addObject:btn];
 	}
@@ -123,6 +127,33 @@ static const NSTimeInterval kReactionAnimDuration = TGAnimationDurationFast;
 			}
 		}];
 	}];
+}
+
+/// The hold names one emoji; the popup decides whether "make this the
+/// default" is a question worth asking. The picker itself has no client, so
+/// it only reports what the finger landed on.
+- (void)emojiHeld:(UILongPressGestureRecognizer *)hold {
+	if (hold.state != UIGestureRecognizerStateBegan)
+		return;
+	UIButton *button = (UIButton *)hold.view;
+	NSInteger idx = button.tag;
+	if (idx < 0 || idx >= (NSInteger)_emojis.count)
+		return;
+	if (self.onDefaultRequested)
+		self.onDefaultRequested(_emojis[(NSUInteger)idx]);
+}
+
+- (void)promoteEmoji:(NSString *)emoji {
+	if (!emoji.length || ![_emojis containsObject:emoji])
+		return;
+	NSMutableArray *next = [NSMutableArray arrayWithObject:emoji];
+	for (NSString *other in _emojis)
+		if (![other isEqualToString:emoji])
+			[next addObject:other];
+	_emojis = [next copy];
+	_selectedEmoji = [emoji copy];
+	[self rebuildButtons];
+	[self setNeedsLayout];
 }
 
 - (CGSize)sizeThatFits:(CGSize)size {

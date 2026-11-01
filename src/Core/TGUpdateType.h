@@ -113,6 +113,9 @@
 	X(TGUpdateTermsOfService,         "updateTermsOfService") \
 	X(TGUpdateUnconfirmedSession,     "updateUnconfirmedSession") \
 	X(TGUpdateUserPrivacySettingRules, "updateUserPrivacySettingRules") \
+	X(TGUpdateAccentColors,           "updateAccentColors") \
+	X(TGUpdateProfileAccentColors,    "updateProfileAccentColors") \
+	X(TGUpdateContactCloseBirthdays,  "updateContactCloseBirthdays") \
 	X(TGUpdateDefaultReactionType,    "updateDefaultReactionType") \
 	X(TGUpdateAnimationSearchParameters, "updateAnimationSearchParameters") \
 	X(TGUpdateSavedMessagesTopic,     "updateSavedMessagesTopic") \
@@ -129,12 +132,9 @@
 	X(TGUpdateUserSubscription,            "updateUserSubscription") \
 	X(TGUpdateAutosaveSettings,            "updateAutosaveSettings") \
 	X(TGUpdateLanguagePackStrings,         "updateLanguagePackStrings") \
-	X(TGUpdateAccentColors,                "updateAccentColors") \
-	X(TGUpdateProfileAccentColors,         "updateProfileAccentColors") \
 	X(TGUpdateDefaultBackground,           "updateDefaultBackground") \
 	X(TGUpdateEmojiChatThemes,             "updateEmojiChatThemes") \
 	X(TGUpdateAvailableMessageEffects,     "updateAvailableMessageEffects") \
-	X(TGUpdateContactCloseBirthdays,       "updateContactCloseBirthdays") \
 	X(TGUpdateStopMessageDraft,            "updateStopMessageDraft") \
 	X(TGUpdateVideoPublished,              "updateVideoPublished")
 
@@ -155,12 +155,9 @@
 	X(TGUpdateUserSubscription,            "updateUserSubscription") \
 	X(TGUpdateAutosaveSettings,            "updateAutosaveSettings") \
 	X(TGUpdateLanguagePackStrings,         "updateLanguagePackStrings") \
-	X(TGUpdateAccentColors,                "updateAccentColors") \
-	X(TGUpdateProfileAccentColors,         "updateProfileAccentColors") \
 	X(TGUpdateDefaultBackground,           "updateDefaultBackground") \
 	X(TGUpdateEmojiChatThemes,             "updateEmojiChatThemes") \
 	X(TGUpdateAvailableMessageEffects,     "updateAvailableMessageEffects") \
-	X(TGUpdateContactCloseBirthdays,       "updateContactCloseBirthdays") \
 	X(TGUpdateStopMessageDraft,            "updateStopMessageDraft") \
 	X(TGUpdateVideoPublished,              "updateVideoPublished")
 

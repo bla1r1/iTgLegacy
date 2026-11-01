@@ -97,6 +97,22 @@
 		 usingBlock:^(NSNotification *note){
 		[weakSelf rebuild];
 	}];
+	// The privacy page's birthday row is fed by an update, and the Appearance
+	// page's colour lists arrive the same way. Neither page waits for a
+	// reopen when Telegram answers after it is already on screen.
+	[[NSNotificationCenter defaultCenter] addObserverForName:TGContactCloseBirthdaysChangedNotification
+			object:nil queue:[NSOperationQueue mainQueue]
+		 usingBlock:^(NSNotification *note){
+		weakSelf.closeBirthdayRows = [[TGClient shared] contactCloseBirthdayUsers];
+		if (weakSelf.page == TGSettingsPagePrivacy)
+			[weakSelf rebuild];
+	}];
+	[[NSNotificationCenter defaultCenter] addObserverForName:TGAccentColorsChangedNotification
+			object:nil queue:[NSOperationQueue mainQueue]
+		 usingBlock:^(NSNotification *note){
+		if (weakSelf.page == TGSettingsPageAppearance)
+			[weakSelf rebuild];
+	}];
 }
 
 - (void)dealloc {
@@ -267,6 +283,21 @@
 - (void)loadForPage {
 	__weak typeof(self) weakSelf = self;
 
+	if (self.page == TGSettingsPageAppearance){
+		// The colour list comes from updateAccentColors and is cached on the
+		// client; the selection is a field of the account record, so it takes
+		// one getMe. A page opened before the update still draws 0-6, which
+		// the schema promises are valid.
+		[[TGClient shared] myAccentColorsWithCompletion:^(NSInteger accent,
+														  NSInteger profile){
+			weakSelf.accentColorId = accent;
+			weakSelf.profileAccentColorId = profile;
+			weakSelf.accentColorsLoaded = YES;
+			[weakSelf rebuild];
+		}];
+		return;
+	}
+
 	if (self.page == TGSettingsPageFolders){
 		// Nothing to reorder until there are two.
 		if ([TGClient shared].folders.count > 1)
@@ -359,6 +390,17 @@
 			weakSelf.suggestFrequent = ![value boolValue];
 			[weakSelf rebuild];
 		}];
+		[[TGClient shared] readDatePrivacySettingsWithCompletion:^(BOOL show){
+			weakSelf.readDateLoaded = YES;
+			weakSelf.showReadDate = show;
+			[weakSelf rebuild];
+		}];
+		[[TGClient shared] closeFriendsWithCompletion:^(NSArray *ids){
+			weakSelf.closeFriendsLoaded = YES;
+			weakSelf.closeFriendsCount = ids.count;
+			[weakSelf rebuild];
+		}];
+		weakSelf.closeBirthdayRows = [[TGClient shared] contactCloseBirthdayUsers];
 		return;
 	}
 

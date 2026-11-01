@@ -324,11 +324,31 @@ int64_t TGArchiveOrder(NSArray *positions) {
 				@"text"     : [last isKindOfClass:NSDictionary.class]
 								? (TGMessagePreview(last) ?: @"") : @"",
 				@"unread"   : topic[@"unread_count"] ?: @(0),
+				@"unreadReactions" : topic[@"unread_reaction_count"] ?: @(0),
 				@"date"     : last[@"date"] ?: @(0),
 			}];
 		}
 		NSLog(@"TGClient: %lu forum topics", (unsigned long)out.count);
 		if (completion) completion(out);
+	}];
+}
+
+- (void)readAllForumTopicReactionsInChat:(int64_t)chatId
+                                  topic:(int64_t)threadId
+                             completion:(void (^)(BOOL))completion {
+	if (!chatId || !threadId){
+		if (completion) completion(NO);
+		return;
+	}
+	[self request:@{@"@type" : @"readAllForumTopicReactions",
+					@"chat_id" : @(chatId),
+					@"forum_topic_id" : @(threadId)}
+	   completion:^(NSDictionary *result){
+		BOOL ok = ![result[@"@type"] isEqualToString:@"error"];
+		if (!ok)
+			NSLog(@"readAllForumTopicReactions %lld/%lld: %@",
+					(long long)chatId, (long long)threadId, result[@"message"]);
+		if (completion) completion(ok);
 	}];
 }
 

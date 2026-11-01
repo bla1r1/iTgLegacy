@@ -294,6 +294,7 @@
 
 	NSDictionary *t = self.topics[indexPath.row];
 	NSInteger unread = [t[@"unread"] integerValue];
+	NSInteger reactions = [t[@"unreadReactions"] integerValue];
 
 	cell.textLabel.text = unread > 0
 		? [NSString stringWithFormat:@"%@  (%ld)", t[@"name"], (long)unread]
@@ -302,7 +303,11 @@
 	cell.textLabel.textColor = [theme primaryTextColour];
 	cell.textLabel.backgroundColor = [theme listBackgroundColour];
 
-	cell.detailTextLabel.text = t[@"text"];
+	NSString *line = t[@"text"] ?: @"";
+	if (reactions > 0)
+		line = [NSString stringWithFormat:@"%ld reaction%@ · %@",
+				(long)reactions, reactions == 1 ? @"" : @"s", line];
+	cell.detailTextLabel.text = line;
 	cell.detailTextLabel.textColor = [theme secondaryTextColour];
 	cell.detailTextLabel.backgroundColor = [theme listBackgroundColour];
 
@@ -314,9 +319,29 @@
 	[tableView deselectRowAtIndexPath:indexPath animated:YES];
 
 	NSDictionary *t = self.topics[indexPath.row];
+	int64_t threadId = [t[@"threadId"] longLongValue];
+
+	// Reading the messages is what makes the topic read. The reactions on
+	// them are a separate badge in TDLib, and the row has to lose it here as
+	// well as on the server or the list lies until the next fetch.
+	if (threadId && [t[@"unreadReactions"] integerValue] > 0){
+		NSMutableArray *rows = [NSMutableArray arrayWithArray:self.topics];
+		NSMutableDictionary *row = [rows[indexPath.row] mutableCopy];
+		row[@"unreadReactions"] = @(0);
+		rows[indexPath.row] = row;
+		self.topics = rows;
+		[tableView reloadData];
+		[[TGClient shared] readAllForumTopicReactionsInChat:self.chatId
+													  topic:threadId
+												 completion:^(BOOL ok){
+			if (!ok)
+				NSLog(@"readAllForumTopicReactions refused for %lld", (long long)threadId);
+		}];
+	}
+
 	TGChatViewController *vc = [[TGChatViewController alloc] init];
 	vc.chatId = self.chatId;
-	vc.threadId = [t[@"threadId"] longLongValue];
+	vc.threadId = threadId;
 	vc.chatTitle = t[@"name"];
 	vc.isGroup = YES;
 	[self.navigationController pushViewController:vc animated:YES];

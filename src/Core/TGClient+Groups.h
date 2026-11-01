@@ -9,6 +9,12 @@ FOUNDATION_EXPORT NSString *TGMemberStatusName(NSDictionary *status);
 
 @interface TGClient (Groups)
 
+/// The supergroup id behind a chat id, asked for rather than guessed: the
+/// toggles in TGClient+Usernames and the flags below all name a supergroup
+/// while a screen only holds the chat. 0 for a basic group.
+- (void)supergroupIdForChat:(int64_t)chatId
+				 completion:(void (^)(int64_t supergroupId))completion;
+
 /// What three supergroup switches sit on right now, so a row can name the
 /// flip rather than the state. NO/NO/NO/NO when the chat is not a supergroup.
 - (void)supergroupFlagsForChat:(int64_t)chatId
@@ -28,6 +34,12 @@ FOUNDATION_EXPORT NSString *TGMemberStatusName(NSDictionary *status);
 - (void)setSupergroupAllHistoryAvailable:(int64_t)chatId
 									  on:(BOOL)on
 							  completion:(void (^)(BOOL ok))completion;
+
+/// The basic group's own record: "id", "title" (from its chat), "members",
+/// "status" (one word), "active" and "upgradedTo" (0 until it became a
+/// supergroup). Nil on an error.
+- (void)basicGroupInfo:(int64_t)basicGroupId
+			completion:(void (^)(NSDictionary *info))completion;
 
 /// Join or leave a channel or supergroup.
 - (void)setChat:(int64_t)chatId joined:(BOOL)joined;

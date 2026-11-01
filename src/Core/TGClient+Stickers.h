@@ -201,6 +201,54 @@
 - (void)stickerOutlineSvgPathForFileId:(NSInteger)fileId
 							completion:(void (^)(NSString *path))completion;
 
+#pragma mark - emoji panel and reactions
+
+/// Telegram's emoji categories, each as "name", "icon" (the character to draw
+/// on the strip), "kind" (emojiCategorySourceSearch or ...Premium) and
+/// "emojis" (the list its search source carries). An older TDLib or a phone
+/// with no file database answers empty, and the panel keeps its built-in set.
+- (void)emojiCategoriesWithCompletion:(void (^)(NSArray *categories))completion;
+
+/// Emoji matching a typed word. TDLib answers emoji-keyword pairs; the
+/// duplicates are dropped and the glyph order is kept, which is what a grid
+/// needs. `languageCodes` may be empty when the input language is unknown.
+- (void)searchEmojis:(NSString *)text
+       languageCodes:(NSArray *)languageCodes
+          completion:(void (^)(NSArray *emojis))completion;
+
+/// The emoji filed under one keyword, with no keyword rows in the answer.
+- (void)keywordEmojis:(NSString *)text
+        languageCodes:(NSArray *)languageCodes
+           completion:(void (^)(NSArray *emojis))completion;
+
+/// The translation platform's link for suggesting emoji replacements. The
+/// link is short lived; it is fetched when the card is opened, not cached.
+- (void)emojiSuggestionsUrlForLanguage:(NSString *)languageCode
+                            completion:(void (^)(NSString *url))completion;
+
+/// One reaction's title, whether it is active, and the animation Telegram
+/// plays for it: "title", "active", "animation" and "static" (sticker rows as
+/// TGStickerInfo makes them). nil when Telegram has no such reaction.
+- (void)emojiReactionForEmoji:(NSString *)emoji
+                  completion:(void (^)(NSDictionary *reaction))completion;
+
+/// The animated version of a plain emoji: a sticker row plus "soundId". nil
+/// when the emoji has none, which is most of them.
+- (void)animatedEmojiForEmoji:(NSString *)emoji
+                   completion:(void (^)(NSDictionary *animated))completion;
+
+/// TGS animations for custom-emoji reactions, shaped as the sticker list.
+- (void)customEmojiReactionAnimationsWithCompletion:
+		(void (^)(NSArray *stickers))completion;
+
+/// Empty the server's recently used reactions, which is the order the picker
+/// starts from. Answered so the settings row can say it landed.
+- (void)clearRecentReactionsWithCompletion:(void (^)(BOOL ok))completion;
+
+/// Make one emoji the reaction the bar leads with, on every device.
+- (void)setDefaultReactionEmoji:(NSString *)emoji
+                     completion:(void (^)(BOOL ok))completion;
+
 #pragma mark - custom emoji
 
 /// Custom emoji stickers by their ids, shaped as the sticker list plus

@@ -17,6 +17,18 @@ NS_ASSUME_NONNULL_BEGIN
        onReaction:(nullable void (^)(NSString *emoji))reactionChoice
          onChoice:(void (^)(NSInteger index, NSString *title))choice;
 
+/// The same bar with a second verb: holding a reaction asks for it to lead
+/// the bar from now on. The picker promotes it in place, so the menu the
+/// finger is still on already shows the new order.
++ (void)showItems:(NSArray *)items
+          atPoint:(CGPoint)point
+           inView:(UIView *)host
+        reactions:(nullable NSArray<NSString *> *)reactions
+   selectedReaction:(nullable NSString *)selectedReaction
+       onReaction:(nullable void (^)(NSString *emoji))reactionChoice
+onDefaultReaction:(nullable void (^)(NSString *emoji))defaultChoice
+         onChoice:(void (^)(NSInteger index, NSString *title))choice;
+
 /// Convenience API: displays popup menu without reactions bar.
 + (void)showItems:(NSArray *)items
           atPoint:(CGPoint)point

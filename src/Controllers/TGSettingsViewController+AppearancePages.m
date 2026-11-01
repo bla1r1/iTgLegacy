@@ -9,6 +9,20 @@
 
 @implementation TGSettingsViewController (AppearancePages)
 
+/// The seven built-in ids have fixed meanings in the schema; anything above
+/// them is a colour Telegram added and the id is the only name it has.
+static NSString *TGAccentColorName(NSInteger colourId) {
+	static NSArray *builtIn = nil;
+	if (!builtIn)
+		builtIn = @[@"Red", @"Orange", @"Purple", @"Green",
+					@"Cyan", @"Blue", @"Pink"];
+	if (colourId >= 0 && colourId < (NSInteger)builtIn.count)
+		return builtIn[(NSUInteger)colourId];
+	if (colourId < 0)
+		return @"None";
+	return [NSString stringWithFormat:@"Colour %ld", (long)colourId];
+}
+
 - (NSArray *)appearanceSections {
 	__weak typeof(self) weakSelf = self;
 	TGTheme *theme = [TGTheme shared];
@@ -52,6 +66,20 @@
 				TGGalleryViewController *gallery = [[TGGalleryViewController alloc] init];
 				[weakSelf.navigationController pushViewController:gallery animated:YES];
 			}),
+		]),
+
+		TGSection(@"Accent Colour",
+				  @"Telegram draws your name, links and the backgrounds of your "
+				  @"profile photo with this colour. It is stored on the account, "
+				  @"not in this app's theme.",
+				  @[
+			TGTapRow(@"Accent Colour",
+					weakSelf.accentColorsLoaded ? TGAccentColorName(weakSelf.accentColorId)
+							: @"...", ^{ [weakSelf chooseAccentColorForProfile:NO]; }),
+			TGTapRow(@"Profile Accent",
+					weakSelf.accentColorsLoaded
+							? TGAccentColorName(weakSelf.profileAccentColorId) : @"...",
+					^{ [weakSelf chooseAccentColorForProfile:YES]; }),
 		]),
 
 		TGSection(@"Color Theme",
@@ -101,6 +129,55 @@
 				  textures),
 		TGSection(@"Custom Photo", nil, customRows)
 	];
+}
+
+- (void)chooseAccentColorForProfile:(BOOL)profile {
+	NSArray *ids = profile ? [[TGClient shared] availableProfileAccentColorIds]
+						   : [[TGClient shared] availableAccentColorIds];
+	NSMutableArray *titles = [NSMutableArray array];
+	if (profile)
+		[titles addObject:@"None"];
+	for (NSNumber *colourId in ids)
+		[titles addObject:TGAccentColorName([colourId integerValue])];
+
+	__weak typeof(self) weakSelf = self;
+	[TGAlertSheet showChoices:titles
+						title:(profile ? @"Profile Accent" : @"Accent Colour")
+			 destructiveIndex:-1
+					   inView:self.view
+					 onChoice:^(NSInteger index){
+		NSInteger colourId = 0;
+		if (profile && index == 0)
+			colourId = -1;
+		else {
+			NSUInteger listIndex = profile ? (NSUInteger)index - 1 : (NSUInteger)index;
+			if (listIndex >= ids.count)
+				return;
+			colourId = [ids[listIndex] integerValue];
+		}
+		void (^answer)(BOOL, NSString *) = ^(BOOL ok, NSString *error){
+			if (!ok){
+				[TGAlertSheet showMessage:(error ?: @"Telegram refused that.")
+									title:(profile ? @"Profile Accent" : @"Accent Colour")
+								   inView:weakSelf.view];
+				return;
+			}
+			if (profile)
+				weakSelf.profileAccentColorId = colourId;
+			else
+				weakSelf.accentColorId = colourId;
+			[weakSelf rebuild];
+			[weakSelf toast:@"Accent colour saved."];
+		};
+		if (profile)
+			[[TGClient shared] setAccountProfileAccentColor:colourId
+										  backgroundEmojiId:0
+												 completion:answer];
+		else
+			[[TGClient shared] setAccountAccentColor:colourId
+								   backgroundEmojiId:0
+										  completion:answer];
+	}];
 }
 
 @end

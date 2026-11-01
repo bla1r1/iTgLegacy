@@ -9,6 +9,8 @@
 /// grid. The thumbnail is drawn only when it is a still picture; a .tgs or
 /// .webm thumbnail is left to the emoji beside it.
 NSDictionary *TGStickerInfo(NSDictionary *sticker) {
+	if (![sticker isKindOfClass:NSDictionary.class])
+		return nil;
 	NSNumber *fileId = sticker[@"sticker"][@"id"];
 	if (!fileId)
 		return nil;
@@ -890,6 +892,203 @@ static NSArray *TGCustomEmojiStickerList(NSArray *stickers) {
 					@"for_clicked_animated_emoji_message" : @NO}
 	   completion:^(NSDictionary *result){
 		if (completion) completion(result[@"text"] ?: @"");
+	}];
+}
+
+#pragma mark - emoji panel and reactions
+
+/// One category row as the strip reads it. Telegram's source is either a
+/// search list or a premium shelf; the panel draws the first and has nothing
+/// this account can open for the second, so both are handed over with the
+/// kind that says which. The icon is a custom emoji sticker: its "emoji"
+/// field is the only part a phone without custom-emoji rendering can draw.
+- (void)emojiCategoriesWithCompletion:(void (^)(NSArray *))completion {
+	[self request:@{@"@type" : @"getEmojiCategories",
+					@"type" : [NSNull null]}
+	   completion:^(NSDictionary *result){
+		NSMutableArray *out = [NSMutableArray array];
+		for (NSDictionary *category in result[@"categories"]){
+			if (![category isKindOfClass:NSDictionary.class])
+				continue;
+			NSDictionary *source = category[@"source"];
+			if (![source isKindOfClass:NSDictionary.class])
+				source = @{};
+			NSArray *emojis = [source[@"emojis"] isKindOfClass:NSArray.class]
+					? source[@"emojis"] : @[];
+			NSDictionary *iconInfo = [category[@"icon"] isKindOfClass:NSDictionary.class]
+					? category[@"icon"] : nil;
+			NSString *icon = iconInfo[@"emoji"];
+			if (!icon.length && emojis.count)
+				icon = emojis.firstObject;
+			[out addObject:@{
+				@"name"   : category[@"name"] ?: @"",
+				@"icon"   : icon ?: @"",
+				@"kind"   : source[@"@type"] ?: @"",
+				@"emojis" : emojis,
+			}];
+		}
+		if (completion) completion(out);
+	}];
+}
+
+/// searchEmojis answers emojiKeyword rows, one per (emoji, keyword) pair, so
+/// the same glyph repeats. The grid wants glyphs, once, in TDLib's order.
+- (void)searchEmojis:(NSString *)text
+       languageCodes:(NSArray *)languageCodes
+          completion:(void (^)(NSArray *))completion {
+	if (!text.length){
+		if (completion) completion(@[]);
+		return;
+	}
+	[self request:@{@"@type"                 : @"searchEmojis",
+					@"text"                  : text,
+					@"input_language_codes"  : languageCodes ?: @[]}
+	   completion:^(NSDictionary *result){
+		NSMutableArray *out = [NSMutableArray array];
+		NSMutableSet *seen = [NSMutableSet set];
+		for (NSDictionary *row in result[@"emoji_keywords"]){
+			NSString *emoji = row[@"emoji"];
+			if (![emoji isKindOfClass:NSString.class] || !emoji.length ||
+				[seen containsObject:emoji])
+				continue;
+			[seen addObject:emoji];
+			[out addObject:emoji];
+		}
+		if (completion) completion(out);
+	}];
+}
+
+- (void)keywordEmojis:(NSString *)text
+        languageCodes:(NSArray *)languageCodes
+           completion:(void (^)(NSArray *))completion {
+	if (!text.length){
+		if (completion) completion(@[]);
+		return;
+	}
+	[self request:@{@"@type"                 : @"getKeywordEmojis",
+					@"text"                  : text,
+					@"input_language_codes"  : languageCodes ?: @[]}
+	   completion:^(NSDictionary *result){
+		NSArray *emojis = [result[@"emojis"] isKindOfClass:NSArray.class]
+				? result[@"emojis"] : @[];
+		if (completion) completion(emojis);
+	}];
+}
+
+- (void)emojiSuggestionsUrlForLanguage:(NSString *)languageCode
+                            completion:(void (^)(NSString *))completion {
+	NSString *code = languageCode.length ? languageCode
+			: ([[NSLocale preferredLanguages] firstObject] ?: @"en");
+	[self request:@{@"@type"          : @"getEmojiSuggestionsUrl",
+					@"language_code"  : code}
+	   completion:^(NSDictionary *result){
+		NSString *url = [result[@"@type"] isEqualToString:@"error"]
+				? @"" : (result[@"url"] ?: @"");
+		if (completion) completion(url);
+	}];
+}
+
+/// The animation Telegram names first is the one to play; the field order
+/// here follows how a reaction is shown - centre, then appear, then select.
+static NSDictionary *TGReactionAnimation(NSDictionary *reaction) {
+	NSArray *names = @[@"center_animation", @"appear_animation",
+					   @"select_animation", @"activate_animation",
+					   @"effect_animation", @"around_animation"];
+	for (NSString *name in names){
+		NSDictionary *info = TGStickerInfo(reaction[name]);
+		if (info)
+			return info;
+	}
+	return nil;
+}
+
+- (void)emojiReactionForEmoji:(NSString *)emoji
+                  completion:(void (^)(NSDictionary *))completion {
+	if (!emoji.length){
+		if (completion) completion(nil);
+		return;
+	}
+	[self request:@{@"@type" : @"getEmojiReaction", @"emoji" : emoji}
+	   completion:^(NSDictionary *result){
+		if ([result[@"@type"] isEqualToString:@"error"]){
+			if (completion) completion(nil);
+			return;
+		}
+		NSDictionary *animation = TGReactionAnimation(result);
+		NSDictionary *staticIcon = TGStickerInfo(result[@"static_icon"]);
+		NSMutableDictionary *row = [NSMutableDictionary dictionary];
+		row[@"emoji"]   = result[@"emoji"] ?: emoji;
+		row[@"title"]   = result[@"title"] ?: @"";
+		row[@"active"]  = @([result[@"is_active"] boolValue]);
+		if (animation) row[@"animation"] = animation;
+		if (staticIcon) row[@"static"] = staticIcon;
+		if (completion) completion(row);
+	}];
+}
+
+- (void)animatedEmojiForEmoji:(NSString *)emoji
+                  completion:(void (^)(NSDictionary *))completion {
+	if (!emoji.length){
+		if (completion) completion(nil);
+		return;
+	}
+	[self request:@{@"@type" : @"getAnimatedEmoji", @"emoji" : emoji}
+	   completion:^(NSDictionary *result){
+		if ([result[@"@type"] isEqualToString:@"error"]){
+			if (completion) completion(nil);
+			return;
+		}
+		NSDictionary *info = TGStickerInfo(result[@"sticker"]);
+		if (!info){
+			if (completion) completion(nil);
+			return;
+		}
+		NSMutableDictionary *row = [info mutableCopy];
+		NSDictionary *sound = [result[@"sound"] isKindOfClass:NSDictionary.class]
+				? result[@"sound"] : nil;
+		row[@"soundId"] = sound[@"id"] ?: @0;
+		row[@"fitzpatrick"] = result[@"fitzpatrick_type"] ?: @0;
+		row[@"regularEmoji"] = result[@"is_regular_emoji"] ?: @NO;
+		if (completion) completion(row);
+	}];
+}
+
+- (void)customEmojiReactionAnimationsWithCompletion:
+		(void (^)(NSArray *))completion {
+	[self request:@{@"@type" : @"getCustomEmojiReactionAnimations"}
+	   completion:^(NSDictionary *result){
+		NSArray *stickers = [result[@"stickers"] isKindOfClass:NSArray.class]
+				? result[@"stickers"] : @[];
+		if (completion) completion(TGCustomEmojiStickerList(stickers));
+	}];
+}
+
+- (void)clearRecentReactionsWithCompletion:(void (^)(BOOL))completion {
+	[self request:@{@"@type" : @"clearRecentReactions"}
+	   completion:^(NSDictionary *result){
+		BOOL ok = ![result[@"@type"] isEqualToString:@"error"];
+		if (completion) completion(ok);
+	}];
+}
+
+- (void)setDefaultReactionEmoji:(NSString *)emoji
+                     completion:(void (^)(BOOL))completion {
+	if (!emoji.length){
+		if (completion) completion(NO);
+		return;
+	}
+	[self request:@{
+		@"@type"         : @"setDefaultReactionType",
+		@"reaction_type" : @{@"@type" : @"reactionTypeEmoji", @"emoji" : emoji},
+	} completion:^(NSDictionary *result){
+		BOOL ok = ![result[@"@type"] isEqualToString:@"error"];
+		// The update says the same thing later; setting it here keeps the
+		// picker that asked from flicking back to the old default first.
+		if (ok)
+			self.reactionDefaultEmoji = emoji;
+		else
+			NSLog(@"setDefaultReactionType %@: %@", emoji, result[@"message"]);
+		if (completion) completion(ok);
 	}];
 }
 

@@ -359,10 +359,19 @@ static NSArray *TGPacksFrom(NSDictionary *target) {
 			birthday = [NSString stringWithFormat:@"%@ %@",
 					(month > 0 && month < 13) ? months[month] : @"", birth[@"day"]];
 		}
+		NSString *tab = full[@"main_profile_tab"][@"@type"];
+		tab = [tab stringByReplacingOccurrencesOfString:@"profileTab" withString:@""];
 		if (completion) completion(@{
 			@"bio"          : full[@"bio"][@"text"] ?: @"",
 			@"commonGroups" : full[@"group_in_common_count"] ?: @0,
 			@"birthday"     : birthday,
+			// The note is this account's own copy; empty means none is kept.
+			@"note"         : full[@"note"][@"text"] ?: @"",
+			// A contact's private picture: an id is present only when one is
+			// set, which is what the profile's remove row keys off.
+			@"personalPhoto": full[@"personal_photo"][@"small"][@"id"] ?: @0,
+			@"mainProfileTab": tab.length ? tab.lowercaseString : @"posts",
+			@"shareTheme"   : full[@"share_theme"][@"@type"] ?: @"",
 			// A user who has calls turned off should not be offered one.
 			@"canCall"      : full[@"can_be_called"] ?: @NO,
 			@"canVideoCall" : full[@"supports_video_calls"] ?: @NO,
@@ -432,6 +441,56 @@ static NSArray *TGPacksFrom(NSDictionary *target) {
 
 - (void)resetAllNotificationSettings {
 	[self send:@{@"@type" : @"resetAllNotificationSettings"}];
+}
+
+#pragma mark - reactions
+
+- (NSDictionary *)reactionNotificationSettings {
+	return self.reactionNotificationSettingsValue;
+}
+
+/// No record yet means Telegram has not answered the post-login burst; its
+/// default is to show them, so the switch starts on rather than off.
+- (BOOL)reactionNotificationsEnabled {
+	NSString *source = self.reactionNotificationSettingsValue[@"message_reaction_source"][@"@type"];
+	if (!source.length)
+		return YES;
+	return ![source isEqualToString:@"reactionNotificationSourceNone"];
+}
+
+- (void)setReactionNotificationsEnabled:(BOOL)enabled
+                             completion:(void (^)(BOOL))completion {
+	// setReactionNotificationSettings replaces the whole record. Reading the
+	// one Telegram last sent is the only way toggling reactions does not also
+	// reset the story and poll sources or the chosen sound.
+	NSDictionary *current = self.reactionNotificationSettingsValue ?: @{};
+	NSDictionary *all = @{@"@type" : @"reactionNotificationSourceAll"};
+	NSMutableDictionary *next = [@{
+		@"@type"                    : @"reactionNotificationSettings",
+		@"message_reaction_source"  : enabled
+				? all : @{@"@type" : @"reactionNotificationSourceNone"},
+		@"story_reaction_source"    : current[@"story_reaction_source"] ?: all,
+		@"poll_vote_source"         : current[@"poll_vote_source"] ?: all,
+		@"sound_id"                 : current[@"sound_id"] ?: @(0),
+		@"show_preview"             : current[@"show_preview"] ?: @YES,
+	} mutableCopy];
+
+	[self request:@{@"@type" : @"setReactionNotificationSettings",
+					@"notification_settings" : next}
+	   completion:^(NSDictionary *result){
+		BOOL ok = ![result[@"@type"] isEqualToString:@"error"];
+		if (!ok){
+			NSLog(@"setReactionNotificationSettings: %@", result[@"message"]);
+			if (completion) completion(NO);
+			return;
+		}
+		self.reactionNotificationSettingsValue = next;
+		// The settings page rebuilds from what it reads, and this write is
+		// the one place the local copy moves without a server update.
+		[[NSNotificationCenter defaultCenter]
+				postNotificationName:TGNotificationSettingsChangedNotification object:self];
+		if (completion) completion(YES);
+	}];
 }
 
 #pragma mark - options

@@ -19,6 +19,8 @@ static TGClient *U(void) {
 	c.archivedChats = @[];
 	c.onChatsChanged = nil;
 	c.onMessage = nil;
+	c.reactionDefaultEmoji = nil;
+	c.reactionNotificationSettingsValue = nil;
 	[c.updateCoalescer reset];
 	TGOptionReset();
 	return c;

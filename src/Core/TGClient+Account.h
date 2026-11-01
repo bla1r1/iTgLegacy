@@ -56,6 +56,20 @@
 /// Forget every per-chat notification exception, as their reset row does.
 - (void)resetAllNotificationSettings;
 
+/// The last reaction notification record Telegram sent. nil until
+/// updateReactionNotificationSettings arrives.
+@property (nonatomic, readonly) NSDictionary *reactionNotificationSettings;
+
+/// Whether a message reaction may raise a notification. Telegram's default
+/// is on; the stored record only turns it off by naming the "none" source.
+@property (nonatomic, readonly) BOOL reactionNotificationsEnabled;
+
+/// Turn message-reaction notifications on or off without disturbing the
+/// story and poll sources or the chosen sound. Answered so the switch can
+/// put itself back if Telegram refuses.
+- (void)setReactionNotificationsEnabled:(BOOL)enabled
+                             completion:(void (^)(BOOL ok))completion;
+
 /// A TDLib option by name, and the boolean setter for the handful of them the
 /// settings screens expose ("disable_top_chats", "disable_animated_emoji", ...).
 - (void)optionValue:(NSString *)name completion:(void (^)(id value))completion;
