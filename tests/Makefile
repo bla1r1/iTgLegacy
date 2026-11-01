@@ -88,6 +88,9 @@ CLIENT_OBJC_SRCS := \
     $(SRC)/Core/TGMessageStreamStore.mm \
     $(SRC)/Core/TGUpdateBatcher.mm \
     $(SRC)/Core/TGClient+Messages.m \
+    $(SRC)/Core/TGMessageFlatten.m \
+    $(SRC)/Core/TGClient+MessageMeta.m \
+    $(SRC)/Core/TGClient+SavedMessages.m \
     $(SRC)/Core/TGClient+Stickers.m \
     $(SRC)/Core/TGClient+Files.mm \
     $(SRC)/Core/TGStickerPack.mm \

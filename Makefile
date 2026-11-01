@@ -188,6 +188,9 @@ APP_SRC_M := \
 	src/Core/TGMediaStore.m \
 	src/Core/TGClient+Auth.m \
 	src/Core/TGClient+Messages.m \
+	src/Core/TGMessageFlatten.m \
+	src/Core/TGClient+MessageMeta.m \
+	src/Core/TGClient+SavedMessages.m \
 	src/Core/TGStatusText.m \
 	src/Core/TGBase64.m \
 	src/Controllers/TGNavController.m \
