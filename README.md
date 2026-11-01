@@ -39,7 +39,7 @@ LegacyTG/
 │   ├── Core/        # client, TDLib bridge, theme, style, device logic
 │   ├── Controllers/ # ViewControllers
 │   ├── Views/       # UIKit components, cells, icons
-│   ├── UI/          # reusable controls (buttons, fields, avatars)
+│   ├── UI/          # reusable controls (buttons, fields, avatars, sheets)
 │   ├── Media/       # decoders (WebP images, WebM sticker video)
 │   ├── Calls/       # VoIP & E2EE calls
 │   └── Audio/       # voice notes

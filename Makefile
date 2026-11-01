@@ -167,8 +167,7 @@ VOIP_SRC_CXX := \
 	third_party/libtgvoip/os/posix/NetworkSocketPosix.cpp
 
 VOIP_SRC_MM := \
-	third_party/libtgvoip/os/darwin/DarwinSpecific.mm \
-	src/Calls/TGCall.mm
+	third_party/libtgvoip/os/darwin/DarwinSpecific.mm
 
 VOIP_FLAGS := -DTGVOIP_NO_DSP -DWEBRTC_POSIX -DTGVOIP_USE_CUSTOM_CRYPTO \
               -I$(ROOT_DIR)/third_party/libtgvoip -Wno-everything
@@ -176,6 +175,24 @@ VOIP_FLAGS := -DTGVOIP_NO_DSP -DWEBRTC_POSIX -DTGVOIP_USE_CUSTOM_CRYPTO \
 LIBTG_SRC_C :=
 
 LIBTG_SRC_CXX :=
+
+# Vendored third-party sources kept out of the app's own lists: they ride
+# the same object rules, but a list that says "the app" now really does.
+VENDOR_SRC_M := \
+	third_party/opusenc/opusenc.m
+
+VENDOR_SRC_C := \
+	third_party/yyjson/yyjson.c \
+	third_party/nestegg/nestegg.c \
+	third_party/opusfile/internal.c \
+	third_party/opusfile/opusfile.c \
+	third_party/opusfile/info.c \
+	third_party/opusfile/stream.c \
+	third_party/ogg/ogg/framing.c \
+	third_party/ogg/ogg/bitwise.c \
+	third_party/opusenc/opus_header.c \
+	third_party/opusenc/picture.c \
+	third_party/opusenc/diag_range.c
 
 APP_SRC_M := \
 	src/App/AppDelegate.m \
@@ -219,14 +236,14 @@ APP_SRC_M := \
 	src/Views/TGIcons+Illustrations.m \
 	src/Views/TGIcons+Media.m \
 	src/Views/TGIcons+Chat.m \
-	src/Views/TGPopupMenu.m \
-	src/Views/TGSheet.m \
-	src/Views/TGAlertSheet.m \
+	src/UI/TGPopupMenu.m \
+	src/UI/TGSheet.m \
+	src/UI/TGAlertSheet.m \
 	src/Views/TGGiftViewer.m \
-	src/Views/TGSnackbar.m \
+	src/UI/TGSnackbar.m \
 	src/Views/TGPlayerView.m \
-	src/Views/TGEmptyView.m \
-	src/Views/TGStatusBanner.m \
+	src/UI/TGEmptyView.m \
+	src/UI/TGStatusBanner.m \
 	src/UI/TGButton.m \
 	src/UI/TGSlider.m \
 	src/UI/TGTextField.m \
@@ -292,15 +309,18 @@ APP_SRC_M := \
 	src/Calls/TGCallStun.m \
 	src/Calls/TGCallMessages.m \
 	src/Calls/TGCallReflector.m \
-	third_party/opusenc/opusenc.m \
 	src/Media/UIImage+WebP.m \
 	src/Media/TGWebMDecoder.m \
 	src/Views/TGMediaViewer.m \
 	src/Audio/TGMusicPlayer.m
 
+# TGCall.mm sits with the app, not with the vendored libtgvoip: it is the
+# app's call protocol over the engine. The %.mm rule carries VOIP_FLAGS for
+# every .mm file, so the objects come out identical either way.
 APP_SRC_MM := \
 	src/Audio/TGVoiceRecorder.mm \
 	src/Calls/TGCallAudioEngine.mm \
+	src/Calls/TGCall.mm \
 	src/Core/TGImageLruCache.mm \
 	src/Core/TGClient+Chats.mm \
 	src/Core/TGClient+Files.mm \
@@ -313,22 +333,11 @@ APP_SRC_MM := \
 	src/Views/TGLottieView.mm
 
 APP_SRC_C := \
-	third_party/yyjson/yyjson.c \
 	src/Core/TGUpdateType.c \
 	src/Views/TGSVGPath.c \
 	src/Core/TGSampler.c \
 	compat/tlv_polyfill.c \
-	src/Calls/TGCallCrypto.c \
-	third_party/nestegg/nestegg.c \
-	third_party/opusfile/internal.c \
-	third_party/opusfile/opusfile.c \
-	third_party/opusfile/info.c \
-	third_party/opusfile/stream.c \
-	third_party/ogg/ogg/framing.c \
-	third_party/ogg/ogg/bitwise.c \
-	third_party/opusenc/opus_header.c \
-	third_party/opusenc/picture.c \
-	third_party/opusenc/diag_range.c
+	src/Calls/TGCallCrypto.c
 
 # Object mapping for armv7
 ARMV7_OBJ_DIR := $(BUILD_DIR)/armv7/obj
@@ -339,6 +348,8 @@ ARMV7_VOIP_OBJS  := $(patsubst %.cpp,$(ARMV7_OBJ_DIR)/%.o,$(VOIP_SRC_CXX)) \
 ARMV7_APP_OBJS   := $(patsubst %.m,$(ARMV7_OBJ_DIR)/%.o,$(APP_SRC_M)) \
                     $(patsubst %.mm,$(ARMV7_OBJ_DIR)/%.o,$(APP_SRC_MM)) \
                     $(patsubst %.c,$(ARMV7_OBJ_DIR)/%.o,$(APP_SRC_C)) \
+                    $(patsubst %.m,$(ARMV7_OBJ_DIR)/%.o,$(VENDOR_SRC_M)) \
+                    $(patsubst %.c,$(ARMV7_OBJ_DIR)/%.o,$(VENDOR_SRC_C)) \
                     $(ARMV7_VOIP_OBJS)
 ARMV7_ALL_OBJS   := $(ARMV7_LIBTG_OBJS) $(ARMV7_APP_OBJS)
 
@@ -351,6 +362,8 @@ ARM64_VOIP_OBJS  := $(patsubst %.cpp,$(ARM64_OBJ_DIR)/%.o,$(VOIP_SRC_CXX)) \
 ARM64_APP_OBJS   := $(patsubst %.m,$(ARM64_OBJ_DIR)/%.o,$(APP_SRC_M)) \
                     $(patsubst %.mm,$(ARM64_OBJ_DIR)/%.o,$(APP_SRC_MM)) \
                     $(patsubst %.c,$(ARM64_OBJ_DIR)/%.o,$(APP_SRC_C)) \
+                    $(patsubst %.m,$(ARM64_OBJ_DIR)/%.o,$(VENDOR_SRC_M)) \
+                    $(patsubst %.c,$(ARM64_OBJ_DIR)/%.o,$(VENDOR_SRC_C)) \
                     $(ARM64_VOIP_OBJS)
 ARM64_ALL_OBJS   := $(ARM64_LIBTG_OBJS) $(ARM64_APP_OBJS)
 

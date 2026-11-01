@@ -5,11 +5,12 @@
 // - TGStyle+Typography.h: Type scale, line heights, font roles
 // - TGStyle+Metrics.h: Spacing scale, component dimensions, corner radii
 // - TGStyle+Decorations.h: Shadows, borders, layer helpers, math inlines
-// - TGStyle+Palette.h: Non-theme palette roles and tile hues
+// - TGStylePalette.h: colours that never change with the theme - the link
+//   and code-block roles, and the twelve decorative icon-tile hues
 //
 #import <UIKit/UIKit.h>
 
 #import "TGStyle+Typography.h"
-#import "TGStyle+Palette.h"
+#import "TGStylePalette.h"
 #import "TGStyle+Decorations.h"
 #import "TGStyle+Metrics.h"

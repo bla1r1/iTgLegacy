@@ -1,5 +1,5 @@
 //
-// TGStyle+Palette.h
+// TGStylePalette.h
 // Fixed non-theme palette roles and decorative tile hues.
 //
 #import <UIKit/UIKit.h>

@@ -23,7 +23,7 @@
 #import "TGStatusBanner.h"
 #import "TGEmptyView.h"
 
-// Interactive Showcase
-#import "TGGalleryViewController.h"
+// TGGalleryViewController is a controller, not a control: import
+// "TGGalleryViewController.h" where it is pushed.
 
 #endif /* TGUI_h */
