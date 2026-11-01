@@ -61,6 +61,9 @@ typedef NS_ENUM(NSInteger, TGLoginStep) {
 - (void)inputFieldChanged:(UITextField *)sender;
 - (void)prefixFieldChanged:(UITextField *)sender;
 - (void)countryPickerTapped;
+/// Resolves the prefix being typed through getPhoneNumberInfo and says the
+/// country and formatted number under the instructions.
+- (void)refreshPhoneNumberInfo;
 
 @end
 
@@ -82,6 +85,12 @@ typedef NS_ENUM(NSInteger, TGLoginStep) {
 - (void)forgotPasswordTapped;
 - (void)codeMissingTapped;
 - (void)resetEmailTapped;
+/// A token from a web login: signs in with it, or lets it expire.
+- (void)webTokenTapped;
+/// Confirms a QR link another screen scanned, instead of showing one here.
+- (void)qrLinkTapped;
+/// The code is coming by Firebase push: asks for the secret and hands it on.
+- (void)firebaseCodeTapped;
 
 @end
 

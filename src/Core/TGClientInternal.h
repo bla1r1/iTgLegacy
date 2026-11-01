@@ -100,6 +100,14 @@ NSDictionary *TGStickerInfo(NSDictionary *sticker);
 - (NSUInteger)fileWaiterCount:(NSInteger)fileId;
 - (BOOL)hasFileWaiterRecord:(NSInteger)fileId;
 - (NSInteger)fileWaiterPriority:(NSInteger)fileId;
+/// A TDLib generation request. The file-generation flow lives in +Files,
+/// because the reply is sent with writeGeneratedFilePart and the pending
+/// request is the record it finishes.
+- (void)handleFileGenerationStart:(NSDictionary *)update;
+- (void)handleFileGenerationStop:(NSDictionary *)update;
+/// Upload progress on a file this client is generating; forwarded to the
+/// pending generation's progress block.
+- (void)handleFileUploadProgress:(NSInteger)fileId file:(NSDictionary *)file;
 
 // The download watchdog timeout, 45 s in production; the host tests shrink
 // it so the timer fires inside a test runtime.

@@ -473,27 +473,49 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 					  destructive:NO
 						   inView:self.view
 						onConfirm:^{
-			[[TGClient shared] hasPasswordWithCompletion:
-					^(BOOL has, NSString *email){
-				void (^hand)(NSString *) = ^(NSString *password){
-					[[TGClient shared] transferOwnershipOfChat:chatId
-														 toUser:userId
-													   password:password
-													 completion:report];
-				};
-				if (!has){
-					hand(@"");
+			// Telegram decides whether this session may hand a chat over at
+			// all. The pre-check is shown before the password is asked for,
+			// because a session that is too new cannot proceed either way.
+			[[TGClient shared] canTransferOwnershipWithCompletion:
+					^(NSString *result, NSInteger retryAfter, NSString *error){
+				if (error){
+					[TGAlertSheet showMessage:error
+										title:@"Hand Over Ownership"
+									   inView:self.view];
 					return;
 				}
-				// Two-step verification is on: the request carries the
-				// password, which the screen never stores anywhere.
-				[TGAlertSheet showSecureInput:@"Your Password"
-									  message:@"Telegram answers a handover "
-											  @"only when this is right."
-								  placeholder:@"2FA password"
-									   action:@"Hand Over"
-									   inView:self.view
+				if ([result isEqualToString:@"passwordTooFresh"] ||
+						[result isEqualToString:@"sessionTooFresh"]){
+					[TGAlertSheet showMessage:[NSString stringWithFormat:
+							@"Telegram will not move this chat yet. Try again in "
+							@"about %ld minutes.",
+							(long)MAX(1, (retryAfter + 59) / 60)]
+										title:@"Hand Over Ownership"
+									   inView:self.view];
+					return;
+				}
+				[[TGClient shared] hasPasswordWithCompletion:
+						^(BOOL has, NSString *email){
+					void (^hand)(NSString *) = ^(NSString *password){
+						[[TGClient shared] transferOwnershipOfChat:chatId
+															 toUser:userId
+														   password:password
+														 completion:report];
+					};
+					if (!has){
+						hand(@"");
+						return;
+					}
+					// Two-step verification is on: the request carries the
+					// password, which the screen never stores anywhere.
+					[TGAlertSheet showSecureInput:@"Your Password"
+										  message:@"Telegram answers a handover "
+												  @"only when this is right."
+									  placeholder:@"2FA password"
+										   action:@"Hand Over"
+										   inView:self.view
 									 onSubmit:hand];
+				}];
 			}];
 		}];
 	}

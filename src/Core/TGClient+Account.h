@@ -65,6 +65,38 @@
 /// Drop the phone contacts this account uploaded to Telegram.
 - (void)clearImportedContacts;
 
+#pragma mark - imported contacts and the application link
+
+/// How many contacts this account has uploaded from a device's address book.
+- (void)importedContactCountWithCompletion:(void (^)(NSInteger count))completion;
+
+/// Replaces the uploaded contact list with `contacts` (each "phone_number",
+/// "first_name", "last_name"). `importerCount` is how many of the supplied
+/// rows Telegram accepted; `userIds` is its answer, one id per row.
+- (void)changeImportedContacts:(NSArray *)contacts
+					completion:(void (^)(NSInteger importerCount,
+										NSArray *userIds))completion;
+
+/// The official client download page for this platform.
+- (void)applicationDownloadLinkWithCompletion:(void (^)(NSString *url))completion;
+
+#pragma mark - autosave
+
+/// Telegram's gallery autosave settings. "private", "groups" and "channels"
+/// each carry "photos", "videos" and "maxVideoSize"; "exceptions" is an array
+/// of per-chat overrides with "chatId" and the same three fields.
+- (void)autosaveSettingsWithCompletion:(void (^)(NSDictionary *settings))completion;
+
+/// Writes one scope's settings. `scope` is "private", "groups" or "channels".
+- (void)setAutosaveSettingsForScope:(NSString *)scope
+							 photos:(BOOL)photos
+							 videos:(BOOL)videos
+					   maxVideoSize:(long long)maxVideoSize
+						 completion:(void (^)(BOOL ok))completion;
+
+/// Drops every per-chat exception; the three scope defaults stay.
+- (void)clearAutosaveSettingsExceptionsWithCompletion:(void (^)(BOOL ok))completion;
+
 /// Set the signed-in account's own picture from a local file.
 - (void)setProfilePhotoAtPath:(NSString *)path completion:(void (^)(BOOL ok))completion;
 

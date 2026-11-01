@@ -205,6 +205,18 @@
 - (void)layoutPlayerBarForMusic:(BOOL)music;
 - (void)joinChatByInviteLink:(NSString *)link;
 - (void)openChatWithPhoneNumber:(NSString *)phone;
+- (void)openChatWithUserToken:(NSString *)token;
+- (void)presentExternalLink:(NSString *)link;
+- (void)showExternalLink:(NSString *)link browser:(NSString *)browser info:(NSDictionary *)info;
+- (void)openInstantViewForLink:(NSString *)link;
+- (void)resolveInternalLinkKind:(NSString *)kind value:(NSString *)value
+					   original:(NSString *)original
+				 isTelegramHost:(BOOL)isTelegramHost
+			   isTelegramScheme:(BOOL)isTelegramScheme;
+- (void)continueInternalLinkKind:(NSString *)kind value:(NSString *)value
+							link:(NSString *)link
+				   isTelegramHost:(BOOL)isTelegramHost
+				 isTelegramScheme:(BOOL)isTelegramScheme;
 - (void)openPlainLink:(NSURL *)url;
 - (void)openTelegramLinkByPath:(NSString *)clean
 						   url:(NSURL *)u

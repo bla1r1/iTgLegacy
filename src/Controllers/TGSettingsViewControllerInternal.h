@@ -10,6 +10,7 @@
 #import "TGTheme.h"
 #import "TGThemeFile.h"
 #import "TGStorageViewController.h"
+#import "TGFileToolsViewController.h"
 #import "TGSessionsViewController.h"
 #import "TGDeviceViewController.h"
 #import "TGDevice.h"
@@ -149,6 +150,15 @@ static inline NSString *TGBytes(long long bytes) {
 @property (nonatomic, strong) UIImageView *avatarView;
 @property (nonatomic, strong) NSArray *languages;
 @property (nonatomic, strong) NSString *currentLanguage;
+/// The current pack's record, read back from getLanguagePackInfo. The actions
+/// that edit a pack need the whole object, not only the id.
+@property (nonatomic, strong) NSDictionary *languageInfo;
+/// The country this device is in, its preferred language and its flag. All
+/// three come from Telegram so the page agrees with the phone step.
+@property (nonatomic, strong) NSString *countryCode;
+@property (nonatomic, strong) NSDictionary *countryInfo;
+@property (nonatomic, strong) NSString *preferredCountryLanguage;
+@property (nonatomic, strong) NSString *countryFlag;
 @property (nonatomic, strong) NSArray *blocked;
 @property (nonatomic, strong) NSArray *calls;
 @property (nonatomic, assign) NSInteger accountTtl;
@@ -179,6 +189,11 @@ static inline NSString *TGBytes(long long bytes) {
 /// The downloads page: the list Telegram keeps, and how many are running.
 @property (nonatomic, strong) NSArray *downloads;
 @property (nonatomic, assign) NSInteger activeDownloads;
+/// Data and Storage: Telegram's Low/Medium/High auto-download presets, as
+/// getAutoDownloadSettingsPresets answered them.
+@property (nonatomic, strong) NSDictionary *autoDownloadPresets;
+/// The Autosave page: private/group/channel defaults plus per-chat exceptions.
+@property (nonatomic, strong) NSDictionary *autosaveSettings;
 
 + (NSArray *)privacySettings;
 + (NSArray *)privacyTitles;
@@ -206,6 +221,17 @@ static inline NSString *TGBytes(long long bytes) {
 - (void)runDownloadActionFor:(NSDictionary *)download;
 - (void)showPremiumState;
 - (void)showTwoStepState;
+- (void)showLostPasswordFlow;
+- (void)askPasswordRecoveryCodeFor:(NSString *)pattern;
+- (void)askResetPassword;
+- (void)showLoginEmailFlow;
+- (void)askLoginEmailCodeFor:(NSString *)pattern;
+- (void)showChangePhoneFlow;
+- (void)showPhoneChangeCodeStep:(NSDictionary *)info;
+- (void)showTemporaryPasswordFlow;
+- (void)showVerifyEmailFlow;
+- (void)askEmailVerificationCodeFor:(NSString *)pattern;
+- (void)showApplicationVerification;
 - (void)askCurrentPasswordThen:(void (^)(NSString *current))next;
 - (void)askNewPasswordReplacing:(NSString *)current;
 - (void)commitPassword:(NSString *)new replacing:(NSString *)current hint:(NSString *)hint;
@@ -213,6 +239,18 @@ static inline NSString *TGBytes(long long bytes) {
 - (void)askRecoveryAddress;
 - (void)askDeleteAccountNow;
 - (void)openSupport;
+- (void)askCountryCode;
+- (void)showLanguagePackInfo;
+- (void)showLanguagePackStrings;
+- (void)readLanguagePackString;
+- (void)createCustomLanguagePack;
+- (void)editLanguagePackName;
+- (void)setLanguagePackString;
+- (void)deleteLanguagePackString;
+- (void)installServerLanguagePack;
+- (void)synchronizeCurrentLanguagePack;
+- (void)deleteCurrentLanguagePack;
+- (void)refreshLanguagePage;
 - (void)askPrivacyRuleAtIndex:(NSUInteger)index;
 - (void)chooseTextSize;
 - (void)chooseWallpaper;
@@ -237,6 +275,11 @@ static inline NSString *TGBytes(long long bytes) {
 - (NSArray *)folderSections;
 - (NSArray *)proxySections;
 - (NSArray *)downloadSections;
+- (NSArray *)autosaveSections;
+- (void)chooseAutoDownloadPreset;
+- (NSString *)autoDownloadPresetSummary;
+- (void)changeAutosaveScope:(NSString *)scope photos:(BOOL)photos videos:(BOOL)videos;
+- (void)clearAutosaveExceptions;
 
 @end
 

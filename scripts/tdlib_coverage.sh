@@ -76,9 +76,11 @@ comm -23 "$TMP/upd_all" "$TMP/upd_used" > "$TMP/upd_gap"
 # updates join the functions here deliberately, not with their panel:
 # updateActiveEmojiReactions is the reaction-picker's list and there is no
 # picker to read it, updateMessageSendAcknowledged has no state between
-# pending and sent to draw, updateFileGeneration* fires only when the app
-# asks TDLib to generate a file, which it never does, and
-# updatePendingMessage streams a bot's half-written reply - no bot surface.
+# pending and sent to draw, and updatePendingMessage streams a bot's
+# half-written reply - no bot surface.
+# updateFileGeneration* used to be here because the app never asked TDLib to
+# generate a file; File Tools does now, so both updates are handled and no
+# longer skipped.
 # The inline and bot-side callers join the same way: editInlineMessage*,
 # editMessageReplyMarkup, getPreparedInlineMessage and savePreparedInline-
 # Message name a bot as the author, getCallbackQueryMessage rides a bot's
@@ -98,7 +100,7 @@ comm -23 "$TMP/upd_all" "$TMP/upd_used" > "$TMP/upd_gap"
 # TG_HANDLED_UPDATES and are listed in TG_IGNORED_UPDATES, which is what
 # --ignored reads and what keeps the number honest. Only an update whose
 # feature this client will not draw belongs in the skip pattern.
-SKIP='[Tt]on[CW]|TonConnect|updateActiveEmojiReactions|updateFileGeneration|updateMessageSendAcknowledged|updatePendingMessage|TonCenter|TonTransaction|tonWallet|[Ww]allet|Stor(y|ies)|[Bb]usiness|[Bb]ot|WebApp|[Ww]ebApp|webBrowser|BrowserSettings|[Pp]assport|[Pp]remium|[Bb]oost|[Gg]iveaway|[Aa]ffiliate|[Ss]tar[A-Z]|[Ss]tars|[Pp]aidMedia|[Pp]aidMessage|[Gg]ift|[Cc]hecklist|[Cc]ommunity|[Cc]ommunities|[Gg]roupCall|[Vv]ideoChat|[Ll]iveStory|LiveStream|[Ss]creenSharing|Rtmp|[Aa]i$|WithAi|[Oo]nRamp|[Pp]ayment|[Ii]nvoice|[Gg]ame[A-Z]|[Gg]ameHigh|InlineGame|[Ss]ponsored|[Aa]dvertisement|[Aa]dAccount|[Ll]og[A-Z]|[Jj]son|[Dd]ice|[Aa]larm|[Cc]ollectible|[Ee]phemeral|[Pp]asskey|[Oo]auth|[Ss]uggestedAction|[Ff]actCheck|[Aa]ntiSpam|[Ss]upportInfo|[Ss]upportName|[Tt]imeZone|[Cc]urrentWeather|CurrencyExchange|[Nn]ft|^test[A-Z]|^testNetwork|answerCallbackQuery|answerInlineQuery|answerPreCheckoutQuery|answerShippingQuery|answerCustomQuery|answerGuestQuery|[Rr]evenue|[Ww]ithdrawal|[Gg]ram[A-Z]|[Ss]uggestedPost|[Ss]ummarize|[Rr]ichMessage|[Ss]peech|listenToAudio|[Pp]rofileAudio|[Ee]mojiStatus|[Tt]extCompositionStyle|[Qq]uickReply|[Dd]irectMessagesChatTopic|[Ww]ebProxyCarrier|StoreTransaction|PurchaseFromStore|[Mm]enuButton|[Cc]ommands$|^deleteCommands|^setCommands|^getCommands|^updateNew(Callback|Chosen|Custom|Guest|Inline|PreCheckout|Shipping)|[Pp]aidReaction|^updatePoll$|^updatePollAnswer$'
+SKIP='[Tt]on[CW]|TonConnect|updateActiveEmojiReactions|updateMessageSendAcknowledged|updatePendingMessage|TonCenter|TonTransaction|tonWallet|[Ww]allet|Stor(y|ies)|[Bb]usiness|[Bb]ot|WebApp|[Ww]ebApp|webBrowser|BrowserSettings|[Pp]assport|[Pp]remium|[Bb]oost|[Gg]iveaway|[Aa]ffiliate|[Ss]tar[A-Z]|[Ss]tars|[Pp]aidMedia|[Pp]aidMessage|[Gg]ift|[Cc]hecklist|[Cc]ommunity|[Cc]ommunities|[Gg]roupCall|[Vv]ideoChat|[Ll]iveStory|LiveStream|[Ss]creenSharing|Rtmp|[Aa]i$|WithAi|[Oo]nRamp|[Pp]ayment|[Ii]nvoice|[Gg]ame[A-Z]|[Gg]ameHigh|InlineGame|[Ss]ponsored|[Aa]dvertisement|[Aa]dAccount|[Ll]og[A-Z]|[Jj]son|[Dd]ice|[Aa]larm|[Cc]ollectible|[Ee]phemeral|[Pp]asskey|[Oo]auth|[Ss]uggestedAction|[Ff]actCheck|[Aa]ntiSpam|[Ss]upportInfo|[Ss]upportName|[Tt]imeZone|[Cc]urrentWeather|CurrencyExchange|[Nn]ft|^test[A-Z]|^testNetwork|answerCallbackQuery|answerInlineQuery|answerPreCheckoutQuery|answerShippingQuery|answerCustomQuery|answerGuestQuery|[Rr]evenue|[Ww]ithdrawal|[Gg]ram[A-Z]|[Ss]uggestedPost|[Ss]ummarize|[Rr]ichMessage|[Ss]peech|listenToAudio|[Pp]rofileAudio|[Ee]mojiStatus|[Tt]extCompositionStyle|[Qq]uickReply|[Dd]irectMessagesChatTopic|[Ww]ebProxyCarrier|StoreTransaction|PurchaseFromStore|[Mm]enuButton|[Cc]ommands$|^deleteCommands|^setCommands|^getCommands|^updateNew(Callback|Chosen|Custom|Guest|Inline|PreCheckout|Shipping)|[Pp]aidReaction|^updatePoll$|^updatePollAnswer$'
 
 case "${1:-}" in
     --list)     cat "$TMP/gap"; exit 0 ;;

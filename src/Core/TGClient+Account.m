@@ -554,6 +554,131 @@ static NSArray *TGPacksFrom(NSDictionary *target) {
 	[self send:@{@"@type" : @"clearImportedContacts"}];
 }
 
+- (void)importedContactCountWithCompletion:(void (^)(NSInteger))completion {
+	[self request:@{@"@type" : @"getImportedContactCount"}
+	   completion:^(NSDictionary *result){
+		NSInteger count = 0;
+		if ([result isKindOfClass:NSDictionary.class] &&
+			![result[@"@type"] isEqualToString:@"error"])
+			count = [result[@"count"] integerValue];
+		if (completion) completion(count);
+	}];
+}
+
+- (void)changeImportedContacts:(NSArray *)contacts
+					completion:(void (^)(NSInteger, NSArray *))completion {
+	NSMutableArray *rows = [NSMutableArray array];
+	for (NSDictionary *contact in contacts){
+		if (![contact isKindOfClass:NSDictionary.class])
+			continue;
+		NSString *phone = contact[@"phone_number"] ?: @"";
+		if (!phone.length)
+			continue;
+		[rows addObject:@{
+			@"@type"        : @"importedContact",
+			@"phone_number" : phone,
+			@"first_name"   : contact[@"first_name"] ?: @"",
+			@"last_name"    : contact[@"last_name"] ?: @"",
+			@"note"         : [NSNull null],
+		}];
+	}
+	[self request:@{@"@type" : @"changeImportedContacts", @"contacts" : rows}
+	   completion:^(NSDictionary *result){
+		NSArray *userIds = result[@"user_ids"];
+		if (![userIds isKindOfClass:NSArray.class])
+			userIds = @[];
+		if (completion) completion((NSInteger)userIds.count, userIds);
+	}];
+}
+
+- (void)applicationDownloadLinkWithCompletion:(void (^)(NSString *))completion {
+	[self request:@{@"@type" : @"getApplicationDownloadLink"}
+	   completion:^(NSDictionary *result){
+		NSString *url = @"";
+		if ([result isKindOfClass:NSDictionary.class] &&
+			![result[@"@type"] isEqualToString:@"error"])
+			url = [result[@"url"] isKindOfClass:NSString.class] ? result[@"url"] : @"";
+		if (completion) completion(url);
+	}];
+}
+
+#pragma mark - autosave
+
+static NSString *TGAutosaveScopeType(NSString *scope) {
+	if ([scope isEqualToString:@"groups"])
+		return @"autosaveSettingsScopeGroupChats";
+	if ([scope isEqualToString:@"channels"])
+		return @"autosaveSettingsScopeChannelChats";
+	return @"autosaveSettingsScopePrivateChats";
+}
+
+static NSDictionary *TGFlattenAutosaveScope(NSDictionary *settings) {
+	if (![settings isKindOfClass:NSDictionary.class])
+		return @{};
+	return @{
+		@"photos"       : settings[@"autosave_photos"] ?: @NO,
+		@"videos"       : settings[@"autosave_videos"] ?: @NO,
+		@"maxVideoSize" : settings[@"max_video_file_size"] ?: @(0),
+	};
+}
+
+- (void)autosaveSettingsWithCompletion:(void (^)(NSDictionary *))completion {
+	[self request:@{@"@type" : @"getAutosaveSettings"}
+	   completion:^(NSDictionary *result){
+		if (![result isKindOfClass:NSDictionary.class] ||
+			[result[@"@type"] isEqualToString:@"error"]){
+			if (completion) completion(nil);
+			return;
+		}
+		NSMutableArray *exceptions = [NSMutableArray array];
+		for (NSDictionary *exception in result[@"exceptions"]){
+			if (![exception isKindOfClass:NSDictionary.class])
+				continue;
+			NSMutableDictionary *row = [@{
+				@"chatId" : exception[@"chat_id"] ?: @(0),
+			} mutableCopy];
+			[row addEntriesFromDictionary:TGFlattenAutosaveScope(exception[@"settings"])];
+			[exceptions addObject:row];
+		}
+		NSDictionary *settings = @{
+			@"private"    : TGFlattenAutosaveScope(result[@"private_chat_settings"]),
+			@"groups"     : TGFlattenAutosaveScope(result[@"group_settings"]),
+			@"channels"   : TGFlattenAutosaveScope(result[@"channel_settings"]),
+			@"exceptions" : exceptions,
+		};
+		if (completion) completion(settings);
+	}];
+}
+
+- (void)setAutosaveSettingsForScope:(NSString *)scope
+							 photos:(BOOL)photos
+							 videos:(BOOL)videos
+					   maxVideoSize:(long long)maxVideoSize
+						 completion:(void (^)(BOOL))completion {
+	NSDictionary *settings = @{
+		@"@type"              : @"scopeAutosaveSettings",
+		@"autosave_photos"    : @(photos),
+		@"autosave_videos"    : @(videos),
+		@"max_video_file_size": @(maxVideoSize),
+	};
+	[self request:@{
+		@"@type"    : @"setAutosaveSettings",
+		@"scope"    : @{@"@type" : TGAutosaveScopeType(scope)},
+		@"settings" : settings,
+	} completion:^(NSDictionary *result){
+		if (completion)
+			completion(![result[@"@type"] isEqualToString:@"error"]);
+	}];
+}
+
+- (void)clearAutosaveSettingsExceptionsWithCompletion:(void (^)(BOOL))completion {
+	[self request:@{@"@type" : @"clearAutosaveSettingsExceptions"}
+	   completion:^(NSDictionary *result){
+		if (completion)
+			completion(![result[@"@type"] isEqualToString:@"error"]);
+	}];
+}
+
 #pragma mark - profile photos, link, groups in common
 
 /// A profile photo taken off the account by the id the chatPhoto carried.

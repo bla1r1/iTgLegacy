@@ -12,6 +12,7 @@
 #import "TGStyle.h"
 #import "TGAlertSheet.h"
 #import "TGDevShowcase.h"
+#import "TGFileInfoViewController.h"
 
 // The chrome sits over the picture rather than beside it, which is what makes
 // the picture the whole screen. Both strips fade out on a tap and come back on
@@ -963,7 +964,7 @@ static const CGFloat kThumbStripH   = 54.0f;
 	NSDictionary *m = [self currentItem];
 
 	NSMutableArray *choices = [NSMutableArray arrayWithObjects:@"Add to Downloads",
-							   @"Delete from Device", nil];
+							   @"File Info", @"Delete from Device", nil];
 	// Media that other stickers were attached to knows which packs they came
 	// from; TDLib answers that by the media file's own id.
 	if ([m[@"hasStickers"] boolValue])
@@ -972,7 +973,7 @@ static const CGFloat kThumbStripH   = 54.0f;
 	__weak typeof(self) weakSelf = self;
 	[TGAlertSheet showChoices:choices
 						title:@"File"
-			 destructiveIndex:1
+			 destructiveIndex:2
 					   inView:self.backdrop
 					 onChoice:^(NSInteger index){
 		TGMediaViewer *me = weakSelf;
@@ -980,6 +981,13 @@ static const CGFloat kThumbStripH   = 54.0f;
 		NSString *what = choices[(NSUInteger)index];
 		if ([what isEqualToString:@"Sticker Packs..."]){
 			[me showStickerPacksOfFile:fileId.integerValue];
+			return;
+		}
+		if ([what isEqualToString:@"File Info"]){
+			// The action sheet must be gone before the info sheet presents.
+			dispatch_async(dispatch_get_main_queue(), ^{
+				[TGFileInfoViewController presentForFile:fileId.integerValue fromView:host];
+			});
 			return;
 		}
 		if ([what isEqualToString:@"Add to Downloads"]){

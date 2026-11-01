@@ -1,4 +1,5 @@
 #import "TGClientInternal.h"
+#import "TGBase64.h"
 
 #include <mutex>
 #include <unordered_map>
@@ -415,6 +416,526 @@ std::unordered_map<int32_t, int32_t> gPriorities;
 	[self send:@{@"@type" : @"optimizeStorage", @"chat_limit" : @(0)}];
 	[self.chatsById removeAllObjects];
 	[self rebuildChats];
+}
+
+#pragma mark - file records, names and bytes
+
+/// A text answer from getFileMimeType, getFileExtension, cleanFileName and
+/// getSuggestedFileName. Errors are an empty string: the File Info screen
+/// still has rows to draw, and a missing MIME is not a failure of the file.
+static NSString *TGFileTextAnswer(NSDictionary *result) {
+	if (![result isKindOfClass:NSDictionary.class])
+		return @"";
+	if ([result[@"@type"] isEqualToString:@"error"])
+		return @"";
+	return [result[@"text"] isKindOfClass:NSString.class] ? result[@"text"] : @"";
+}
+
+static NSDictionary *TGFlattenFileRecord(NSDictionary *file) {
+	NSDictionary *local = file[@"local"];
+	NSDictionary *remote = file[@"remote"];
+	if (![local isKindOfClass:NSDictionary.class]) local = @{};
+	if (![remote isKindOfClass:NSDictionary.class]) remote = @{};
+	return @{
+		@"fileId"           : file[@"id"] ?: @(0),
+		@"size"             : file[@"size"] ?: @(0),
+		@"expectedSize"     : file[@"expected_size"] ?: @(0),
+		@"downloadedSize"   : local[@"downloaded_size"] ?: @(0),
+		@"localPath"        : local[@"path"] ?: @"",
+		@"downloading"      : local[@"is_downloading_active"] ?: @NO,
+		@"completed"        : local[@"is_downloading_completed"] ?: @NO,
+		@"remoteId"         : remote[@"id"] ?: @"",
+		@"remoteUniqueId"   : remote[@"unique_id"] ?: @"",
+		@"remoteUploading"  : remote[@"is_uploading_active"] ?: @NO,
+		@"remoteUploadedSize" : remote[@"uploaded_size"] ?: @(0),
+	};
+}
+
+- (void)fileInfo:(NSInteger)fileId completion:(void (^)(NSDictionary *))completion {
+	if (fileId <= 0){
+		if (completion) completion(nil);
+		return;
+	}
+	[self request:@{@"@type" : @"getFile", @"file_id" : @(fileId)}
+	   completion:^(NSDictionary *result){
+		if (![result isKindOfClass:NSDictionary.class] ||
+			[result[@"@type"] isEqualToString:@"error"]){
+			if (completion) completion(nil);
+			return;
+		}
+		NSMutableDictionary *info = [TGFlattenFileRecord(result) mutableCopy];
+		NSString *remoteId = info[@"remoteId"];
+		if (![remoteId isKindOfClass:NSString.class] || !remoteId.length){
+			if (completion) completion(info);
+			return;
+		}
+		// getFile answers with the remote id, not the remote record; the File
+		// Info screen's "Remote ID" row is only worth showing if TDLib can
+		// still resolve it, so ask and fold the answer back in.
+		[self request:@{
+			@"@type"          : @"getRemoteFile",
+			@"remote_file_id" : remoteId,
+			@"file_type"      : @{@"@type" : @"fileTypeUnknown"},
+		} completion:^(NSDictionary *remote){
+			if ([remote isKindOfClass:NSDictionary.class] &&
+				![remote[@"@type"] isEqualToString:@"error"]){
+				info[@"remoteResolved"] = @YES;
+				info[@"remoteSize"] = remote[@"size"] ?: @(0);
+				info[@"remoteExpectedSize"] = remote[@"expected_size"] ?: @(0);
+				info[@"remoteUploading"] = remote[@"remote"][@"is_uploading_active"] ?: @NO;
+				info[@"remoteUploadedSize"] = remote[@"remote"][@"uploaded_size"] ?: @(0);
+			} else {
+				info[@"remoteResolved"] = @NO;
+			}
+			if (completion) completion(info);
+		}];
+	}];
+}
+
+- (void)fileDownloadedPrefixSize:(NSInteger)fileId
+						  offset:(long long)offset
+					  completion:(void (^)(long long))completion {
+	if (fileId <= 0){
+		if (completion) completion(0);
+		return;
+	}
+	[self request:@{
+		@"@type"   : @"getFileDownloadedPrefixSize",
+		@"file_id" : @(fileId),
+		@"offset"  : @(offset),
+	} completion:^(NSDictionary *result){
+		long long bytes = 0;
+		if ([result isKindOfClass:NSDictionary.class] &&
+			![result[@"@type"] isEqualToString:@"error"])
+			bytes = [result[@"size"] longLongValue];
+		if (completion) completion(bytes);
+	}];
+}
+
+- (void)fileNameInfo:(NSString *)name
+		  completion:(void (^)(NSDictionary *))completion {
+	NSString *value = name ?: @"";
+	[self request:@{@"@type" : @"getFileMimeType", @"file_name" : value}
+	   completion:^(NSDictionary *mimeAnswer){
+		NSString *mime = TGFileTextAnswer(mimeAnswer);
+		[self request:@{@"@type" : @"getFileExtension", @"mime_type" : mime}
+		   completion:^(NSDictionary *extensionAnswer){
+			NSString *extension = TGFileTextAnswer(extensionAnswer);
+			[self request:@{@"@type" : @"cleanFileName", @"file_name" : value}
+			   completion:^(NSDictionary *cleanAnswer){
+				NSDictionary *info = @{
+					@"mime"      : mime,
+					@"extension" : extension,
+					@"cleanName" : TGFileTextAnswer(cleanAnswer),
+				};
+				if (completion) completion(info);
+			}];
+		}];
+	}];
+}
+
+- (void)suggestedFileNameForFile:(NSInteger)fileId
+					   directory:(NSString *)directory
+					  completion:(void (^)(NSString *))completion {
+	if (fileId <= 0){
+		if (completion) completion(@"");
+		return;
+	}
+	NSString *folder = directory.length ? directory : NSTemporaryDirectory();
+	[self request:@{
+		@"@type"     : @"getSuggestedFileName",
+		@"file_id"   : @(fileId),
+		@"directory" : folder,
+	} completion:^(NSDictionary *result){
+		if (completion) completion(TGFileTextAnswer(result));
+	}];
+}
+
+- (void)readFilePartOfFile:(NSInteger)fileId
+					offset:(long long)offset
+					 count:(NSInteger)count
+				completion:(void (^)(NSData *))completion {
+	if (fileId <= 0){
+		if (completion) completion(nil);
+		return;
+	}
+	[self request:@{
+		@"@type"   : @"readFilePart",
+		@"file_id" : @(fileId),
+		@"offset"  : @(offset),
+		@"count"   : @(MAX((NSInteger)0, count)),
+	} completion:^(NSDictionary *result){
+		NSData *data = nil;
+		if ([result isKindOfClass:NSDictionary.class] &&
+			[result[@"@type"] isEqualToString:@"data"])
+			data = TGBase64Decode(result[@"data"]);
+		if (completion) completion(data);
+	}];
+}
+
+#pragma mark - preliminary upload and generation
+
+/// One pending generation, keyed by its original path. Every field is filled
+/// by whichever answer arrives first, and finishGenerationIfReady is what
+/// makes the completion run exactly once after both have.
+static NSMutableDictionary *gPendingGenerations = nil;
+static const NSUInteger TGGenerationChunk = 32 * 1024;
+
+static NSError *TGGenerationError(NSString *reason) {
+	return [NSError errorWithDomain:@"LegacyTG.FileGeneration" code:400
+						   userInfo:@{NSLocalizedDescriptionKey : reason ?: @"Generation failed"}];
+}
+
+/// Runs on the main queue (handleUpdateBatch), like every other screen state.
+static void TGGenerationProgress(NSMutableDictionary *pending, NSInteger fileId,
+								 float progress, NSString *stage) {
+	void (^block)(NSInteger, float, NSString *) = pending[@"progress"];
+	if (block)
+		block(fileId, progress, stage ?: @"");
+}
+
+- (void)finishGenerationIfReady:(NSMutableDictionary *)pending {
+	if (![pending[@"generated"] boolValue] || [pending[@"finished"] boolValue])
+		return;
+	NSInteger fileId = [pending[@"fileId"] integerValue];
+	if (fileId <= 0)
+		return;   // the preliminary-upload answer still owns the id
+	pending[@"finished"] = @YES;
+
+	NSString *path = pending[@"destination"] ?: pending[@"original"];
+	TGGenerationProgress(pending, fileId, 1.0f, @"generated");
+	void (^done)(NSInteger, NSString *, NSError *) = pending[@"completion"];
+	NSString *original = pending[@"original"];
+	if (original)
+		[gPendingGenerations removeObjectForKey:original];
+	if (done)
+		done(fileId, path ?: @"", nil);
+}
+
+- (void)runGenerationIfReady:(NSMutableDictionary *)pending {
+	if ([pending[@"started"] boolValue])
+		return;
+	id generation = pending[@"generationId"];
+	if (![generation isKindOfClass:NSNumber.class] || [generation longLongValue] == 0)
+		return;
+	pending[@"started"] = @YES;
+
+	long long generationId = [generation longLongValue];
+	NSData *data = pending[@"data"] ?: [NSData data];
+	long long total = (long long)data.length;
+	NSInteger fileId = [pending[@"fileId"] integerValue];
+
+	// Tell TDLib the size before the first part, then one progress report per
+	// part as the bytes land. A generated thumbnail is a few KB; a text file
+	// this app writes is small, but the same code makes a larger one without
+	// holding one giant request in the outbox.
+	for (long long offset = 0; offset < total; offset += (long long)TGGenerationChunk){
+		NSUInteger length = (NSUInteger)MIN((long long)TGGenerationChunk, total - offset);
+		NSData *part = [data subdataWithRange:NSMakeRange((NSUInteger)offset, length)];
+		[self send:@{
+			@"@type"             : @"setFileGenerationProgress",
+			@"generation_id"     : @(generationId),
+			@"expected_size"     : @(total),
+			@"local_prefix_size" : @(offset),
+		}];
+		[self send:@{
+			@"@type"         : @"writeGeneratedFilePart",
+			@"generation_id" : @(generationId),
+			@"offset"        : @(offset),
+			@"data"          : TGBase64Encode(part),
+		}];
+		if (total > 0)
+			TGGenerationProgress(pending, fileId,
+					(float)((offset + (long long)length) / (double)total), @"generating");
+	}
+	if (total == 0)
+		[self send:@{
+			@"@type"             : @"setFileGenerationProgress",
+			@"generation_id"     : @(generationId),
+			@"expected_size"     : @(0),
+			@"local_prefix_size" : @(0),
+		}];
+
+	[self send:@{
+		@"@type"         : @"finishFileGeneration",
+		@"generation_id" : @(generationId),
+		@"error"         : [NSNull null],
+	}];
+	pending[@"generated"] = @YES;
+	[self finishGenerationIfReady:pending];
+}
+
+- (void)handleFileGenerationStart:(NSDictionary *)update {
+	NSString *original = update[@"original_path"];
+	if (![original isKindOfClass:NSString.class] || !original.length)
+		return;
+	NSMutableDictionary *pending = gPendingGenerations[original];
+	if (!pending)
+		return;
+	pending[@"generationId"] = update[@"generation_id"] ?: @(0);
+	pending[@"destination"] = update[@"destination_path"] ?: @"";
+	[self runGenerationIfReady:pending];
+}
+
+- (void)handleFileGenerationStop:(NSDictionary *)update {
+	NSNumber *generationId = update[@"generation_id"];
+	if (![generationId isKindOfClass:NSNumber.class])
+		return;
+	NSMutableDictionary *found = nil;
+	for (NSString *key in gPendingGenerations.allKeys){
+		NSMutableDictionary *pending = gPendingGenerations[key];
+		if ([pending[@"generationId"] isEqual:generationId]){
+			found = pending;
+			break;
+		}
+	}
+	if (!found)
+		return;
+	// A stop that follows our finishFileGeneration is the normal end of the
+	// generation, not a failure: the upload still owes a file id, so the
+	// pending record waits for that answer.
+	if ([found[@"generated"] boolValue])
+		return;
+	NSString *original = found[@"original"];
+	if (original)
+		[gPendingGenerations removeObjectForKey:original];
+	if (![found[@"finished"] boolValue]){
+		found[@"finished"] = @YES;
+		void (^done)(NSInteger, NSString *, NSError *) = found[@"completion"];
+		if (done)
+			done(0, @"", TGGenerationError(@"TDLib stopped the generation."));
+	}
+}
+
+- (void)handleFileUploadProgress:(NSInteger)fileId file:(NSDictionary *)file {
+	if (fileId <= 0)
+		return;
+	NSMutableDictionary *found = nil;
+	for (NSString *key in gPendingGenerations.allKeys){
+		NSMutableDictionary *pending = gPendingGenerations[key];
+		if ([pending[@"fileId"] integerValue] == fileId){
+			found = pending;
+			break;
+		}
+	}
+	if (!found)
+		return;
+	double expected = [file[@"expected_size"] doubleValue];
+	if (expected <= 0)
+		expected = [found[@"data"] length];
+	double uploaded = [file[@"remote"][@"uploaded_size"] doubleValue];
+	float fraction = expected > 0 ? (float)(uploaded / expected) : 0;
+	TGGenerationProgress(found, fileId, fraction, @"uploading");
+}
+
+- (void)generateTextFileNamed:(NSString *)name
+					 contents:(NSString *)contents
+					 progress:(void (^)(NSInteger, float, NSString *))progress
+				   completion:(void (^)(NSInteger, NSString *, NSError *))completion {
+	NSString *base = name.lastPathComponent ?: @"legacy-note.txt";
+	if (!base.length)
+		base = @"legacy-note.txt";
+	NSString *extension = base.pathExtension.length ? base.pathExtension : @"txt";
+	NSString *unique = [[NSUUID UUID] UUIDString] ?: @"0";
+	NSString *original = [[NSTemporaryDirectory()
+			stringByAppendingPathComponent:[@"legacy-gen-" stringByAppendingString:unique]]
+			stringByAppendingPathExtension:extension];
+
+	NSData *data = [contents ?: @"" dataUsingEncoding:NSUTF8StringEncoding] ?: [NSData data];
+	NSMutableDictionary *pending = [@{
+		@"original"   : original,
+		@"data"       : data,
+		@"fileId"     : @(0),
+		@"generationId" : @(0),
+		@"started"    : @NO,
+		@"generated"  : @NO,
+		@"finished"   : @NO,
+	} mutableCopy];
+	if (progress) pending[@"progress"] = [progress copy];
+	if (completion) pending[@"completion"] = [completion copy];
+	if (!gPendingGenerations)
+		gPendingGenerations = [NSMutableDictionary dictionary];
+	gPendingGenerations[original] = pending;
+
+	TGGenerationProgress(pending, 0, 0, @"preparing");
+	__weak __typeof__(self) weakSelf = self;
+	[self request:@{
+		@"@type" : @"preliminaryUploadFile",
+		@"file"  : @{
+			@"@type"         : @"inputFileGenerated",
+			@"original_path" : original,
+			@"conversion"    : @"legacy-text",
+			@"expected_size" : @(data.length),
+		},
+		@"file_type" : @{@"@type" : @"fileTypeDocument"},
+		@"priority"  : @(1),
+	} completion:^(NSDictionary *result){
+		TGClient *me = weakSelf;
+		if (!me) return;
+		// A cancel may have retired this record while the answer was on its
+		// way; a late answer must not move the screen back to "uploading".
+		if (gPendingGenerations[original] != pending ||
+			[pending[@"finished"] boolValue])
+			return;
+		if (![result isKindOfClass:NSDictionary.class] ||
+			[result[@"@type"] isEqualToString:@"error"]){
+			[gPendingGenerations removeObjectForKey:original];
+			if (![pending[@"finished"] boolValue]){
+				pending[@"finished"] = @YES;
+				void (^done)(NSInteger, NSString *, NSError *) = pending[@"completion"];
+				if (done)
+					done(0, @"", TGGenerationError(
+							result[@"message"] ?: @"Telegram refused the upload."));
+			}
+			return;
+		}
+		NSInteger fileId = [result[@"id"] integerValue];
+		pending[@"fileId"] = @(fileId);
+		TGGenerationProgress(pending, fileId, 0, @"uploading");
+		[me finishGenerationIfReady:pending];
+	}];
+}
+
+- (void)cancelPreliminaryUploadOfFile:(NSInteger)fileId {
+	// A file id of 0 means the generation is still in its preparing step and
+	// the upload answer has not named one yet. There is at most one such
+	// generation per screen, so cancel it rather than leave its completion
+	// waiting to fire after the user has walked away.
+	if (fileId <= 0){
+		NSMutableDictionary *pending = nil;
+		for (NSString *key in gPendingGenerations.allKeys){
+			NSMutableDictionary *candidate = gPendingGenerations[key];
+			if ([candidate[@"fileId"] integerValue] == 0 &&
+				![candidate[@"finished"] boolValue]){
+				pending = candidate;
+				break;
+			}
+		}
+		if (!pending)
+			return;
+		NSString *original = pending[@"original"];
+		if (original)
+			[gPendingGenerations removeObjectForKey:original];
+		NSNumber *generationId = pending[@"generationId"];
+		if ([generationId longLongValue] && ![pending[@"generated"] boolValue]){
+			[self send:@{
+				@"@type"         : @"finishFileGeneration",
+				@"generation_id" : generationId,
+				@"error"         : @{@"@type" : @"error", @"code" : @(400),
+									 @"message" : @"Cancelled"},
+			}];
+		}
+		if (![pending[@"finished"] boolValue]){
+			pending[@"finished"] = @YES;
+			void (^done)(NSInteger, NSString *, NSError *) = pending[@"completion"];
+			if (done)
+				done(0, @"", TGGenerationError(@"Upload cancelled."));
+		}
+		return;
+	}
+
+	[self send:@{@"@type" : @"cancelPreliminaryUploadFile",
+				 @"file_id" : @(fileId)}];
+
+	NSMutableDictionary *found = nil;
+	for (NSString *key in gPendingGenerations.allKeys){
+		NSMutableDictionary *pending = gPendingGenerations[key];
+		if ([pending[@"fileId"] integerValue] == fileId){
+			found = pending;
+			break;
+		}
+	}
+	if (!found)
+		return;
+
+	NSString *original = found[@"original"];
+	if (original)
+		[gPendingGenerations removeObjectForKey:original];
+	// A generation in flight has to be told to stop too; cancelling only the
+	// upload leaves TDLib waiting for the remaining parts.
+	NSNumber *generationId = found[@"generationId"];
+	if ([generationId longLongValue] && ![found[@"generated"] boolValue]){
+		[self send:@{
+			@"@type"         : @"finishFileGeneration",
+			@"generation_id" : generationId,
+			@"error"         : @{@"@type" : @"error", @"code" : @(400),
+								 @"message" : @"Cancelled"},
+		}];
+	}
+	if (![found[@"finished"] boolValue]){
+		found[@"finished"] = @YES;
+		void (^done)(NSInteger, NSString *, NSError *) = found[@"completion"];
+		if (done)
+			done(fileId, @"", TGGenerationError(@"Upload cancelled."));
+	}
+}
+
+#pragma mark - auto-download presets
+
+static NSDictionary *TGFlattenAutoDownloadSettings(NSDictionary *settings) {
+	if (![settings isKindOfClass:NSDictionary.class])
+		return @{};
+	return @{
+		@"enabled"         : settings[@"is_auto_download_enabled"] ?: @NO,
+		@"maxPhotoSize"    : settings[@"max_photo_file_size"] ?: @(0),
+		@"maxVideoSize"    : settings[@"max_video_file_size"] ?: @(0),
+		@"maxOtherSize"    : settings[@"max_other_file_size"] ?: @(0),
+		@"preloadVideos"   : settings[@"preload_large_videos"] ?: @NO,
+		@"preloadAudio"    : settings[@"preload_next_audio"] ?: @NO,
+		@"lessDataForCalls" : settings[@"use_less_data_for_calls"] ?: @NO,
+	};
+}
+
+- (void)autoDownloadSettingsPresetsWithCompletion:(void (^)(NSDictionary *))completion {
+	[self request:@{@"@type" : @"getAutoDownloadSettingsPresets"}
+	   completion:^(NSDictionary *result){
+		if (![result isKindOfClass:NSDictionary.class] ||
+			[result[@"@type"] isEqualToString:@"error"]){
+			if (completion) completion(nil);
+			return;
+		}
+		NSDictionary *presets = @{
+			@"low"    : TGFlattenAutoDownloadSettings(result[@"low"]),
+			@"medium" : TGFlattenAutoDownloadSettings(result[@"medium"]),
+			@"high"   : TGFlattenAutoDownloadSettings(result[@"high"]),
+		};
+		if (completion) completion(presets);
+	}];
+}
+
+- (void)applyAutoDownloadPreset:(NSDictionary *)preset
+					 forNetwork:(NSString *)network
+					 completion:(void (^)(BOOL))completion {
+	if (![preset isKindOfClass:NSDictionary.class]){
+		if (completion) completion(NO);
+		return;
+	}
+	NSString *networkType = @"networkTypeWiFi";
+	if ([network isEqualToString:@"mobile"])
+		networkType = @"networkTypeMobile";
+	else if ([network isEqualToString:@"roaming"])
+		networkType = @"networkTypeMobileRoaming";
+
+	NSDictionary *settings = @{
+		@"@type"                    : @"autoDownloadSettings",
+		@"is_auto_download_enabled" : preset[@"enabled"] ?: @NO,
+		@"max_photo_file_size"      : preset[@"maxPhotoSize"] ?: @(0),
+		@"max_video_file_size"      : preset[@"maxVideoSize"] ?: @(0),
+		@"max_other_file_size"      : preset[@"maxOtherSize"] ?: @(0),
+		@"video_upload_bitrate"     : @(0),
+		@"preload_large_videos"     : preset[@"preloadVideos"] ?: @NO,
+		@"preload_next_audio"       : preset[@"preloadAudio"] ?: @NO,
+		@"preload_stories"          : @NO,
+		@"use_less_data_for_calls"  : preset[@"lessDataForCalls"] ?: @NO,
+	};
+	[self request:@{
+		@"@type"    : @"setAutoDownloadSettings",
+		@"settings" : settings,
+		@"type"     : @{@"@type" : networkType},
+	} completion:^(NSDictionary *result){
+		if (completion)
+			completion(![result[@"@type"] isEqualToString:@"error"]);
+	}];
 }
 
 @end

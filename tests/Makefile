@@ -102,6 +102,8 @@ CLIENT_OBJC_SRCS := \
     $(SRC)/Core/TGStatusText.m \
     $(SRC)/Core/TGClient+Proxy.m \
     $(SRC)/Core/TGClient+Groups.m \
+    $(SRC)/Core/TGClient+Language.m \
+    $(SRC)/Core/TGClient+Search.m \
     $(SRC)/Core/TGClient+Downloads.m \
     $(SRC)/Core/TGClient+Secret.m \
     $(SRC)/Core/TGClient+Account.m \
@@ -155,9 +157,13 @@ CLIENT_TEST_SRCS := \
     $(TESTS)/TGClientAccountTests.m \
     $(TESTS)/TGClientComposeTests.m \
     $(TESTS)/TGClientBareTests.m \
+    $(TESTS)/TGClientAuthFunctionsTests.m \
     $(TESTS)/TGClientStickerAuthoringTests.m \
+    $(TESTS)/TGClientFileToolsTests.m \
+    $(TESTS)/TGClientAutosaveContactsTests.m \
     $(TESTS)/TGClientThreadsTests.m \
     $(TESTS)/TGClientChatToolsTests.m \
+    $(TESTS)/TGClientSearchLanguageTests.m \
     $(TESTS)/TGThemeFileTests.m \
     $(TESTS)/TGUpdatesTests.mm \
     $(TESTS)/TGP1MigrationTests.mm \

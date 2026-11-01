@@ -83,6 +83,11 @@
 /// file TDLib is fetching, so listeners must check the id they care about.
 @property (nonatomic, copy) void (^onFileProgress)(NSInteger fileId, float progress);
 
+/// Progress of a running upload, 0..1, on the main queue. File Tools is the
+/// screen that watches one; a preliminary upload never finishes until the
+/// file is sent, so this is the only progress it can show.
+@property (nonatomic, copy) void (^onFileUploadProgress)(NSInteger fileId, float progress);
+
 #pragma mark - messages
 
 /// Someone is typing (or recording, or uploading) in a chat. `action` is a

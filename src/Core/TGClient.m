@@ -36,6 +36,7 @@ NSString *const TGStickerListsChangedNotification = @"TGStickerListsChangedNotif
 NSString *const TGChatMembersChangedNotification = @"TGChatMembersChangedNotification";
 NSString *const TGNotificationSettingsChangedNotification = @"TGNotificationSettingsChangedNotification";
 NSString *const TGForumTopicsChangedNotification = @"TGForumTopicsChangedNotification";
+NSString *const TGApplicationVerificationRequiredNotification = @"TGApplicationVerificationRequiredNotification";
 NSString *const TGChatActionBarChangedNotification = @"TGChatActionBarChangedNotification";
 NSString *const TGSavedTopicsChangedNotification = @"TGSavedTopicsChangedNotification";
 NSString *const TGServiceNotificationReceivedNotification = @"TGServiceNotificationReceivedNotification";
@@ -171,6 +172,14 @@ NSString *const TGSessionsChangedNotification = @"TGSessionsChangedNotification"
 	// first request - without this nothing ever runs and no update arrives.
 	// Queued before the thread starts so it goes out on the receive thread.
 	[self send:@{@"@type" : @"getAuthorizationState"}];
+
+	// TDLib refuses every language-pack call until a localization target is
+	// named, and this client's only target is the one iOS packs carry. The
+	// option can be set before sign-in, which is when Settings > Language and
+	// the custom-pack editor need it.
+	[self send:@{@"@type" : @"setOption",
+				@"name" : @"localization_target",
+				@"value" : @{@"@type" : @"optionValueString", @"value" : @"ios"}}];
 
 	// TDLib runs single-threaded on armv7 (no thread-local storage), so its
 	// scheduler only advances while we are inside td_json_client_receive.
@@ -725,6 +734,23 @@ NSDictionary *TGFormattedText(NSString *text) {
 				postNotificationName:TGSessionsChangedNotification object:self];
 		return;
 	}
+	case TGUpdateApplicationVerificationRequired: {
+		// Telegram wants a token from the platform's verification service.
+		// There is no such service on this OS, so the request is handed to
+		// the settings sheet, which asks the user for the token and sends
+		// the server's answer back. The id is kept on the client so the row
+		// can show what is pending after the scroll is gone.
+		int64_t verificationId = [obj[@"verification_id"] longLongValue];
+		NSString *nonce = [obj[@"nonce"] isKindOfClass:NSString.class]
+				? obj[@"nonce"] : @"";
+		[self noteApplicationVerificationWithId:verificationId nonce:nonce];
+		[[NSNotificationCenter defaultCenter]
+				postNotificationName:TGApplicationVerificationRequiredNotification
+							  object:self
+							userInfo:@{@"verificationId" : @(verificationId),
+									   @"nonce" : nonce}];
+		return;
+	}
 	// The scaffold: let through so the filter and the dispatch agree, marked
 	// here so the update has one named place, and reported by the coverage
 	// tool apart from the ones that act. Each waits for the screen named
@@ -735,8 +761,7 @@ NSDictionary *TGFormattedText(NSString *text) {
 	case TGUpdateHavePendingNotifications:
 	case TGUpdateFreezeState:              // no freeze banner
 	case TGUpdateAgeVerificationParameters:
-	case TGUpdateApplicationVerificationRequired:
-	case TGUpdateApplicationRecaptchaVerificationRequired:  // no verification screen
+	case TGUpdateApplicationRecaptchaVerificationRequired:  // no reCAPTCHA surface
 	case TGUpdateUserSubscription:         // no Premium surface
 	case TGUpdateAutosaveSettings:         // no gallery autosave
 	case TGUpdateLanguagePackStrings:      // one language ships so far
@@ -961,11 +986,32 @@ NSDictionary *TGFormattedText(NSString *text) {
 			if (expected > 0)
 				self.onFileProgress(fid, (float)(got / expected));
 		}
+		if ([file[@"remote"][@"is_uploading_active"] boolValue]){
+			double expected = [file[@"expected_size"] doubleValue];
+			double uploaded = [file[@"remote"][@"uploaded_size"] doubleValue];
+			if (self.onFileUploadProgress && expected > 0)
+				self.onFileUploadProgress(fid, (float)(uploaded / expected));
+			[self handleFileUploadProgress:fid file:file];
+		}
 		BOOL done = [local[@"is_downloading_completed"] boolValue];
 		NSString *path = local[@"path"];
 		if (done && path.length){
 			[self notifyFileWaiters:fid path:path];
 		}
+		return;
+	}
+
+	case TGUpdateFileGenerationStart: {
+		// TDLib asks the app to produce a file. +Files owns the pending
+		// request, writes the parts and finishes the generation.
+		[self handleFileGenerationStart:obj];
+		return;
+	}
+
+	case TGUpdateFileGenerationStop: {
+		// The generation is no longer needed: drop the pending blocks so a
+		// screen waiting on it learns it stopped rather than hangs.
+		[self handleFileGenerationStop:obj];
 		return;
 	}
 

@@ -18,14 +18,14 @@ As of 2026-11-01:
 
 | | declared | covered | gap | of it wanted | out of scope |
 |---|---|---|---|---|---|
-| functions | 1076 | 417 (39%) | 659 | 164 | 495 |
-| updates | 197 | 98 (49%) | 99 | 0 | 80 |
+| functions | 1076 | 497 (46%) | 579 | 84 | 495 |
+| updates | 197 | 101 (51%) | 96 | 0 | 78 |
 
-Of the 417 functions the app names, all 417 are reachable from a screen and none are bare: every request has a caller in `src/`, not only a method. A test driving a method does not make it wired — that is the point of the split. `scripts/tdlib_wired.py` does the walk; a new `@type` with no caller shows up under `--bare` and is expected to get a UI path, not only a test.
+Of the 497 functions the app names, all 497 are reachable from a screen and none are bare: every request has a caller in `src/`, not only a method. A test driving a method does not make it wired — that is the point of the split. `scripts/tdlib_wired.py` does the walk; a new `@type` with no caller shows up under `--bare` and is expected to get a UI path, not only a test.
 
 Functions are counted from string literals in `src/`, updates from the one list in `src/Core/TGUpdateType.h` — anything outside it is thrown away in the receive loop before a Foundation tree is built, so a dropped update leaves no trace in the log either. Both numbers are floors. Where this file and ROADMAP.md disagree, the roadmap wins — it knows the device.
 
-Of the 117 updates let through the filter, 98 have a branch that acts on them; the other 19 are the scaffold in `TG_IGNORED_UPDATES` — names kept in the filter and the dispatch so the screen can be filled in later without hunting for the string, and reported by `--ignored` rather than counted as handled. The 80 dropped updates are out of scope and match the script's `SKIP` pattern.
+Of the 119 updates let through the filter, 101 have a branch that acts on them; the other 18 are the scaffold in `TG_IGNORED_UPDATES` — names kept in the filter and the dispatch so the screen can be filled in later without hunting for the string, and reported by `--ignored` rather than counted as handled. The 78 dropped updates are out of scope and match the script's `SKIP` pattern.
 
 The two halves are not comparable: 1076 functions include every bot, Stars, business and TON call, while the 197 updates are the live state of a client that is running. Updates are the weaker number of the two and the cheaper one to move — Tier 0 below is closed, the global unread total drives the app-icon badge now.
 
@@ -88,7 +88,14 @@ The two halves are not comparable: 1076 functions include every bot, Stars, busi
 
 ## Tier 2 — wanted, nobody blocked
 
-164 functions in a long tail: auth/email/password/phone (30), files/uploads/generation (15), search/links/web (15), language packs/formatting/translation (15), usernames/supergroup admin (15), profile/privacy/notes/support (13), emoji/reactions (11), backgrounds/themes (9), diagnostics/network/config (8), notifications/sounds (7), forum topics (6), payments/orders (5), calls/sessions (4), autosave (3), connected websites (3), contacts (2), bot keyboards (2) and poll option properties (1). Run `--relevant` for the exact names and pick with the app in hand.
+84 functions in a long tail: usernames/supergroup admin (15), profile/privacy/notes/support (13), emoji/reactions (11), backgrounds/themes (9), diagnostics/network/config (8), notifications/sounds (7), forum topics (6), payments/orders (5), calls/sessions (4), connected websites (3), bot keyboards (2) and poll option properties (1). Run `--relevant` for the exact names and pick with the app in hand.
+
+**Search, links, web, language and formatting — done as a wave.** Thirty functions, every one on a screen:
+
+- **Search** — the search box now offers prefix suggestions from `searchStringsByPrefix` over the chat titles and recent tags it already has; hashtag suggestions from `searchHashtags`; the recent tag log from `getSearchedForTags`, with separate `removeRecentHashtag` and `removeSearchedForTag` actions on a held tag and `clearSearchedForTags` at the end of the list; public posts from `searchPublicPosts`, gated by `getPublicPostSearchLimits` so a spent allowance says when the next free query is; and the t.me links a new account visited from `getRecentlyVisitedTMeUrls`. A held message adds Find Quote, which is `searchQuote` on that message's text.
+- **Links** — every external link gets a sheet before it leaves the app: `getLinkWebBrowserType` names the browser Telegram wants, `getExternalLinkInfo` names a sign-in domain and write-access request, and Open goes through `getExternalLink` with that permission. The sheet also reads `getWebPageInstantView` and pushes a native reader (`TGInstantViewController`). Internal t.me/tg:// links are canonicalised through `getInternalLink` before the public-chat, message, invite, sticker-set and phone handlers run, with the old path matcher as the fallback.
+- **Language** — Settings → Language reads `getLanguagePackInfo`, `getLanguagePackStrings` and `getLanguagePackString` for the current pack; installs server packs (`addCustomServerLanguagePack`), creates and edits local ones (`setCustomLanguagePack`, `setCustomLanguagePackString`, `editCustomLanguagePackInfo`), synchronises (`synchronizeLanguagePack`) and deletes (`deleteLanguagePack`). The same page shows `getCountry`, `getPreferredCountryLanguage` and `getCountryFlagEmoji` for the device's country, with a code prompt that re-reads all three. The message Translate row uses `translateText` and falls back to `translateMessageText` when a message has no flattened text.
+- **Formatting** — holding Send while composing adds Preview Formatting, which asks `parseMarkdown` and `getTextEntities` and lists the parsed entities and detected mentions, tags and links before the message is sent.
 
 **Chat wave — done.** 68 chat functions, all reachable from a screen, none skipped:
 
@@ -99,7 +106,18 @@ The two halves are not comparable: 1076 functions include every bot, Stars, busi
 - **Account** — new-chat privacy, the personal chat, inactive groups, own public chats with a username check and the public-chat limit, per-chat notification exceptions, and the per-session "accept secret chats" switch.
 - **Compatibility** — `createBasicGroupChat`, `createSupergroupChat` and `createSecretChat` turn an inner group/secret-chat id back into a chat, exposed on the Debug Menu's Chat Resolvers; `createNewSecretChat` remains the creation path.
 
+**Auth, email, phone and password — done as a wave.** 30 functions, every one reachable from a screen:
+
+- **Login** — the phone step resolves a typed prefix through `getPhoneNumberInfo` and shows the country and Telegram's formatting under the instructions. A web login can be finished with `checkAuthenticationWebToken` or dropped with `dismissWebToken`, a scanned QR link is confirmed with `confirmQrCodeAuthentication`, and a Firebase-delivered code is handed to the server with `sendAuthenticationFirebaseSms`. A user link with no username is resolved by `searchUserByToken` when the chat's link handler opens it.
+- **Changing the number** — Settings → Privacy & Security → Phone Number runs the whole request pair: `sendPhoneNumberCode` with `phoneNumberCodeTypeChange`, `checkPhoneNumberCode`, `resendPhoneNumberCode`, `reportPhoneNumberCodeMissing` and `sendPhoneNumberFirebaseSms`; `getPhoneNumberInfoSync` fills the confirmation sheet before it is shown.
+- **Two-step verification** — "Forgot Password?" now offers `requestPasswordRecovery`, `checkPasswordRecoveryCode` and `recoverPassword`, or the slow `resetPassword` road whose pending state can be called off with `cancelPasswordReset`; the temporary password is read with `getTemporaryPasswordState` and made with `createTemporaryPassword`.
+- **Settings → Privacy & Security** — the login email is checked with `isLoginEmailAddressRequired`, changed with `setLoginEmailAddress`, and confirmed through `checkLoginEmailAddressCode` / `resendLoginEmailAddressCode`. Passport's address half is `sendEmailAddressVerificationCode`, `resendEmailAddressVerificationCode` and `checkEmailAddressVerificationCode`; a recovery-address change can be abandoned with `cancelRecoveryEmailAddressVerification`; forgotten payment credentials go with `deleteSavedCredentials`.
+- **Ownership** — the group profile's Hand Over Ownership asks `canTransferOwnership` first and shows the server's answer (allowed, password needed, or how long the session is too new).
+- **Application verification** — `updateApplicationVerificationRequired` now keeps its request id on the client and the Settings row sends the verification service's token through `setApplicationVerificationToken`, showing the server's answer.
+
 **Stickers, authoring and emoji metadata — done as a wave.** Settings → Stickers opens `TGStickerPacksViewController`: New Sticker Pack (title, checked short name, Telegram's suggestion when it is taken, `createNewStickerSet`), My Packs from `getOwnedStickerSets`, search by short name (`searchStickerSet` + `getStickerSetName`), the trending shelf (`viewTrendingStickerSets` as it is drawn), `clearRecentStickers`, the three default custom emoji shelves, a `getCustomEmojiStickers` id lookup and `getGreetingStickers`. A pack opens `TGStickerEditorViewController`: upload (`uploadStickerFile`), add, replace, remove, reorder (`setStickerPositionInSet`), emoji tags (`setStickerEmojis`), keywords (`setStickerKeywords`), mask position — set or removed through a null — (`setStickerMaskPosition`), title (`setStickerSetTitle`), thumbnail (`setStickerSetThumbnail`, or `setCustomEmojiStickerSetThumbnail` for a custom emoji pack) and `deleteStickerSet`. A picked still is aspect-fitted on a transparent 512×512 square and encoded as WebP before either upload, because Telegram checks the bytes against the declared format. The panel's hold card shows `getStickerEmojis` + `getAllStickerEmojis` and the outline (`getStickerOutline`, `getStickerOutlineSvgPath`, copyable). A group profile's More menu sets `setSupergroupStickerSet` and `setSupergroupCustomEmojiStickerSet`. Why each has a screen is the rule the backlog runs on: a name with a method and no caller is bare, not done.
+
+**Files, autosave and contacts — done as a wave.** A media viewer's hold menu and a Downloads row open `TGFileInfoViewController`: `getFile` reads the record, `getRemoteFile` re-resolves its remote copy, `getFileDownloadedPrefixSize` shows what is on disk, and `getSuggestedFileName`, `getFileMimeType`, `getFileExtension` and `cleanFileName` fill the name, type and safe-name rows; Copy puts the whole sheet on the clipboard. Data & Storage → File Tools runs TDLib's generation contract end to end: `preliminaryUploadFile` asks TDLib to generate an `inputFileGenerated`, `updateFileGenerationStart` drives `setFileGenerationProgress` + `writeGeneratedFilePart` for every part, `finishFileGeneration` closes it, upload progress rides `updateFile`, and `cancelPreliminaryUploadFile` stops it; `readFilePart` reads the first bytes back. The same page shows `getAutoDownloadSettingsPresets` and applies Low/Medium/High with `setAutoDownloadSettings`. Autosave is a Settings page built from `getAutosaveSettings`, with the private/group/channel photo and video switches writing through `setAutosaveSettings` and `clearAutosaveSettingsExceptions` for the per-chat list. Contacts grows an Import button: a bundled vCard is parsed into `importedContact` rows, uploaded with `changeImportedContacts`, and the account total from `getImportedContactCount` is kept on the list footer. Settings' "Get the App" row opens `getApplicationDownloadLink`.
 
 ## Tier 3 — out of scope
 
@@ -152,22 +170,22 @@ Also here, **done** since the second wave: `updateActiveLiveLocationMessages` (e
 
 ## Tier 2 — wanted, nobody blocked
 
-Saved-messages topics and tags, welcome messages, message sender switching, notification sounds, translation flags, `updateChatReplyMarkup`, `updateSpeedLimitNotification`, the default reaction and the GIF search parameters — **done as a wave**: every update with a reader is in the filter, merged or nudged. Nineteen names remain in `TG_IGNORED_UPDATES` as the scaffold for screens not drawn yet; `sh scripts/tdlib_coverage.sh --ignored` lists them, and filling one in is a case and a screen.
+Saved-messages topics and tags, welcome messages, message sender switching, notification sounds, translation flags, `updateChatReplyMarkup`, `updateSpeedLimitNotification`, the default reaction and the GIF search parameters — **done as a wave**: every update with a reader is in the filter, merged or nudged. `updateApplicationVerificationRequired` also acts now: it keeps the request id on the client and posts the notification the Settings row reads. Eighteen names remain in `TG_IGNORED_UPDATES` as the scaffold for screens not drawn yet; `sh scripts/tdlib_coverage.sh --ignored` lists them, and filling one in is a case and a screen.
 
 ## Tier 3 — out of scope
 
-80 dropped updates match the `SKIP` pattern in `scripts/tdlib_coverage.sh`: stories, group and video calls, business accounts, TON wallet, Stars and paid reactions, gifts and auctions, boosts, quick replies, mini-app and web-browser plumbing, plus every `updateNew*Query` — those only ever reach a bot account, never this one.
+78 dropped updates match the `SKIP` pattern in `scripts/tdlib_coverage.sh`: stories, group and video calls, business accounts, TON wallet, Stars and paid reactions, gifts and auctions, boosts, quick replies, mini-app and web-browser plumbing, plus every `updateNew*Query` — those only ever reach a bot account, never this one.
 
-Four more joined the pattern deliberately rather than through a screen: `updateMessageSendAcknowledged` (a flattened message has no state between pending and sent, so there is nothing to draw), `updateFileGenerationStart` / `updateFileGenerationStop` (the app never asks TDLib to generate a file), `updateActiveEmojiReactions` (the reaction picker's list — no picker) and `updatePendingMessage` (a bot's streaming draft — no bot surface).
+Three more joined the pattern deliberately rather than through a screen: `updateMessageSendAcknowledged` (a flattened message has no state between pending and sent, so there is nothing to draw), `updateActiveEmojiReactions` (the reaction picker's list — no picker) and `updatePendingMessage` (a bot's streaming draft — no bot surface). `updateFileGenerationStart` / `updateFileGenerationStop` used to be here for the same reason; File Tools now asks TDLib to generate a file, so both are handled and announce progress to `TGFileToolsViewController`.
 
 ## Pick these first
 
-The update half is in two states. 98 updates act; 19 are scaffold markers in `TG_IGNORED_UPDATES`, each waiting for one screen. The markers worth giving a screen to, in order:
+The update half is in two states. 99 updates act; 18 are scaffold markers in `TG_IGNORED_UPDATES`, each waiting for one screen. The markers worth giving a screen to, in order:
 
 1. Local notification drawing (`updateNotification`, `updateNotificationGroup`, `updateActiveNotifications`, `updateHavePendingNotifications`) — the only way to replace APNs as the delivery path.
 2. `updateAutosaveSettings` (gallery autosave), `updateAccentColors` / `updateProfileAccentColors` / `updateDefaultBackground` / `updateEmojiChatThemes` (theme and background pickers), `updateLanguagePackStrings` (a language pack this OS can carry).
-3. `updateAvailableMessageEffects`, `updateContactCloseBirthdays`, `updateStopMessageDraft`, `updateVideoPublished`, `updateUserSubscription`, `updateFreezeState`, the age-verification pair and the two application-verification updates — each needs its renderer or account surface first.
-4. The functions half below, still 164 wide — pick from `--relevant` with the app in hand.
+3. `updateAvailableMessageEffects`, `updateContactCloseBirthdays`, `updateStopMessageDraft`, `updateVideoPublished`, `updateUserSubscription`, `updateFreezeState`, the age-verification pair and `updateApplicationRecaptchaVerificationRequired` — each needs its renderer or account surface first.
+4. The functions half below, still 84 wide — pick from `--relevant` with the app in hand.
 
 ---
 

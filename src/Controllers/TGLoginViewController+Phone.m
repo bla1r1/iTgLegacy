@@ -68,7 +68,48 @@
     NSString *text = sender.text;
     if ([text rangeOfString:@"+"].location != NSNotFound || (text.length >= 4 && [self containsKnownCountryPrefix:text])) {
         [self processPastedPhoneNumber:text];
+        return;
     }
+    [self refreshPhoneNumberInfo];
+}
+
+/// What country the prefix belongs to, and how Telegram would write the
+/// number: getPhoneNumberInfo is the only thing that knows both. The answer
+/// is dropped if the field moved on while it was in flight, so a slow reply
+/// cannot relabel a number the user has already changed.
+- (void)refreshPhoneNumberInfo {
+    if (self.currentStep != TGLoginStepPhone)
+        return;
+    NSString *prefix = [self.phonePrefixField.text
+            stringByReplacingOccurrencesOfString:@" " withString:@""];
+    NSString *local = [self.inputField.text
+            stringByReplacingOccurrencesOfString:@" " withString:@""];
+    if (![prefix hasPrefix:@"+"])
+        prefix = [@"+" stringByAppendingString:prefix ?: @""];
+    if (prefix.length < 3 || local.length < 3)
+        return;
+
+    NSString *full = [prefix stringByAppendingString:local];
+    __weak typeof(self) weakSelf = self;
+    [[TGClient shared] phoneNumberInfoForPrefix:full completion:^(NSDictionary *info){
+        TGLoginViewController *me = weakSelf;
+        if (!me || me.currentStep != TGLoginStepPhone || !info)
+            return;
+        NSString *now = [me.phonePrefixField.text
+                stringByReplacingOccurrencesOfString:@" " withString:@""];
+        if (![now hasPrefix:@"+"])
+            now = [@"+" stringByAppendingString:now ?: @""];
+        now = [now stringByAppendingString:me.inputField.text ?: @""];
+        if (![now isEqualToString:full])
+            return;
+        NSString *formatted = info[@"formatted"];
+        if (!formatted.length)
+            return;
+        me.subtitleLabel.text = [NSString stringWithFormat:
+                @"Please confirm your country code\nand enter your phone number.\n\n%@ %@\n%@",
+                info[@"flag"] ?: @"", info[@"name"] ?: @"", formatted];
+        [me layoutActiveStep];
+    }];
 }
 
 - (void)prefixFieldChanged:(UITextField *)sender {
@@ -88,6 +129,7 @@
         }
     }
     sender.text = clean;
+    [self refreshPhoneNumberInfo];
 }
 
 - (BOOL)containsKnownCountryPrefix:(NSString *)digits {

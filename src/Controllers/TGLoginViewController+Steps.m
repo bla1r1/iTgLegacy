@@ -128,6 +128,7 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
 
     CGFloat qrY = TGStackPlaceGroup(nil, TGMetricStackQRTop + qrSize,
                                     0, width, TGMetricPadWide);
+    qrY = [self placeStepLinksFromY:qrY width:width];
     self.scrollView.contentSize = CGSizeMake(width,
             qrY - TGMetricStackStep + TGMetricPadLarge);
 }
@@ -212,6 +213,9 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
         }];
     }
     [self addStepLink:@"Choose a Country" action:@selector(countryPickerTapped) atY:0];
+    // A web login hands over a token instead of a code; the phone step is
+    // where the official client offers that choice too.
+    [self addStepLink:@"Web Login Token" action:@selector(webTokenTapped) atY:0];
 
     [self layoutActiveStep];
     [self applyTheme];
@@ -290,6 +294,11 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
     self.qrImageView.layer.borderColor = [[TGTheme shared] separatorColour].CGColor;
     self.qrImageView.hidden = NO;
     self.qrImageView.image = [self generateQRCodeForString:link size:qrSize];
+
+    // The other direction: the other device shows the code and this one
+    // confirms the link, which is what their "scan a QR" does with a camera
+    // this OS may not have.
+    [self addStepLink:@"Enter a QR Link" action:@selector(qrLinkTapped) atY:0];
 
     [self layoutActiveStep];
     [self applyTheme];
@@ -379,6 +388,11 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
         [self.scrollView addSubview:self.codeStepQrButton];
     }
     [self addStepLink:@"Didn't get the code?" action:@selector(codeMissingTapped) atY:0];
+    // The Firebase code is not an SMS: it is a secret handed to the app by a
+    // push, and the server only accepts it through its own request. Offered
+    // only when Telegram actually sent that kind of code.
+    if ([codeType hasPrefix:@"authenticationCodeTypeFirebase"])
+        [self addStepLink:@"Code Came By Push?" action:@selector(firebaseCodeTapped) atY:0];
 
     [self layoutActiveStep];
 
@@ -551,6 +565,95 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
     [[TGClient shared] reportAuthenticationCodeMissing];
     [TGAlertSheet showMessage:@"Telegram has been told the code did not arrive.\n\nTry \"Send code via SMS\" once the timer runs out, or log in with a QR code from another device."
                         title:@"No Code" inView:self.view];
+}
+
+/// A token from a web login: the desktop page shows one when it waits for a
+/// phone to approve it. Either it signs in, or it is dropped so it stops
+/// waiting - both answers come from Telegram and are shown.
+- (void)webTokenTapped {
+    __weak typeof(self) weakSelf = self;
+    [TGAlertSheet showInput:@"Web Login Token"
+                    message:@"Paste the token from the web login, then choose what to do with it."
+                placeholder:@"Token"
+                       text:nil
+                     action:@"Continue"
+                     inView:self.view
+                   onSubmit:^(NSString *token){
+        TGLoginViewController *me = weakSelf;
+        [TGAlertSheet showChoices:@[@"Log In", @"Dismiss It"]
+                            title:@"Web Login Token"
+                     destructiveIndex:1
+                           inView:me.view
+                         onChoice:^(NSInteger index){
+            if (index == 1){
+                [[TGClient shared] dismissWebToken:token completion:^(NSString *error){
+                    [TGAlertSheet showMessage:(error
+                            ?: @"The token was dropped. The web login stops waiting.")
+                                        title:@"Web Login Token" inView:me.view];
+                }];
+                return;
+            }
+            [TGAlertSheet showInput:@"Datacenter"
+                            message:@"The dc_id the web login names, usually 2."
+                        placeholder:@"dc_id"
+                               text:@"2"
+                             action:@"Log In"
+                             inView:me.view
+                           onSubmit:^(NSString *dc){
+                NSInteger dcId = [dc integerValue];
+                if (dcId <= 0)
+                    dcId = 2;
+                [[TGClient shared] checkAuthenticationWebToken:token dcId:dcId
+                                                    completion:^(NSString *error){
+                    [TGAlertSheet showMessage:(error
+                            ?: @"Signed in. Telegram is opening the account.")
+                                        title:@"Web Login Token" inView:me.view];
+                }];
+            }];
+        }];
+    }];
+}
+
+/// The other half of QR login: a link from a QR another device shows. The
+/// server creates the session, so success is the authorization state that
+/// follows; a refusal is said here instead.
+- (void)qrLinkTapped {
+    __weak typeof(self) weakSelf = self;
+    [TGAlertSheet showInput:@"QR Link"
+                    message:@"Paste the tg:// link the other screen's QR code stands for."
+                placeholder:@"tg://login?token=..."
+                       text:nil
+                     action:@"Confirm"
+                     inView:self.view
+                   onSubmit:^(NSString *link){
+        TGLoginViewController *me = weakSelf;
+        [[TGClient shared] confirmQrCodeAuthenticationLink:link completion:^(NSString *error){
+            [TGAlertSheet showMessage:(error
+                    ?: @"Confirmed. Telegram is signing this device in.")
+                                title:@"QR Link" inView:me.view];
+        }];
+    }];
+}
+
+/// The Firebase code arrives as a secret in a push, not as an SMS. There is
+/// no verification SDK on this OS, so the sheet asks for the secret; the
+/// answer still comes from the server.
+- (void)firebaseCodeTapped {
+    __weak typeof(self) weakSelf = self;
+    [TGAlertSheet showInput:@"Push Verification"
+                    message:@"Paste the secret from the verification push notification."
+                placeholder:@"Secret"
+                       text:nil
+                     action:@"Send"
+                     inView:self.view
+                   onSubmit:^(NSString *token){
+        TGLoginViewController *me = weakSelf;
+        [[TGClient shared] sendAuthenticationFirebaseSms:token completion:^(NSString *error){
+            [TGAlertSheet showMessage:(error
+                    ?: @"Telegram accepted the verification. The code is on its way.")
+                                title:@"Push Verification" inView:me.view];
+        }];
+    }];
 }
 
 /// Sizes the subtitle to its text and returns where it ends. It was two

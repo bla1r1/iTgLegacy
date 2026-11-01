@@ -24,6 +24,9 @@ static const NSUInteger kPhotoCacheCap = 50;
 @property (nonatomic, strong) NSMutableSet *photosRequested;
 /// Who is ticked, while this screen is picking rather than opening.
 @property (nonatomic, strong) NSMutableSet *picked;
+/// How many contacts this account has uploaded from a phone's address book.
+/// The footer is where it stays visible after an import.
+@property (nonatomic, assign) NSInteger importedCount;
 @end
 
 /// A contact row with its avatar inset and a fixed size. The stock cell sized
@@ -51,6 +54,83 @@ static const NSUInteger kPhotoCacheCap = 50;
 }
 @end
 
+/// A contact that ships with the app: importing something is the only way to
+/// exercise changeImportedContacts without a phone address book on this OS.
+static NSString *const TGSampleVCards =
+		@"BEGIN:VCARD\nVERSION:3.0\nN:Doe;Jane;;;\nFN:Jane Doe\n"
+		 "TEL;TYPE=CELL:+15550001111\nEND:VCARD\n"
+		 "BEGIN:VCARD\nVERSION:3.0\nN:Roe;Richard;;;\nFN:Richard Roe\n"
+		 "TEL;TYPE=CELL:+15550002222\nEND:VCARD\n";
+
+/// One line of a vCard, after the semicolon parameters. TEL;TYPE=CELL:+1
+/// carries its value after the second colon, so split at the first colon.
+static NSString *TGVCardsValue(NSString *line) {
+	NSRange colon = [line rangeOfString:@":"];
+	if (colon.location == NSNotFound)
+		return @"";
+	return [line substringFromIndex:colon.location + 1];
+}
+
+static NSString *TGVCardsKey(NSString *line) {
+	NSRange end = [line rangeOfString:@";"];
+	NSRange colon = [line rangeOfString:@":"];
+	NSUInteger stop = MIN(end.location == NSNotFound ? line.length : end.location,
+						  colon.location == NSNotFound ? line.length : colon.location);
+	return [[line substringToIndex:stop] uppercaseString];
+}
+
+static NSString *TGVCardsPhone(NSString *value) {
+	NSMutableString *digits = [NSMutableString string];
+	BOOL plus = [value hasPrefix:@"+"];
+	if (plus)
+		[digits appendString:@"+"];
+	for (NSUInteger i = 0; i < value.length; i++){
+		unichar c = [value characterAtIndex:i];
+		if ((c >= '0' && c <= '9'))
+			[digits appendFormat:@"%C", c];
+	}
+	return (plus && digits.length > 1) ? digits : @"";
+}
+
+/// The pieces of a vCard this client needs. Anything without a usable phone
+/// number is skipped: TDLib would reject the whole list otherwise.
+static NSArray *TGImportedContactsFromVCards(NSString *text) {
+	NSMutableArray *out = [NSMutableArray array];
+	for (NSString *block in [text componentsSeparatedByString:@"END:VCARD"]){
+		if (![block rangeOfString:@"BEGIN:VCARD"].location)
+			continue;
+		NSString *first = @"", *last = @"", *full = @"", *phone = @"";
+		for (NSString *raw in [block componentsSeparatedByString:@"\n"]){
+			NSString *line = [raw stringByTrimmingCharactersInSet:
+					[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+			NSString *key = TGVCardsKey(line);
+			NSString *value = TGVCardsValue(line);
+			if ([key isEqualToString:@"N"]){
+				NSArray *parts = [value componentsSeparatedByString:@";"];
+				if (parts.count > 0) last = parts[0];
+				if (parts.count > 1) first = parts[1];
+			} else if ([key isEqualToString:@"FN"]){
+				full = value;
+			} else if ([key isEqualToString:@"TEL"]){
+				phone = TGVCardsPhone(value);
+			}
+		}
+		if (!phone.length)
+			continue;
+		if (!first.length && !last.length && full.length){
+			NSArray *words = [full componentsSeparatedByString:@" "];
+			first = words.firstObject ?: @"";
+			last = words.count > 1 ? words.lastObject : @"";
+		}
+		[out addObject:@{
+			@"phone_number" : phone,
+			@"first_name"   : first ?: @"",
+			@"last_name"    : last ?: @"",
+		}];
+	}
+	return out;
+}
+
 @implementation TGContactsViewController
 
 - (void)viewDidLoad {
@@ -74,6 +154,12 @@ static const NSUInteger kPhotoCacheCap = 50;
 				initWithBarButtonSystemItem:UIBarButtonSystemItemAdd
 									 target:self
 									 action:@selector(addContactTapped)];
+		// Importing from a phone book is a bulk change; a sheet explains it
+		// before anything is sent. Kept on the left so Add stays where it was.
+		self.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc]
+				initWithTitle:@"Import"
+						style:UIBarButtonItemStylePlain
+					   target:self action:@selector(importContactsTapped)];
 	}
 	[[TGTheme shared] styleNavigationBar:self.navigationController.navigationBar];
 	self.users = @[];
@@ -106,8 +192,65 @@ static const NSUInteger kPhotoCacheCap = 50;
 	[self.navigationController pushViewController:vc animated:YES];
 }
 
+/// The count is the account's, not the list's: TDLib answers it separately,
+/// and after an import it is the only place the result is visible.
+- (void)updateImportedFooter {
+	UILabel *footer = [[UILabel alloc] initWithFrame:
+			CGRectMake(0, 0, self.view.bounds.size.width, TGMetricLineRow)];
+	footer.text = self.importedCount
+			? [NSString stringWithFormat:@"%ld imported contacts",
+					(long)self.importedCount]
+			: @"No contacts imported from a phone book";
+	footer.font = TGFontCaption();
+	footer.textAlignment = NSTextAlignmentCenter;
+	footer.textColor = [[TGTheme shared] secondaryTextColour];
+	footer.backgroundColor = [UIColor clearColor];
+	self.tableView.tableFooterView = footer;
+}
+
+- (void)importContactsTapped {
+	NSArray *contactRows = TGImportedContactsFromVCards(TGSampleVCards);
+	if (!contactRows.count)
+		return;
+	__weak typeof(self) weakSelf = self;
+	[TGAlertSheet showConfirm:[NSString stringWithFormat:
+					@"%lu sample contacts from the bundled vCard will be uploaded "
+					@"to Telegram. Contacts already imported from another device "
+					@"that are not in this list are removed.",
+					(unsigned long)contactRows.count]
+						title:@"Import Contacts"
+					   action:@"Import"
+				  destructive:NO
+					   inView:self.view
+					onConfirm:^{
+		[[TGClient shared] changeImportedContacts:contactRows
+									   completion:^(NSInteger imported, NSArray *userIds){
+			TGContactsViewController *me = weakSelf;
+			if (!me)
+				return;
+			[[TGClient shared] importedContactCountWithCompletion:^(NSInteger count){
+				me.importedCount = count;
+				[me updateImportedFooter];
+				[me loadContacts];
+				[TGAlertSheet showMessage:[NSString stringWithFormat:
+								@"%ld contacts were accepted. Telegram now has %ld "
+								@"imported contacts for this account.",
+								(long)imported, (long)count]
+									 title:@"Import Contacts" inView:me.view];
+			}];
+		}];
+	}];
+}
+
 - (void)loadContacts {
 	__weak typeof(self) weakSelf = self;
+	[[TGClient shared] importedContactCountWithCompletion:^(NSInteger count){
+		TGContactsViewController *me = weakSelf;
+		if (!me)
+			return;
+		me.importedCount = count;
+		[me updateImportedFooter];
+	}];
 	[[TGClient shared] contactsWithCompletion:^(NSArray *users){
 		TGContactsViewController *me = weakSelf;
 		if (!me)

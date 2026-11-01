@@ -90,6 +90,13 @@
 		 usingBlock:^(NSNotification *note){
 		[weakSelf privacyRulesChanged];
 	}];
+	// The verification row has nothing to show until Telegram asks; when it
+	// does, the row fills in without the page being reopened.
+	[[NSNotificationCenter defaultCenter] addObserverForName:TGApplicationVerificationRequiredNotification
+			object:nil queue:[NSOperationQueue mainQueue]
+		 usingBlock:^(NSNotification *note){
+		[weakSelf rebuild];
+	}];
 }
 
 - (void)dealloc {
@@ -115,6 +122,7 @@
 		case TGSettingsPageFolders:       return @"Chat Folders";
 		case TGSettingsPageProxy:         return @"Proxy";
 		case TGSettingsPageDownloads:     return @"Downloads";
+		case TGSettingsPageAutosave:      return @"Autosave";
 		case TGSettingsPageNotifications: return @"Notifications and Sounds";
 		case TGSettingsPagePrivacy:       return @"Privacy and Security";
 		case TGSettingsPageLanguage:      return @"Language";
@@ -360,6 +368,25 @@
 			weakSelf.networkReceived = got;
 			[weakSelf rebuild];
 		}];
+		[[TGClient shared] autoDownloadSettingsPresetsWithCompletion:^(NSDictionary *presets){
+			weakSelf.autoDownloadPresets = presets;
+			[weakSelf rebuild];
+		}];
+		// The Autosave row's detail is the exception count; reading the
+		// settings once here also satisfies TDLib's rule that set/clear work
+		// only after getAutosaveSettings has answered.
+		[[TGClient shared] autosaveSettingsWithCompletion:^(NSDictionary *settings){
+			weakSelf.autosaveSettings = settings;
+			[weakSelf rebuild];
+		}];
+		return;
+	}
+
+	if (self.page == TGSettingsPageAutosave){
+		[[TGClient shared] autosaveSettingsWithCompletion:^(NSDictionary *settings){
+			weakSelf.autosaveSettings = settings;
+			[weakSelf rebuild];
+		}];
 		return;
 	}
 
@@ -368,6 +395,28 @@
 													NSString *current){
 			weakSelf.languages = languages;
 			weakSelf.currentLanguage = current;
+			[weakSelf rebuild];
+			if (current.length)
+				[[TGClient shared] languagePackInfo:current
+										 completion:^(NSDictionary *info){
+					weakSelf.languageInfo = info;
+					[weakSelf rebuild];
+				}];
+		}];
+		NSString *code = [[NSLocale currentLocale] objectForKey:NSLocaleCountryCode]
+				?: weakSelf.countryCode ?: @"US";
+		weakSelf.countryCode = code;
+		[[TGClient shared] countryInfoForCode:code completion:^(NSDictionary *country){
+			weakSelf.countryInfo = country;
+			[weakSelf rebuild];
+		}];
+		[[TGClient shared] preferredCountryLanguageForCode:code
+												completion:^(NSString *language){
+			weakSelf.preferredCountryLanguage = language;
+			[weakSelf rebuild];
+		}];
+		[[TGClient shared] countryFlagEmojiForCode:code completion:^(NSString *emoji){
+			weakSelf.countryFlag = emoji;
 			[weakSelf rebuild];
 		}];
 		return;

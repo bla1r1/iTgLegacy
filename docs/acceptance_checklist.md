@@ -47,6 +47,21 @@ Zones that were fixed more than once. Column format: check — why it broke befo
 | Preview shows draft, not last message | — | Leave draft, return to list: preview = draft; clear draft → last message | Preview model: draft overrides and lifts |
 | Avatars don't reload on every list open | B2 | Open → leave → return: same chat avatars don't blink | Cache: pending/done bookkeeping reduces repeat downloads |
 
+### Account and sign-in
+
+| Check | Broke in | Device | Host |
+|---|---|---|---|
+| Typed phone prefix shows its country and Telegram's formatting | — | Login phone step, type `38044…`: the line under the instructions names Ukraine and the formatted number; log shows one `getPhoneNumberInfo` per change | `TGClientAuthFunctionsTests.m`: info flattened from a `phoneNumberInfo` answer; errors answer nil |
+| Web login token signs in or is dismissed, with the server's answer | — | Login → Web Login Token: a valid token opens the account; an expired one shows Telegram's message; Dismiss says the web login stops waiting | Requests measured: token and dc_id, `dismissWebToken` |
+| A QR link is confirmed by the server | — | Login → Log in with QR Code → Enter a QR Link: a fresh link signs in, a stale one shows the refusal | `session` is success, anything else is an error |
+| A Firebase code path asks for the push secret and reports the answer | — | Code step when Telegram sent a Firebase code: link appears; a wrong secret shows the server's refusal | Request measured: `sendAuthenticationFirebaseSms` |
+| Changing the number sends, resends and reports a missing code | — | Settings → Privacy & Security → Phone Number: confirmation names the country, a wrong code is refused on screen, Send It Again and It Never Arrived both answer | `sendPhoneNumberCode` type `phoneNumberCodeTypeChange`, null settings; `resendPhoneNumberCode` reason |
+| Lost-password recovery and the slow reset both show the server's stage | — | Two-Step Verification → Forgot Password?: wrong code refused; reset answers ok/pending/declined with the date, and a pending reset can be cancelled | `requestPasswordRecovery`, `checkPasswordRecoveryCode`, `recoverPassword`, the three reset results, `cancelPasswordReset` |
+| Login email pre-check, change and resend are visible | — | Privacy & Security → Login Email Address: the pre-check answer is shown, the code sheet masks the address, Send It Again refreshes it | `isLoginEmailAddressRequired` maps ok to required; code wrapped as `emailAddressAuthentication` |
+| Temporary password reads state and is created with the 2FA password | — | Privacy & Security → Temporary Password: says active/none and how long; Create asks the password and reports the new lifetime | State and create both flatten has/valid_for; a wrong password is an error |
+| Ownership handover pre-check is shown before the password | — | Group member → Hand Over Ownership: too-new session names the wait and stops; allowed goes on to the password | Four `canTransferOwnership` results and their retry times |
+| Application verification row sends the token for the pending id | — | Settings → Privacy & Security → Application Verification after the update: row says Required and shows the nonce; sending reports accepted/refused | Update keeps id/nonce; `setApplicationVerificationToken` sends both and clears it on ok |
+
 ### Calls connectivity
 
 | Check | Broke in | Device | Host |
@@ -81,6 +96,17 @@ Zones that were fixed more than once. Column format: check — why it broke befo
 | Wi-Fi ↔ 3G handover loses nothing | — | Toggle Wi-Fi off/on with chat open: feed catches up ≤ 10 s | `updateConnectionState(reconnecting)` handler: auth survives, requests re-queue |
 | No socket / request drumbeat in background | — | Background 1 min, return: updates arrive, no repeated requests in log | Fake network: backgrounding closes socket, return restores it |
 | Large file doesn't block small downloads | — | Request voice note + video: voice note lands first | Download queue priority test in `TGClient+Files.m` |
+
+### File tools, autosave and contact import
+
+| Check | Broke in | Device | Host |
+|---|---|---|---|
+| File Info lists the record, downloads prefix and resolved remote id | — | Hold a photo → File Info: name, type, size, downloaded, path and remote id fill ≤ 2 s; Copy puts all of them on the clipboard | `TGClientFileToolsTests`: getFile → getRemoteFile → flattened fields |
+| File Tools writes a generated file and uploads it | — | Data & Storage → File Tools → Generate: progress passes "generating" and "uploading", path appears; read-back shows the same text | `TGClientFileToolsTests`: preliminaryUploadFile → updateFileGenerationStart → progress/write/finish |
+| Cancel stops a generation before it finishes | — | Generate, tap Cancel while "Preparing": no result row, no late "Uploading" stage | `TGClientFileToolsTests`: cancelPreliminaryUploadFile carries the file id |
+| Autosave switches write the scope and survive reopening the page | — | Toggle Photos for Groups: reopen Autosave: switch stays as set; clearing exceptions empties the list | `TGClientAutosaveContactsTests`: get/set/clear shapes |
+| Imported contact count follows an import | — | Contacts → Import → Import: alert names the accepted count; footer shows the account total | `TGClientAutosaveContactsTests`: changeImportedContacts + getImportedContactCount |
+| Auto-download presets come from Telegram, not a constant | — | Data & Storage → Presets shows Medium sizes; choose High: Wi-Fi switch follows and the toast names the preset | `TGClientFileToolsTests`: getAutoDownloadSettingsPresets flat shape |
 
 ---
 

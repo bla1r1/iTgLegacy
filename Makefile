@@ -214,6 +214,8 @@ APP_SRC_M := \
 	src/Core/TGClient+Account.m \
 	src/Core/TGClient+Proxy.m \
 	src/Core/TGClient+Groups.m \
+	src/Core/TGClient+Language.m \
+	src/Core/TGClient+Search.m \
 	src/Core/TGClient+ChatTools.m \
 	src/Core/TGClient+Downloads.m \
 	src/Core/TGClient+Secret.m \
@@ -254,6 +256,7 @@ APP_SRC_M := \
 	src/UI/TGReactionPicker.m \
 	src/UI/TGAvatarView.m \
 	src/Controllers/TGSearchViewController.m \
+	src/Controllers/TGInstantViewController.m \
 	src/Controllers/TGGalleryViewController.m \
 	src/Controllers/TGPlaceholderViewController.m \
 	src/Controllers/TGQRViewController.m \
@@ -301,6 +304,8 @@ APP_SRC_M := \
 	src/Controllers/TGEditProfileViewController.m \
 	src/Controllers/TGDeviceViewController.m \
 	src/Controllers/TGStorageViewController.m \
+	src/Controllers/TGFileInfoViewController.m \
+	src/Controllers/TGFileToolsViewController.m \
 	src/Controllers/TGSessionsViewController.m \
 	src/Controllers/TGTermsViewController.m \
 	src/Controllers/TGProfilePhotosViewController.m \

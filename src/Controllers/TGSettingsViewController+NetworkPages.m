@@ -6,6 +6,7 @@
 #import "TGAlertSheet.h"
 #import "TGForwardPicker.h"
 #import "TGStorageViewController.h"
+#import "TGFileInfoViewController.h"
 
 static NSString *TGChatNameForId(NSNumber *chatId) {
 	for (NSArray *list in @[[TGClient shared].chats ?: @[],
@@ -26,6 +27,12 @@ static NSString *TGChatNameForId(NSNumber *chatId) {
 	BOOL mobile = [[TGClient shared] autoDownloadOverMobile];
 	BOOL wifi   = [[TGClient shared] autoDownloadOverWifi];
 	NSDictionary *archiveSettings = [TGClient shared].archiveSettings ?: @{};
+	NSDictionary *autosave = self.autosaveSettings;
+	NSArray *autosaveExceptions = autosave[@"exceptions"];
+	NSString *autosaveDetail = autosave
+			? [NSString stringWithFormat:@"%lu exceptions",
+					(unsigned long)autosaveExceptions.count]
+			: nil;
 
 	return @[
 		TGSection(@"Usage", nil, @[
@@ -36,6 +43,11 @@ static NSString *TGChatNameForId(NSNumber *chatId) {
 				TGStorageViewController *storage = [[TGStorageViewController alloc] init];
 				storage.hidesBottomBarWhenPushed = YES;
 				[weakSelf.navigationController pushViewController:storage animated:YES];
+			}),
+			TGTapRow(@"File Tools", @"Generate, upload, read back", ^{
+				TGFileToolsViewController *tools = [[TGFileToolsViewController alloc] init];
+				tools.hidesBottomBarWhenPushed = YES;
+				[weakSelf.navigationController pushViewController:tools animated:YES];
 			}),
 			TGTapRow(@"Network Usage",
 					[NSString stringWithFormat:@"%@ in, %@ out",
@@ -85,6 +97,9 @@ static NSString *TGChatNameForId(NSNumber *chatId) {
 		TGSection(@"Automatic media download",
 				  @"Off over mobile by default: this radio is slow and the "
 				  @"cache lives on a small disk.", @[
+			TGTapRow(@"Presets", [weakSelf autoDownloadPresetSummary], ^{
+				[weakSelf chooseAutoDownloadPreset];
+			}),
 			TGSwitchRow(@"Over Mobile Data", mobile, ^(BOOL on){
 				[[TGClient shared] setAutoDownloadOverMobile:on
 														wifi:[[TGClient shared] autoDownloadOverWifi]];
@@ -94,6 +109,14 @@ static NSString *TGChatNameForId(NSNumber *chatId) {
 				[[TGClient shared] setAutoDownloadOverMobile:[[TGClient shared] autoDownloadOverMobile]
 														wifi:on];
 				[weakSelf rebuild];
+			}),
+		]),
+
+		TGSection(@"Gallery autosave",
+				  @"Telegram autosaves photos and videos it receives. Documents "
+				  @"are not autosaved by TDLib.", @[
+			TGTapRow(@"Autosave", autosaveDetail, ^{
+				[weakSelf openPage:TGSettingsPageAutosave];
 			}),
 		]),
 
@@ -651,6 +674,7 @@ static NSString *TGChatNameForId(NSNumber *chatId) {
 	NSMutableArray *choices = [NSMutableArray array];
 	if (!done)
 		[choices addObject:paused ? @"Resume" : @"Pause"];
+	[choices addObject:@"File Info"];
 	[choices addObject:@"Take Out of the List"];
 	[choices addObject:@"Delete the File"];
 
@@ -660,14 +684,23 @@ static NSString *TGChatNameForId(NSNumber *chatId) {
 					   inView:self.view
 					 onChoice:^(NSInteger index){
 		NSString *choice = choices[(NSUInteger)index];
-		if ([choice isEqualToString:@"Pause"] || [choice isEqualToString:@"Resume"])
+		if ([choice isEqualToString:@"Pause"] || [choice isEqualToString:@"Resume"]){
 			[[TGClient shared] setDownloadOfFile:fileId
 										  paused:[choice isEqualToString:@"Pause"]];
-		else if ([choice isEqualToString:@"Take Out of the List"])
+			[weakSelf loadForPage];
+		} else if ([choice isEqualToString:@"File Info"]){
+			// The action sheet has to be gone before a second presentation
+			// starts, or UIKit drops the new one on iOS 6.
+			dispatch_async(dispatch_get_main_queue(), ^{
+				[TGFileInfoViewController presentForFile:fileId fromView:weakSelf.view];
+			});
+		} else if ([choice isEqualToString:@"Take Out of the List"]){
 			[[TGClient shared] removeFileFromDownloads:fileId deleteFromCache:NO];
-		else
+			[weakSelf loadForPage];
+		} else {
 			[[TGClient shared] removeFileFromDownloads:fileId deleteFromCache:YES];
-		[weakSelf loadForPage];
+			[weakSelf loadForPage];
+		}
 	}];
 }
 
@@ -877,6 +910,168 @@ static NSString *TGChatNameForId(NSNumber *chatId) {
 			[chat setValue:title forKey:@"chatTitle"];
 			chat.hidesBottomBarWhenPushed = YES;
 			[weakSelf.navigationController pushViewController:chat animated:YES];
+		}];
+	}];
+}
+
+- (NSString *)autoDownloadPresetSummary {
+	NSDictionary *medium = self.autoDownloadPresets[@"medium"];
+	if (![medium isKindOfClass:NSDictionary.class])
+		return @"Reading...";
+	return [NSString stringWithFormat:@"Medium: photos %@, videos %@",
+			TGBytes([medium[@"maxPhotoSize"] longLongValue]),
+			TGBytes([medium[@"maxVideoSize"] longLongValue])];
+}
+
+- (void)chooseAutoDownloadPreset {
+	if (!self.autoDownloadPresets){
+		[self toast:@"Telegram has not answered with the presets yet."];
+		return;
+	}
+	__weak typeof(self) weakSelf = self;
+	NSArray *keys = @[@"low", @"medium", @"high"];
+	NSArray *names = @[@"Low (roaming)", @"Medium (mobile)", @"High (Wi-Fi)"];
+	[TGAlertSheet showChoices:names
+						title:@"Auto-Download Presets"
+			 destructiveIndex:-1
+					   inView:self.view
+					 onChoice:^(NSInteger index){
+		TGSettingsViewController *me = weakSelf;
+		if (!me || index >= (NSInteger)keys.count)
+			return;
+		NSDictionary *preset = me.autoDownloadPresets[keys[(NSUInteger)index]];
+		NSString *network = @[@"roaming", @"mobile", @"wifi"][(NSUInteger)index];
+		[[TGClient shared] applyAutoDownloadPreset:preset forNetwork:network
+										completion:^(BOOL ok){
+			if (!ok){
+				[me toast:@"Telegram refused that preset."];
+				return;
+			}
+			// The two switches read the app's own copy, so move whichever
+			// network the chosen preset belongs to.
+			BOOL enabled = [preset[@"enabled"] boolValue];
+			if ([network isEqualToString:@"mobile"])
+				[[NSUserDefaults standardUserDefaults] setBool:enabled
+													   forKey:@"TGAutoDownloadMobile"];
+			else if ([network isEqualToString:@"wifi"])
+				[[NSUserDefaults standardUserDefaults] setBool:enabled
+													   forKey:@"TGAutoDownloadWifi"];
+			[[NSUserDefaults standardUserDefaults] synchronize];
+			[me toast:[NSString stringWithFormat:@"%@ applied.", names[(NSUInteger)index]]];
+			[me rebuild];
+		}];
+	}];
+}
+
+- (NSArray *)autosaveSections {
+	__weak typeof(self) weakSelf = self;
+	if (!self.autosaveSettings){
+		return @[TGSection(nil,
+				@"Reading Telegram's autosave settings...", @[])];
+	}
+
+	NSDictionary *settings = self.autosaveSettings;
+	NSMutableArray *sections = [NSMutableArray array];
+	NSArray *scopes = @[
+		@[@"private", @"Private Chats"],
+		@[@"groups", @"Groups"],
+		@[@"channels", @"Channels"],
+	];
+	for (NSArray *pair in scopes){
+		NSString *scope = pair[0];
+		NSDictionary *scopeSettings = settings[scope] ?: @{};
+		BOOL photos = [scopeSettings[@"photos"] boolValue];
+		BOOL videos = [scopeSettings[@"videos"] boolValue];
+		long long maxVideo = [scopeSettings[@"maxVideoSize"] longLongValue];
+		[sections addObject:TGSection(pair[1],
+				[NSString stringWithFormat:@"Photos are saved when they arrive. "
+						@"Videos are saved up to %@; TDLib has no document autosave.",
+						TGBytes(maxVideo)], @[
+			TGSwitchRow(@"Photos", photos, ^(BOOL on){
+				[weakSelf changeAutosaveScope:scope photos:on videos:videos];
+			}),
+			TGSwitchRow(@"Videos", videos, ^(BOOL on){
+				[weakSelf changeAutosaveScope:scope photos:photos videos:on];
+			}),
+		])];
+	}
+
+	NSArray *exceptions = settings[@"exceptions"] ?: @[];
+	NSMutableArray *rows = [NSMutableArray array];
+	for (NSDictionary *exception in exceptions){
+		NSString *detail = [NSString stringWithFormat:@"%@ photos - %@ videos",
+				[exception[@"photos"] boolValue] ? @"on" : @"off",
+				[exception[@"videos"] boolValue] ? @"on" : @"off"];
+		[rows addObject:TGTapRow(
+				[NSString stringWithFormat:@"Chat %@", exception[@"chatId"] ?: @0],
+				detail, ^{
+			[TGAlertSheet showMessage:[NSString stringWithFormat:
+					@"This chat overrides its scope defaults: photos %@, videos %@.",
+					[exception[@"photos"] boolValue] ? @"on" : @"off",
+					[exception[@"videos"] boolValue] ? @"on" : @"off"]
+								title:@"Autosave Exception" inView:weakSelf.view];
+		})];
+	}
+	if (rows.count)
+		[rows addObject:TGRedRow(@"Clear All Exceptions", ^{
+			[weakSelf clearAutosaveExceptions];
+		})];
+	[sections addObject:TGSection(@"Exceptions",
+			rows.count
+					? @"A chat with its own autosave settings keeps them until the "
+					  @"list is cleared here."
+					: @"No chat overrides the defaults above.",
+			rows)];
+
+	return sections;
+}
+
+- (void)changeAutosaveScope:(NSString *)scope photos:(BOOL)photos videos:(BOOL)videos {
+	NSMutableDictionary *settings = [self.autosaveSettings mutableCopy];
+	if (!settings)
+		return;
+	NSMutableDictionary *scopeSettings = [settings[scope] mutableCopy];
+	if (!scopeSettings)
+		scopeSettings = [@{} mutableCopy];
+	long long maxVideo = [scopeSettings[@"maxVideoSize"] longLongValue];
+	if (maxVideo <= 0)
+		maxVideo = 10 * 1024 * 1024;
+	scopeSettings[@"photos"] = @(photos);
+	scopeSettings[@"videos"] = @(videos);
+	scopeSettings[@"maxVideoSize"] = @(maxVideo);
+	settings[scope] = scopeSettings;
+	self.autosaveSettings = settings;
+	[self rebuild];
+
+	__weak typeof(self) weakSelf = self;
+	[[TGClient shared] setAutosaveSettingsForScope:scope
+											 photos:photos
+											 videos:videos
+									   maxVideoSize:maxVideo
+										 completion:^(BOOL ok){
+		if (!ok)
+			[weakSelf toast:@"Telegram refused that autosave setting."];
+	}];
+}
+
+- (void)clearAutosaveExceptions {
+	__weak typeof(self) weakSelf = self;
+	[TGAlertSheet showConfirm:@"Every per-chat autosave override is removed. "
+							  @"The private, group and channel defaults stay."
+						title:@"Clear Exceptions"
+					   action:@"Clear"
+				  destructive:YES
+					   inView:self.view
+					onConfirm:^{
+		[[TGClient shared] clearAutosaveSettingsExceptionsWithCompletion:^(BOOL ok){
+			if (!ok){
+				[weakSelf toast:@"Telegram refused to clear the exceptions."];
+				return;
+			}
+			[[TGClient shared] autosaveSettingsWithCompletion:^(NSDictionary *settings){
+				weakSelf.autosaveSettings = settings;
+				[weakSelf rebuild];
+			}];
 		}];
 	}];
 }

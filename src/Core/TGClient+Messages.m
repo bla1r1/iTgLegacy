@@ -1634,6 +1634,8 @@ static id TGMessageTopicForThread(TGClient *client, int64_t chatId, int64_t thre
 			completion(@"inviteLink", result[@"invite_link"]);
 		else if ([type isEqualToString:@"internalLinkTypeUserPhoneNumber"])
 			completion(@"phoneNumber", result[@"phone_number"]);
+		else if ([type isEqualToString:@"internalLinkTypeUserToken"])
+			completion(@"userToken", result[@"token"]);
 		else {
 			// Telegram keeps a server-side table of links it has no schema
 			// for: what a private invite or a reserved page means, told in

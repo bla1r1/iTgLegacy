@@ -78,6 +78,8 @@
 	X(TGUpdateNewCallSignalingData,   "updateNewCallSignalingData") \
 	X(TGUpdateCall,                   "updateCall") \
 	X(TGUpdateFile,                   "updateFile") \
+	X(TGUpdateFileGenerationStart,    "updateFileGenerationStart") \
+	X(TGUpdateFileGenerationStop,     "updateFileGenerationStop") \
 	X(TGUpdateChatAction,             "updateChatAction") \
 	X(TGUpdateSupergroup,             "updateSupergroup") \
 	X(TGUpdateUserStatus,             "updateUserStatus") \
@@ -149,7 +151,6 @@
 	X(TGUpdateHavePendingNotifications,    "updateHavePendingNotifications") \
 	X(TGUpdateFreezeState,                 "updateFreezeState") \
 	X(TGUpdateAgeVerificationParameters,   "updateAgeVerificationParameters") \
-	X(TGUpdateApplicationVerificationRequired, "updateApplicationVerificationRequired") \
 	X(TGUpdateApplicationRecaptchaVerificationRequired, "updateApplicationRecaptchaVerificationRequired") \
 	X(TGUpdateUserSubscription,            "updateUserSubscription") \
 	X(TGUpdateAutosaveSettings,            "updateAutosaveSettings") \

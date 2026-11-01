@@ -114,6 +114,21 @@
 			TGTapRow(@"Two-Step Verification", passwordDetail, ^{
 				[weakSelf showTwoStepState];
 			}),
+			TGTapRow(@"Login Email Address", nil, ^{
+				[weakSelf showLoginEmailFlow];
+			}),
+			TGTapRow(@"Phone Number",
+					[TGClient shared].me[@"phone_number"] ?: nil, ^{
+				[weakSelf showChangePhoneFlow];
+			}),
+			TGTapRow(@"Temporary Password", nil, ^{
+				[weakSelf showTemporaryPasswordFlow];
+			}),
+			TGTapRow(@"Application Verification",
+					[TGClient shared].pendingApplicationVerificationId ? @"Required" : @"None",
+					^{
+				[weakSelf showApplicationVerification];
+			}),
 			TGTapRow(@"Active Sessions", nil, ^{
 				TGSessionsViewController *sessions = [[TGSessionsViewController alloc] init];
 				sessions.hidesBottomBarWhenPushed = YES;
@@ -121,6 +136,34 @@
 			}),
 			TGTapRow(@"Blocked Users", nil, ^{
 				[weakSelf openPage:TGSettingsPageBlocked];
+			}),
+		]),
+
+		TGSection(@"Email",
+				  @"Passport asks services to prove they own an address. This is "
+				  @"the address half of that: send a code, enter it, and Telegram "
+				  @"keeps the verified address on the account.", @[
+			TGTapRow(@"Verify an Email Address", nil, ^{
+				[weakSelf showVerifyEmailFlow];
+			}),
+		]),
+
+		TGSection(@"Saved payment data", nil, @[
+			TGRedRow(@"Delete Saved Payment Credentials", ^{
+				[TGAlertSheet showConfirm:@"Every payment provider this account "
+										  @"saved credentials with forgets them."
+									title:@"Delete Saved Credentials"
+								   action:@"Delete"
+							  destructive:YES
+								   inView:weakSelf.view
+								onConfirm:^{
+					[[TGClient shared] deleteSavedCredentialsWithCompletion:^(NSString *error){
+						[TGAlertSheet showMessage:(error
+								?: @"Saved credentials deleted on every bot.")
+											title:@"Saved Payment Credentials"
+										   inView:weakSelf.view];
+					}];
+				}];
 			}),
 		]),
 

@@ -25,6 +25,7 @@
 		case TGSettingsPageFolders:       return [self folderSections];
 		case TGSettingsPageProxy:         return [self proxySections];
 		case TGSettingsPageDownloads:     return [self downloadSections];
+		case TGSettingsPageAutosave:      return [self autosaveSections];
 		case TGSettingsPageWallpaper:     return [self wallpaperSections];
 		case TGSettingsPageDebug:         return [self debugSections];
 		default:                          return [self rootSections];
@@ -132,6 +133,15 @@
 			TGIconRow(@"Telegram FAQ", @"faq", TGIconTileCyan(), ^{
 				[weakSelf openURL:@"https://telegram.org/faq"];
 			}),
+			TGIconRow(@"Get the App", @"data", TGIconTileSky(), ^{
+				[[TGClient shared] applicationDownloadLinkWithCompletion:^(NSString *url){
+					if (!url.length){
+						[weakSelf toast:@"Telegram did not answer with a download link."];
+						return;
+					}
+					[weakSelf openURL:url];
+				}];
+			}),
 			TGIconRow(@"Privacy Policy", @"policy", TGIconTileGold(), ^{
 				[weakSelf openURL:@"https://telegram.org/privacy"];
 			}),
@@ -159,16 +169,368 @@
 				[packId isEqualToString:self.currentLanguage], ^{
 			[[TGClient shared] setLanguage:packId];
 			weakSelf.currentLanguage = packId;
+			// The record follows the choice: pack actions edit what is on.
+			[[TGClient shared] languagePackInfo:packId completion:^(NSDictionary *info){
+				weakSelf.languageInfo = info;
+				[weakSelf rebuild];
+			}];
 			[weakSelf rebuild];
 		})];
 	}
 	if (!rows.count)
 		[rows addObject:TGRow(TGKindPlain, @"Loading...")];
 
-	return @[TGSection(nil,
+	NSString *code = self.countryCode ?: @"US";
+	NSString *countryName = self.countryInfo[@"name"] ?: code;
+	NSString *flag = self.countryFlag.length ? self.countryFlag
+			: (self.countryInfo[@"flag"] ?: @"");
+	NSString *countryDetail = flag.length
+			? [NSString stringWithFormat:@"%@  %@", flag, countryName]
+			: countryName;
+	NSString *preferred = self.preferredCountryLanguage ?: @"Unknown";
+	NSMutableDictionary *preferredRow =
+			TGRow(TGKindPlain, @"Preferred Country Language");
+	preferredRow[TGRowDetail] = preferred;
+	NSArray *countryRows = @[
+		TGTapRow(@"Country", countryDetail, ^{ [weakSelf askCountryCode]; }),
+		preferredRow,
+	];
+
+	NSString *packName = self.languageInfo[@"name"] ?: self.currentLanguage ?: @"en";
+	NSString *packDetail = self.languageInfo
+			? [NSString stringWithFormat:@"%@ of %@ strings",
+					self.languageInfo[@"translated"] ?: @(0),
+					self.languageInfo[@"total"] ?: @(0)]
+			: @"Read the current pack";
+	NSArray *packRows = @[
+		TGTapRow(@"Pack Info", packDetail, ^{ [weakSelf showLanguagePackInfo]; }),
+		TGTapRow(@"Strings", @"Read the pack's strings back", ^{
+			[weakSelf showLanguagePackStrings];
+		}),
+		TGTapRow(@"Read a String", @"One key from the local database", ^{
+			[weakSelf readLanguagePackString];
+		}),
+	];
+
+	NSArray *editRows = @[
+		TGTapRow(@"New Custom Pack", @"A local pack, id starts with X", ^{
+			[weakSelf createCustomLanguagePack];
+		}),
+		TGTapRow(@"Edit Pack Name", packName, ^{ [weakSelf editLanguagePackName]; }),
+		TGTapRow(@"Set a String", @"Add or change one key", ^{
+			[weakSelf setLanguagePackString];
+		}),
+		TGTapRow(@"Delete a String", @"Fall back to the base pack", ^{
+			[weakSelf deleteLanguagePackString];
+		}),
+		TGTapRow(@"Install Pack from Telegram", @"Add a server pack by id", ^{
+			[weakSelf installServerLanguagePack];
+		}),
+		TGTapRow(@"Synchronize Pack", @"Fetch the latest strings", ^{
+			[weakSelf synchronizeCurrentLanguagePack];
+		}),
+		TGRedRow(@"Delete Pack", ^{ [weakSelf deleteCurrentLanguagePack]; }),
+	];
+
+	return @[
+		TGSection(nil,
 			@"This app's own text is English throughout. The language is what "
 			@"Telegram itself writes in, and it follows the account onto your "
-			@"other devices.", rows)];
+			@"other devices.", rows),
+		TGSection(@"Country",
+			@"Telegram answers the country's name, flag and preferred language; "
+			@"the code is the two-letter ISO one.", countryRows),
+		TGSection(@"Current Pack",
+			@"Pack info, the strings it carries and a read-back of one key.", packRows),
+		TGSection(@"Custom Packs",
+			@"A local pack starts with X and overrides the base one string at a "
+			@"time. Install adds a pack Telegram already serves.", editRows),
+	];
+}
+
+/// The country rows are read once per open; changing the code re-reads all
+/// three answers rather than leaving a flag from the previous country.
+- (void)askCountryCode {
+	__weak typeof(self) weakSelf = self;
+	[TGAlertSheet showInput:@"Country Code"
+					message:@"Two-letter ISO 3166-1 code, for example DE."
+				placeholder:@"DE"
+					   text:self.countryCode ?: @""
+					 action:@"Read"
+					 inView:self.view
+				 onSubmit:^(NSString *text){
+		NSString *code = text.uppercaseString;
+		weakSelf.countryCode = code;
+		[[TGClient shared] countryInfoForCode:code completion:^(NSDictionary *country){
+			weakSelf.countryInfo = country;
+			[weakSelf rebuild];
+		}];
+		[[TGClient shared] preferredCountryLanguageForCode:code
+												completion:^(NSString *language){
+			weakSelf.preferredCountryLanguage = language;
+			[weakSelf rebuild];
+		}];
+		[[TGClient shared] countryFlagEmojiForCode:code completion:^(NSString *emoji){
+			weakSelf.countryFlag = emoji;
+			[weakSelf rebuild];
+		}];
+	}];
+}
+
+- (void)showLanguagePackInfo {
+	NSString *packId = self.currentLanguage ?: @"en";
+	__weak typeof(self) weakSelf = self;
+	[[TGClient shared] languagePackInfo:packId completion:^(NSDictionary *info){
+		weakSelf.languageInfo = info;
+		[weakSelf rebuild];
+		if (!info){
+			[TGAlertSheet showMessage:@"Telegram returned no record for this pack."
+							   title:@"Language Pack"
+							   inView:weakSelf.view];
+			return;
+		}
+		NSMutableString *body = [NSMutableString string];
+		NSString *displayName = info[@"nativeName"] ?: info[@"name"] ?: info[@"id"];
+		[body appendFormat:@"%@ (%@)\n", displayName ?: @"Unknown", info[@"id"]];
+		if ([info[@"name"] length] && ![info[@"name"] isEqualToString:info[@"nativeName"]])
+			[body appendFormat:@"English name: %@\n", info[@"name"]];
+		[body appendFormat:@"Base: %@\nStrings: %@ of %@ translated, %@ local\n",
+				info[@"base"] ?: @"none", info[@"translated"] ?: @(0),
+				info[@"total"] ?: @(0), info[@"local"] ?: @(0)];
+		[body appendFormat:@"Official: %@ · Installed: %@ · RTL: %@",
+				[info[@"official"] boolValue] ? @"yes" : @"no",
+				[info[@"installed"] boolValue] ? @"yes" : @"no",
+				[info[@"rtl"] boolValue] ? @"yes" : @"no"];
+		[TGAlertSheet showMessage:body title:@"Language Pack" inView:weakSelf.view];
+	}];
+}
+
+- (void)showLanguagePackStrings {
+	NSString *packId = self.currentLanguage ?: @"en";
+	__weak typeof(self) weakSelf = self;
+	[[TGClient shared] languagePackStrings:packId keys:@[] completion:^(NSArray *strings){
+		if (!weakSelf)
+			return;
+		if (!strings.count){
+			[TGAlertSheet showMessage:@"This pack has no strings on the device yet."
+							   title:@"Strings"
+							   inView:weakSelf.view];
+			return;
+		}
+		NSMutableString *body = [NSMutableString string];
+		NSUInteger shown = MIN(strings.count, (NSUInteger)20);
+		for (NSUInteger i = 0; i < shown; i++){
+			NSDictionary *string = strings[i];
+			[body appendFormat:@"%@ = %@\n", string[@"key"], string[@"value"]];
+		}
+		if (strings.count > shown)
+			[body appendFormat:@"…and %lu more.", (unsigned long)(strings.count - shown)];
+		[TGAlertSheet showMessage:body
+						   title:[NSString stringWithFormat:@"%@ Strings", packId]
+						   inView:weakSelf.view];
+	}];
+}
+
+- (void)readLanguagePackString {
+	NSString *packId = self.currentLanguage ?: @"en";
+	__weak typeof(self) weakSelf = self;
+	[TGAlertSheet showInput:@"Read a String"
+					message:@"The key as the pack stores it, for example Continue."
+				placeholder:@"Continue"
+					   text:@""
+					 action:@"Read"
+					 inView:self.view
+				 onSubmit:^(NSString *key){
+		[[TGClient shared] languagePackString:key pack:packId
+								   completion:^(NSString *value, NSString *kind){
+			if (!weakSelf)
+				return;
+			NSString *body = value == nil
+					? @"That key is not in this pack."
+					: [NSString stringWithFormat:@"%@ = %@ (%@)", key, value, kind ?: @"value"];
+			[TGAlertSheet showMessage:body title:@"Language String" inView:weakSelf.view];
+		}];
+	}];
+}
+
+- (void)createCustomLanguagePack {
+	__weak typeof(self) weakSelf = self;
+	[TGAlertSheet showInput:@"New Custom Pack"
+					message:@"An id for the local pack. X is added when missing."
+				placeholder:@"Xmytest"
+					   text:@"X"
+					 action:@"Next"
+					 inView:self.view
+				 onSubmit:^(NSString *packId){
+		[TGAlertSheet showInput:@"Pack Name"
+						message:@"What the language list calls this pack."
+					placeholder:@"My Test Pack"
+						   text:@""
+						 action:@"Create"
+						 inView:weakSelf.view
+					 onSubmit:^(NSString *name){
+			[[TGClient shared] setCustomLanguagePack:packId name:name
+										  nativeName:name strings:@[]
+										  completion:^(BOOL ok){
+				if (!weakSelf)
+					return;
+				if (ok){
+					NSString *customId = [packId hasPrefix:@"X"] ? packId
+							: [@"X" stringByAppendingString:packId];
+					weakSelf.currentLanguage = customId;
+					[[TGClient shared] setLanguage:customId];
+					[[TGClient shared] languagePackInfo:customId
+											completion:^(NSDictionary *info){
+						weakSelf.languageInfo = info;
+						[weakSelf rebuild];
+					}];
+				}
+				[weakSelf toast:ok ? @"Custom pack created" : @"Telegram refused the pack"];
+				[weakSelf refreshLanguagePage];
+			}];
+		}];
+	}];
+}
+
+- (void)editLanguagePackName {
+	NSString *packId = self.currentLanguage ?: @"en";
+	__weak typeof(self) weakSelf = self;
+	void (^ask)(NSDictionary *) = ^(NSDictionary *info){
+		if (!weakSelf)
+			return;
+		if (!info){
+			[TGAlertSheet showMessage:@"Read Pack Info first."
+							   title:@"Edit Pack"
+							   inView:weakSelf.view];
+			return;
+		}
+		[TGAlertSheet showInput:@"Edit Pack Name"
+						message:@"Only a custom local pack can be changed."
+					placeholder:@"Name"
+						   text:info[@"name"] ?: @""
+						 action:@"Save"
+						 inView:weakSelf.view
+					 onSubmit:^(NSString *name){
+			NSMutableDictionary *changed = [info mutableCopy];
+			changed[@"name"] = name;
+			changed[@"nativeName"] = name;
+			[[TGClient shared] editCustomLanguagePackInfo:changed completion:^(BOOL ok){
+				if (!weakSelf)
+					return;
+				[weakSelf toast:ok ? @"Pack renamed" : @"Telegram refused the edit"];
+				[weakSelf refreshLanguagePage];
+			}];
+		}];
+	};
+	if (self.languageInfo)
+		ask(self.languageInfo);
+	else
+		[[TGClient shared] languagePackInfo:packId completion:^(NSDictionary *info){
+			ask(info);
+		}];
+}
+
+- (void)setLanguagePackString {
+	NSString *packId = self.currentLanguage ?: @"Xcustom";
+	__weak typeof(self) weakSelf = self;
+	[TGAlertSheet showInput:@"Set a String"
+					message:@"The key to add or change in this local pack."
+				placeholder:@"Continue"
+					   text:@""
+					 action:@"Next"
+					 inView:self.view
+				 onSubmit:^(NSString *key){
+		[TGAlertSheet showInput:@"String Value"
+						message:[NSString stringWithFormat:@"Value for %@.", key]
+					placeholder:@"Continue"
+						   text:@""
+						 action:@"Save"
+						 inView:weakSelf.view
+					 onSubmit:^(NSString *value){
+			[[TGClient shared] setCustomLanguagePackString:key value:value
+													 pack:packId
+											   completion:^(BOOL ok){
+				if (!weakSelf)
+					return;
+				[weakSelf toast:ok ? @"String saved" : @"Telegram refused the string"];
+				[weakSelf refreshLanguagePage];
+			}];
+		}];
+	}];
+}
+
+- (void)deleteLanguagePackString {
+	NSString *packId = self.currentLanguage ?: @"Xcustom";
+	__weak typeof(self) weakSelf = self;
+	[TGAlertSheet showInput:@"Delete a String"
+					message:@"The key falls back to the base pack."
+				placeholder:@"Continue"
+					   text:@""
+					 action:@"Delete"
+					 inView:self.view
+				 onSubmit:^(NSString *key){
+		[[TGClient shared] setCustomLanguagePackString:key value:nil
+												 pack:packId
+										   completion:^(BOOL ok){
+			if (!weakSelf)
+				return;
+			[weakSelf toast:ok ? @"String deleted" : @"Telegram refused the delete"];
+			[weakSelf refreshLanguagePage];
+		}];
+	}];
+}
+
+- (void)installServerLanguagePack {
+	__weak typeof(self) weakSelf = self;
+	[TGAlertSheet showInput:@"Install Language Pack"
+					message:@"The id Telegram serves, for example de."
+				placeholder:@"de"
+					   text:@""
+					 action:@"Install"
+					 inView:self.view
+				 onSubmit:^(NSString *packId){
+		[[TGClient shared] addCustomServerLanguagePack:packId completion:^(BOOL ok){
+			if (!weakSelf)
+				return;
+			[weakSelf toast:ok ? @"Pack installed" : @"Telegram refused the pack"];
+			[weakSelf refreshLanguagePage];
+		}];
+	}];
+}
+
+- (void)synchronizeCurrentLanguagePack {
+	NSString *packId = self.currentLanguage ?: @"en";
+	__weak typeof(self) weakSelf = self;
+	[[TGClient shared] synchronizeLanguagePack:packId completion:^(BOOL ok){
+		if (!weakSelf)
+			return;
+		[weakSelf toast:ok ? @"Strings synchronized" : @"Telegram refused the sync"];
+		[weakSelf refreshLanguagePage];
+	}];
+}
+
+- (void)deleteCurrentLanguagePack {
+	NSString *packId = self.currentLanguage ?: @"en";
+	__weak typeof(self) weakSelf = self;
+	[TGAlertSheet showConfirm:[NSString stringWithFormat:@"%@ is removed from this device. The pack Telegram serves is untouched.", packId]
+						title:@"Delete Pack"
+					   action:@"Delete"
+				  destructive:YES
+					   inView:self.view
+					onConfirm:^{
+		[[TGClient shared] deleteLanguagePack:packId completion:^(BOOL ok){
+			if (!weakSelf)
+				return;
+			[weakSelf toast:ok ? @"Pack deleted" : @"Telegram refused: a pack in use cannot be deleted"];
+			weakSelf.languageInfo = nil;
+			[weakSelf refreshLanguagePage];
+		}];
+	}];
+}
+
+- (void)refreshLanguagePage {
+	[self rebuild];
+	[self loadForPage];
 }
 
 - (NSArray *)recentCallSections {

@@ -341,7 +341,8 @@ static const NSInteger kBannerSubtitleTag = 72;
 	NSString *queue = self.scheduledCount > 0
 			? [NSString stringWithFormat:@"Scheduled Messages (%ld)", (long)self.scheduledCount]
 			: @"Scheduled Messages";
-	[TGAlertSheet showChoices:@[@"Send At a Time...", @"Send When Online", queue]
+	[TGAlertSheet showChoices:@[@"Send At a Time...", @"Send When Online", queue,
+								@"Preview Formatting"]
 						title:nil
 			 destructiveIndex:-1
 					   inView:self.navigationController.view ?: self.view
@@ -350,14 +351,60 @@ static const NSInteger kBannerSubtitleTag = 72;
 			[weakSelf holdScheduledSheet];
 		else if (index == 1)
 			[weakSelf sendHeldText:[TGClient scheduledWhenOnline]];
-		else {
+		else if (index == 2){
 			TGScheduledViewController *vc = [[TGScheduledViewController alloc] init];
 			vc.chatId = weakSelf.chatId;
 			vc.chatTitle = weakSelf.chatTitle;
 			[weakSelf.navigationController pushViewController:vc animated:YES];
+		} else {
+			[weakSelf previewFormattingOfText:text];
 		}
 	}];
 }
+
+/// What the message will look like once Telegram reads the markup. The
+/// parser and the entity scanner are both TDLib's, so the preview is the
+/// same answer the send path gets rather than a second grammar.
+- (void)previewFormattingOfText:(NSString *)text {
+	__weak typeof(self) weakSelf = self;
+	[[TGClient shared] parseMarkdownText:text completion:^(NSDictionary *formatted){
+		[[TGClient shared] textEntitiesInText:text completion:^(NSArray *entities){
+			TGChatViewController *me = weakSelf;
+			if (!me)
+				return;
+			NSMutableString *body = [NSMutableString string];
+			NSArray *parsed = formatted[@"entities"];
+			[body appendFormat:@"Markdown: %lu formatting %@\n\n%@",
+					(unsigned long)parsed.count,
+					parsed.count == 1 ? @"entity" : @"entities",
+					formatted[@"text"] ?: text];
+			if (parsed.count){
+				[body appendString:@"\n\nFormatting:"];
+				for (NSDictionary *entity in parsed){
+					NSString *type = entity[@"type"][@"@type"] ?: @"";
+					if ([type hasPrefix:@"textEntityType"])
+						type = [type substringFromIndex:14];
+					[body appendFormat:@"\n• %@ at %@ for %@", type,
+							entity[@"offset"] ?: @(0), entity[@"length"] ?: @(0)];
+				}
+			}
+			if (entities.count){
+				[body appendString:@"\n\nDetected:"];
+				for (NSDictionary *entity in entities){
+					NSString *type = entity[@"type"][@"@type"] ?: @"";
+					if ([type hasPrefix:@"textEntityType"])
+						type = [type substringFromIndex:14];
+					[body appendFormat:@"\n• %@ at %@ for %@", type,
+							entity[@"offset"] ?: @(0), entity[@"length"] ?: @(0)];
+				}
+			}
+			[TGAlertSheet showMessage:body
+							   title:@"Formatting Preview"
+							   inView:me.view];
+		}];
+	}];
+}
+
 
 /// The composer's text, sent into whatever state was picked. The draft is
 /// lost with the field, which is the whole point: it is no longer waiting

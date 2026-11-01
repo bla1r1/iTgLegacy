@@ -7,6 +7,7 @@
 #import "TGFastDate.h"
 #import "TGOptions.h"
 #import "TGClientInternal.h"
+#import "TGInstantViewController.h"
 
 /// What the reply strip shows on its second line. The rows here are already
 /// flattened, so TGMessagePreview - which reads a raw TDLib content - cannot
@@ -228,6 +229,8 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 	NSString *text = m[@"text"] ?: @"";
 	if (text.length)
 		[items addObject:@{@"title" : @"Translate", @"icon" : @"edit"}];
+	if (text.length)
+		[items addObject:@{@"title" : @"Find Quote", @"icon" : @"data"}];
 	if ([text containsString:@"#"])
 		[items addObject:@{@"title" : @"Search by Hashtag", @"icon" : @"data"}];
 	if ([m[@"kind"] isEqualToString:@"messageLocation"] ||
@@ -684,6 +687,9 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 
 	} else if ([action isEqualToString:@"Translate"]){
 		[self translateActionMessage];
+
+	} else if ([action isEqualToString:@"Find Quote"]){
+		[self findQuoteInActionMessage];
 
 	} else if ([action isEqualToString:@"Search by Hashtag"]){
 		NSString *query = m[@"text"] ?: @"";
@@ -1460,51 +1466,135 @@ static NSString *TGStatGraphLine(NSDictionary *graph, NSString *label) {
 			TGChatViewController *me = weakSelf;
 			if (!me)
 				return;
-			if ([kind isEqualToString:@"publicChat"] && value.length){
-				[me openChatWithUsername:value];
-				return;
-			}
-			if ([kind isEqualToString:@"message"] && value.length){
-				// A link to the exact message, t.me/name/12345: the chat is
-				// resolved and the message jumped to, by Telegram's own
-				// answer at getMessageLinkInfo.
-				[me openMessageLink:value];
-				return;
-			}
-			if ([kind isEqualToString:@"inviteLink"] && value.length){
-				[me joinChatByInviteLink:value];
-				return;
-			}
-			if ([kind isEqualToString:@"stickerSet"] && value.length){
-				// A sticker set is not a chat, and opening one as a chat is
-				// what this did before. The pack's record comes in with the
-				// id and the count the sheet needs, and Telegram's answer
-				// says whether this account already has it.
-				[me askForStickerSet:value];
-				return;
-			}
-			if ([kind isEqualToString:@"phoneNumber"] && value.length){
-				[me openChatWithPhoneNumber:value];
-				return;
-			}
-			if ([kind isEqualToString:@"deepLink"] && value.length){
-				[TGAlertSheet showMessage:value
-									title:@"LegacyTG"
-									inView:me.navigationController.view ?: me.view];
-				return;
-			}
-			// Anything Telegram has no kind for falls through to the paths
-			// this screen has always matched by hand.
-			[me openTelegramLinkByPath:clean url:u
-							isTelegramHost:isTelegramHost
-						  isTelegramScheme:isTelegramScheme
-									  host:host];
+			// Telegram can spell one link many ways. Asking it for the
+			// canonical form before opening means a share link, a short
+			// link and a copied link all land on the same chat.
+			[me resolveInternalLinkKind:kind value:value original:clean
+						 isTelegramHost:isTelegramHost
+					   isTelegramScheme:isTelegramScheme];
 		}];
 		return;
 	}
 
-	[self openPlainLink:u];
+	[self presentExternalLink:clean];
 }
+
+/// The canonical t.me/tg:// form of a link Telegram has already classified,
+/// then the screen acts on that form. A failed conversion falls back to the
+/// text the message carried.
+- (void)resolveInternalLinkKind:(NSString *)kind
+						  value:(NSString *)value
+					   original:(NSString *)original
+				 isTelegramHost:(BOOL)isTelegramHost
+			   isTelegramScheme:(BOOL)isTelegramScheme {
+	NSDictionary *type = nil;
+	if ([kind isEqualToString:@"publicChat"] && value.length)
+		type = @{@"@type" : @"internalLinkTypePublicChat",
+				 @"chat_username" : value,
+				 @"draft_text" : @"",
+				 @"open_profile" : @NO,
+				 @"unpaid_messages_token" : @""};
+	else if ([kind isEqualToString:@"message"] && value.length)
+		type = @{@"@type" : @"internalLinkTypeMessage", @"url" : value};
+	else if ([kind isEqualToString:@"inviteLink"] && value.length)
+		type = @{@"@type" : @"internalLinkTypeChatInvite", @"invite_link" : value};
+	else if ([kind isEqualToString:@"stickerSet"] && value.length)
+		type = @{@"@type" : @"internalLinkTypeStickerSet",
+				 @"sticker_set_name" : value,
+				 @"expect_custom_emoji" : @NO};
+	else if ([kind isEqualToString:@"phoneNumber"] && value.length)
+		type = @{@"@type" : @"internalLinkTypeUserPhoneNumber",
+				 @"phone_number" : value,
+				 @"draft_text" : @"",
+				 @"open_profile" : @NO,
+				 @"unpaid_messages_token" : @""};
+	else if ([kind isEqualToString:@"userToken"] && value.length)
+		type = @{@"@type" : @"internalLinkTypeUserToken", @"token" : value};
+
+	if (!type){
+		// A deep link has no InternalLinkType to convert, and the path
+		// fallback reads the original text.
+		[self continueInternalLinkKind:kind value:value link:original
+						isTelegramHost:isTelegramHost
+					  isTelegramScheme:isTelegramScheme];
+		return;
+	}
+
+	__weak typeof(self) weakSelf = self;
+	[[TGClient shared] internalLinkForType:type http:YES completion:^(NSString *link){
+		TGChatViewController *me = weakSelf;
+		if (!me)
+			return;
+		NSString *resolved = link.length ? link : original;
+		if (link.length && ![resolved isEqualToString:original])
+			[TGSnackbar showInView:me.navigationController.view ?: me.view
+							  text:[NSString stringWithFormat:@"Opened %@", resolved]
+						   seconds:2 onCommit:nil];
+		[me continueInternalLinkKind:kind value:value link:resolved
+					  isTelegramHost:isTelegramHost
+					isTelegramScheme:isTelegramScheme];
+	}];
+}
+
+/// The branches that act on a classified internal link, now reading the
+/// canonical URL rather than the text that was tapped.
+- (void)continueInternalLinkKind:(NSString *)kind
+						   value:(NSString *)value
+							link:(NSString *)link
+				   isTelegramHost:(BOOL)isTelegramHost
+				 isTelegramScheme:(BOOL)isTelegramScheme {
+	NSURL *u = [NSURL URLWithString:link];
+	if (!u.scheme.length)
+		u = [NSURL URLWithString:[NSString stringWithFormat:@"http://%@", link]];
+	NSString *host = u.host.lowercaseString;
+
+	if ([kind isEqualToString:@"publicChat"] && value.length){
+		[self openChatWithUsername:value];
+		return;
+	}
+	if ([kind isEqualToString:@"message"] && value.length){
+		// A link to the exact message, t.me/name/12345: the chat is
+		// resolved and the message jumped to, by Telegram's own
+		// answer at getMessageLinkInfo.
+		[self openMessageLink:value];
+		return;
+	}
+	if ([kind isEqualToString:@"inviteLink"] && value.length){
+		[self joinChatByInviteLink:value];
+		return;
+	}
+	if ([kind isEqualToString:@"stickerSet"] && value.length){
+		// A sticker set is not a chat, and opening one as a chat is
+		// what this did before. The pack's record comes in with the
+		// id and the count the sheet needs, and Telegram's answer
+		// says whether this account already has it.
+		[self askForStickerSet:value];
+		return;
+	}
+	if ([kind isEqualToString:@"phoneNumber"] && value.length){
+		[self openChatWithPhoneNumber:value];
+		return;
+	}
+	if ([kind isEqualToString:@"userToken"] && value.length){
+		// A user link that carries no username: the token is the only handle
+		// Telegram gives, and searchUserByToken resolves it.
+		[self openChatWithUserToken:value];
+		return;
+	}
+	if ([kind isEqualToString:@"deepLink"] && value.length){
+		[TGAlertSheet showMessage:value
+							title:@"LegacyTG"
+							inView:self.navigationController.view ?: self.view];
+		return;
+	}
+	// Anything Telegram has no kind for falls through to the paths
+	// this screen has always matched by hand.
+	[self openTelegramLinkByPath:link url:u
+					isTelegramHost:isTelegramHost
+				  isTelegramScheme:isTelegramScheme
+							  host:host];
+}
+
 
 /// Joining by a link, with the snackbar the tap used to get inline.
 - (void)joinChatByInviteLink:(NSString *)link {
@@ -1589,6 +1679,35 @@ static NSString *TGStatGraphLine(NSDictionary *graph, NSString *label) {
 	}];
 }
 
+/// A user link whose only handle is a token - the form Telegram gives for an
+/// account with no username. searchUserByToken is the one request that turns
+/// it into a name; a refusal is the server's words, not a guessed chat.
+- (void)openChatWithUserToken:(NSString *)token {
+	__weak typeof(self) weakSelf = self;
+	[[TGClient shared] searchUserByToken:token completion:^(NSDictionary *user,
+															NSString *error){
+		TGChatViewController *me = weakSelf;
+		if (!me)
+			return;
+		int64_t userId = [user[@"id"] longLongValue];
+		if (!userId){
+			[TGSnackbar showInView:me.navigationController.view ?: me.view
+							  text:(error ?: @"That user link names no account")
+						   seconds:2 onCommit:nil];
+			return;
+		}
+		[[TGClient shared] privateChatWithUser:userId completion:^(int64_t chatId){
+			if (!chatId)
+				return;
+			TGChatViewController *chatVC = [[TGChatViewController alloc] init];
+			chatVC.chatId = chatId;
+			chatVC.chatTitle = user[@"name"] ?: user[@"username"] ?: @"Chat";
+			chatVC.hidesBottomBarWhenPushed = YES;
+			[me.navigationController pushViewController:chatVC animated:YES];
+		}];
+	}];
+}
+
 /// The paths this screen has always matched by hand, now the fallback for a
 /// link Telegram gave no kind for.
 - (void)openTelegramLinkByPath:(NSString *)clean
@@ -1651,6 +1770,98 @@ static NSString *TGStatGraphLine(NSDictionary *graph, NSString *label) {
 	if (url)
 		[[UIApplication sharedApplication] openURL:url];
 }
+
+/// An external link gets one sheet before it leaves the app. Telegram is
+/// asked twice: which browser the host needs, and whether the link signs in
+/// or asks for write access. A login link is not opened until the user has
+/// seen the domain and the permission, which is the whole reason TDLib
+/// exposes getExternalLinkInfo.
+- (void)presentExternalLink:(NSString *)link {
+	__weak typeof(self) weakSelf = self;
+	[[TGClient shared] webBrowserTypeForURL:link completion:^(NSString *browser){
+		[[TGClient shared] externalLinkInfoForURL:link completion:^(NSDictionary *info){
+			TGChatViewController *me = weakSelf;
+			if (!me)
+				return;
+			[me showExternalLink:link browser:browser info:info];
+		}];
+	}];
+}
+
+- (void)showExternalLink:(NSString *)link
+				 browser:(NSString *)browser
+					info:(NSDictionary *)info {
+	NSString *host = [NSURL URLWithString:link].host ?: link;
+	BOOL confirm = [info[@"kind"] isEqualToString:@"confirm"];
+	BOOL write = [info[@"requestWriteAccess"] boolValue];
+	NSString *domain = info[@"domain"];
+
+	NSMutableString *message = [NSMutableString string];
+	if (browser.length)
+		[message appendFormat:@"Telegram says this opens in %@.\n",
+				[browser isEqualToString:@"inApp"] ? @"its own browser" : @"Safari"];
+	else
+		[message appendString:@"Telegram does not name a browser for this host.\n"];
+	if (confirm && domain.length)
+		[message appendFormat:@"You will sign in to %@.", domain];
+	else if (confirm)
+		[message appendString:@"The site asks you to sign in."];
+	if (write)
+		[message appendString:@"\nIt will be allowed to message you."];
+
+	__weak typeof(self) weakSelf = self;
+	[TGAlertSheet showChoices:@[@"Open Link", @"Instant View", @"Copy Link"]
+						title:host
+					  message:message
+			 destructiveIndex:-1
+					   inView:self.navigationController.view ?: self.view
+					 onChoice:^(NSInteger index){
+		TGChatViewController *me = weakSelf;
+		if (!me)
+			return;
+		if (index == 0){
+			[[TGClient shared] externalLinkForURL:link
+								 allowWriteAccess:write
+									  completion:^(NSString *resolved){
+				NSString *target = resolved.length ? resolved : link;
+				[me openPlainLink:[NSURL URLWithString:target]];
+			}];
+		} else if (index == 1){
+			[me openInstantViewForLink:link];
+		} else {
+			[UIPasteboard generalPasteboard].string = link;
+			[TGSnackbar showInView:me.navigationController.view ?: me.view
+							  text:@"Link copied" seconds:2 onCommit:nil];
+		}
+	}];
+}
+
+/// Telegram's reader view, pushed as its own screen. A page without one is
+/// not an error worth a screen: the sheet says so and the user can open it
+/// in Safari instead.
+- (void)openInstantViewForLink:(NSString *)link {
+	__weak typeof(self) weakSelf = self;
+	[[TGClient shared] instantViewForURL:link onlyLocal:NO
+							  completion:^(NSDictionary *view){
+		TGChatViewController *me = weakSelf;
+		if (!me)
+			return;
+		NSArray *blocks = view[@"blocks"];
+		if (![blocks isKindOfClass:NSArray.class] || !blocks.count){
+			[TGAlertSheet showMessage:@"Telegram has no Instant View for this page."
+							   title:@"Instant View"
+							   inView:me.navigationController.view ?: me.view];
+			return;
+		}
+		TGInstantViewController *reader = [[TGInstantViewController alloc] init];
+		reader.pageTitle = [NSURL URLWithString:link].host ?: @"Instant View";
+		reader.sourceURL = link;
+		reader.blocks = blocks;
+		reader.hidesBottomBarWhenPushed = YES;
+		[me.navigationController pushViewController:reader animated:YES];
+	}];
+}
+
 
 #pragma mark - message record sheets
 
@@ -1870,17 +2081,85 @@ static NSString *TGSheetDate(NSTimeInterval unix) {
 	[self withActionMessage:^(int64_t messageId, int64_t chatId, NSDictionary *m){
 		NSString *language = [[NSLocale currentLocale] objectForKey:
 				NSLocaleLanguageCode] ?: @"en";
+		NSString *text = m[@"text"] ?: @"";
+		// translateText keeps the text's entities and takes a tone, which is
+		// what a plain message needs. translateMessageText remains the
+		// fallback for a message with no flattened text, where Telegram can
+		// still translate the content it holds.
+		if (text.length){
+			[[TGClient shared] translateText:text toLanguageCode:language tone:@""
+								  completion:^(NSString *translated){
+				TGChatViewController *me = weakSelf;
+				if (!me)
+					return;
+				if (translated.length){
+					[TGAlertSheet showMessage:translated
+									   title:@"Translation"
+									   inView:me.view];
+					return;
+				}
+				[[TGClient shared] translateMessage:messageId inChat:chatId
+											 toCode:language
+										  completion:^(NSString *fallback){
+					[TGAlertSheet showMessage:(fallback.length ? fallback : @"Not translatable")
+									   title:@"Translation"
+									   inView:me.view];
+				}];
+			}];
+			return;
+		}
 		[[TGClient shared] translateMessage:messageId inChat:chatId
 									 toCode:language
-								  completion:^(NSString *text){
+								  completion:^(NSString *translated){
 			TGChatViewController *me = weakSelf;
 			if (!me) return;
-			[TGAlertSheet showMessage:(text.length ? text : @"Not translatable")
+			[TGAlertSheet showMessage:(translated.length ? translated : @"Not translatable")
 							   title:@"Translation"
 							   inView:me.view];
 		}];
 	}];
 }
+
+/// Where a phrase sits in this message, found by Telegram rather than by
+/// NSString. The position is UTF-16 units, so it is the same number a
+/// selection API on this OS would use.
+- (void)findQuoteInActionMessage {
+	__weak typeof(self) weakSelf = self;
+	[self withActionMessage:^(int64_t messageId, int64_t chatId, NSDictionary *m){
+		NSString *text = m[@"text"] ?: @"";
+		if (!text.length)
+			return;
+		TGChatViewController *me = weakSelf;
+		if (!me)
+			return;
+		[TGAlertSheet showInput:@"Find Quote"
+						message:@"Telegram returns the character position of the phrase."
+					placeholder:@"Phrase in this message"
+						   text:@""
+						 action:@"Find"
+						 inView:me.view
+					 onSubmit:^(NSString *quote){
+			[[TGClient shared] searchQuote:quote inText:text position:0
+								completion:^(NSInteger position, BOOL found){
+				TGChatViewController *live = weakSelf;
+				if (!live)
+					return;
+				if (!found){
+					[TGAlertSheet showMessage:@"That phrase is not in this message."
+									   title:@"Find Quote"
+									   inView:live.view];
+					return;
+				}
+				[TGAlertSheet showMessage:
+						[NSString stringWithFormat:@"“%@” starts at character %ld.",
+								quote, (long)position]
+								   title:@"Find Quote"
+								   inView:live.view];
+			}];
+		}];
+	}];
+}
+
 
 - (void)showRecentLocationsInActionMessage {
 	__weak typeof(self) weakSelf = self;

@@ -63,6 +63,12 @@ extern NSString *const TGNotificationSettingsChangedNotification;
 /// A forum topic was created, renamed, pinned, closed or read. userInfo
 /// carries "chatId" when the update names one.
 extern NSString *const TGForumTopicsChangedNotification;
+
+/// Telegram asked this app to prove it is genuine before a request can go
+/// through. userInfo carries "verificationId" and "nonce"; the settings
+/// sheet hands the verification service's token back through
+/// -setApplicationVerificationToken:verificationId:completion:.
+extern NSString *const TGApplicationVerificationRequiredNotification;
 // Fired when updateChatActionBar arrives: the bar over a chat nobody knows
 // - report spam, add to contacts - follows the update, not only the fetch.
 extern NSString *const TGChatActionBarChangedNotification;
