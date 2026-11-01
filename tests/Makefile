@@ -30,10 +30,12 @@ CFLAGS  := \
     -I$(ROOT)/include \
     -I$(ROOT)/compat \
     -I$(SRC) \
+    -I$(SRC)/App \
     -I$(SRC)/Core \
     -I$(SRC)/Controllers \
     -I$(SRC)/Views \
     -I$(SRC)/UI \
+    -I$(SRC)/Media \
     -I$(SRC)/Calls \
     -I$(SRC)/Audio \
     -I$(ROOT)/third_party \
@@ -77,7 +79,7 @@ CLIENT_OBJC_SRCS := \
     $(ROOT)/third_party/yyjson/yyjson.c \
     $(SRC)/Core/TGBase64.m \
     $(SRC)/Core/TGUpdateType.c \
-    $(SRC)/Core/TGSVGPath.c \
+    $(SRC)/Views/TGSVGPath.c \
     $(SRC)/Views/TGIconPaths.m \
     $(SRC)/Core/TGOptions.mm \
     $(SRC)/Core/TGJson.mm \

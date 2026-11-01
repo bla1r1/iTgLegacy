@@ -654,7 +654,7 @@ static const CGFloat kIconDumpSide = 52.0f;
 			addIcon(@"play", @"Actions & Inputs", @"Media video play arrow", [TGIcons play]);
 			addIcon(@"pause", @"Actions & Inputs", @"Media video pause glyph", [TGIcons pause]);
 			addIcon(@"phoneCall", @"Actions & Inputs", @"Phone handset call icon", [TGIcons phoneCall]);
-			addIcon(@"searchLens", @"Actions & Inputs", @"Magnifying search lens", [TGIcons searchLensOfSize:22 colour:[UIColor colorWithWhite:0.25 alpha:1]]);
+			addIcon(@"searchLens", @"Actions & Inputs", @"Magnifying search lens", [TGIcons searchLensOfSize:22 colour:[[TGTheme shared] iconCatalogGlyphColour]]);
 			addIcon(@"backChevron", @"Actions & Inputs", @"Navigation back chevron", [TGIcons backChevronWithColour:[[TGTheme shared] accentColour]]);
 			addIcon(@"checkboxSelected", @"Actions & Inputs", @"Multi-select checked box", [TGIcons selectionCheckboxSelected:YES]);
 			addIcon(@"checkboxUnselected", @"Actions & Inputs", @"Multi-select unchecked circle", [TGIcons selectionCheckboxSelected:NO]);

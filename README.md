@@ -35,9 +35,12 @@ Register at https://my.telegram.org → API development tools, then fill in `inc
 LegacyTG/
 ├── Makefile
 ├── src/
-│   ├── Core/        # client, device logic
+│   ├── App/         # app entry: main, AppDelegate, URL routing, dev bench
+│   ├── Core/        # client, TDLib bridge, theme, style, device logic
 │   ├── Controllers/ # ViewControllers
-│   ├── Views/       # UI components, cells
+│   ├── Views/       # UIKit components, cells, icons
+│   ├── UI/          # reusable controls (buttons, fields, avatars)
+│   ├── Media/       # decoders (WebP images, WebM sticker video)
 │   ├── Calls/       # VoIP & E2EE calls
 │   └── Audio/       # voice notes
 ├── resources/       # Info.plist, fonts, entitlements

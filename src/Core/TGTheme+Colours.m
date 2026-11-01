@@ -330,6 +330,10 @@
 	return rgb(0xFF, 0xB3, 0x00);       ///< the gold on a gift star
 }
 
+- (UIColor *)iconCatalogGlyphColour {
+	return [UIColor colorWithWhite:0.25f alpha:1.0f];   ///< the search-lens glyph on the light catalogue tile
+}
+
 @end
 
 // vim:ft=objc

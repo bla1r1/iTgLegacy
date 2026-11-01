@@ -71,10 +71,12 @@ MIN_IOS   := -miphoneos-version-min=6.0
 INCLUDES  := -I$(ROOT_DIR)/include \
              -I$(ROOT_DIR)/compat \
              -I$(ROOT_DIR)/src \
+             -I$(ROOT_DIR)/src/App \
              -I$(ROOT_DIR)/src/Core \
              -I$(ROOT_DIR)/src/Controllers \
              -I$(ROOT_DIR)/src/Views \
              -I$(ROOT_DIR)/src/UI \
+             -I$(ROOT_DIR)/src/Media \
              -I$(ROOT_DIR)/src/Calls \
              -I$(ROOT_DIR)/src/Audio \
              -I$(ROOT_DIR)/third_party \
@@ -176,10 +178,11 @@ LIBTG_SRC_C :=
 LIBTG_SRC_CXX :=
 
 APP_SRC_M := \
-	src/Core/AppDelegate.m \
-	src/Core/AppDelegate+URL.m \
+	src/App/AppDelegate.m \
+	src/App/AppDelegate+URL.m \
 	src/Controllers/RootViewController.m \
-	src/main.m \
+	src/App/main.m \
+	src/App/TGBench.m \
 	src/Core/TGClient.m \
 	src/Core/TGClient+Auth.m \
 	src/Core/TGClient+Messages.m \
@@ -202,7 +205,6 @@ APP_SRC_M := \
 	src/Core/TGStyle.m \
 	src/Core/TGTextDraw.m \
 	src/Core/TGPerf.m \
-	src/Core/TGBench.m \
 	src/Core/TGStickerBudget.m \
 	src/Core/TGThemeFile.m \
 	src/Views/TGIcons.m \
@@ -228,8 +230,8 @@ APP_SRC_M := \
 	src/UI/TGBadge.m \
 	src/UI/TGReactionPicker.m \
 	src/UI/TGAvatarView.m \
-	src/UI/TGGalleryViewController.m \
 	src/Controllers/TGSearchViewController.m \
+	src/Controllers/TGGalleryViewController.m \
 	src/Controllers/TGPlaceholderViewController.m \
 	src/Controllers/TGQRViewController.m \
 	src/Controllers/TGLoginViewController.m \
@@ -261,6 +263,7 @@ APP_SRC_M := \
 	src/Controllers/TGContactsViewController.m \
 	src/Controllers/TGNewContactViewController.m \
 	src/Controllers/TGTopicsViewController.m \
+	src/Controllers/TGSavedTopicsViewController.m \
 	src/Controllers/TGScheduledViewController.m \
 	src/Controllers/TGForwardPicker.m \
 	src/Controllers/TGCallViewController.m \
@@ -285,8 +288,8 @@ APP_SRC_M := \
 	src/Calls/TGCallMessages.m \
 	src/Calls/TGCallReflector.m \
 	third_party/opusenc/opusenc.m \
-	src/Views/UIImage+WebP.m \
-	src/Views/TGWebMDecoder.m \
+	src/Media/UIImage+WebP.m \
+	src/Media/TGWebMDecoder.m \
 	src/Views/TGMediaViewer.m \
 	src/Audio/TGMusicPlayer.m
 
@@ -307,7 +310,7 @@ APP_SRC_MM := \
 APP_SRC_C := \
 	third_party/yyjson/yyjson.c \
 	src/Core/TGUpdateType.c \
-	src/Core/TGSVGPath.c \
+	src/Views/TGSVGPath.c \
 	src/Core/TGSampler.c \
 	compat/tlv_polyfill.c \
 	src/Calls/TGCallCrypto.c \

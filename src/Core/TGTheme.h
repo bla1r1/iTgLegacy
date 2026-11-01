@@ -258,6 +258,8 @@ typedef NS_ENUM(NSInteger, TGButtonStyle) {
 
 - (UIColor *)giftStarColour;        ///< the gold on a gift's star
 
+- (UIColor *)iconCatalogGlyphColour; ///< the dark glyph stamped on a light icon-catalogue tile
+
 @end
 
 @interface TGTheme (Gradients)

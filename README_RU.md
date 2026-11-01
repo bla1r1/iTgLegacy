@@ -35,9 +35,12 @@ cp include/tg_config.h.example include/tg_config.h
 LegacyTG/
 ├── Makefile
 ├── src/
-│   ├── Core/        # клиент, логика устройства
+│   ├── App/         # вход приложения: main, AppDelegate, URL-роутинг
+│   ├── Core/        # клиент, TDLib bridge, тема, стиль, логика устройства
 │   ├── Controllers/ # ViewControllers
-│   ├── Views/       # UI-компоненты, ячейки
+│   ├── Views/       # UIKit-компоненты, ячейки, иконки
+│   ├── UI/          # переиспользуемые контролы (кнопки, поля, аватары)
+│   ├── Media/       # декодеры (WebP-картинки, WebM-стикеры)
 │   ├── Calls/       # VoIP и E2EE-звонки
 │   └── Audio/       # голосовые сообщения
 ├── resources/       # Info.plist, шрифты, entitlements

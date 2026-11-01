@@ -44,7 +44,7 @@ SDK="$(xcrun --sdk macosx --show-sdk-path)"
 	echo "this SDK has no iOSSupport, so it cannot build Catalyst"; exit 1; }
 
 # The files whose third-party libraries have no macabi build.
-SKIP="src/Views/UIImage+WebP.m src/Views/TGWebMDecoder.m src/Audio/TGVoiceDecoder.m src/Audio/TGStreamingVoicePlayer.m src/Audio/TGVoiceRecorder.mm src/Views/TGLottieView.mm src/Calls/TGCall.mm src/Calls/TGCallAudioEngine.mm src/Calls/TGCallIce.m src/Calls/TGCallStun.m src/Calls/TGCallMessages.m src/Calls/TGCallReflector.m"
+SKIP="src/Media/UIImage+WebP.m src/Media/TGWebMDecoder.m src/Audio/TGVoiceDecoder.m src/Audio/TGStreamingVoicePlayer.m src/Audio/TGVoiceRecorder.mm src/Views/TGLottieView.mm src/Calls/TGCall.mm src/Calls/TGCallAudioEngine.mm src/Calls/TGCallIce.m src/Calls/TGCallStun.m src/Calls/TGCallMessages.m src/Calls/TGCallReflector.m"
 
 FLAGS="-target arm64-apple-ios${DEPLOY_TARGET}-macabi
 	-isysroot ${SDK}
@@ -52,7 +52,8 @@ FLAGS="-target arm64-apple-ios${DEPLOY_TARGET}-macabi
 	-isystem ${SDK}/System/iOSSupport/usr/include
 	-I${ROOT}/include -I${ROOT}/compat -I${ROOT}/libs -I${ROOT}/src
 	-I${ROOT}/src/Core -I${ROOT}/src/Controllers -I${ROOT}/src/Views
-	-I${ROOT}/src/UI -I${ROOT}/src/Calls -I${ROOT}/src/Audio
+	-I${ROOT}/src/App -I${ROOT}/src/UI -I${ROOT}/src/Media
+	-I${ROOT}/src/Calls -I${ROOT}/src/Audio
 	-I${ROOT}/third_party -I${ROOT}/third_party/libvpx/include
 	-I${ROOT}/third_party/nestegg/include -I${ROOT}/third_party/ogg
 	-I${ROOT}/third_party/ogg/ogg -I${ROOT}/third_party/opus/include
@@ -69,7 +70,7 @@ sources() {
 	ls src/*/*.m src/*/*.mm src/*.m 2>/dev/null
 	# The C core the on-device build links as well: icon SVG paths and the
 	# perf sampler TGBench reads.
-	echo "src/Core/TGSVGPath.c"
+	echo "src/Views/TGSVGPath.c"
 	echo "src/Core/TGSampler.c"
 	echo "src/Core/TGUpdateType.c"
 	echo "third_party/yyjson/yyjson.c"
