@@ -2,6 +2,7 @@
 #import "TGStyle.h"
 #import "TGAlertSheet.h"
 #import "TGMemberCell.h"
+#import "TGGroupMemberActions.h"
 
 /// Flattened messages carry a unix date, not a formatted stamp; the shared
 /// lists want a short one beside each row.
@@ -99,6 +100,15 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 	[self buildHeader];
 	[self loadDetails];
 	[self loadMedia];
+
+	// A tap opens who they are; a hold keeps the member sheet that used to
+	// be the only thing a tap did. Cancelling touches on recognition stops
+	// the lift after a hold from also selecting the row underneath.
+	UILongPressGestureRecognizer *memberHold = [[UILongPressGestureRecognizer alloc]
+			initWithTarget:self action:@selector(memberRowHeld:)];
+	memberHold.minimumPressDuration = 0.5;
+	memberHold.cancelsTouchesInView = YES;
+	[self.tableView addGestureRecognizer:memberHold];
 
 	__weak typeof(self) weakSelf = self;
 	[[NSNotificationCenter defaultCenter] addObserverForName:TGThemeChangedNotification
@@ -261,8 +271,9 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 				[rows addObject:@[@"about", info[@"description"]]];
 			if ([info[@"members"] integerValue] > 0)
 				[rows addObject:@[@"members", [info[@"members"] stringValue]]];
-			if ([info[@"admins"] integerValue] > 0)
-				[rows addObject:@[@"admins", [info[@"admins"] stringValue]]];
+			// No administrator count: the member rows carry an Owner or
+			// Admin badge beside the people who hold that role, which says
+			// who they are instead of only how many there are.
 			if ([info[@"inviteLink"] length])
 				[rows addObject:@[@"invite link", info[@"inviteLink"]]];
 			weakSelf.details = rows;
@@ -475,7 +486,8 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 		int64_t userId = [member[@"id"] longLongValue];
 		NSString *name = [member[@"name"] length]
 				? member[@"name"] : [[TGClient shared] nameForUserId:userId];
-		[memberCell setName:name userId:userId inTable:tableView];
+		[memberCell setName:name userId:userId status:member[@"status"]
+						tag:member[@"tag"] inTable:tableView];
 		return memberCell;
 	}
 
@@ -662,6 +674,20 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 	return cell;
 }
 
+/// A hold on a member row is the old tap: the sheet of member actions. It
+/// is the only way to reach Promote, Ban or Hand Over now that a tap opens
+/// the person's profile, and it never turns into a chat on its own.
+- (void)memberRowHeld:(UILongPressGestureRecognizer *)hold {
+	if (hold.state != UIGestureRecognizerStateBegan)
+		return;
+	NSIndexPath *path = [self.tableView indexPathForRowAtPoint:
+			[hold locationInView:self.tableView]];
+	if (!path || path.section != kSectionMembers ||
+			path.row >= (NSInteger)self.members.count)
+		return;
+	[self showMemberActionsFor:self.members[(NSUInteger)path.row]];
+}
+
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
 	[tableView deselectRowAtIndexPath:indexPath animated:YES];
 
@@ -677,7 +703,11 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 
 	if (indexPath.section == kSectionMembers &&
 		indexPath.row < (NSInteger)self.members.count){
-		[self showMemberActionsFor:self.members[indexPath.row]];
+		// A member row is a person, not a chat: open their profile. The
+		// sheet with Send Message and the administrator actions stays on a
+		// hold, which is where this screen kept it.
+		[TGGroupMemberActions openProfileForMember:self.members[indexPath.row]
+											  from:self];
 		return;
 	}
 

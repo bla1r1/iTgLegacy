@@ -51,6 +51,23 @@
 /// Where the hold opened the menu, so the More card can appear beside the
 /// same bubble after the first card is dismissed.
 @property (nonatomic, assign) CGPoint actionMenuPoint;
+/// The held message's presentation: the dimmed, blurred chat behind it and
+/// its own snapshot lifted clear of the table. The cell itself never moves;
+/// these are the two views the hold owns and takes down when the menu closes.
+@property (nonatomic, strong) UIView *holdBackdropView;
+@property (nonatomic, strong) UIImageView *holdBackdropImageView;
+@property (nonatomic, strong) UIImageView *holdLiftView;
+/// Where the lift started, so dismissing can put it back before removing it.
+@property (nonatomic, assign) CGRect holdLiftOriginRect;
+/// Bumped for every lift and every dismissal; a late blur or animation
+/// completion that no longer matches this belongs to a hold that is gone.
+@property (nonatomic, assign) NSInteger holdGeneration;
+/// Whether the table was scrolling before the hold pinned it, so a dismiss
+/// gives the chat back exactly as it was.
+@property (nonatomic, assign) BOOL holdTableWasScrollable;
+/// True while the lifted picture is animating back into the list. A second
+/// dismiss in that window is the same dismissal, not a new one.
+@property (nonatomic, assign) BOOL holdReturning;
 @property (nonatomic, assign) int64_t replyToId;             // composing a reply
 @property (nonatomic, assign) int64_t editingId;             // editing instead
 @property (nonatomic, strong) UIView *composeBanner;         // "Reply to ..."
@@ -267,6 +284,20 @@
 - (void)showActionsForRow:(NSInteger)row;
 - (void)showActionsForRow:(NSInteger)row atPoint:(CGPoint)point;
 - (void)messageHeld:(UILongPressGestureRecognizer *)hold;
+/// Take the lift, the backdrop and the table's scroll state down. Safe to
+/// call when nothing is lifted; the hold menu calls it as its dismissal.
+- (void)endHoldPresentation;
+/// Snapshot `cell`'s bubble, dim and blur the chat behind it, and lift the
+/// copy to the top of the screen. Returns the rect it lands on - the menu's
+/// anchor - or CGRectZero when the cell is not a bubble to lift, in which
+/// case the caller keeps the old point-anchored menu. `didLift` runs when
+/// the lift animation lands, so the menu appears under the settled copy.
+- (CGRect)beginHoldPresentationForCell:(TGBubbleCell *)cell
+                              didLift:(void (^)(CGRect anchor))didLift;
+/// Remove any lift still on screen without its return animation. Used when a
+/// new hold replaces one that is still fading, so its backdrop is not baked
+/// into the next capture.
+- (void)discardHoldPresentation;
 - (void)runMessageAction:(NSString *)action;
 - (void)showMoreActions;
 - (void)showReactorsOfMessage:(NSDictionary *)m;

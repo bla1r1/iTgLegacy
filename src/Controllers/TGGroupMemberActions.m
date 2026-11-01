@@ -9,6 +9,49 @@
 #import "TGClient.h"
 #import "TGAlertSheet.h"
 #import "TGChatViewController.h"
+#import "TGProfileViewController.h"
+
+/// Pushes `controller` when the host is on a navigation stack; otherwise
+/// wraps it in one and presents that. A profile opened from a popover or a
+/// modal has no stack to push onto, and pushing nil there is the silent tap
+/// this exists to remove. The Done button is kept alive with the wrapper.
+@interface TGControllerDismisser : NSObject
+@property (nonatomic, weak) UIViewController *wrapper;
+@end
+
+static NSMutableArray *sDismissers;
+
+@implementation TGControllerDismisser
+- (void)close:(id)sender {
+	UIViewController *me = self.wrapper;
+	[me dismissViewControllerAnimated:YES completion:nil];
+	[sDismissers removeObject:self];
+}
+@end
+
+void TGPresentControllerFrom(UIViewController *controller, UIViewController *host) {
+	if (!controller || !host)
+		return;
+	UINavigationController *stack = host.navigationController;
+	if (stack){
+		[stack pushViewController:controller animated:YES];
+		return;
+	}
+	NSLog(@"TGPresentControllerFrom: %@ has no navigation stack; presenting",
+		  NSStringFromClass(host.class));
+	UINavigationController *wrapper = [[UINavigationController alloc]
+			initWithRootViewController:controller];
+	TGControllerDismisser *closer = [[TGControllerDismisser alloc] init];
+	closer.wrapper = wrapper;
+	if (!sDismissers)
+		sDismissers = [NSMutableArray array];
+	[sDismissers addObject:closer];
+	if (!controller.navigationItem.leftBarButtonItem)
+		controller.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc]
+				initWithBarButtonSystemItem:UIBarButtonSystemItemDone
+									 target:closer action:@selector(close:)];
+	[host presentViewController:wrapper animated:YES completion:nil];
+}
 
 @interface TGGroupMemberActions ()
 + (void)runAction:(NSString *)action
@@ -24,6 +67,27 @@
 @end
 
 @implementation TGGroupMemberActions
+
++ (void)openProfileForMember:(NSDictionary *)member from:(UIViewController *)host {
+	if (!host)
+		return;
+	int64_t userId = [member[@"id"] longLongValue];
+	if (!userId){
+		NSLog(@"TGGroupMemberActions: member has no user id, cannot open profile");
+		return;
+	}
+	NSString *name = [member[@"name"] length] ? member[@"name"]
+			: [[TGClient shared] nameForUserId:userId];
+	TGProfileViewController *profile = [[TGProfileViewController alloc]
+			initWithChatId:userId userId:userId title:name ?: @""];
+	if (!profile){
+		NSLog(@"TGGroupMemberActions: could not create a profile for user %lld",
+			  userId);
+		return;
+	}
+	profile.hidesBottomBarWhenPushed = YES;
+	TGPresentControllerFrom(profile, host);
+}
 
 + (void)showForMember:(NSDictionary *)member
 			   inChat:(int64_t)chatId
@@ -57,6 +121,10 @@
 		}
 
 		NSMutableArray *choices = [NSMutableArray arrayWithObject:@"Member Info"];
+		// The profile is a person's page; the record is the group's own
+		// note about them - their tag and any restriction. Both stay here,
+		// and neither is a chat.
+		[choices addObject:@"Member Details"];
 		[choices addObject:@"Send Message"];
 		if (iCanEdit){
 			[choices addObject:theyAreAdmin ? @"Dismiss as Admin"
@@ -102,6 +170,13 @@
 	};
 
 	if ([action isEqualToString:@"Member Info"]){
+		// A person, not a conversation: this opens their profile. Send
+		// Message is the row that opens a chat, and only it does.
+		[self openProfileForMember:@{@"id" : @(userId), @"name" : name ?: @""}
+							  from:host];
+		return;
+
+	} else if ([action isEqualToString:@"Member Details"]){
 		[self showRecordFor:userId named:name inChat:chatId from:host];
 		return;
 
@@ -271,7 +346,8 @@
 
 /// One member's own record: the status word, the title this group gave them,
 /// and when a restriction lifts. getChatMember is the only request that
-/// answers for one person.
+/// answers for one person, and the sheet is the only place the raw details
+/// are shown - Member Info itself opens the person's profile.
 + (void)showRecordFor:(int64_t)userId
 				named:(NSString *)name
 			   inChat:(int64_t)chatId

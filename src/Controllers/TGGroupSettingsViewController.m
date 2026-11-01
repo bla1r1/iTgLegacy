@@ -121,6 +121,13 @@ static NSDictionary *TGSection(NSString *header, NSString *footer, NSArray *rows
 @property (nonatomic, assign) BOOL joinToSend;
 @property (nonatomic, assign) BOOL allHistory;
 @property (nonatomic, assign) BOOL hasPhoto;
+/// This account's own role in the chat. A plain member sees the group's
+/// identity and people; the management rows belong to the owner and the
+/// administrators, and Telegram would refuse every one of them to anybody
+/// else. `myStatus` is "owner", "admin", "member" or nil until it arrives.
+@property (nonatomic, copy) NSString *myStatus;
+@property (nonatomic, strong) NSDictionary *myRights;
+@property (nonatomic, assign) BOOL canManage;
 /// Kept because a switch's answer is not a full re-read: the local value
 /// flips only after Telegram accepted it.
 @property (nonatomic, assign) BOOL loaded;
@@ -137,14 +144,28 @@ static NSDictionary *TGSection(NSString *header, NSString *footer, NSArray *rows
 
 - (void)viewDidLoad {
 	[super viewDidLoad];
+	NSLog(@"TGGroupSettings: opened for chat %lld", self.chatId);
 	self.title = self.chatTitle.length ? self.chatTitle : @"Group Settings";
 	self.active = [NSMutableArray array];
 	self.disabled = [NSMutableArray array];
-	self.sections = @[];
+	// The screen is real before the first answer: a pushed blank table and a
+	// nav bar still saying the group's name read as "the tap did nothing".
+	self.sections = @[TGSection(@"Group Settings",
+			@"Reading the group from Telegram.", @[TGInfoRow(@"Loading",
+					@"Waiting for the group record", nil)])];
+	self.loaded = YES;
 	if ([self respondsToSelector:@selector(setEdgesForExtendedLayout:)])
 		self.edgesForExtendedLayout = UIRectEdgeNone;
 	[self applyTheme];
 	[self load];
+
+	// A tap opens the person's profile; a hold keeps the member sheet, the
+	// same split the group profile uses.
+	UILongPressGestureRecognizer *memberHold = [[UILongPressGestureRecognizer alloc]
+			initWithTarget:self action:@selector(memberRowHeld:)];
+	memberHold.minimumPressDuration = 0.5;
+	memberHold.cancelsTouchesInView = YES;
+	[self.tableView addGestureRecognizer:memberHold];
 
 	__weak typeof(self) weakSelf = self;
 	[[NSNotificationCenter defaultCenter] addObserverForName:TGThemeChangedNotification
@@ -226,6 +247,7 @@ static NSDictionary *TGSection(NSString *header, NSString *footer, NSArray *rows
 		me.hasPhoto = [[TGClient shared] photoFileIdForChat:me.chatId] != nil;
 		me.loaded = YES;
 		[me rebuild];
+		[me loadOwnRole];
 	}];
 	[[TGClient shared] chatProfile:self.chatId completion:^(NSDictionary *info){
 		TGGroupSettingsViewController *me = weakSelf;
@@ -270,6 +292,35 @@ static NSDictionary *TGSection(NSString *header, NSString *footer, NSArray *rows
 		if (!me)
 			return;
 		me.members = members ?: @[];
+		[me rebuild];
+	}];
+}
+
+- (void)loadOwnRole {
+	// The member list is the aggregate; this is the one record that says
+	// what this account may actually change. Without it the screen would
+	// offer a plain member every switch and then show Telegram's refusal.
+	int64_t meId = [[TGClient shared].me[@"id"] longLongValue];
+	if (!meId || !self.chatId){
+		self.canManage = NO;
+		return;
+	}
+	__weak typeof(self) weakSelf = self;
+	[[TGClient shared] chatMember:meId inChat:self.chatId
+						completion:^(NSDictionary *member){
+		TGGroupSettingsViewController *me = weakSelf;
+		if (!me)
+			return;
+		NSDictionary *status = [member[@"status"] isKindOfClass:NSDictionary.class]
+				? member[@"status"] : @{};
+		NSString *kind = status[@"@type"];
+		me.myStatus = [kind isEqualToString:@"chatMemberStatusCreator"] ? @"owner"
+				: ([kind isEqualToString:@"chatMemberStatusAdministrator"]
+						? @"admin" : @"member");
+		me.myRights = [status[@"rights"] isKindOfClass:NSDictionary.class]
+				? status[@"rights"] : @{};
+		me.canManage = [me.myStatus isEqualToString:@"owner"] ||
+					   [me.myStatus isEqualToString:@"admin"];
 		[me rebuild];
 	}];
 }
@@ -326,12 +377,15 @@ static NSDictionary *TGSection(NSString *header, NSString *footer, NSArray *rows
 }
 
 - (void)updateEditButton {
-	BOOL canOrder = self.active.count > 1 && self.settings != nil;
-	self.navigationItem.rightBarButtonItem = canOrder
-			? [[UIBarButtonItem alloc] initWithTitle:(self.editingNames ? @"Done" : @"Edit")
+	BOOL canOrder = self.canManage && self.active.count > 1 && self.settings != nil;
+	if (!canOrder){
+		self.navigationItem.rightBarButtonItem = nil;
+		return;
+	}
+	self.navigationItem.rightBarButtonItem =
+			[[UIBarButtonItem alloc] initWithTitle:(self.editingNames ? @"Done" : @"Edit")
 											  style:UIBarButtonItemStylePlain
-											 target:self action:@selector(toggleEditing)]
-			: nil;
+											 target:self action:@selector(toggleEditing)];
 }
 
 - (void)toggleEditing {
@@ -346,39 +400,51 @@ static NSDictionary *TGSection(NSString *header, NSString *footer, NSArray *rows
 	BOOL supergroup = [self isSupergroupChat];
 	BOOL channel = [self isChannelChat];
 	BOOL basic = [self isBasicGroupChat];
+	BOOL manager = self.canManage;
 	NSMutableArray *sections = [NSMutableArray array];
 
 	// ── identity ────────────────────────────────────────────────────────
 	NSMutableArray *info = [NSMutableArray array];
-	[info addObject:TGInfoRow(@"Group Photo", self.hasPhoto ? @"Change" : @"Set",
-							  @"photo")];
-	[info addObject:TGInfoRow(@"Group Name", self.chatTitle ?: @"", @"name")];
+	NSString *photoDetail = self.hasPhoto ? @"Change" : @"Set";
+	NSString *nameDetail = self.chatTitle ?: @"";
+	[info addObject:TGInfoRow(@"Group Photo",
+			manager ? photoDetail : (self.hasPhoto ? @"Set" : @"None"),
+			manager ? @"photo" : nil)];
+	[info addObject:TGInfoRow(@"Group Name", nameDetail, manager ? @"name" : nil)];
 	if (supergroup){
 		[info addObject:TGInfoRow(@"Description",
-				self.descriptionText.length ? self.descriptionText : @"Add a description",
-				@"description")];
-		[info addObject:TGInfoRow(@"Invite Link",
-				self.inviteLink.length ? self.inviteLink : @"Manage", @"invite")];
+				self.descriptionText.length ? self.descriptionText
+						: (manager ? @"Add a description" : @"None"),
+				manager ? @"description" : nil)];
+		if (manager || self.inviteLink.length)
+			[info addObject:TGInfoRow(@"Invite Link",
+					self.inviteLink.length ? self.inviteLink
+							: (manager ? @"Manage" : @"None"),
+					manager ? @"invite" : nil)];
 		[info addObject:TGInfoRow(@"Main Profile Tab",
-				[self labelForTab:self.settings[@"mainTab"]], @"tab")];
+				[self labelForTab:self.settings[@"mainTab"]],
+				manager ? @"tab" : nil)];
 	}
 	if (self.memberCount > 0)
 		[info addObject:TGInfoRow(channel ? @"Subscribers" : @"Members",
 				[NSString stringWithFormat:@"%ld", (long)self.memberCount], nil)];
-	if (basic)
+	if (basic && manager)
 		[info addObject:TGActionRow(@"Upgrade to Supergroup",
 				@"Basic groups stop at 200 members", @"upgrade", NO)];
 	[sections addObject:TGSection(@"Group Info",
-			basic ? @"A basic group has no username, invite link or supergroup "
+			manager ? (basic ? @"A basic group has no username, invite link or supergroup "
 					@"permissions. Upgrading gives it those and a new chat id."
 				  : @"The public identity of this group. Telegram applies each "
-					@"change or says why not.",
+					@"change or says why not.")
+					: @"Anyone in the group can read this. Changing it needs an "
+					  @"administrator.",
 			info)];
 
 	// ── people ──────────────────────────────────────────────────────────
 	if (!channel){
 		NSMutableArray *people = [NSMutableArray array];
-		[people addObject:TGActionRow(@"Add Members", nil, @"addMembers", NO)];
+		if (manager)
+			[people addObject:TGActionRow(@"Add Members", nil, @"addMembers", NO)];
 		[people addObject:TGActionRow(@"Find Member", @"Search by name or @username",
 									  @"findMember", NO)];
 		for (NSDictionary *member in self.members)
@@ -387,12 +453,12 @@ static NSDictionary *TGSection(NSString *header, NSString *footer, NSArray *rows
 				? [NSString stringWithFormat:@"%ld members", (long)self.memberCount]
 				: @"Members";
 		[sections addObject:TGSection(header,
-				@"Tap a member for their actions; the list shows the members "
-				@"Telegram returned first.", people)];
+				@"Tap a member for their profile; hold for their actions. The "
+				@"list shows the members Telegram returned first.", people)];
 	}
 
 	// ── what the group does ─────────────────────────────────────────────
-	if (supergroup){
+	if (supergroup && manager){
 		NSMutableArray *behaviour = [NSMutableArray array];
 		[behaviour addObject:TGActionRow(@"Permissions", [self permissionsDetail],
 										 @"permissions", NO)];
@@ -441,28 +507,30 @@ static NSDictionary *TGSection(NSString *header, NSString *footer, NSArray *rows
 	}
 
 	// ── tools ───────────────────────────────────────────────────────────
-	NSMutableArray *tools = [NSMutableArray array];
-	[tools addObject:TGActionRow(@"Chat Tools", @"Log, statistics, theme",
-								 @"chatTools", NO)];
-	if (channel)
-		[tools addObject:TGActionRow(@"Direct Messages", @"Reader replies",
-									 @"directMessages", NO)];
-	[tools addObject:TGActionRow(@"Import Messages", @"From an export file",
-								 @"import", NO)];
-	if (supergroup)
-		[tools addObject:TGActionRow(@"Send as", @"Who a post is from",
-									 @"sendAs", NO)];
-	[tools addObject:TGActionRow(@"Clear by Date", @"Delete older messages",
-								 @"clearByDate", YES)];
-	if (supergroup){
-		[tools addObject:TGActionRow(@"Group Stickers", nil, @"groupStickers", NO)];
-		[tools addObject:TGActionRow(@"Custom Emoji Stickers", nil,
-									 @"customEmojiStickers", NO)];
+	if (manager){
+		NSMutableArray *tools = [NSMutableArray array];
+		[tools addObject:TGActionRow(@"Chat Tools", @"Log, statistics, theme",
+									 @"chatTools", NO)];
+		if (channel)
+			[tools addObject:TGActionRow(@"Direct Messages", @"Reader replies",
+										 @"directMessages", NO)];
+		[tools addObject:TGActionRow(@"Import Messages", @"From an export file",
+									 @"import", NO)];
+		if (supergroup)
+			[tools addObject:TGActionRow(@"Send as", @"Who a post is from",
+										 @"sendAs", NO)];
+		[tools addObject:TGActionRow(@"Clear by Date", @"Delete older messages",
+									 @"clearByDate", YES)];
+		if (supergroup){
+			[tools addObject:TGActionRow(@"Group Stickers", nil, @"groupStickers", NO)];
+			[tools addObject:TGActionRow(@"Custom Emoji Stickers", nil,
+										 @"customEmojiStickers", NO)];
+		}
+		[sections addObject:TGSection(@"Tools", nil, tools)];
 	}
-	[sections addObject:TGSection(@"Tools", nil, tools)];
 
 	// ── usernames ───────────────────────────────────────────────────────
-	if (supergroup && self.settings){
+	if (supergroup && self.settings && manager){
 		NSMutableArray *names = [NSMutableArray array];
 		NSMutableDictionary *editableRow = TGInfoRow(@"Editable Username",
 				self.editable.length ? [@"@" stringByAppendingString:self.editable]
@@ -621,8 +689,28 @@ static NSDictionary *TGSection(NSString *header, NSString *footer, NSArray *rows
 	int64_t userId = [member[@"id"] longLongValue];
 	NSString *name = [member[@"name"] length]
 			? member[@"name"] : [[TGClient shared] nameForUserId:userId];
-	[cell setName:name userId:userId inTable:tableView];
+	[cell setName:name userId:userId status:member[@"status"]
+				tag:member[@"tag"] inTable:tableView];
 	return cell;
+}
+
+/// The old tap on a member: their action sheet. Kept on a hold now that a
+/// tap belongs to the person's profile.
+- (void)memberRowHeld:(UILongPressGestureRecognizer *)hold {
+	if (hold.state != UIGestureRecognizerStateBegan)
+		return;
+	NSIndexPath *path = [self.tableView indexPathForRowAtPoint:
+			[hold locationInView:self.tableView]];
+	NSDictionary *row = path ? [self rowAtPath:path] : nil;
+	if (!row || [row[@"kind"] integerValue] != TGGroupRowMember)
+		return;
+	__weak typeof(self) weakSelf = self;
+	[TGGroupMemberActions showForMember:row[@"member"]
+								 inChat:self.chatId
+								   from:self
+							  onChanged:^{
+		[weakSelf load];
+	}];
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView
@@ -686,13 +774,9 @@ targetIndexPathForMoveFromRowAtIndexPath:(NSIndexPath *)source
 	if (!row)
 		return;
 	if ([row[@"kind"] integerValue] == TGGroupRowMember){
-		__weak typeof(self) weakSelf = self;
-		[TGGroupMemberActions showForMember:row[@"member"]
-									 inChat:self.chatId
-									   from:self
-								  onChanged:^{
-			[weakSelf load];
-		}];
+		// The row is a person: open their profile, never a chat. Send
+		// Message and the administrator actions live on the hold.
+		[TGGroupMemberActions openProfileForMember:row[@"member"] from:self];
 		return;
 	}
 	NSString *action = row[@"action"];

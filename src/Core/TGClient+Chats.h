@@ -138,7 +138,15 @@
 /// words, the account details to add a contact by - into a chat dict.
 - (void)mergeActionBar:(NSDictionary *)bar intoChatRow:(NSMutableDictionary *)row;
 
-/// Members of a group or supergroup: "id" and "name". Empty for anything else.
+/// One TDLib member record as the row a member list draws: "id", "name",
+/// "status" (owner/admin/restricted/banned/left/member) and "owner"
+/// (NSNumber). nil when the record names no user.
+FOUNDATION_EXPORT NSDictionary *TGMemberRowForMember(NSDictionary *member,
+													  NSString *name);
+
+/// Members of a group or supergroup: "id", "name", "status" and "owner".
+/// Empty for anything else. The role travels with the row so a list can draw
+/// an owner or administrator badge beside the name without a second request.
 - (void)membersOfChat:(int64_t)chatId completion:(void (^)(NSArray *members))completion;
 
 /// Members in a group or supergroup; 0 for anything else.
@@ -158,8 +166,9 @@
 /// The pinned chats in this order, top first; one left out is unpinned.
 - (void)setPinnedChatIds:(NSArray *)chatIds;
 
-/// The same for a group or channel: "description", "members" (NSNumber),
-/// "admins" (NSNumber), "inviteLink".
+/// The same for a group or channel: "description", "members" (NSNumber) and
+/// "inviteLink". There is deliberately no administrator count: the member
+/// list carries each person's role instead.
 - (void)chatProfile:(int64_t)chatId completion:(void (^)(NSDictionary *info))completion;
 
 /// Muted state of one chat, as the list already knows it.

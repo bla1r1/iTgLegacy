@@ -16,4 +16,21 @@
 /// the member list flicker while scrolling.
 - (void)setName:(NSString *)name userId:(int64_t)userId inTable:(UITableView *)tableView;
 
+/// The same row with the member's role. "owner" and "admin" draw a compact
+/// pill after the name; every other status draws only the name. The role is
+/// a badge here, never a count - the list must not say "3 admins".
+- (void)setName:(NSString *)name
+		 userId:(int64_t)userId
+		 status:(NSString *)status
+		inTable:(UITableView *)tableView;
+
+/// The same row with the member's own tag. TDLib returns an administrator's
+/// custom title in chatMember.tag; when it is empty the role word is the
+/// badge instead, so an administrator always reads as something.
+- (void)setName:(NSString *)name
+		 userId:(int64_t)userId
+		 status:(NSString *)status
+			tag:(NSString *)tag
+		inTable:(UITableView *)tableView;
+
 @end

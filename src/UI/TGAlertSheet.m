@@ -131,8 +131,12 @@ static NSString *TGTrimmed(NSString *text) {
 			cancelButtonTitle:nil destructiveButtonTitle:nil otherButtonTitles:nil];
 	for (NSString *t in titles)
 		[sheet addButtonWithTitle:t];
-	if (destructiveIndex >= 0 && destructiveIndex < (NSInteger)titles.count)
-		sheet.destructiveButtonIndex = destructiveIndex;
+	// Not `destructiveButtonIndex`: iOS 6 draws that button at the top of the
+	// sheet while leaving the other buttons in their places, so the visual
+	// row no longer matches the index the delegate reports. Tapping the
+	// second row ("Group Settings") then ran the first row's action. The
+	// red styling is not worth a menu that acts on the wrong item; iOS 7+
+	// still gets it through UIAlertController above.
 	sheet.cancelButtonIndex = [sheet addButtonWithTitle:@"Cancel"];
 	NSInteger cancel = sheet.cancelButtonIndex;
 	holder.onButton = ^(NSInteger button, NSString *text){

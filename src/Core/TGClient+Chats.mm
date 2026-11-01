@@ -143,6 +143,36 @@ int64_t TGArchiveOrder(NSArray *positions) {
 	});
 }
 
+#pragma mark - members
+
+/// One TDLib member as a row. The role is the status word the group screen
+/// and the badge both read, and "owner" is the one status that is allowed to
+/// hand the group over - so it travels as a flag rather than being spelled
+/// out again by every caller.
+NSDictionary *TGMemberRowForMember(NSDictionary *member, NSString *name) {
+	if (![member isKindOfClass:NSDictionary.class])
+		return nil;
+	int64_t userId = [member[@"member_id"][@"user_id"] longLongValue];
+	if (!userId)
+		return nil;
+	NSDictionary *status = [member[@"status"] isKindOfClass:NSDictionary.class]
+			? member[@"status"] : @{};
+	NSString *word = TGMemberStatusName(status);
+	// chatMember.tag is the member's tag, or the custom title when the
+	// member is an administrator. It is what the badge shows instead of the
+	// generic role word.
+	NSString *tag = [member[@"tag"] isKindOfClass:NSString.class]
+			? [member[@"tag"] stringByTrimmingCharactersInSet:
+					[NSCharacterSet whitespaceAndNewlineCharacterSet]] : @"";
+	return @{
+		@"id"     : @(userId),
+		@"name"   : name ?: @"",
+		@"status" : word,
+		@"tag"    : tag ?: @"",
+		@"owner"  : @([word isEqualToString:@"owner"]),
+	};
+}
+
 - (void)membersOfChat:(int64_t)chatId completion:(void (^)(NSArray *))completion {
 	__weak typeof(self) weakSelf = self;
 	[self request:@{@"@type" : @"getChat", @"chat_id" : @(chatId)}
@@ -154,13 +184,10 @@ int64_t TGArchiveOrder(NSArray *positions) {
 			TGClient *me = weakSelf;
 			NSMutableArray *out = [NSMutableArray array];
 			for (NSDictionary *member in members){
-				int64_t userId = [member[@"member_id"][@"user_id"] longLongValue];
-				if (!userId)
-					continue;
-				[out addObject:@{
-					@"id"   : @(userId),
-					@"name" : [me nameForUserId:userId] ?: @"",
-				}];
+				NSDictionary *row = TGMemberRowForMember(member,
+						[me nameForUserId:[member[@"member_id"][@"user_id"] longLongValue]]);
+				if (row)
+					[out addObject:row];
 			}
 			if (completion) completion(out);
 		};
@@ -720,7 +747,6 @@ static NSInteger TGForumTopicColour(NSInteger index) {
 			if (completion) completion(@{
 				@"description" : full[@"description"] ?: @"",
 				@"members"     : full[@"member_count"] ?: @0,
-				@"admins"      : full[@"administrator_count"] ?: @0,
 				@"inviteLink"  : full[@"invite_link"][@"invite_link"] ?: @"",
 			});
 		};

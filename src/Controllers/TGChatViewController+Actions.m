@@ -9,6 +9,113 @@
 #import "TGClientInternal.h"
 #import "TGInstantViewController.h"
 #import "TGMessageAudienceViewController.h"
+#import <CoreImage/CoreImage.h>
+#import <QuartzCore/QuartzCore.h>
+
+/// The room left above a lifted bubble for its reaction bar: the capsule plus
+/// the gap that separates it from the bubble's top edge.
+static const CGFloat kHoldReactionRoom = TGMetricRow;
+/// The gap between the lifted bubble and the action card hanging under it.
+static const CGFloat kHoldLiftGap = TGMetricPadSmall;
+/// The lift never takes more than this share of the screen: the card below it
+/// has to stay the bigger half of the presentation.
+static const CGFloat kHoldLiftMaxPart = 0.40f;
+/// The room the card is guaranteed before the lift is scaled down for it; a
+/// card taller than this scrolls inside itself (see TGPopupMenu).
+static const CGFloat kHoldMenuRoomMin = 4.0f * TGMetricRow;
+/// The backdrop is captured at 1x and stretched. It is about to be blurred
+/// and dimmed, so a 320-point-wide capture is indistinguishable from a 640
+/// one and costs the A4 a quarter of the pixels and time.
+static const CGFloat kHoldBackdropScale = 1.0f;
+/// Small on purpose: enough to lose the text under it, not enough to make the
+/// chat's shapes unreadable behind the lifted bubble.
+static const CGFloat kHoldBlurRadius = 10.0f;
+
+/// A view's current pixels. renderInContext is the only path this OS offers;
+/// snapshotViewAfterScreenUpdates is iOS 7 and later.
+static UIImage *TGHoldSnapshotOfView(UIView *view, CGFloat scale) {
+	if (!view || CGRectIsEmpty(view.bounds))
+		return nil;
+	UIGraphicsBeginImageContextWithOptions(view.bounds.size, NO, scale);
+	CGContextRef ctx = UIGraphicsGetCurrentContext();
+	if (!ctx) {
+		UIGraphicsEndImageContext();
+		return nil;
+	}
+	[view.layer renderInContext:ctx];
+	UIImage *image = UIGraphicsGetImageFromCurrentImageContext();
+	UIGraphicsEndImageContext();
+	return image;
+}
+
+/// The bubble alone, clipped to its own rounded shape. Rendering the whole
+/// cell would lift the sender's name and avatar as well; rendering the row
+/// would lift the empty space around the bubble.
+static UIImage *TGHoldSnapshotOfBubble(UIView *bubble) {
+	if (!bubble || CGRectIsEmpty(bubble.bounds))
+		return nil;
+	UIGraphicsBeginImageContextWithOptions(bubble.bounds.size, NO, 0.0f);
+	CGContextRef ctx = UIGraphicsGetCurrentContext();
+	if (!ctx) {
+		UIGraphicsEndImageContext();
+		return nil;
+	}
+	CGFloat radius = bubble.layer.cornerRadius;
+	UIBezierPath *clip = radius > TGMetricCornerNone
+			? [UIBezierPath bezierPathWithRoundedRect:bubble.bounds cornerRadius:radius]
+			: [UIBezierPath bezierPathWithRect:bubble.bounds];
+	[clip addClip];
+	[bubble.layer renderInContext:ctx];
+	UIImage *image = UIGraphicsGetImageFromCurrentImageContext();
+	UIGraphicsEndImageContext();
+	return image;
+}
+
+/// CoreImage's Gaussian blur, cropped back to the capture's own box. The
+/// input is clamped first, otherwise the filter samples transparent black
+/// outside the edges and draws a dark frame around the chat. Nil is a real
+/// answer - no filter, no context, no output - and the caller keeps the
+/// sharp capture under the dim instead.
+static UIImage *TGHoldBlurredImage(UIImage *image, CGFloat radius) {
+	// CIGaussianBlur returns garbage on this GPU/iOS combination (it crashed
+	// with EXC_BAD_ACCESS inside CIContext on the iPod). A downscale/downsample
+	// to a tenth and a smooth upscale is the same soft backdrop, costs almost
+	// nothing, and cannot fault: CoreGraphics clamps every size here.
+	CGImageRef source = image.CGImage;
+	if (!source)
+		return nil;
+	CGSize size = image.size;
+	if (size.width < 2 || size.height < 2)
+		return nil;
+	CGFloat factor = MAX(2.0f, radius);
+	CGSize small = CGSizeMake(MAX(1.0f, floorf(size.width / factor)),
+							  MAX(1.0f, floorf(size.height / factor)));
+
+	UIGraphicsBeginImageContextWithOptions(small, NO, 1);
+	CGContextRef ctx = UIGraphicsGetCurrentContext();
+	if (!ctx){
+		UIGraphicsEndImageContext();
+		return nil;
+	}
+	CGContextSetInterpolationQuality(ctx, kCGInterpolationLow);
+	[image drawInRect:CGRectMake(0, 0, small.width, small.height)];
+	UIImage *down = UIGraphicsGetImageFromCurrentImageContext();
+	UIGraphicsEndImageContext();
+	if (!down)
+		return nil;
+
+	UIGraphicsBeginImageContextWithOptions(size, NO, 1);
+	ctx = UIGraphicsGetCurrentContext();
+	if (!ctx){
+		UIGraphicsEndImageContext();
+		return nil;
+	}
+	CGContextSetInterpolationQuality(ctx, kCGInterpolationLow);
+	[down drawInRect:CGRectMake(0, 0, size.width, size.height)];
+	UIImage *soft = UIGraphicsGetImageFromCurrentImageContext();
+	UIGraphicsEndImageContext();
+	return soft;
+}
 
 /// What the reply strip shows on its second line. The rows here are already
 /// flattened, so TGMessagePreview - which reads a raw TDLib content - cannot
@@ -125,9 +232,11 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 	return out;
 }
 
-/// `point` is where the finger is, in this view's coordinates, and the menu
-/// opens there. CGPointZero means there was no finger - a URL asked for this
-/// - and the bubble's own corner stands in.
+/// The regular presentation lifts the held bubble to the top of the screen
+/// and hangs the card under it; `point` is not the card's anchor any more.
+/// It still says where the finger was, which is what the fallback card uses
+/// when there is no bubble to lift. CGPointZero means there was no finger -
+/// a URL asked for this - and the bubble's own corner stands in.
 - (void)showActionsForRow:(NSInteger)row atPoint:(CGPoint)point {
 	if (row < 0) {
 		row = (NSInteger)self.messages.count + row;
@@ -138,6 +247,12 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 	NSDictionary *m = self.messages[row];
 	if ([m[@"service"] boolValue])
 		return;
+
+	// A second hold - or a URL asking for the same menu - replaces the card
+	// that is open instead of stacking a new lift under it. Dismissing here
+	// also runs the old card's onDismiss while the old lift is still the one
+	// it was built for.
+	[TGPopupMenu dismiss];
 	self.actionMessage = m;
 
 	BOOL mine = [m[@"outgoing"] boolValue];
@@ -145,58 +260,310 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 	NSString *myReaction = m[@"myReaction"];
 
 	NSArray *items = [self commonActionItemsForMessage:m mine:mine heldId:heldId];
+	NSArray *reactions = [self reactionsWithDefaultFirst:[TGReactionPicker defaultReactions]];
+	__weak typeof(self) weakSelf = self;
 
-	// Beside the message rather than over the whole screen, which is what
-	// makes it read as belonging to that bubble.
-	// Where the finger is. This used to anchor on the bottom edge of the row
-	// whatever the hold had touched, so holding the top of a tall bubble
-	// opened the menu somewhere else entirely.
-	CGPoint where = point;
+	// The same card for both presentations: the actions, the reaction bar and
+	// every block stay exactly as they are. Only its anchor changes - under
+	// the lifted bubble when there is one, under the finger when there is not.
+	void (^presentMenu)(BOOL, CGRect, CGPoint) = ^(BOOL lifted, CGRect anchor, CGPoint where) {
+		TGChatViewController *me = weakSelf;
+		if (!me)
+			return;
+		me.actionMenuPoint = where;
+		void (^onReaction)(NSString *) = ^(NSString *emoji) {
+			TGChatViewController *strong = weakSelf;
+			if (!strong) return;
+			if ([emoji isEqualToString:myReaction]) {
+				[[TGClient shared] removeReaction:myReaction fromMessage:heldId inChat:strong.chatId];
+			} else {
+				[[TGClient shared] reactTo:heldId inChat:strong.chatId emoji:emoji];
+			}
+			// The chips are part of the row's height, so the cached geometry
+			// is stale the moment the reaction lands.
+			[strong.layoutCache removeLayoutForMessageId:heldId];
+			[strong reload];
+		};
+		void (^onDefaultReaction)(NSString *) = ^(NSString *emoji) {
+			// Telegram keeps the choice; the bar was already promoted in place.
+			[[TGClient shared] setDefaultReactionEmoji:emoji completion:^(BOOL ok){
+				if (ok)
+					return;
+				TGChatViewController *strong = weakSelf;
+				if (strong)
+					[TGAlertSheet showMessage:@"Telegram refused that default reaction."
+										 title:@"Reaction"
+										inView:strong.view];
+			}];
+		};
+		void (^onChoice)(NSInteger, NSString *) = ^(NSInteger index, NSString *title) {
+			[weakSelf runMessageAction:title];
+		};
+		if (lifted) {
+			[TGPopupMenu showItems:items
+						anchoredAt:anchor
+							inView:me.view
+						 reactions:reactions
+				  selectedReaction:myReaction
+						onReaction:onReaction
+				onDefaultReaction:onDefaultReaction
+						  onChoice:onChoice
+						 onDismiss:^{
+				TGChatViewController *strong = weakSelf;
+				[strong endHoldPresentation];
+			}];
+		} else {
+			[TGPopupMenu showItems:items
+						   atPoint:where
+							inView:me.view
+						 reactions:reactions
+				  selectedReaction:myReaction
+						onReaction:onReaction
+				onDefaultReaction:onDefaultReaction
+						  onChoice:onChoice];
+		}
+	};
+
+	NSIndexPath *indexPath = [NSIndexPath indexPathForRow:row inSection:0];
+	// A hold has a finger on the row, so its cell is there. The URL route has
+	// none: scroll the row in first so there is a bubble to lift.
 	if (CGPointEqualToPoint(point, CGPointZero)){
-		NSIndexPath *indexPath = [NSIndexPath indexPathForRow:row inSection:0];
 		[self.table scrollToRowAtIndexPath:indexPath
 						  atScrollPosition:UITableViewScrollPositionMiddle
 								  animated:NO];
-		CGRect rect = [self.table rectForRowAtIndexPath:indexPath];
-		where = [self.table convertPoint:CGPointMake(
-				mine ? CGRectGetMaxX(rect) - TGMetricMenuActionOffset
-					 : TGMetricMenuActionOffset,
-				CGRectGetMidY(rect)) toView:self.view];
+		[self.table layoutIfNeeded];
 	}
 
-	NSArray *reactions = [self reactionsWithDefaultFirst:[TGReactionPicker defaultReactions]];
-	self.actionMenuPoint = where;
-	__weak typeof(self) weakSelf = self;
-	[TGPopupMenu showItems:items
-				   atPoint:where
-					inView:self.view
-				 reactions:reactions
-		  selectedReaction:myReaction
-				onReaction:^(NSString *emoji) {
-		TGChatViewController *me = weakSelf;
-		if (!me) return;
-		if ([emoji isEqualToString:myReaction]) {
-			[[TGClient shared] removeReaction:myReaction fromMessage:heldId inChat:me.chatId];
-		} else {
-			[[TGClient shared] reactTo:heldId inChat:me.chatId emoji:emoji];
+	TGBubbleCell *cell = (TGBubbleCell *)[self.table cellForRowAtIndexPath:indexPath];
+	CGRect anchor = [self beginHoldPresentationForCell:cell didLift:^(CGRect lifted){
+		presentMenu(YES, lifted, CGPointMake(CGRectGetMidX(lifted), CGRectGetMaxY(lifted)));
+	}];
+
+	// No bubble to lift - a service row or a row that went away between the
+	// touch and this call. The old point-anchored card is still better than
+	// no card at all.
+	if (CGRectIsEmpty(anchor)){
+		CGPoint where = point;
+		if (CGPointEqualToPoint(where, CGPointZero)){
+			CGRect rect = [self.table rectForRowAtIndexPath:indexPath];
+			where = [self.table convertPoint:CGPointMake(
+					mine ? CGRectGetMaxX(rect) - TGMetricMenuActionOffset
+						 : TGMetricMenuActionOffset,
+					CGRectGetMidY(rect)) toView:self.view];
 		}
-		// The chips are part of the row's height, so the cached geometry is
-		// stale the moment the reaction lands.
-		[me.layoutCache removeLayoutForMessageId:heldId];
-		[me reload];
-	} onDefaultReaction:^(NSString *emoji) {
-		// Telegram keeps the choice; the bar was already promoted in place.
-		[[TGClient shared] setDefaultReactionEmoji:emoji completion:^(BOOL ok){
-			if (ok)
+		presentMenu(NO, CGRectZero, where);
+	}
+}
+
+#pragma mark - hold presentation
+
+/// Why the bubble is snapshotted rather than moved: the table owns the cell
+/// and will reuse it, while the lift has to outlive a scroll, a reload and a
+/// reaction. The cell stays where it is; what leaves the list is its picture.
+///
+/// The backdrop is one capture of this screen with the bubble left out, one
+/// downscaled Gaussian blur on a background queue, and a dim over both. On
+/// the A4 CoreImage is slower than the lift animation, so the sharp capture
+/// is shown at once and the blurred one replaces it when it arrives. If the
+/// blur never does, the sharp capture plus the 45% dim is the fallback.
+- (CGRect)beginHoldPresentationForCell:(TGBubbleCell *)cell
+                              didLift:(void (^)(CGRect anchor))didLift {
+	// A second hold while one is still fading replaces it at once: the old
+	// lift and dim must not end up in this lift's backdrop capture.
+	if (self.holdBackdropView || self.holdLiftView){
+		self.table.scrollEnabled = self.holdTableWasScrollable;
+		[self discardHoldPresentation];
+	}
+
+	if (!cell || ![cell isKindOfClass:[TGBubbleCell class]])
+		return CGRectZero;
+	if (!cell.bubble || CGRectIsEmpty(cell.bubble.bounds))
+		return CGRectZero;
+
+	CGRect origin = [cell.bubble convertRect:cell.bubble.bounds toView:self.view];
+	if (CGRectIsEmpty(origin))
+		return CGRectZero;
+
+	// The picture before the bubble is hidden: what is lifted is the image
+	// the finger was on, not a redraw of it.
+	UIImage *bubbleImage = TGHoldSnapshotOfBubble(cell.bubble);
+	if (!bubbleImage)
+		return CGRectZero;
+
+	// Capture the chat without the bubble so the backdrop has no blurred
+	// twin in the list. The alpha goes straight back: a reload during the
+	// hold must never find a cell whose bubble is still invisible.
+	CGFloat bubbleAlpha = cell.bubble.alpha;
+	CGFloat tailAlpha = cell.tail.alpha;
+	cell.bubble.alpha = TGAlphaTransparent;
+	cell.tail.alpha = TGAlphaTransparent;
+	UIImage *screenshot = TGHoldSnapshotOfView(self.view, kHoldBackdropScale);
+	cell.bubble.alpha = bubbleAlpha;
+	cell.tail.alpha = tailAlpha;
+
+	TGTheme *theme = [TGTheme shared];
+
+	UIView *backdrop = [[UIView alloc] initWithFrame:self.view.bounds];
+	backdrop.backgroundColor = [theme holdDimColour];
+	backdrop.autoresizingMask = UIViewAutoresizingFlexibleWidth |
+								UIViewAutoresizingFlexibleHeight;
+	backdrop.alpha = TGAlphaTransparent;
+
+	// The sharp capture is the fallback and the first thing shown; the blur
+	// swaps it in place under the same dim. With no capture at all, the
+	// view's own holdDimColour is already the required 45% black.
+	UIImageView *backdropImage = [[UIImageView alloc] initWithFrame:backdrop.bounds];
+	backdropImage.contentMode = UIViewContentModeScaleToFill;
+	backdropImage.autoresizingMask = UIViewAutoresizingFlexibleWidth |
+									 UIViewAutoresizingFlexibleHeight;
+	backdropImage.image = screenshot;
+	[backdrop addSubview:backdropImage];
+
+	UIView *dim = [[UIView alloc] initWithFrame:backdrop.bounds];
+	dim.backgroundColor = [theme holdDimColour];
+	dim.autoresizingMask = UIViewAutoresizingFlexibleWidth |
+						   UIViewAutoresizingFlexibleHeight;
+	[backdrop addSubview:dim];
+	[self.view addSubview:backdrop];
+
+	UIImageView *lift = [[UIImageView alloc] initWithImage:bubbleImage];
+	lift.frame = origin;
+	lift.contentMode = UIViewContentModeScaleToFill;
+	lift.userInteractionEnabled = NO;
+	// A filled bubble earns the floating shadow. A sticker or a round note
+	// is a clear box whose picture carries its own shape; it lifts by the
+	// dim alone rather than pretending to be a card.
+	UIColor *fill = cell.bubble.backgroundColor;
+	if (fill && CGColorGetAlpha(fill.CGColor) > TGAlphaEpsilon){
+		lift.layer.shadowColor = [UIColor blackColor].CGColor;
+		lift.layer.shadowOpacity = TGMetricShadowMenuOpacity;
+		lift.layer.shadowRadius = TGMetricShadowMenuRadius;
+		lift.layer.shadowOffset = TGMetricShadowOffsetMenu;
+	}
+	[self.view addSubview:lift];
+
+	self.holdBackdropView = backdrop;
+	self.holdBackdropImageView = backdropImage;
+	self.holdLiftView = lift;
+	self.holdLiftOriginRect = origin;
+
+	// The list stops scrolling while it is held: the row underneath is the
+	// place this message goes back to, and a scroll would take it away from
+	// the picture that has to return to it.
+	self.holdTableWasScrollable = self.table.scrollEnabled;
+	self.table.scrollEnabled = NO;
+
+	NSInteger generation = ++self.holdGeneration;
+
+	__weak typeof(self) weakSelf = self;
+	if (screenshot){
+		dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_LOW, 0), ^{
+			UIImage *blurred = TGHoldBlurredImage(screenshot, kHoldBlurRadius);
+			if (!blurred)
 				return;
-			TGChatViewController *me = weakSelf;
-			if (me)
-				[TGAlertSheet showMessage:@"Telegram refused that default reaction."
-									 title:@"Reaction"
-									inView:me.view];
-		}];
-	} onChoice:^(NSInteger index, NSString *title) {
-		[weakSelf runMessageAction:title];
+			dispatch_async(dispatch_get_main_queue(), ^{
+				TGChatViewController *me = weakSelf;
+				if (!me || me.holdGeneration != generation ||
+						me.holdBackdropImageView != backdropImage)
+					return;
+				backdropImage.image = blurred;
+			});
+		});
+	}
+
+	// Land clear of the navigation bar (this screen does not extend under
+	// it), below the pinned strip when there is one, with the reaction bar's
+	// room reserved above the bubble and the action card's below it. A tall
+	// bubble or a picture is scaled down rather than allowed to run into the
+	// menu; the width shrinks with the height so it never stretches.
+	CGRect host = self.view.bounds;
+	CGFloat top = TGMetricPad + kHoldReactionRoom;
+	if (self.pinnedBannerView && !self.pinnedBannerView.hidden)
+		top = MAX(top, CGRectGetMaxY(self.pinnedBannerView.frame) + kHoldReactionRoom);
+	CGFloat menuRoom = CGRectGetHeight(host) - top - kHoldLiftGap - kHoldMenuRoomMin - TGMetricPad;
+	CGFloat maxHeight = MIN(CGRectGetHeight(host) * kHoldLiftMaxPart, menuRoom);
+	maxHeight = MAX(maxHeight, TGMetricRow);
+	CGFloat scale = MIN(1.0f, maxHeight / CGRectGetHeight(origin));
+	scale = MIN(scale, (CGRectGetWidth(host) - TGDoubled(TGMetricPad)) / CGRectGetWidth(origin));
+	CGSize targetSize = CGSizeMake(CGRectGetWidth(origin) * scale,
+								   CGRectGetHeight(origin) * scale);
+	CGFloat x = MIN(MAX(TGMetricPad, CGRectGetMinX(origin)),
+					CGRectGetWidth(host) - TGMetricPad - targetSize.width);
+	CGRect target = CGRectMake(x, top, targetSize.width, targetSize.height);
+
+	[UIView animateWithDuration:TGAnimationDurationMedium
+						  delay:0
+						options:UIViewAnimationOptionCurveEaseOut
+					 animations:^{
+		backdrop.alpha = TGAlphaOpaque;
+		lift.frame = target;
+	} completion:^(BOOL finished){
+		TGChatViewController *me = weakSelf;
+		if (!me || me.holdGeneration != generation || me.holdLiftView != lift)
+			return;
+		if (didLift)
+			didLift(target);
+	}];
+
+	return target;
+}
+
+- (void)discardHoldPresentation {
+	// Invalidate the blur and any animation completion still pointing at
+	// these views before they leave the hierarchy.
+	++self.holdGeneration;
+	self.holdReturning = NO;
+	[self.holdBackdropView removeFromSuperview];
+	[self.holdLiftView removeFromSuperview];
+	self.holdBackdropView = nil;
+	self.holdBackdropImageView = nil;
+	self.holdLiftView = nil;
+}
+
+- (void)endHoldPresentation {
+	if (!self.holdBackdropView && !self.holdLiftView)
+		return;
+	// The menu can be dismissed twice on the way out - once by the row or
+	// the tap, once by the screen closing. One return animation is enough.
+	if (self.holdReturning)
+		return;
+
+	// Anything still in flight - the blur, the lift's completion - now
+	// belongs to a presentation that is over.
+	NSInteger generation = ++self.holdGeneration;
+	self.holdReturning = YES;
+
+	self.table.scrollEnabled = self.holdTableWasScrollable;
+
+	UIView *backdrop = self.holdBackdropView;
+	UIImageView *lift = self.holdLiftView;
+	CGRect origin = self.holdLiftOriginRect;
+
+	if (!lift){
+		[self discardHoldPresentation];
+		return;
+	}
+
+	// The picture goes back to the row it came from before it is removed:
+	// removing it where it stands would read as a jump, not as putting the
+	// message back. The fields stay pointed at these views until the
+	// animation lands, so a new hold in the meantime can discard them
+	// instead of capturing them into its own backdrop.
+	[UIView animateWithDuration:TGAnimationDurationNormal
+						  delay:0
+						options:UIViewAnimationOptionCurveEaseIn
+					 animations:^{
+		lift.frame = origin;
+		backdrop.alpha = TGAlphaTransparent;
+	} completion:^(BOOL finished){
+		[lift removeFromSuperview];
+		[backdrop removeFromSuperview];
+		if (generation != self.holdGeneration)
+			return;
+		self.holdBackdropView = nil;
+		self.holdBackdropImageView = nil;
+		self.holdLiftView = nil;
+		self.holdReturning = NO;
 	}];
 }
 
@@ -418,7 +785,12 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 		[[TGClient shared] resendMessages:@[@(messageId)] inChat:self.chatId];
 
 	} else if ([action isEqualToString:@"More"]){
+		// The second card is built from actionMessage and its rows run
+		// through this same method later, so the message has to outlive
+		// this call. Clearing it at the bottom of the method would leave
+		// every row of the More card with nothing to act on.
 		[self showMoreActions];
+		return;
 
 	} else if ([action isEqualToString:@"Show 1 Reply"] ||
 			   [action hasPrefix:@"Show "] ||

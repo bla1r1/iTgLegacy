@@ -222,6 +222,10 @@ typedef NS_ENUM(NSInteger, TGButtonStyle) {
 - (UIColor *)mediaViewerBackdropColour; ///< full-screen media viewer black background
 - (UIColor *)scrimColour;           ///< backdrop dimming behind modal sheets and alerts
 - (UIColor *)menuWashColour;        ///< subtle wash behind contextual popup menu
+/// The dim over the chat while a message is held and lifted out of the list.
+/// Darker than the sheet scrim: the lifted bubble has to read as the only
+/// thing in focus, and on iOS 6 there is no live blur to do that job alone.
+- (UIColor *)holdDimColour;
 
 #pragma mark - chat list
 

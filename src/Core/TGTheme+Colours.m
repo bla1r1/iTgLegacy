@@ -220,6 +220,10 @@
 	return [UIColor colorWithWhite:0.0f alpha:0.12f];   ///< subtle wash behind contextual popup menu
 }
 
+- (UIColor *)holdDimColour {
+	return [UIColor colorWithWhite:0.0f alpha:0.45f];   ///< the chat behind a lifted message
+}
+
 #pragma mark - chat list
 
 - (UIColor *)badgeColour {

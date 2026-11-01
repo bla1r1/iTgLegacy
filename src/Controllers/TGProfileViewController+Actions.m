@@ -433,12 +433,28 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 
 
 	if ([title isEqualToString:@"Group Settings"]){
-		TGGroupSettingsViewController *settings =
-				[[TGGroupSettingsViewController alloc] init];
+		// Build through the runtime class name so a build that somehow lost
+		// the screen says so in the log instead of pushing nil and looking
+		// like a dead row.
+		Class settingsClass = NSClassFromString(@"TGGroupSettingsViewController");
+		TGGroupSettingsViewController *settings = settingsClass
+				? [[settingsClass alloc] init] : nil;
+		if (!settings){
+			NSLog(@"TGProfile: Group Settings unavailable (class %@, chat %lld)",
+				  settingsClass ? @"present but init returned nil" : @"missing",
+				  self.chatId);
+			[TGAlertSheet showMessage:@"Group Settings could not be opened on this build."
+								title:@"Group Settings" inView:self.view];
+			return;
+		}
 		settings.chatId = self.chatId;
 		settings.chatTitle = self.name;
 		settings.hidesBottomBarWhenPushed = YES;
-		[self.navigationController pushViewController:settings animated:YES];
+		NSLog(@"TGProfile: opening Group Settings for chat %lld", self.chatId);
+		// Pushing is right when this profile is on a stack. A profile shown
+		// modally has none, and `[nil pushViewController:]` is the tap that
+		// does nothing; the shared helper presents it instead.
+		TGPresentControllerFrom(settings, self);
 		return;
 	}
 

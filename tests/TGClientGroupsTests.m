@@ -1475,4 +1475,142 @@ static void answerG(TGClient *c, NSDictionary *answer) {
 				  @"no reactions, nothing to report");
 }
 
+// ──────────────────────────────────────────────────────────────────────────────
+#pragma mark - member rows
+
+static NSDictionary *memberOf(int64_t userId, NSString *status) {
+	return @{
+		@"@type"     : @"chatMember",
+		@"member_id" : @{@"@type" : @"messageSenderUser", @"user_id" : @(userId)},
+		@"status"    : @{@"@type" : status},
+	};
+}
+
+static NSDictionary *memberWithTag(int64_t userId, NSString *status, NSString *tag) {
+	NSMutableDictionary *member = [memberOf(userId, status) mutableCopy];
+	if (tag)
+		member[@"tag"] = tag;
+	return member;
+}
+
+/// The role word is what both member lists draw a badge from, and an
+/// administrator must never be mistaken for the owner - only the creator may
+/// hand the group over. Unknown statuses fall back to "member" instead of
+/// inventing a role.
+- (void)testMemberRow_EveryStatusWordAndTheOwnerFlag {
+	NSDictionary *owner = TGMemberRowForMember(memberOf(7, @"chatMemberStatusCreator"), @"Olena");
+	XCTAssertEqualObjects(owner[@"status"], @"owner");
+	XCTAssertTrue([owner[@"owner"] boolValue], @"the creator is the owner");
+	XCTAssertEqual([owner[@"id"] longLongValue], 7LL);
+	XCTAssertEqualObjects(owner[@"name"], @"Olena");
+
+	NSDictionary *admin = TGMemberRowForMember(memberOf(8, @"chatMemberStatusAdministrator"), @"Bohdan");
+	XCTAssertEqualObjects(admin[@"status"], @"admin");
+	XCTAssertFalse([admin[@"owner"] boolValue], @"an administrator is not the owner");
+
+	NSDictionary *restricted = TGMemberRowForMember(memberOf(9, @"chatMemberStatusRestricted"), @"");
+	XCTAssertEqualObjects(restricted[@"status"], @"restricted");
+	NSDictionary *banned = TGMemberRowForMember(memberOf(10, @"chatMemberStatusBanned"), @"");
+	XCTAssertEqualObjects(banned[@"status"], @"banned");
+	NSDictionary *left = TGMemberRowForMember(memberOf(11, @"chatMemberStatusLeft"), @"");
+	XCTAssertEqualObjects(left[@"status"], @"left");
+	NSDictionary *member = TGMemberRowForMember(memberOf(12, @"chatMemberStatusMember"), @"");
+	XCTAssertEqualObjects(member[@"status"], @"member");
+	NSDictionary *unknown = TGMemberRowForMember(memberOf(13, @"chatMemberStatusSomethingNew"), @"");
+	XCTAssertEqualObjects(unknown[@"status"], @"member",
+			@"a status this build does not know must not become a badge");
+
+	NSDictionary *nameless = TGMemberRowForMember(memberOf(14, @"chatMemberStatusMember"), nil);
+	XCTAssertEqualObjects(nameless[@"name"], @"", @"a row always has a string name");
+
+	// chatMember.tag carries the administrator's custom title. The badge has
+	// to show that title; "Admin" is only the fallback when Telegram sent no
+	// tag at all.
+	NSDictionary *tagged = TGMemberRowForMember(
+			memberWithTag(15, @"chatMemberStatusAdministrator", @"  Curator  "), @"Iryna");
+	XCTAssertEqualObjects(tagged[@"tag"], @"Curator",
+			@"the custom title is trimmed and kept for the badge");
+	XCTAssertEqualObjects(tagged[@"status"], @"admin");
+	NSDictionary *untagged = TGMemberRowForMember(
+			memberOf(16, @"chatMemberStatusAdministrator"), @"Ihor");
+	XCTAssertEqualObjects(untagged[@"tag"], @"",
+			@"no tag is an empty string, never nil");
+
+	XCTAssertNil(TGMemberRowForMember(@{@"status" : @{}}, @"Nobody"),
+			@"a member with no user id is not a row");
+	XCTAssertNil(TGMemberRowForMember(nil, @"Nobody"));
+}
+
+/// A supergroup member list carries the role with the person, so the screen
+/// does not need getChatAdministrators just to draw a badge.
+- (void)testMembersOfChat_SupergroupCarriesStatusAndOwner {
+	TGClient *c = G();
+	c.usersById[@(7)] = @"Olena";
+	c.usersById[@(8)] = @"Bohdan";
+	c.usersById[@(9)] = @"Ihor";
+	__block NSArray *rows = nil;
+	[c membersOfChat:4242 completion:^(NSArray *members){ rows = members; }];
+
+	answerG(c, @{@"@type" : @"chat",
+			@"id" : @(4242),
+			@"type" : @{@"@type" : @"chatTypeSupergroup",
+						@"supergroup_id" : @(90),
+						@"is_channel" : @NO}});
+	NSDictionary *request = lastG(c, @"getSupergroupMembers");
+	XCTAssertEqualObjects(request[@"supergroup_id"], @(90));
+	XCTAssertEqual([request[@"limit"] integerValue], 50);
+
+	answerG(c, @{@"@type" : @"supergroupMembers",
+			@"members" : @[memberOf(7, @"chatMemberStatusCreator"),
+						   memberWithTag(8, @"chatMemberStatusAdministrator", @"Moderator"),
+						   memberOf(9, @"chatMemberStatusMember")]});
+
+	XCTAssertEqual(rows.count, (NSUInteger)3);
+	XCTAssertEqualObjects(rows[0][@"name"], @"Olena");
+	XCTAssertEqualObjects(rows[0][@"status"], @"owner");
+	XCTAssertTrue([rows[0][@"owner"] boolValue]);
+	XCTAssertEqualObjects(rows[1][@"name"], @"Bohdan");
+	XCTAssertEqualObjects(rows[1][@"status"], @"admin");
+	XCTAssertEqualObjects(rows[1][@"tag"], @"Moderator",
+			@"the administrator's custom title rides with the row");
+	XCTAssertFalse([rows[1][@"owner"] boolValue]);
+	XCTAssertEqualObjects(rows[2][@"status"], @"member");
+}
+
+/// A basic group's members live in getBasicGroupFullInfo. The same mapping
+/// runs there, otherwise a basic group's owner would lose the badge.
+- (void)testMembersOfChat_BasicGroupCarriesStatusAndOwner {
+	TGClient *c = G();
+	c.usersById[@(21)] = @"Nazar";
+	__block NSArray *rows = nil;
+	[c membersOfChat:-70 completion:^(NSArray *members){ rows = members; }];
+
+	answerG(c, @{@"@type" : @"chat",
+			@"id" : @(-70),
+			@"type" : @{@"@type" : @"chatTypeBasicGroup",
+						@"basic_group_id" : @(55)}});
+	NSDictionary *request = lastG(c, @"getBasicGroupFullInfo");
+	XCTAssertEqualObjects(request[@"basic_group_id"], @(55));
+
+	answerG(c, @{@"@type" : @"basicGroupFullInfo",
+			@"members" : @[memberOf(21, @"chatMemberStatusCreator")]});
+	XCTAssertEqual(rows.count, (NSUInteger)1);
+	XCTAssertEqualObjects(rows[0][@"status"], @"owner");
+	XCTAssertTrue([rows[0][@"owner"] boolValue]);
+}
+
+/// A private chat has no member list and must not ask for one.
+- (void)testMembersOfChat_APrivateChatAnswersEmpty {
+	TGClient *c = G();
+	__block NSArray *rows = @[@1];
+	[c membersOfChat:77 completion:^(NSArray *members){ rows = members; }];
+	answerG(c, @{@"@type" : @"chat",
+			@"id" : @(77),
+			@"type" : @{@"@type" : @"chatTypePrivate",
+						@"user_id" : @(7)}});
+	XCTAssertEqual(rows.count, (NSUInteger)0);
+	XCTAssertEqual(countG(c, @"getSupergroupMembers"), (NSUInteger)0);
+	XCTAssertEqual(countG(c, @"getBasicGroupFullInfo"), (NSUInteger)0);
+}
+
 @end

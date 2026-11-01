@@ -377,7 +377,11 @@
 	// stops being watched when the screen is gone.
 	[self.locationManager stopUpdatingLocation];
 	[TGSnackbar commitNow];
+	// Dismissing the menu restores the held message through its onDismiss;
+	// this covers the one window where the lift exists but its menu has not
+	// been added yet.
 	[TGPopupMenu dismiss];
+	[self endHoldPresentation];
 
 	[NSObject cancelPreviousPerformRequestsWithTarget:self.table];
 	[NSObject cancelPreviousPerformRequestsWithTarget:self];
