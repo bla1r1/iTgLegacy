@@ -20,12 +20,12 @@ As of 2026-11-01:
 
 | | declared | covered | gap | of it wanted | out of scope |
 |---|---|---|---|---|---|
-| functions | 1076 | 671 (62%) | 405 | 0 | 405 |
-| updates | 197 | 125 (63%) | 72 | 0 | 72 |
+| functions | 1076 | 775 (72%) | 301 | 0 | 301 |
+| updates | 197 | 136 (69%) | 61 | 0 | 61 |
 
 Functions are counted from string literals in `src/`, updates from the one list in `src/Core/TGUpdateType.h` — anything outside it is thrown away in the receive loop before a Foundation tree is built, so a dropped update leaves no trace in the log either. Both numbers are floors. Where this file and ROADMAP.md disagree, the roadmap wins — it knows the device.
 
-Every one of the 125 updates let through the filter now has a branch that acts on it; the scaffold in `TG_IGNORED_UPDATES` is empty — names kept in the filter and the dispatch so the screen can be filled in later without hunting for the string, and reported by `--ignored` rather than counted as handled. The 72 dropped updates are out of scope and match the script's `SKIP` pattern.
+Every one of the 136 updates let through the filter now has a branch that acts on it; the scaffold in `TG_IGNORED_UPDATES` is empty — names kept in the filter and the dispatch so the screen can be filled in later without hunting for the string, and reported by `--ignored` rather than counted as handled. The 61 dropped updates are out of scope and match the script's `SKIP` pattern.
 
 The two halves are not comparable: 1076 functions include every bot, Stars, business and TON call, while the 197 updates are the live state of a client that is running. Updates are the weaker number of the two and the cheaper one to move — Tier 0 below is closed, the global unread total drives the app-icon badge now.
 
@@ -33,8 +33,8 @@ The two halves are not comparable: 1076 functions include every bot, Stars, busi
 
 | Tier | Meaning | Functions |
 |---|---|---|
-| 1 | done: reachable from a screen (`--wired`) | 671 |
-| 2 | not done yet, but buildable: the wanted list plus the skipped-but-possible set (`--relevant` + `--tier2`) | 0 + 104 |
+| 1 | done: reachable from a screen (`--wired`) | 775 |
+| 2 | not done yet, but buildable: the wanted list plus the skipped-but-possible set (`--relevant` + `--tier2`) | 0 + 0 |
 | 3 | never for this client: bot-account-only, or needs a stack this iOS cannot carry (`--tier3`) | 301 |
 
 The tier split is `scripts/tdlib_tiers.py`; it reads the same skip list the coverage
@@ -101,22 +101,31 @@ work was done in, not a second classification.
 - **Message batch one** — **done**: `getMessageLinkInfo` answers the "message" kind a t.me link to one post carries (the link opened a guessed chat before); the chat opens to that message through `initialMessageId`, and the jump machinery the pinned banner already has does the fetching around. `canSendMessageToUser` gates "Send Message" before a doomed composer sells itself ("ok", "paidMessages", "userDeleted", "userRestrictsNewChats"); `clearAllDraftMessages` is Data & Storage's red row; `getDefaultMessageAutoDeleteTime` / `setDefaultMessageAutoDeleteTime` are Privacy's "Delete Messages By Default" picker; `toggleSupergroupSignMessages` + `toggleSupergroupJoinToSendMessages` are in the group menu, flags read per open off `getSupergroupFullInfo`.
 - **Message batches two to six** — **done**: the message record sheets (menu rows on a held message) for `getMessageViewers` + `getMessageReadDate` (who read, and why not — the privacy words TDLib sends), `getMessageAuthor`, `getMessageEmbeddingCode` (Copy Embed Code), `getMessagePublicForwards`; reaction record sheets from `getMessageAddedReactions` where an admin clears `deleteMessageReactionsFromSender` per sender and `deleteAllRecentMessageReactionsFromSender` chat-wide (through the member sheet's Clear Their Reactions); `searchPublicMessagesByTag` rides the in-chat search bar (#-typed, tagged answers in Saved via `searchSavedMessages`); `searchChatRecentLocationMessages` is the locations sheet that jumps to a pin; `translateMessageText` is the Translate row; `getChatMessageCount` fills the jump sheet's subtitle and takes over the count row in the profile; `getChatMessageCalendar` is what Jump-to-Date answers through (one round trip instead of two). Moderation: `deleteChatMessagesByDate/bySender` in the group menu; `deleteAllCallMessages` and `searchOutgoingDocumentMessages` ("My Sent Files") in Data & Storage; welcome messages (`loadChatWelcomeMessages`, `addChatWelcomeMessage`, `editChatWelcomeMessage`, `deleteChatWelcomeMessage`, `deleteAllChatWelcomeMessages`) as one sheet off the group menu; send-as (`getChatAvailableMessageSenders`, `setChatMessageSender`) off the channel profile; the whole Saved-messages topics screen (`loadSavedMessagesTopics`, `getSavedMessagesTags`, `setSavedMessagesTagLabel`, `toggleSavedMessagesTopicIsPinned`, `setPinnedSavedMessagesTopics`, `getSavedMessagesTopicMessageByDate`, `deleteSavedMessagesTopicMessagesByDate`), topics riding `updateSavedMessagesTopic` as real state. Everything the row used to defer now has a path. Bot/inline plumbing (`editMessageReplyMarkup`, `getCallbackQueryMessage`, `getPreparedInlineMessage`, `savePreparedInlineMessage`, `sendTextMessageDraft`, `stopPendingMessage`, `getPersonalChatHistory`, and the five `editInlineMessage*` edits) sits in Settings → Debug Menu → Bot Tools, where the bot-account request and the server's refusal have a real surface; the import trio (`importMessages`, `getMessageFileType`, `getMessageImportConfirmationText`) is the chat profile's Import Messages flow, which reads the export head, shows Telegram's confirmation sentence and imports from Documents; `setChatDirectMessagesGroup` is the channel profile's Direct Messages row. The held-message menu and its Message Info sheet now reach `addLocalMessage` (Add Local Note), `clickAnimatedEmojiMessage`, `getChatMessagePosition`, `getChatSparseMessagePositions`, `getMessageEffect`, `getMessageLocally`, `getMessageStatistics` and `sendMessageViewMetrics`; `setMessageReactions` sits in Bot Tools with the other bot-side requests. `toggleSupergroupIsAllHistoryAvailable` surfaced when the old `[Ss]tory` pattern stopped matching "History" and is now the third switch in the group flags sheet; the History-by-topic calls are no longer skipped either — a topic's history tries `getForumTopicHistory` and falls back to `getMessageThreadHistory`, Saved topics use `getSavedMessagesTopicHistory`, and Clear Everything is `deleteSavedMessagesTopicHistory`.
 
+- **Communities, checklists, quick replies and AI tools** — **done as a wave**: 35 functions, every one on a screen. Settings → Communities and Replies is the hub: the community list comes from `updateCommunity` (Telegram has no list request), a tap runs `getCommunityFullInfo`, and the detail screen renames, replaces the photo, flips the one member permission and deletes through `setCommunityName`, `setCommunityPhoto`, `setCommunityPermissions` and `deleteCommunity`. Creating one asks for an owned group or channel and a name, then `createCommunity`. The same hub lists Saved Replies: `loadQuickReplyShortcuts` fills the manager, drag reorders with `reorderQuickReplyShortcuts`, swipe deletes with `deleteQuickReplyShortcut`, rename checks `checkQuickReplyShortcutName` then `setQuickReplyShortcutName`; a shortcut opens its messages, where `loadQuickReplyShortcutMessages` reads them, `addQuickReplyShortcutMessage` and `addQuickReplyShortcutMessageAlbum` write them, `editQuickReplyMessage` changes one, `deleteQuickReplyShortcutMessages` takes them out and `readdQuickReplyShortcutMessages` puts them back. The composer's attach sheet sends a shortcut with `sendQuickReplyShortcutMessages`. The attach sheet's Checklist row composes a new list; a held checklist message opens the same editor, which marks through `markChecklistTasksAsDone`, appends with `addChecklistTasks` and replaces the whole list with `editMessageChecklist`. A suggested post's screen reads its price, date and state from `getMessage` and answers with `approveSuggestedPost` or `declineSuggestedPost`; `updateSuggestedActions` feeds a list hidden one row at a time with `hideSuggestedAction`. Message Tools carries the AI half: `summarizeMessage`, `fixTextWithAi`, `translateMessageRichMessage`, `getFullRichMessage`, `setMessageFactCheck` and the bot-scoped `sendRichMessageDraft` report Telegram's own answer. Settings → AI Compose runs `composeTextWithAi`, `composeRichMessageWithAi`, `createRichMessageWithAi`, `fixRichMessageWithAi` and `translateRichMessage`, with the result in a preview that can be copied or sent.
+
 ---
 
 ## Tier 2 — wanted, nobody blocked
 
-28 functions in a long tail: notifications/sounds (6), forum topics (7), payments/orders (5), calls/sessions (4), connected websites (3), bot keyboards (2) and poll option properties (1). Run `--relevant` for the exact names and pick with the app in hand.
+The wanted half is empty: `--relevant` reads 0, and the skipped-but-buildable half is now empty too. Tier 2 is closed: every function that a screen and this client could carry has one.
 
-That is the wanted half. The other half of Tier 2 is 104 functions skipped today because no screen wanted them yet, but they need no new stack:
+**Business, anti-spam and the web proxy carrier — done as a wave.** Thirty-two functions, every one on a screen:
 
-- communities, checklists and quick replies — 35
-- business accounts — 28
-- emoji status, profile audio and text styles — 22
-- direct message topics — 9
-- dice, alarms and ephemeral content — 6
-- group anti-spam switches and web proxy carrier — 4
+- **Business settings** — Settings → Telegram Business reads `getBusinessFeatures` and this account's `business_info` from `getUserFullInfo`. Business Profile sends `setBusinessAccountName`, `setBusinessAccountBio`, `setBusinessAccountUsername` and `setBusinessAccountProfilePhoto`; Greeting and Away Messages send `setBusinessGreetingMessageSettings` and `setBusinessAwayMessageSettings` with their recipients and inactivity/schedule fields; Location sends `setBusinessLocation`; Opening Hours sends `setBusinessOpeningHours` built from the week's open days; Intro sends `setBusinessStartPage`.
+- **Links to chat** — the links page lists `getBusinessChatLinks`, creates with `createBusinessChatLink`, edits with `editBusinessChatLink`, deletes with `deleteBusinessChatLink` and reads one through `getBusinessChatLinkInfo`.
+- **Business bot connection** — `getBusinessConnection` reads the id a business bot was given. The profile and message calls carry that id and are marked bot-only in TDLib; a user account sees Telegram's refusal in the page rather than a missing row. The Business Messages page sends `sendBusinessMessage` and `sendBusinessMessageAlbum`, edits with `editBusinessMessageText`, `editBusinessMessageCaption`, `editBusinessMessageMedia`, `editBusinessMessageChecklist`, `editBusinessMessageLiveLocation` and `editBusinessMessageReplyMarkup`, stops a poll with `stopBusinessPoll`, reads with `readBusinessMessage`, pins with `setBusinessMessageIsPinned` and deletes with `deleteBusinessMessages`.
+- **Aggressive anti-spam** — Group Settings shows the switch from `getSupergroupFullInfo` and writes it with `toggleSupergroupHasAggressiveAntiSpamEnabled`. Anti-Spam False Positives reads `getChatEventLog` for `chatEventMessageDeleted` entries whose `can_report_anti_spam_false_positive` is set, and reports one with `reportSupergroupAntiSpamFalsePositive`.
+- **Web proxy carrier** — Settings → Proxy → Web Proxy Carrier passes a page's postMessage through `processWebProxyCarrierMessage` (text or base64 bytes) and closes it with `reportWebProxyCarrierError`, showing TDLib's answer for an id that is not open.
 
 `python3 scripts/tdlib_tiers.py --tier2` lists the names. These are not promises: they are the part of the skip list that a screen and the existing client could carry later.
+
+**Emoji status, profile audio, text styles, direct message topics and dice/ephemeral — done as a wave.** Thirty-seven functions, every one reachable:
+
+- **Emoji status** — Settings → Profile Extras → Emoji Status opens `TGEmojiStatusViewController`, a six-column grid whose tiles are the real custom-emoji stickers (`getCustomEmojiStickers` behind `getThemedEmojiStatuses`, `getDefaultEmojiStatuses` and `getRecentEmojiStatuses`). Clear Recently Used is `clearRecentEmojiStatuses`, the Clear button is `setEmojiStatus` with a null status, and a profile's More menu offers the same grid for a user (`setUserEmojiStatus`) or a chat (`getThemedChatEmojiStatuses`, `getDefaultChatEmojiStatuses`, `getDisallowedChatEmojiStatuses`, `setChatEmojiStatus`). A non-Premium refusal is shown as Telegram words it.
+- **Profile audio** — a profile's More menu opens `TGProfileAudioViewController`: `getUserProfileAudios` pages the list, a tap plays through `TGMusicPlayer`, hold offers `isProfileAudio`, `setProfileAudioPosition` and `removeProfileAudio`, and the add button takes an audio message already in Saved Messages, downloads it and sends `addProfileAudio` with a local `inputAudio`.
+- **Text composition styles** — Settings → Profile Extras → Text Styles opens `TGTextStylesViewController` over the live `updateTextCompositionStyles` list. Create (`createTextCompositionStyle`), edit (`editTextCompositionStyle`), delete (`deleteTextCompositionStyle`), Find (`searchTextCompositionStyle`), Add to Composer (`addTextCompositionStyle`) and Remove (`removeTextCompositionStyle`) are rows; Preview reads `getTextCompositionStyleExample` for examples 0–2 and can send one into a chat.
+- **Direct message topics** — a group or channel profile's More menu opens `TGDMTopicsViewController`. `loadDirectMessagesChatTopics` starts the stream, `updateDirectMessagesChatTopic` fills the rows, and a topic opens `TGDMTopicViewController` with `getDirectMessagesChatTopic`, `getDirectMessagesChatTopicHistory`, `getDirectMessagesChatTopicMessageByDate`, `deleteDirectMessagesChatTopicHistory`, `deleteDirectMessagesChatTopicMessagesByDate`, `setDirectMessagesChatTopicIsMarkedAsUnread`, `readAllDirectMessagesChatTopicReactions` and `unpinAllDirectMessagesChatTopicMessages`.
+- **Dice and ephemeral** — the attach menu's Stake Dice row opens `TGDiceViewController` (`getStakeDiceState`, kept live by `updateStakeDiceState`); its Ephemeral Message row opens `TGEphemeralViewController`, which sends `sendEphemeralMessage` and follows with `editEphemeralMessage`, `editEphemeralMessageCaption`, `deleteEphemeralMessage` and `deleteMessageEphemeralContent`. Both are bot-side calls for a user account, so the screen prints Telegram's refusal instead of hiding the row.
 
 **Stories — done as a wave.** Forty-eight functions, every one reachable from a screen:
 
@@ -200,6 +209,19 @@ That is the wanted half. The other half of Tier 2 is 104 functions skipped today
 
 **Notifications, sounds and forum topics — done as a wave.** Settings → Notifications and Sounds gains Custom Sounds: the list is `getSavedNotificationSounds`, one row reads a fresh `getSavedNotificationSound`, Add Bundled Sample / Add MP3 uploads with `addSavedNotificationSound`, and removal sends `removeSavedNotificationSound`. Active Notifications is TDLib's local list from `updateActiveNotifications` plus the two incremental updates; a row removes one with `removeNotification`, and the group row sends `removeNotificationGroup`. In a forum, holding a topic opens Topic Info (`getForumTopic`), Copy Link (`getForumTopicLink`), mute/previews (`setForumTopicNotificationSettings`), marking mentions/poll votes read (`readAllForumTopicMentions`, `readAllForumTopicPollVotes`), pinned order (`setPinnedForumTopics`) and Hide/Show General (`toggleGeneralForumTopicIsHidden`).
 
+## Tier 2 — buildable later (111)
+
+These need no new stack: a screen and the existing client surface could carry each one. `python3 scripts/tdlib_tiers.py --tier2` lists the names.
+
+- group and video calls — 42
+- business accounts — 28
+- emoji status, profile audio and text styles — 22
+- direct message topics — 9
+- dice, alarms and ephemeral content — 6
+- group anti-spam switches and web proxy carrier — 4
+
+The communities/checklists/quick-replies group that used to lead this list is gone: all 35 names are reachable from the hub, the composer and Message Tools, and `scripts/tdlib_tiers.py` no longer counts them.
+
 ## Tier 3 — never for this client (301)
 
 Skipped by pattern in `scripts/tdlib_coverage.sh`; `python3 scripts/tdlib_tiers.py --tier3` lists them with their groups:
@@ -260,17 +282,17 @@ The fifth wave gave the last non-notification markers a surface: `updateAvailabl
 
 ## Tier 2 — wanted, nobody blocked
 
-Saved-messages topics and tags, welcome messages, message sender switching, notification sounds, translation flags, `updateChatReplyMarkup`, `updateSpeedLimitNotification`, the default reaction and the GIF search parameters — **done as a wave**: every update with a reader is in the filter, merged or nudged. `updateApplicationVerificationRequired` also acts now: it keeps the request id on the client and posts the notification the Settings row reads. The account-status, message-effect, appearance and composer waves above removed nine more. Six names remain in `TG_IGNORED_UPDATES` as the scaffold for screens not drawn yet; `sh scripts/tdlib_coverage.sh --ignored` lists them, and filling one in is a case and a screen.
+Saved-messages topics and tags, welcome messages, message sender switching, notification sounds, translation flags, `updateChatReplyMarkup`, `updateSpeedLimitNotification`, the default reaction and the GIF search parameters — **done as a wave**: every update with a reader is in the filter, merged or nudged. `updateApplicationVerificationRequired` also acts now: it keeps the request id on the client and posts the notification the Settings row reads. The account-status, message-effect, appearance and composer waves above removed nine more. No name remains in `TG_IGNORED_UPDATES`; `sh scripts/tdlib_coverage.sh --ignored` prints nothing.
 
 ## Tier 3 — out of scope
 
-72 dropped updates match the `SKIP` pattern in `scripts/tdlib_coverage.sh`: stories, business accounts, TON wallet, Stars and paid reactions, gifts and auctions, boosts, quick replies, mini-app and web-browser plumbing, plus every `updateNew*Query` — those only ever reach a bot account, never this one.
+61 dropped updates match the `SKIP` pattern in `scripts/tdlib_coverage.sh`: stories, business accounts, TON wallet, Stars and paid reactions, gifts and auctions, boosts, quick replies, mini-app and web-browser plumbing, plus every `updateNew*Query` — those only ever reach a bot account, never this one.
 
 Three more joined the pattern deliberately rather than through a screen: `updateMessageSendAcknowledged` (a flattened message has no state between pending and sent, so there is nothing to draw), `updateActiveEmojiReactions` (the reaction picker's list — no picker) and `updatePendingMessage` (a bot's streaming draft — no bot surface). `updateFileGenerationStart` / `updateFileGenerationStop` used to be here for the same reason; File Tools now asks TDLib to generate a file, so both are handled and announce progress to `TGFileToolsViewController`.
 
 ## Pick these first
 
-The update half is closed: 125 updates act, and `TG_IGNORED_UPDATES` is empty. The last markers became the Active Notifications screen, the Autosave page's live re-read and the Language page's string re-read.
+The update half is closed: 136 updates act, and `TG_IGNORED_UPDATES` is empty. The last markers became the Active Notifications screen, the Autosave page's live re-read and the Language page's string re-read.
 
 ---
 

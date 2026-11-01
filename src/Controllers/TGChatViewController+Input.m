@@ -6,6 +6,10 @@
 #import "TGAlertSheet.h"
 #import "TGSheet.h"
 #import "TGScheduledViewController.h"
+#import "TGChecklistViewController.h"
+#import "TGQuickRepliesViewController.h"
+#import "TGDiceViewController.h"
+#import "TGEphemeralViewController.h"
 #import "TGStyle.h"
 
 @implementation TGChatViewController (Input)
@@ -590,6 +594,39 @@ static const NSInteger kBannerSubtitleTag = 72;
 			case TGAttachChoiceGallery:  [weakSelf pickMedia]; break;
 			case TGAttachChoiceLocation: [weakSelf sendCurrentLocation]; break;
 			case TGAttachChoiceContact:  [weakSelf pickContact]; break;
+			case TGAttachChoiceChecklist: {
+				TGChecklistViewController *checklist = [[TGChecklistViewController alloc]
+						initWithChatId:weakSelf.chatId messageId:0 title:@"Checklist"];
+				checklist.hidesBottomBarWhenPushed = YES;
+				[weakSelf.navigationController pushViewController:checklist animated:YES];
+				break;
+			}
+			case TGAttachChoiceQuickReply: {
+				TGQuickRepliesViewController *replies =
+						[[TGQuickRepliesViewController alloc] init];
+				replies.sendChatId = weakSelf.chatId;
+				replies.hidesBottomBarWhenPushed = YES;
+				[weakSelf.navigationController pushViewController:replies animated:YES];
+				break;
+			}
+			case TGAttachChoiceDice: {
+				TGDiceViewController *dice = [[TGDiceViewController alloc] init];
+				dice.chatId = weakSelf.chatId;
+				dice.chatTitle = weakSelf.chatTitle;
+				dice.hidesBottomBarWhenPushed = YES;
+				[weakSelf.navigationController pushViewController:dice animated:YES];
+				break;
+			}
+			case TGAttachChoiceEphemeral: {
+				TGEphemeralViewController *ephemeral =
+						[[TGEphemeralViewController alloc] init];
+				ephemeral.chatId = weakSelf.chatId;
+				ephemeral.chatTitle = weakSelf.chatTitle;
+				ephemeral.hidesBottomBarWhenPushed = YES;
+				[weakSelf.navigationController pushViewController:ephemeral
+														animated:YES];
+				break;
+			}
 		}
 	};
 }

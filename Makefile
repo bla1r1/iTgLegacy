@@ -219,6 +219,11 @@ APP_SRC_M := \
 	src/Core/TGClient+Diagnostics.m \
 	src/Core/TGDatabaseKey.m \
 	src/Core/TGClient+Profile.m \
+	src/Core/TGClient+ProfileAudio.m \
+	src/Core/TGClient+EmojiStatus.m \
+	src/Core/TGClient+TextStyles.m \
+	src/Core/TGClient+DirectMessages.m \
+	src/Core/TGClient+Dice.m \
 	src/Core/TGClient+Proxy.m \
 	src/Core/TGClient+Groups.m \
 	src/Core/TGClient+GroupCalls.m \
@@ -230,6 +235,8 @@ APP_SRC_M := \
 	src/Core/TGClient+Language.m \
 	src/Core/TGClient+Search.m \
 	src/Core/TGClient+Stories.m \
+	src/Core/TGClient+Business.m \
+	src/Core/TGClient+Tier2.m \
 	src/Core/TGClient+ChatTools.m \
 	src/Core/TGClient+Downloads.m \
 	src/Core/TGClient+Secret.m \
@@ -311,8 +318,20 @@ APP_SRC_M := \
 	src/Controllers/TGStoryArchiveViewController.m \
 	src/Controllers/TGStorySettingsViewController.m \
 	src/Controllers/TGStoriesMenuViewController.m \
+	src/Controllers/TGEmojiStatusViewController.m \
+	src/Controllers/TGProfileAudioViewController.m \
+	src/Controllers/TGTextStylesViewController.m \
+	src/Controllers/TGDMTopicsViewController.m \
+	src/Controllers/TGDMTopicViewController.m \
+	src/Controllers/TGDiceViewController.m \
+	src/Controllers/TGEphemeralViewController.m \
 	src/Controllers/TGPublicStoriesViewController.m \
 	src/Controllers/TGLiveStoryViewController.m \
+	src/Controllers/TGBusinessViewController.m \
+	src/Controllers/TGBusinessMessagesViewController.m \
+	src/Controllers/TGAntiSpamViewController.m \
+	src/Controllers/TGWebProxyCarrierViewController.m \
+	src/Controllers/TGSettingsViewController+Tier2.m \
 	src/Controllers/TGContactsViewController.m \
 	src/Controllers/TGCloseFriendsViewController.m \
 	src/Controllers/TGNewContactViewController.m \
@@ -331,6 +350,7 @@ APP_SRC_M := \
 	src/Controllers/TGProfileViewController.m \
 	src/Controllers/TGProfileViewController+Actions.m \
 	src/Controllers/TGProfileViewController+Media.m \
+	src/Controllers/TGProfileViewController+Tier2.m \
 	src/Controllers/TGEditProfileViewController.m \
 	src/Controllers/TGUsernameSettingsViewController.m \
 	src/Controllers/TGGroupSettingsViewController.m \
@@ -357,6 +377,17 @@ APP_SRC_M := \
 	src/Controllers/TGSettingsViewController+PrivacyPages.m \
 	src/Controllers/TGSettingsViewController+NetworkPages.m \
 	src/Controllers/TGSettingsViewController+Actions.m \
+	src/Controllers/TGSettingsViewController+Tier2.m \
+	src/Controllers/TGTier2ListViewController.m \
+	src/Controllers/TGTier2HubViewController.m \
+	src/Controllers/TGCommunitiesViewController.m \
+	src/Controllers/TGCommunityViewController.m \
+	src/Controllers/TGQuickRepliesViewController.m \
+	src/Controllers/TGQuickReplyMessagesViewController.m \
+	src/Controllers/TGChecklistViewController.m \
+	src/Controllers/TGSuggestedPostViewController.m \
+	src/Controllers/TGAiComposeViewController.m \
+	src/Controllers/TGMessageToolsViewController.m \
 	src/Audio/TGVoiceDecoder.m \
 	src/Audio/TGStreamingVoicePlayer.m \
 	src/Calls/TGCallIce.m \

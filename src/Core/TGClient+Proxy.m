@@ -216,6 +216,71 @@ static NSDictionary *TGProxyObject(NSString *server, NSInteger port, NSString *k
 	return YES;
 }
 
+#pragma mark - web proxy carrier
+
+- (void)processWebProxyCarrierMessage:(NSInteger)carrierId
+								 text:(NSString *)text
+						   completion:(void (^)(BOOL, NSString *))completion {
+	[self request:@{
+		@"@type" : @"processWebProxyCarrierMessage",
+		@"carrier_id" : @(carrierId),
+		@"message" : @{@"@type" : @"webProxyCarrierMessageText",
+					   @"text" : text ?: @""},
+	} completion:^(NSDictionary *result){
+		BOOL ok = ![result[@"@type"] isEqualToString:@"error"];
+		NSString *message = result[@"message"];
+		if (completion)
+			completion(ok, ok ? nil : ([message isKindOfClass:NSString.class]
+					? message : @"TDLib refused that carrier message."));
+	}];
+}
+
+- (void)processWebProxyCarrierMessage:(NSInteger)carrierId
+							  base64:(NSString *)base64
+						  completion:(void (^)(BOOL, NSString *))completion {
+	[self request:@{
+		@"@type" : @"processWebProxyCarrierMessage",
+		@"carrier_id" : @(carrierId),
+		@"message" : @{@"@type" : @"webProxyCarrierMessageBinary",
+					   @"data" : base64 ?: @""},
+	} completion:^(NSDictionary *result){
+		BOOL ok = ![result[@"@type"] isEqualToString:@"error"];
+		NSString *message = result[@"message"];
+		if (completion)
+			completion(ok, ok ? nil : ([message isKindOfClass:NSString.class]
+					? message : @"TDLib refused that carrier message."));
+	}];
+}
+
+- (void)reportWebProxyCarrierError:(NSInteger)carrierId
+							  kind:(NSString *)kind
+						   message:(NSString *)message
+						completion:(void (^)(BOOL, NSString *))completion {
+	NSDictionary *error = nil;
+	if ([kind isEqualToString:@"paused"])
+		error = @{@"@type" : @"webProxyCarrierErrorPaused"};
+	else if ([kind isEqualToString:@"terminated"])
+		error = @{@"@type" : @"webProxyCarrierErrorTerminated"};
+	else if ([kind isEqualToString:@"refused"])
+		error = @{@"@type" : @"webProxyCarrierErrorRefused"};
+	else if ([kind isEqualToString:@"loadFailed"])
+		error = @{@"@type" : @"webProxyCarrierErrorLoadFailed",
+				  @"message" : message ?: @"The carrier page did not load."};
+	else
+		error = @{@"@type" : @"webProxyCarrierErrorUnsupported"};
+	[self request:@{
+		@"@type" : @"reportWebProxyCarrierError",
+		@"carrier_id" : @(carrierId),
+		@"error" : error,
+	} completion:^(NSDictionary *result){
+		BOOL ok = ![result[@"@type"] isEqualToString:@"error"];
+		NSString *reply = result[@"message"];
+		if (completion)
+			completion(ok, ok ? nil : ([reply isKindOfClass:NSString.class]
+					? reply : @"TDLib refused that carrier error."));
+	}];
+}
+
 @end
 
 // vim:ft=objc

@@ -7,7 +7,13 @@
 typedef NS_ENUM(NSInteger, TGAttachChoice) {
 	TGAttachChoiceGallery = 0,
 	TGAttachChoiceLocation,
-	TGAttachChoiceContact
+	TGAttachChoiceContact,
+	TGAttachChoiceChecklist,
+	TGAttachChoiceQuickReply,
+	/// The stake dice panel and the ephemeral composer do not attach a file;
+	/// they open a screen of their own at the bottom of the same menu.
+	TGAttachChoiceDice,
+	TGAttachChoiceEphemeral
 };
 
 @interface TGAttachSheet : TGSheet

@@ -63,4 +63,25 @@
 				   secret:(NSString *)secret
 			   completion:(void (^)(double seconds))completion;
 
+#pragma mark - web proxy carrier
+
+/// A text message a web proxy page passed to postMessage of the bridge
+/// object. TDLib must see every one, in order, before it can run the page.
+/// `carrierId` is the id from updateWebProxyCarrierOpened.
+- (void)processWebProxyCarrierMessage:(NSInteger)carrierId
+								 text:(NSString *)text
+						   completion:(void (^)(BOOL ok, NSString *error))completion;
+
+/// The same for a binary message, base64 as TDLib spells bytes.
+- (void)processWebProxyCarrierMessage:(NSInteger)carrierId
+							  base64:(NSString *)base64
+						  completion:(void (^)(BOOL ok, NSString *error))completion;
+
+/// reportWebProxyCarrierError. `kind` is "unsupported", "paused",
+/// "terminated" or "refused"; "loadFailed" also takes a sentence.
+- (void)reportWebProxyCarrierError:(NSInteger)carrierId
+							  kind:(NSString *)kind
+						   message:(NSString *)message
+						completion:(void (^)(BOOL ok, NSString *error))completion;
+
 @end

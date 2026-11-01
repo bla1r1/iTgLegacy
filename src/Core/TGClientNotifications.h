@@ -85,6 +85,18 @@ extern NSString *const TGActiveNotificationsChangedNotification;
 /// carries "chatId" when the update names one.
 extern NSString *const TGForumTopicsChangedNotification;
 
+/// The used text composition styles changed. No payload: the manager reads
+/// -textCompositionStyles, which the update replaced whole.
+extern NSString *const TGTextCompositionStylesChangedNotification;
+
+/// A channel direct messages topic arrived or moved. userInfo carries
+/// "chatId"; the topic list re-reads the cache for that chat.
+extern NSString *const TGDirectMessagesTopicsChangedNotification;
+
+/// The stake dice state moved. No payload: the panel reads the cached state,
+/// which is also the hash the next roll has to quote.
+extern NSString *const TGStakeDiceStateChangedNotification;
+
 /// Telegram asked this app to prove it is genuine before a request can go
 /// through. userInfo carries "verificationId" and "nonce"; the settings
 /// sheet hands the verification service's token back through
@@ -124,3 +136,15 @@ extern NSString *const TGChatDraftStoppedNotification;
 /// A scheduled video was published and the message now carries it. userInfo
 /// carries "chatId" and "messageId"; the open chat re-reads that message.
 extern NSString *const TGChatVideoPublishedNotification;
+
+/// updateCommunity or updateCommunityFullInfo arrived. No payload: the
+/// community list and the open detail screen re-read the client's cache.
+extern NSString *const TGCommunitiesChangedNotification;
+
+/// A quick-reply shortcut or one of its messages changed. No payload; the
+/// manager and the open shortcut re-read the cache.
+extern NSString *const TGQuickRepliesChangedNotification;
+
+/// updateSuggestedActions added or removed rows. No payload; the list that
+/// draws them re-reads the client.
+extern NSString *const TGSuggestedActionsChangedNotification;

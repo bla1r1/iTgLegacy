@@ -26,6 +26,7 @@
 #import "TGIcons.h"
 #import "TGGroupCallViewController.h"
 #import "TGVideoChatSetupViewController.h"
+#import "TGAntiSpamViewController.h"
 
 /// The rows a section can hold. A switch draws a UISwitch, a member row a
 /// face, and everything else a value with a chevron.
@@ -134,6 +135,11 @@ static NSDictionary *TGSection(NSString *header, NSString *footer, NSArray *rows
 @property (nonatomic, assign) BOOL signMessages;
 @property (nonatomic, assign) BOOL joinToSend;
 @property (nonatomic, assign) BOOL allHistory;
+/// Aggressive anti-spam is a supergroup-only switch; `canToggleAntiSpam`
+/// comes from the same full record and keeps the switch disabled where
+/// Telegram does not allow it.
+@property (nonatomic, assign) BOOL aggressiveAntiSpam;
+@property (nonatomic, assign) BOOL canToggleAntiSpam;
 @property (nonatomic, assign) BOOL hasPhoto;
 /// This account's own role in the chat. A plain member sees the group's
 /// identity and people; the management rows belong to the owner and the
@@ -297,6 +303,8 @@ static NSDictionary *TGSection(NSString *header, NSString *footer, NSArray *rows
 		if (!me)
 			return;
 		me.groupInfo = info;
+		me.aggressiveAntiSpam = [info[@"has_aggressive_anti_spam_enabled"] boolValue];
+		me.canToggleAntiSpam = [info[@"can_toggle_aggressive_anti_spam"] boolValue];
 		[me rebuild];
 	}];
 	[[TGClient shared] supergroupFlagsForChat:self.chatId
@@ -571,6 +579,16 @@ static NSDictionary *TGSection(NSString *header, NSString *footer, NSArray *rows
 										 self.joinToSend, canBehaviour)];
 		[behaviour addObject:TGSwitchRow(@"All History", nil, @"history",
 										 self.allHistory, canBehaviour)];
+		[behaviour addObject:TGSwitchRow(@"Aggressive Anti-Spam",
+				self.canToggleAntiSpam
+						? (self.aggressiveAntiSpam
+								? @"Deletes suspicious messages automatically"
+								: @"Off")
+						: @"Telegram does not allow this group to turn it on",
+				@"antispam", self.aggressiveAntiSpam, self.canToggleAntiSpam)];
+		[behaviour addObject:TGActionRow(@"Anti-Spam False Positives",
+				@"Report a message deleted by mistake", @"antispamFalsePositive",
+				NO)];
 		[behaviour addObject:TGSwitchRow(@"Join by Request",
 				[self.settings[@"joinByRequest"] boolValue]
 						? @"Administrators approve each join"
@@ -1020,6 +1038,8 @@ targetIndexPathForMoveFromRowAtIndexPath:(NSIndexPath *)source
 			me.joinToSend = on;
 		else if ([key isEqualToString:@"history"])
 			me.allHistory = on;
+		else if ([key isEqualToString:@"antispam"])
+			me.aggressiveAntiSpam = on;
 		else if ([key isEqualToString:@"hidden"] || [key isEqualToString:@"forum"] ||
 				 [key isEqualToString:@"joinRequests"] ||
 				 [key isEqualToString:@"translation"]){
@@ -1054,6 +1074,9 @@ targetIndexPathForMoveFromRowAtIndexPath:(NSIndexPath *)source
 			done(ok, ok ? nil : @"Only an administrator of a supergroup or a "
 								@"channel carries this switch.");
 		}];
+	} else if ([key isEqualToString:@"antispam"]){
+		[[TGClient shared] setChat:self.chatId aggressiveAntiSpam:on
+						completion:done];
 	} else if ([key isEqualToString:@"hidden"]){
 		[[TGClient shared] setSupergroupHiddenMembersInChat:self.chatId on:on
 												completion:done];
@@ -1173,6 +1196,14 @@ targetIndexPathForMoveFromRowAtIndexPath:(NSIndexPath *)source
 	if ([action isEqualToString:@"groupStickers"]){ [self chooseStickerSet:NO]; return; }
 	if ([action isEqualToString:@"customEmojiStickers"]){ [self chooseStickerSet:YES]; return; }
 	if ([action isEqualToString:@"groupType"])    { [self chooseGroupType]; return; }
+	if ([action isEqualToString:@"antispamFalsePositive"]){
+		TGAntiSpamViewController *antiSpam = [[TGAntiSpamViewController alloc] init];
+		antiSpam.chatId = self.chatId;
+		antiSpam.chatTitle = self.chatTitle;
+		antiSpam.hidesBottomBarWhenPushed = YES;
+		[self.navigationController pushViewController:antiSpam animated:YES];
+		return;
+	}
 	if ([action isEqualToString:@"username"])     { [self editUsername]; return; }
 	if ([action isEqualToString:@"removeUsername"]){ [self removeUsername]; return; }
 	if ([action isEqualToString:@"disableUsernames"]){ [self disableAllUsernames]; return; }

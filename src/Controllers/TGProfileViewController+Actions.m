@@ -10,6 +10,7 @@
 #import "TGGroupMemberActions.h"
 #import "TGGroupCallViewController.h"
 #import "TGContactsViewController.h"
+#import "TGProfileViewController+Tier2.h"
 
 /// The glyph on an action tile, over the word that names it.
 static const CGFloat kTileGlyph = TGMetricMenuGlyph;
@@ -237,6 +238,9 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 /// no secret chats, no gifts.
 - (void)showMoreMenuFrom:(UIView *)tile {
 	NSMutableArray *items = [NSMutableArray array];
+	// Emoji status, profile audio, direct messages and stake dice: one
+	// category answers the rows and the tap so this menu stays a menu.
+	[items addObjectsFromArray:[self tier2MoreItems]];
 	if (self.userId){
 		[items addObject:@{@"title" : @"Share contact", @"icon" : @"forward"}];
 		if (self.userId == [[TGClient shared].me[@"id"] longLongValue])
@@ -353,6 +357,8 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 }
 
 - (void)runMoreAction:(NSString *)title {
+	if ([self runTier2Action:title])
+		return;
 	if ([title isEqualToString:@"Copy Profile Link"]){
 		// The link is Telegram's, not the username's spellcheck: ask whose
 		// account it hands out, which here is the signed-in one.

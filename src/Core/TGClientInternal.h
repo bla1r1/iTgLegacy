@@ -124,10 +124,35 @@ NSDictionary *TGStickerInfo(NSDictionary *sticker);
 /// that opens after the notification can still say what happened.
 @property (nonatomic, copy) NSDictionary *stoppedMessageDraftValue;
 @property (nonatomic, copy) NSDictionary *publishedVideoValue;
+/// Text composition styles arrive whole in updateTextCompositionStyles and
+/// change only through the seven calls in TGClient+TextStyles. The manager
+/// and the composer read this one list.
+@property (nonatomic, strong) NSArray *textCompositionStylesValue;
+/// DM topics per chat and per topic id. loadDirectMessagesChatTopics answers
+/// only OK; the rows stream in through updateDirectMessagesChatTopic.
+@property (nonatomic, strong) NSMutableDictionary *directMessagesTopicsByChat;
+/// The last stake dice state. The state hash expires, so the panel reads the
+/// latest one before it offers a roll.
+@property (nonatomic, copy) NSDictionary *stakeDiceStateValue;
 /// updateActiveNotifications and its two incremental shapes, flattened for
 /// the Active Notifications page. It is the only copy: TDLib has no request
 /// that re-reads it.
 @property (nonatomic, strong) NSArray *activeNotificationGroupsValue;
+/// Communities, quick replies and suggested actions arrive as updates with
+/// no listing request behind them; TGClient+Tier2 fills these and the screens
+/// read them. The order arrays keep Telegram's order, which a dictionary
+/// cannot.
+@property (nonatomic, strong) NSMutableDictionary *communitiesById;
+@property (nonatomic, strong) NSMutableArray *communityOrder;
+@property (nonatomic, strong) NSMutableDictionary *communityFullInfoById;
+@property (nonatomic, strong) NSMutableDictionary *quickReplyShortcutsById;
+@property (nonatomic, strong) NSMutableArray *quickReplyShortcutOrder;
+@property (nonatomic, strong) NSMutableDictionary *quickReplyMessagesByShortcut;
+/// The last SuggestedAction rows, merged from updateSuggestedActions.
+@property (nonatomic, copy) NSArray *suggestedActionsValue;
+/// The checklist a message read last returned, keyed by message id. A write
+/// drops its entry so the editor asks again rather than drawing a stale box.
+@property (nonatomic, strong) NSMutableDictionary *checklistCache;
 @property (nonatomic, assign) TGConnectionState connectionState;
 @property (nonatomic, strong) NSMutableDictionary *pendingRequests;  // @extra -> completion
 @property (nonatomic, assign) NSUInteger requestSeq;
@@ -183,6 +208,14 @@ extern double TGFileWaiterTimeoutSeconds;
 /// updateLanguagePackStrings carries the strings that changed, not a whole
 /// pack. Kept in TGClient+Language beside getLanguagePackStrings.
 - (void)applyLanguagePackStringsUpdate:(NSDictionary *)update;
+/// A channel direct messages topic arrived or moved. Kept beside the list
+/// call in TGClient+DirectMessages so the row shape and the update agree.
+- (void)applyDirectMessagesChatTopic:(NSDictionary *)topic;
+/// updateTextCompositionStyles carries the whole list; replacing it is the
+/// only merge Telegram defines.
+- (void)applyTextCompositionStylesUpdate:(NSDictionary *)update;
+/// updateStakeDiceState carries the state a roll must quote.
+- (void)applyStakeDiceStateUpdate:(NSDictionary *)update;
 /// Group call updates: the call record, one participant, a batch of ids, a
 /// new message, a deletion, and a send failure. Kept in TGClient+GroupCalls
 /// beside the flattening the call screens read.
@@ -192,6 +225,15 @@ extern double TGFileWaiterTimeoutSeconds;
 - (void)applyNewGroupCallMessage:(NSDictionary *)update;
 - (void)applyGroupCallMessagesDeleted:(NSDictionary *)update;
 - (void)applyGroupCallMessageSendFailed:(NSDictionary *)update;
+/// The communities, quick replies and suggested actions have no list request.
+/// TGClient+Tier2 owns the caches these four fill.
+- (void)applyCommunityUpdate:(NSDictionary *)update;
+- (void)applyCommunityFullInfoUpdate:(NSDictionary *)update;
+- (void)applyQuickReplyShortcutUpdate:(NSDictionary *)update;
+- (void)applyQuickReplyShortcutDeleted:(NSDictionary *)update;
+- (void)applyQuickReplyShortcutsUpdate:(NSDictionary *)update;
+- (void)applyQuickReplyShortcutMessagesUpdate:(NSDictionary *)update;
+- (void)applySuggestedActionsUpdate:(NSDictionary *)update;
 /// One field on one chat row changed, so the list is stale but nothing is
 /// waiting on it this instant. Updates that arrive in floods - a typing
 /// storm, the presence burst at login, a forum flag landing on twenty chats

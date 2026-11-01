@@ -8,6 +8,7 @@
 #import "TGNetworkViewController.h"
 #import "TGStorageViewController.h"
 #import "TGFileInfoViewController.h"
+#import "TGSettingsViewController+Tier2.h"
 
 static NSString *TGChatNameForId(NSNumber *chatId) {
 	for (NSArray *list in @[[TGClient shared].chats ?: @[],
@@ -749,6 +750,12 @@ static NSString *TGChatNameForId(NSNumber *chatId) {
 				  @"this app and to nothing else on the phone.", rows),
 		TGSection(nil, nil, @[
 			TGActionRow(@"Add Proxy", ^{ [weakSelf addProxyByAsking]; }),
+		]),
+		TGSection(@"WEB PROXY CARRIER",
+				  @"A web proxy runs its page in the client. TDLib asks for "
+				  @"the page's messages and its failure through these two "
+				  @"requests.", @[
+			[weakSelf tier2ProxyCarrierRow],
 		]),
 	];
 }

@@ -9,6 +9,7 @@
 #import "TGClientInternal.h"
 #import "TGInstantViewController.h"
 #import "TGMessageAudienceViewController.h"
+#import "TGMessageToolsViewController.h"
 #import <CoreImage/CoreImage.h>
 #import <QuartzCore/QuartzCore.h>
 
@@ -596,6 +597,9 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 
 	[items addObject:@{@"title" : @"Copy Link", @"icon" : @"copy"}];
 	[items addObject:@{@"title" : @"Forward", @"icon" : @"forward"}];
+	// One row for the Tier 2 message tools: checklists, suggested posts,
+	// fact checks and the AI/rich requests that read this one message.
+	[items addObject:@{@"title" : @"Message Tools", @"icon" : @"data"}];
 
 	// A channel post with a discussion group: the row that was only the bar
 	// under the bubble is also one tap from the hold, where Telegram puts it.
@@ -791,6 +795,20 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 		// every row of the More card with nothing to act on.
 		[self showMoreActions];
 		return;
+
+	} else if ([action isEqualToString:@"Message Tools"]){
+		TGMessageToolsViewController *tools = [[TGMessageToolsViewController alloc] init];
+		tools.chatId = self.chatId;
+		tools.chatTitle = self.chatTitle;
+		tools.messageId = messageId;
+		tools.messageText = [m[@"text"] isKindOfClass:NSString.class]
+				? m[@"text"] : @"";
+		tools.isChecklist = [m[@"kind"] isEqualToString:@"messageChecklist"];
+		tools.hasSuggestedPost = [m[@"hasSuggestedPost"] boolValue];
+		tools.factCheck = [m[@"factCheck"] isKindOfClass:NSString.class]
+				? m[@"factCheck"] : @"";
+		tools.hidesBottomBarWhenPushed = YES;
+		[self.navigationController pushViewController:tools animated:YES];
 
 	} else if ([action isEqualToString:@"Show 1 Reply"] ||
 			   [action hasPrefix:@"Show "] ||

@@ -664,6 +664,11 @@ NSDictionary *TGFlattenMessage(NSDictionary *m) {
 		@"pollOpen"     : (pollInfo[@"open"] ?: @NO),
 		@"pollDeletable": (pollInfo[@"deletable"] ?: @NO),
 		@"pollAnonymous": m[@"content"][@"poll"][@"is_anonymous"] ?: @YES,
+		// A suggested post is approved or declined from the message menu;
+		// the record is read through getMessage when that screen opens.
+		@"hasSuggestedPost": @([m[@"suggested_post_info"] isKindOfClass:NSDictionary.class]),
+		@"factCheck" : [m[@"fact_check"] isKindOfClass:NSDictionary.class]
+				? (m[@"fact_check"][@"text"][@"text"] ?: @"") : @"",
 		@"liveEditable": @(liveEditable),
 		@"duration"  : duration ?: @0,
 		// A voice note nobody has listened to, or a round note nobody has
@@ -676,6 +681,9 @@ NSDictionary *TGFlattenMessage(NSDictionary *m) {
 		@"waveform"  : waveform ?: [NSData data],
 		@"audioTitle"     : audioTitle     ?: @"",
 		@"audioPerformer" : audioPerformer ?: @"",
+		// A bot's ephemeral reply carries the id the edit and delete calls
+		// name. A regular message has none, and the key stays zero.
+		@"ephemeralMessageId" : m[@"ephemeral_message_id"] ?: @(0),
 		@"albumCoverId"   : albumCoverId   ?: [NSNull null],
 		@"senderId"  : m[@"sender_id"][@"user_id"] ?: @(0),
 		@"lat"       : latitude    ?: [NSNull null],

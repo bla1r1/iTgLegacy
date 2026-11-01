@@ -1736,6 +1736,12 @@ static NSDictionary *TGFolderObject(NSString *name, NSString *icon,
 		info[@"availableReactions"] = update[@"available_reactions"];
 	else if ([update[@"@type"] isEqualToString:@"updateChatAvailableReactions"])
 		[info removeObjectForKey:@"availableReactions"];
+	// A chat's badge is an object that a null removes, the same shape as the
+	// photo and the background above it.
+	if ([update[@"emoji_status"] isKindOfClass:NSDictionary.class])
+		info[@"emojiStatus"] = update[@"emoji_status"];
+	else if ([update[@"@type"] isEqualToString:@"updateChatEmojiStatus"])
+		[info removeObjectForKey:@"emojiStatus"];
 	if (update[@"theme"])
 		info[@"chatTheme"] = update[@"theme"];
 	if (update[@"accent_color_id"])

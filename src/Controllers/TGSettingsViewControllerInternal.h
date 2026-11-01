@@ -151,6 +151,13 @@ static inline NSString *TGBytes(long long bytes) {
 	return [NSString stringWithFormat:@"%.2f GB", bytes / (1024.0 * 1024.0 * 1024.0)];
 }
 
+@interface TGSettingsViewController (Tier2)
+/// The profile-extras card: emoji status, profile audio, text styles and the
+/// stake dice panel. Implemented in TGSettingsViewController+Tier2.m so the
+/// root page does not grow another list of rows.
+- (NSArray *)tier2Sections;
+@end
+
 @interface TGSettingsViewController () <
 		UIImagePickerControllerDelegate, UINavigationControllerDelegate>
 
@@ -324,6 +331,9 @@ static inline NSString *TGBytes(long long bytes) {
 
 - (NSArray *)buildSections;
 - (NSArray *)rootSections;
+/// The one Settings row the Tier 2 hub hangs from. Built in
+/// TGSettingsViewController+Tier2.m so the root list stays a list.
+- (NSDictionary *)tier2ToolsRow;
 - (NSArray *)appearanceSections;
 - (NSArray *)dataSections;
 - (NSArray *)notificationSections;

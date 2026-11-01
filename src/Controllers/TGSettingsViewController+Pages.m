@@ -9,6 +9,7 @@
 #import "TGDevShowcase.h"
 #import "TGStickerPacksViewController.h"
 #import "TGStorySettingsViewController.h"
+#import "TGSettingsViewController+Tier2.h"
 
 /// A custom method's answer is a string the app has no schema for. When it is
 /// JSON, pretty-print it so the viewer reads like a response rather than one
@@ -136,6 +137,7 @@ static NSArray *TGCustomResultRows(NSString *result) {
 				stories.hidesBottomBarWhenPushed = YES;
 				[weakSelf.navigationController pushViewController:stories animated:YES];
 			}),
+			[weakSelf tier2ToolsRow],
 			TGIconTapRow(@"Proxy", proxyDetail, @"data", TGIconTileGrey(), ^{
 				[weakSelf openPage:TGSettingsPageProxy];
 			}),
@@ -185,9 +187,7 @@ static NSArray *TGCustomResultRows(NSString *result) {
 			TGIconRow(@"Telegram Premium", @"star", TGIconTilePurple(), ^{
 				[weakSelf showPremiumState];
 			}),
-			TGIconRow(@"Telegram Business", @"briefcase", TGIconTileAzure(), ^{
-				[weakSelf pushPlaceholder:@"Telegram Business"];
-			}),
+			[weakSelf tier2BusinessRow],
 			TGIconRow(@"Send a Gift", @"gift", TGIconTileCoral(), ^{
 				[weakSelf pushPlaceholder:@"Send a Gift"];
 			}),
@@ -219,6 +219,11 @@ static NSArray *TGCustomResultRows(NSString *result) {
 				}];
 			}),
 		]),
+
+		// Emoji status, profile audio, text styles and the stake dice panel:
+		// the profile-extras wave answers from one category and the root list
+		// only places it.
+		[[self tier2Sections] firstObject] ?: TGSection(nil, nil, @[]),
 
 		TGSection(nil, nil, @[
 			TGRedRow(@"Log out", ^{

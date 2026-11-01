@@ -44,8 +44,11 @@ static const CGFloat kChoiceGlyphGap = TGMetricPadMedium;
 	TGTheme *theme = [TGTheme shared];
 
 	BOOL strip = [TGCapabilities canShowRecentPhotos];
-	NSArray *titles = @[@"Photo or Video", @"Location", @"Contact"];
-	NSArray *glyphs = @[@"video", @"pin", @"chat"];
+	NSArray *titles = @[@"Photo or Video", @"Location", @"Contact",
+						@"Checklist", @"Quick Reply",
+						@"Stake Dice", @"Ephemeral Message"];
+	NSArray *glyphs = @[@"video", @"pin", @"chat", @"edit", @"reply",
+						@"star", @"chat"];
 	CGFloat cardH = (strip ? kStrip : 0) + kRow * titles.count;
 
 	// Two floating cards, the way their attach menu stacks them: the

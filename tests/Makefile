@@ -112,6 +112,8 @@ CLIENT_OBJC_SRCS := \
     $(SRC)/Core/TGClient+Language.m \
     $(SRC)/Core/TGClient+Search.m \
     $(SRC)/Core/TGClient+Stories.m \
+    $(SRC)/Core/TGClient+Business.m \
+    $(SRC)/Core/TGClient+Tier2.m \
     $(SRC)/Core/TGClient+Downloads.m \
     $(SRC)/Core/TGClient+Secret.m \
     $(SRC)/Core/TGClient+Account.m \
@@ -119,6 +121,11 @@ CLIENT_OBJC_SRCS := \
     $(SRC)/Core/TGClient+Diagnostics.m \
     $(SRC)/Core/TGDatabaseKey.m \
     $(SRC)/Core/TGClient+Profile.m \
+    $(SRC)/Core/TGClient+ProfileAudio.m \
+    $(SRC)/Core/TGClient+EmojiStatus.m \
+    $(SRC)/Core/TGClient+TextStyles.m \
+    $(SRC)/Core/TGClient+DirectMessages.m \
+    $(SRC)/Core/TGClient+Dice.m \
     $(SRC)/Core/TGClient+Auth.m \
     $(SRC)/Core/TGThemeFile.m \
     $(SRC)/Core/TGImageLruCache.mm \
@@ -177,13 +184,16 @@ CLIENT_TEST_SRCS := \
     $(TESTS)/TGClientAutosaveContactsTests.m \
     $(TESTS)/TGClientThreadsTests.m \
     $(TESTS)/TGClientChatToolsTests.m \
+    $(TESTS)/TGClientTier2CommunitiesTests.m \
     $(TESTS)/TGClientSearchLanguageTests.m \
     $(TESTS)/TGClientUsernamesTests.m \
     $(TESTS)/TGClientEmojiReactionsTests.m \
     $(TESTS)/TGClientAppearanceDiagnosticsTests.m \
     $(TESTS)/TGClientMiscTests.m \
     $(TESTS)/TGClientStoriesTests.m \
+    $(TESTS)/TGClientTier2Tests.m \
     $(TESTS)/TGClientGroupCallsTests.m \
+    $(TESTS)/TGClientBusinessTests.m \
     $(TESTS)/TGClientNotificationsForumTests.m \
     $(TESTS)/TGThemeFileTests.m \
     $(TESTS)/TGUpdatesTests.mm \

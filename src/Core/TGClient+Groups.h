@@ -35,6 +35,29 @@ FOUNDATION_EXPORT NSString *TGMemberStatusName(NSDictionary *status);
 									  on:(BOOL)on
 							  completion:(void (^)(BOOL ok))completion;
 
+/// Aggressive anti-spam is a supergroup-only switch, and TDLib says whether
+/// this group may carry it at all. `canToggle` is read from the same full
+/// info the switch writes through.
+- (void)aggressiveAntiSpamForChat:(int64_t)chatId
+					   completion:(void (^)(BOOL enabled, BOOL canToggle,
+											 NSString *error))completion;
+
+- (void)setChat:(int64_t)chatId
+	aggressiveAntiSpam:(BOOL)on
+			 completion:(void (^)(BOOL ok, NSString *error))completion;
+
+/// The deleted-message entries in the group's event log that Telegram says
+/// may be reported. Each row carries "messageId", "date", "text", "sender"
+/// and "canReport"; only canReport rows are returned because the rest have
+/// no request that succeeds.
+- (void)antiSpamFalsePositiveCandidatesForChat:(int64_t)chatId
+									completion:(void (^)(NSArray *rows,
+														 NSString *error))completion;
+
+- (void)reportAntiSpamFalsePositiveInChat:(int64_t)chatId
+								messageId:(int64_t)messageId
+							   completion:(void (^)(BOOL ok, NSString *error))completion;
+
 /// The basic group's own record: "id", "title" (from its chat), "members",
 /// "status" (one word), "active" and "upgradedTo" (0 until it became a
 /// supergroup). Nil on an error.

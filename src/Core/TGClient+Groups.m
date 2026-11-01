@@ -769,6 +769,145 @@ static NSDictionary *TGFlattenInviteLink(NSDictionary *link) {
 	}];
 }
 
+#pragma mark - aggressive anti-spam
+
+- (void)aggressiveAntiSpamForChat:(int64_t)chatId
+					   completion:(void (^)(BOOL, BOOL, NSString *))completion {
+	__weak typeof(self) weakSelf = self;
+	[self supergroupIdForChat:chatId completion:^(int64_t supergroupId){
+		if (!supergroupId){
+			if (completion)
+				completion(NO, NO, @"Telegram reports anti-spam for supergroups only.");
+			return;
+		}
+		[weakSelf request:@{@"@type" : @"getSupergroupFullInfo",
+							@"supergroup_id" : @(supergroupId)}
+			   completion:^(NSDictionary *full){
+			if ([full[@"@type"] isEqualToString:@"error"]){
+				NSString *message = full[@"message"];
+				if (completion)
+					completion(NO, NO, [message isKindOfClass:NSString.class]
+							? message : @"Telegram did not return the group record.");
+				return;
+			}
+			if (completion)
+				completion([full[@"has_aggressive_anti_spam_enabled"] boolValue],
+						   [full[@"can_toggle_aggressive_anti_spam"] boolValue], nil);
+		}];
+	}];
+}
+
+- (void)setChat:(int64_t)chatId
+	aggressiveAntiSpam:(BOOL)on
+			 completion:(void (^)(BOOL, NSString *))completion {
+	__weak typeof(self) weakSelf = self;
+	[self supergroupIdForChat:chatId completion:^(int64_t supergroupId){
+		if (!supergroupId){
+			if (completion)
+				completion(NO, @"Telegram reports anti-spam for supergroups only.");
+			return;
+		}
+		[weakSelf request:@{
+			@"@type" : @"toggleSupergroupHasAggressiveAntiSpamEnabled",
+			@"supergroup_id" : @(supergroupId),
+			@"has_aggressive_anti_spam_enabled" : @(on),
+		} completion:^(NSDictionary *result){
+			BOOL ok = ![result[@"@type"] isEqualToString:@"error"];
+			NSString *message = result[@"message"];
+			if (completion)
+				completion(ok, ok ? nil : ([message isKindOfClass:NSString.class]
+						? message : @"Telegram refused that switch."));
+		}];
+	}];
+}
+
+- (void)antiSpamFalsePositiveCandidatesForChat:(int64_t)chatId
+									completion:(void (^)(NSArray *, NSString *))completion {
+	NSDictionary *filters = @{
+		@"@type" : @"chatEventLogFilters",
+		@"message_edits" : @NO,
+		@"message_deletions" : @YES,
+		@"message_pins" : @NO,
+		@"member_joins" : @NO,
+		@"member_leaves" : @NO,
+		@"member_invites" : @NO,
+		@"member_promotions" : @NO,
+		@"member_restrictions" : @NO,
+		@"member_tag_changes" : @NO,
+		@"info_changes" : @NO,
+		@"setting_changes" : @NO,
+		@"invite_link_changes" : @NO,
+		@"video_chat_changes" : @NO,
+		@"forum_changes" : @NO,
+		@"subscription_extensions" : @NO,
+	};
+	[self request:@{
+		@"@type" : @"getChatEventLog",
+		@"chat_id" : @(chatId),
+		@"query" : @"",
+		@"from_event_id" : @(0),
+		@"limit" : @(100),
+		@"filters" : filters,
+		@"user_ids" : @[],
+	} completion:^(NSDictionary *result){
+		if ([result[@"@type"] isEqualToString:@"error"]){
+			NSString *message = result[@"message"];
+			if (completion)
+				completion(nil, [message isKindOfClass:NSString.class]
+						? message : @"Telegram did not return the event log.");
+			return;
+		}
+		NSMutableArray *rows = [NSMutableArray array];
+		for (NSDictionary *event in result[@"events"]){
+			if (![event isKindOfClass:NSDictionary.class])
+				continue;
+			NSDictionary *action = event[@"action"];
+			if (![action[@"@type"] isEqualToString:@"chatEventMessageDeleted"])
+				continue;
+			if (![action[@"can_report_anti_spam_false_positive"] boolValue])
+				continue;
+			NSDictionary *message = action[@"message"];
+			NSDictionary *flat = TGFlattenMessage(message);
+			NSString *text = flat[@"text"];
+			if (![text isKindOfClass:NSString.class] || !text.length)
+				text = flat[@"docName"];
+			if (![text isKindOfClass:NSString.class] || !text.length)
+				text = @"Deleted message";
+			[rows addObject:@{
+				@"messageId" : message[@"id"] ?: @(0),
+				@"date" : event[@"date"] ?: @(0),
+				@"text" : text,
+				@"sender" : flat[@"senderId"] ?: @(0),
+			}];
+		}
+		if (completion) completion(rows, nil);
+	}];
+}
+
+- (void)reportAntiSpamFalsePositiveInChat:(int64_t)chatId
+								messageId:(int64_t)messageId
+							   completion:(void (^)(BOOL, NSString *))completion {
+	__weak typeof(self) weakSelf = self;
+	[self supergroupIdForChat:chatId completion:^(int64_t supergroupId){
+		if (!supergroupId){
+			if (completion)
+				completion(NO, @"Telegram reports anti-spam for supergroups only.");
+			return;
+		}
+		[weakSelf request:@{
+			@"@type" : @"reportSupergroupAntiSpamFalsePositive",
+			@"supergroup_id" : @(supergroupId),
+			@"message_id" : @(messageId),
+		} completion:^(NSDictionary *result){
+			BOOL ok = ![result[@"@type"] isEqualToString:@"error"];
+			NSString *message = result[@"message"];
+			if (completion)
+				completion(ok, ok ? nil : ([message isKindOfClass:NSString.class]
+						? message : @"Telegram refused that report."));
+		}];
+	}];
+}
+
 @end
 
 // vim:ft=objc

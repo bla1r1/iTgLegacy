@@ -96,6 +96,7 @@
 	X(TGUpdateChatAvailableReactions, "updateChatAvailableReactions") \
 	X(TGUpdateChatTheme,              "updateChatTheme") \
 	X(TGUpdateChatAccentColors,       "updateChatAccentColors") \
+	X(TGUpdateChatEmojiStatus,        "updateChatEmojiStatus") \
 	X(TGUpdateChatMessageSender,      "updateChatMessageSender") \
 	X(TGUpdateChatWelcomeMessages,    "updateChatWelcomeMessages") \
 	X(TGUpdateChatBackground,         "updateChatBackground") \
@@ -142,7 +143,17 @@
 	X(TGUpdateGroupCallParticipants,       "updateGroupCallParticipants") \
 	X(TGUpdateNewGroupCallMessage,         "updateNewGroupCallMessage") \
 	X(TGUpdateGroupCallMessagesDeleted,    "updateGroupCallMessagesDeleted") \
-	X(TGUpdateGroupCallMessageSendFailed,  "updateGroupCallMessageSendFailed")
+	X(TGUpdateGroupCallMessageSendFailed,  "updateGroupCallMessageSendFailed") \
+	X(TGUpdateCommunity,                   "updateCommunity") \
+	X(TGUpdateCommunityFullInfo,          "updateCommunityFullInfo") \
+	X(TGUpdateQuickReplyShortcut,         "updateQuickReplyShortcut") \
+	X(TGUpdateQuickReplyShortcutDeleted,  "updateQuickReplyShortcutDeleted") \
+	X(TGUpdateQuickReplyShortcuts,        "updateQuickReplyShortcuts") \
+	X(TGUpdateQuickReplyShortcutMessages, "updateQuickReplyShortcutMessages") \
+	X(TGUpdateSuggestedActions,           "updateSuggestedActions") \
+	X(TGUpdateDirectMessagesChatTopic,    "updateDirectMessagesChatTopic") \
+	X(TGUpdateTextCompositionStyles,      "updateTextCompositionStyles") \
+	X(TGUpdateStakeDiceState,             "updateStakeDiceState")
 
 // The scaffold: updates the filter lets through and the dispatch marks
 // as read, but no branch acts on yet. Each is one screen this client has

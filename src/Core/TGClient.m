@@ -53,6 +53,9 @@ NSString *const TGStickerListsChangedNotification = @"TGStickerListsChangedNotif
 NSString *const TGChatMembersChangedNotification = @"TGChatMembersChangedNotification";
 NSString *const TGNotificationSettingsChangedNotification = @"TGNotificationSettingsChangedNotification";
 NSString *const TGForumTopicsChangedNotification = @"TGForumTopicsChangedNotification";
+NSString *const TGTextCompositionStylesChangedNotification = @"TGTextCompositionStylesChangedNotification";
+NSString *const TGDirectMessagesTopicsChangedNotification = @"TGDirectMessagesTopicsChangedNotification";
+NSString *const TGStakeDiceStateChangedNotification = @"TGStakeDiceStateChangedNotification";
 NSString *const TGApplicationVerificationRequiredNotification = @"TGApplicationVerificationRequiredNotification";
 NSString *const TGChatActionBarChangedNotification = @"TGChatActionBarChangedNotification";
 NSString *const TGSavedTopicsChangedNotification = @"TGSavedTopicsChangedNotification";
@@ -70,6 +73,9 @@ NSString *const TGChatVideoPublishedNotification = @"TGChatVideoPublishedNotific
 NSString *const TGActiveNotificationsChangedNotification = @"TGActiveNotificationsChangedNotification";
 NSString *const TGAutosaveSettingsChangedNotification = @"TGAutosaveSettingsChangedNotification";
 NSString *const TGLanguagePackStringsChangedNotification = @"TGLanguagePackStringsChangedNotification";
+NSString *const TGCommunitiesChangedNotification = @"TGCommunitiesChangedNotification";
+NSString *const TGQuickRepliesChangedNotification = @"TGQuickRepliesChangedNotification";
+NSString *const TGSuggestedActionsChangedNotification = @"TGSuggestedActionsChangedNotification";
 
 @implementation TGClient
 
@@ -1020,6 +1026,28 @@ NSDictionary *TGFormattedText(NSString *text) {
 		return;
 	}
 
+	case TGUpdateCommunity:
+		[self applyCommunityUpdate:obj];
+		return;
+	case TGUpdateCommunityFullInfo:
+		[self applyCommunityFullInfoUpdate:obj];
+		return;
+	case TGUpdateQuickReplyShortcut:
+		[self applyQuickReplyShortcutUpdate:obj];
+		return;
+	case TGUpdateQuickReplyShortcutDeleted:
+		[self applyQuickReplyShortcutDeleted:obj];
+		return;
+	case TGUpdateQuickReplyShortcuts:
+		[self applyQuickReplyShortcutsUpdate:obj];
+		return;
+	case TGUpdateQuickReplyShortcutMessages:
+		[self applyQuickReplyShortcutMessagesUpdate:obj];
+		return;
+	case TGUpdateSuggestedActions:
+		[self applySuggestedActionsUpdate:obj];
+		return;
+
 	// TDLib's local notification list. The page that removes entries reads
 	// this copy, because no request re-reads what updateActiveNotifications
 	// sent.
@@ -1425,6 +1453,25 @@ NSDictionary *TGFormattedText(NSString *text) {
 	case TGUpdateGroupCallMessageSendFailed:
 		[self applyGroupCallMessageSendFailed:obj];
 		return;
+	case TGUpdateDirectMessagesChatTopic:
+		[self applyDirectMessagesChatTopic:obj[@"topic"]];
+		return;
+	case TGUpdateTextCompositionStyles:
+		[self applyTextCompositionStylesUpdate:obj];
+		return;
+	case TGUpdateStakeDiceState:
+		[self applyStakeDiceStateUpdate:obj];
+		return;
+	case TGUpdateChatEmojiStatus: {
+		// The badge on a chat: keep it on the row, and tell an open profile.
+		[self applyChatUpdate:obj];
+		NSNumber *chatId = obj[@"chat_id"];
+		if (chatId)
+			[[NSNotificationCenter defaultCenter]
+					postNotificationName:TGFullInfoChangedNotification object:self
+								userInfo:@{@"kind" : @"chat", @"id" : chatId}];
+		return;
+	}
 	case TGUpdateUnreadChatCount: {
 		NSLog(@"TGClient: %@ total=%@ list=%@", type, obj[@"total_count"],
 				obj[@"chat_list"][@"@type"]);
