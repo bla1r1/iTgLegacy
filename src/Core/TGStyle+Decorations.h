@@ -69,6 +69,10 @@ static const CGSize TGMetricShadowOffsetEtched  = {0.0f, 1.0f};
 static const CGSize TGMetricShadowOffsetNav     = {0.0f, -1.0f};
 /// Floating card / popup menu downward shadow offset (0, 4).
 static const CGSize TGMetricShadowOffsetMenu    = {0.0f, 4.0f};
+/// Album art lifted off the player sheet: 35%, 4 pt blur, (0, 3).
+static const CGFloat TGMetricShadowArtOpacity   = 0.35f;
+static const CGFloat TGMetricShadowArtRadius    = 4.0f;
+static const CGSize TGMetricShadowOffsetArt     = {0.0f, 3.0f};
 
 #pragma mark - opacity and alpha tokens
 

@@ -17,6 +17,8 @@ FOUNDATION_EXPORT dispatch_semaphore_t TGIconsDecodeGate(void);
 
 + (UIImage *)compose;      ///< new message
 + (UIImage *)send;
+/// The send glyph in onAccentColour on every iOS, for a filled button.
++ (UIImage *)sendOnAccent;
 + (UIImage *)attach;
 + (UIImage *)play;         ///< over video thumbnails
 + (UIImage *)pause;

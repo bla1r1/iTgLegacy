@@ -59,27 +59,24 @@
 }
 
 - (void)buildWindow {
+	// No root view controller: on iOS 6 it sizes its view to the whole screen
+	// whatever the window's frame says, and the window does not clip, so the
+	// bar was a wall over the app that the back button seemed unable to leave.
 	UIWindow *window = [[UIWindow alloc] initWithFrame:[self barFrame]];
 	window.windowLevel = UIWindowLevelStatusBar + 1;
-	window.backgroundColor = [UIColor clearColor];
-
-	UIViewController *root = [[UIViewController alloc] init];
-	root.view.backgroundColor = [[TGTheme shared] barColour];
-	root.view.autoresizingMask = UIViewAutoresizingFlexibleWidth |
-			UIViewAutoresizingFlexibleHeight;
+	window.backgroundColor = [[TGTheme shared] accentColour];
+	window.clipsToBounds = YES;
 
 	self.button = [UIButton buttonWithType:UIButtonTypeCustom];
-	self.button.frame = root.view.bounds;
+	self.button.frame = window.bounds;
 	self.button.autoresizingMask = UIViewAutoresizingFlexibleWidth |
 			UIViewAutoresizingFlexibleHeight;
-	self.button.titleLabel.font = TGFontBodyStrong();
-	[self.button setTitleColor:[[TGTheme shared] barTitleColour]
+	self.button.titleLabel.font = TGFontMetaStrong();
+	[self.button setTitleColor:[[TGTheme shared] onAccentColour]
 					  forState:UIControlStateNormal];
 	[self.button addTarget:self action:@selector(returnToCall)
 		  forControlEvents:UIControlEventTouchUpInside];
-	[root.view addSubview:self.button];
-
-	window.rootViewController = root;
+	[window addSubview:self.button];
 	self.window = window;
 
 	[[NSNotificationCenter defaultCenter] addObserver:self
@@ -90,7 +87,7 @@
 
 - (void)orientationChanged:(NSNotification *)note {
 	self.window.frame = [self barFrame];
-	self.button.frame = self.window.rootViewController.view.bounds;
+	self.button.frame = self.window.bounds;
 }
 
 - (void)updateTitle {
@@ -132,7 +129,6 @@
 	[self.timer invalidate];
 	self.timer = nil;
 	self.window.hidden = YES;
-	self.window.rootViewController = nil;
 	self.window = nil;
 	self.button = nil;
 	self.peerName = nil;
@@ -199,6 +195,16 @@ static NSArray *TGCallGradient(NSArray *colours) {
 
 @implementation TGCallViewController
 
++ (void)previewMiniBarNamed:(NSString *)name {
+	TGCallMiniBar *bar = [TGCallMiniBar shared];
+	if (name){
+		[bar showForUserId:0 name:name];
+		[bar.timer invalidate];
+	} else {
+		[bar hide];
+	}
+}
+
 + (void)presentForUserId:(int64_t)userId name:(NSString *)name outgoing:(BOOL)outgoing {
     dispatch_async(dispatch_get_main_queue(), ^{
         UIWindow *window = [UIApplication sharedApplication].keyWindow;
@@ -241,7 +247,7 @@ static NSArray *TGCallGradient(NSArray *colours) {
 - (void)viewDidLoad {
     [super viewDidLoad];
 
-    self.view.backgroundColor = [UIColor blackColor];
+    self.view.backgroundColor = [[TGTheme shared] mediaViewerBackdropColour];
 
     // The peer's own picture fills the screen, the way Telegram's call screen
     // is the person rather than a card of controls. It starts hidden: until

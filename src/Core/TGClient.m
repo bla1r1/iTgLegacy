@@ -78,6 +78,18 @@ NSString *const TGStoriesChangedNotification = @"TGStoriesChangedNotification";
 NSString *const TGQuickRepliesChangedNotification = @"TGQuickRepliesChangedNotification";
 NSString *const TGSuggestedActionsChangedNotification = @"TGSuggestedActionsChangedNotification";
 
+/// Every request in the log is 340 lines at launch, up to 65 a second, each one
+/// formatted and written to syslogd on the A4's one core. Turned on when a trace
+/// is wanted: itglegacy://bench/pref/TGVerboseClientLog/1
+static BOOL TGVerboseClientLog(void) {
+	static BOOL verbose;
+	static dispatch_once_t once;
+	dispatch_once(&once, ^{
+		verbose = [[NSUserDefaults standardUserDefaults] boolForKey:@"TGVerboseClientLog"];
+	});
+	return verbose;
+}
+
 @implementation TGClient
 
 - (NSUInteger)chatsCached {
@@ -405,8 +417,9 @@ NSString *const TGSuggestedActionsChangedNotification = @"TGSuggestedActionsChan
 	[self.outboxLock unlock];
 
 	for (NSData *d in pending) {
-		NSString *reqStr = [[NSString alloc] initWithData:d encoding:NSUTF8StringEncoding];
-		NSLog(@"TGClient: >>> SEND: %@", reqStr);
+		if (TGVerboseClientLog())
+			NSLog(@"TGClient: >>> SEND: %@",
+					[[NSString alloc] initWithData:d encoding:NSUTF8StringEncoding]);
 		self.td_send(self.client, d.bytes);
 	}
 }

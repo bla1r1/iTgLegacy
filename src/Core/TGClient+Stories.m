@@ -7,6 +7,7 @@
 // The flattening lives here so the viewer, the album manager and the search
 // list all read the same keys.
 //
+#import "TGDevice.h"
 #import "TGClient+Stories.h"
 #import "TGClientInternal.h"
 
@@ -491,6 +492,13 @@ static NSArray *TGStoryFlattenStoryList(NSDictionary *result) {
 	}];
 }
 
+NSUInteger TGStoryRowProbeLimit(TGDeviceTier tier) {
+	// A round trip per chat: 60 cover every account with stories near the top,
+	// and on the A4's one core 74 of them at launch sit in front of everything
+	// else, so it asks about a screenful.
+	return tier == TGDeviceTierVintage ? 12 : 60;
+}
+
 - (void)activeStoryRowsForList:(NSString *)list
 					completion:(void (^)(NSArray *))completion {
 	NSArray *knownChats = self.chats ?: @[];
@@ -501,11 +509,11 @@ static NSArray *TGStoryFlattenStoryList(NSDictionary *result) {
 		[ids addObject:@(savedId)];
 		[seen addObject:@(savedId)];
 	}
-	// The strip is a first screen, not an archive walk: the first 60 chats
-	// cover every account that has stories near the top, and a hundred round
-	// trips on a 4S would keep the row empty for seconds.
+	// The strip is a first screen, not an archive walk, and
+	// updateChatActiveStories is its real feed: this only fills it sooner.
+	NSUInteger probes = TGStoryRowProbeLimit([TGDevice tier]);
 	for (NSDictionary *chat in knownChats){
-		if (ids.count >= 60)
+		if (ids.count >= probes)
 			break;
 		NSNumber *chatId = chat[@"id"];
 		if (![chatId isKindOfClass:NSNumber.class] || [seen containsObject:chatId])

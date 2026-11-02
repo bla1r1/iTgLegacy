@@ -99,6 +99,7 @@ and what it does:
 | Button | `TGButton` | production: login step buttons, chat edit-mode toolbar |
 | Gallery-only kit | `TGTextField`, `TGSlider`, `TGSegmentedControl`, `TGCardView`, `TGBadge`, `TGAvatarView` | showcase only; no production call sites |
 | Reaction bar | `TGReactionPicker` | the message context menu |
+| Recording strip | `TGRecordBar` | the voice note and the round video: one strip, so they cannot drift apart |
 | Popup menu | `TGPopupMenu` | plain lists route to a system action sheet; drawn variants remain for the reactions bar and the sticker-set header |
 | Design lab | `TGGalleryViewController` | Settings → Appearance → UI Component Gallery |
 

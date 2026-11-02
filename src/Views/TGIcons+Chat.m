@@ -4,8 +4,8 @@
 //
 #import "TGIconsInternal.h"
 
-static const CGFloat kTailWidth  = 6.0f;
-static const CGFloat kTailHeight = 13.0f;
+static const CGFloat kTailWidth  = TGMetricBubbleTailWidth;
+static const CGFloat kTailHeight = TGMetricBubbleTailHeight;
 
 @implementation TGIcons (Chat)
 
@@ -186,7 +186,7 @@ static const CGFloat kTailHeight = 13.0f;
 }
 
 + (UIImage *)ticksWhite:(BOOL)white {
-	UIColor *c = white ? [UIColor whiteColor] : [[TGTheme shared] ticksColour];
+	UIColor *c = white ? [[TGTheme shared] onMediaColour] : [[TGTheme shared] ticksColour];
 	return [self ticksColour:c read:YES];
 }
 

@@ -18,6 +18,11 @@ static const CGFloat kIconDumpSide = 52.0f;
 #import "TGDevShowcase.h"
 #import "TGTopicsViewController.h"
 #import "TGGalleryViewController.h"
+#import "TGVideoNoteRecorder.h"
+#import "TGStoryCameraViewController.h"
+#import "TGStoryComposerViewController.h"
+#import "TGPlayerView.h"
+#import "TGVideoNoteViewController.h"
 #import "TGIcons.h"
 #import "TGBench.h"
 #import "TGLoginViewController.h"
@@ -498,6 +503,95 @@ static const CGFloat kIconDumpSide = 52.0f;
 			UINavigationController *nc = tabs.viewControllers[tabs.selectedIndex];
 			[nc popToRootViewControllerAnimated:NO];
 			[nc pushViewController:[[TGDeviceViewController alloc] init] animated:NO];
+		});
+		return YES;
+	}
+
+	// itglegacy://saved - Saved Messages, the one real chat a script may open:
+	// nobody is waiting on its read state, and it has a composer to test.
+	if ([host isEqualToString:@"saved"]){
+		dispatch_async(dispatch_get_main_queue(), ^{
+			UITabBarController *tabs = [self activeTabBarController];
+			int64_t savedId = [[TGClient shared] savedMessagesChatId];
+			if (!tabs || !savedId)
+				return;
+			tabs.selectedIndex = 0;
+			UINavigationController *nc = tabs.viewControllers[0];
+			[nc popToRootViewControllerAnimated:NO];
+			TGChatViewController *vc = [[TGChatViewController alloc] init];
+			vc.chatId = savedId;
+			vc.chatTitle = @"Saved Messages";
+			vc.hidesBottomBarWhenPushed = YES;
+			[nc pushViewController:vc animated:NO];
+		});
+		return YES;
+	}
+
+	// itglegacy://storypost - what the + on the chat list does, whose touch is a
+	// gesture and out of reach of touch/.
+	if ([host isEqualToString:@"storypost"]){
+		dispatch_async(dispatch_get_main_queue(), ^{
+			[TGStoryComposerViewController openFromController:[self activeTabBarController]
+					chatId:[[TGClient shared] savedMessagesChatId] title:@"Your Story" onPosted:nil];
+		});
+		return YES;
+	}
+
+	// itglegacy://storycam - the story camera without the Premium check in front
+	// of it, so its layout can be checked from any account. Nothing posts unless
+	// its last screen's button is pressed.
+	if ([host isEqualToString:@"storycam"]){
+		dispatch_async(dispatch_get_main_queue(), ^{
+			TGStoryComposerViewController *composer = [[TGStoryComposerViewController alloc]
+					initWithChatId:[[TGClient shared] savedMessagesChatId] title:@"Your Story"];
+			[[self activeTabBarController] presentViewController:
+					[TGStoryCameraViewController flowForComposer:composer]
+					animated:NO completion:nil];
+		});
+		return YES;
+	}
+
+	// itglegacy://callbar/Name - the minimised call bar's look; callbar alone
+	// takes it away.
+	if ([host isEqualToString:@"callbar"]){
+		dispatch_async(dispatch_get_main_queue(), ^{
+			[TGCallViewController previewMiniBarNamed:arg.length ? arg : nil];
+		});
+		return YES;
+	}
+
+	// itglegacy://videonote - the round video recorder over whatever is showing,
+	// bound to a chat that does not exist: its look and its clock can be checked
+	// without opening a real conversation, which would mark it read.
+	if ([host isEqualToString:@"videonote"]){
+		dispatch_async(dispatch_get_main_queue(), ^{
+			UITabBarController *tabs = [self activeTabBarController];
+			// In a chat this is the chat's own start, so what comes after a
+			// cancel or a send can be checked as well. The mode is only set on
+			// this controller, not written down as the user's choice.
+			UINavigationController *shown = (UINavigationController *)tabs.selectedViewController;
+			UIViewController *top = [shown isKindOfClass:UINavigationController.class]
+					? shown.topViewController : nil;
+			if ([top isKindOfClass:[TGChatViewController class]]){
+				[top setValue:@YES forKey:@"videoNoteMode"];
+				[top performSelector:NSSelectorFromString(@"recordStart")];
+				return;
+			}
+			if (!tabs || ![[TGVideoNoteRecorder shared] start])
+				return;
+			UIView *hostView = tabs.view;
+			CGRect covered = [hostView convertRect:[UIScreen mainScreen].applicationFrame fromView:nil];
+			UIGraphicsBeginImageContextWithOptions(covered.size, YES, 0.0f);
+			CGContextTranslateCTM(UIGraphicsGetCurrentContext(), -covered.origin.x, -covered.origin.y);
+			[hostView.layer renderInContext:UIGraphicsGetCurrentContext()];
+			UIImage *background = UIGraphicsGetImageFromCurrentImageContext();
+			UIGraphicsEndImageContext();
+			static TGVideoNoteViewController *recorder;
+			recorder = [[TGVideoNoteViewController alloc]
+					initWithChatId:-7777777LL threadId:0 background:background];
+			recorder.overlayFrame = [hostView convertRect:[UIScreen mainScreen].applicationFrame
+												 fromView:nil];
+			[hostView addSubview:recorder.view];
 		});
 		return YES;
 	}

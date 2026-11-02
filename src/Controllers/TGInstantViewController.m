@@ -370,6 +370,10 @@ static void TGInstantAppendBlocks(NSMutableAttributedString *out,
 		TGInstantAppendBlock(out, block, indent, theme);
 }
 
+@interface TGInstantViewController ()
+@property (nonatomic, weak) UITextView *reader;
+@end
+
 @implementation TGInstantViewController
 
 - (void)viewDidLoad {
@@ -397,6 +401,29 @@ static void TGInstantAppendBlocks(NSMutableAttributedString *out,
 										   TGMetricPadLarge, TGMetricPadLarge);
 	reader.scrollIndicatorInsets = reader.contentInset;
 
+	reader.attributedText = [self readerText];
+	[self.view addSubview:reader];
+	self.reader = reader;
+	[self applyThemeToReader:reader];
+	[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(applyTheme) name:TGThemeChangedNotification object:nil];
+}
+
+- (void)dealloc {
+	[[NSNotificationCenter defaultCenter] removeObserver:self];
+}
+
+- (void)applyTheme {
+	TGTheme *theme = [TGTheme shared];
+	self.view.backgroundColor = [theme listBackgroundColour];
+	[theme styleNavigationBar:self.navigationController.navigationBar];
+	// The page carries its colours inside the attributed text, so a new theme
+	// means laying it out again.
+	self.reader.attributedText = [self readerText];
+	[self applyThemeToReader:self.reader];
+}
+
+- (NSAttributedString *)readerText {
+	TGTheme *theme = [TGTheme shared];
 	NSMutableAttributedString *text = [[NSMutableAttributedString alloc] init];
 	TGInstantAppendBlocks(text, self.blocks, TGMetricZero, theme);
 	if (!self.blocks.count) {
@@ -410,9 +437,7 @@ static void TGInstantAppendBlocks(NSMutableAttributedString *out,
 		[text appendAttributedString:TGInstantPlain(self.sourceURL,
 				TGFontCaption(), [theme accentColour])];
 	}
-	reader.attributedText = text;
-	[self.view addSubview:reader];
-	[self applyThemeToReader:reader];
+	return text;
 }
 
 - (void)applyThemeToReader:(UITextView *)reader {

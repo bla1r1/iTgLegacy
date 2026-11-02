@@ -6,9 +6,9 @@
 #import "TGAlertSheet.h"
 #import "TGSnackbar.h"
 
-static const CGFloat kSectionGap = 20.0f;
-static const CGFloat kRowHeight = 44.0f;
-static const CGFloat kControlGap = 10.0f;
+static const CGFloat kSectionGap = TGMetricPadWide;
+static const CGFloat kRowHeight = TGMetricRow;
+static const CGFloat kControlGap = TGMetricPadMedium;
 static const CGFloat kLabelHeight = 22.0f;
 static const CGFloat kCardHeight = 130.0f;
 static const CGFloat kSmallCardHeight = 90.0f;
@@ -18,7 +18,7 @@ static const CGFloat kOutgoingBubbleH = 68.0f;
 static const CGFloat kTimeWidth = 54.0f;
 static const CGFloat kAvatarSmallSide = 32.0f;
 static const CGFloat kAvatarMediumSide = 44.0f;
-static const CGFloat kAvatarLargeSide = 60.0f;
+static const CGFloat kAvatarLargeSide = TGMetricChatAvatar;
 
 @interface TGGalleryViewController () <UIScrollViewDelegate> {
 	UIScrollView *_scrollView;
@@ -100,6 +100,13 @@ static const CGFloat kAvatarLargeSide = 60.0f;
 		self.navigationItem.rightBarButtonItem = doneItem;
 	}
 
+	[self buildScreen];
+
+	[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(themeChanged) name:TGThemeChangedNotification object:nil];
+}
+
+- (void)buildScreen {
+	TGTheme *theme = [TGTheme shared];
 	self.view.backgroundColor = [theme groupedBackgroundColour];
 
 	_scrollView = [[UIScrollView alloc] initWithFrame:self.view.bounds];
@@ -113,6 +120,17 @@ static const CGFloat kAvatarLargeSide = 60.0f;
 	[self buildSections];
 }
 
+- (void)dealloc {
+	[[NSNotificationCenter defaultCenter] removeObserver:self];
+}
+
+- (void)themeChanged {
+	[_scrollView removeFromSuperview];
+	[self buildScreen];
+	[[TGTheme shared] styleNavigationBar:self.navigationController.navigationBar];
+	[self.view setNeedsLayout];
+}
+
 - (void)dismissSelf {
 	[self dismissViewControllerAnimated:YES completion:nil];
 }
@@ -122,7 +140,7 @@ static const CGFloat kAvatarLargeSide = 60.0f;
 	label.font = TGFontMicroStrong();
 	label.textColor = [TGTheme shared].secondaryTextColour;
 	label.shadowColor = [TGTheme shared].etchedTextShadowColour;
-	label.shadowOffset = CGSizeMake(0, 1.0f);
+	label.shadowOffset = TGMetricShadowOffsetEtched;
 	label.text = [title uppercaseString];
 	return label;
 }
@@ -254,7 +272,7 @@ static const CGFloat kAvatarLargeSide = 60.0f;
 	_incomingBody.font = TGFontRow();
 	_incomingBody.textColor = [theme primaryTextColour];
 	_incomingBody.shadowColor = [theme etchedTextShadowColour];
-	_incomingBody.shadowOffset = CGSizeMake(0, 1.0f);
+	_incomingBody.shadowOffset = TGMetricShadowOffsetEtched;
 	_incomingBody.text = @"Did you see the new iOS 6 tactile design system?";
 	_incomingBody.numberOfLines = 0;
 	[_incomingBubble addSubview:_incomingBody];
@@ -263,7 +281,7 @@ static const CGFloat kAvatarLargeSide = 60.0f;
 	_incomingTime.font = TGFontMicro();
 	_incomingTime.textColor = [theme timeColour];
 	_incomingTime.shadowColor = [theme etchedTextShadowColour];
-	_incomingTime.shadowOffset = CGSizeMake(0, 1.0f);
+	_incomingTime.shadowOffset = TGMetricShadowOffsetEtched;
 	_incomingTime.text = @"10:42 AM";
 	_incomingTime.textAlignment = NSTextAlignmentRight;
 	[_incomingBubble addSubview:_incomingTime];
@@ -284,7 +302,7 @@ static const CGFloat kAvatarLargeSide = 60.0f;
 	_outgoingBody.font = TGFontRow();
 	_outgoingBody.textColor = [theme onAccentColour];
 	_outgoingBody.shadowColor = [theme navBarTextShadowColour];
-	_outgoingBody.shadowOffset = CGSizeMake(0, -1.0f);
+	_outgoingBody.shadowOffset = TGMetricShadowOffsetNav;
 	_outgoingBody.text = @"Yes! The specular shine and etched letters feel so tangible!";
 	_outgoingBody.numberOfLines = 0;
 	[_outgoingBubble addSubview:_outgoingBody];
@@ -293,7 +311,7 @@ static const CGFloat kAvatarLargeSide = 60.0f;
 	_outgoingTime.font = TGFontMicro();
 	_outgoingTime.textColor = [theme timeMineColour];
 	_outgoingTime.shadowColor = [theme navBarTextShadowColour];
-	_outgoingTime.shadowOffset = CGSizeMake(0, -1.0f);
+	_outgoingTime.shadowOffset = TGMetricShadowOffsetNav;
 	_outgoingTime.text = @"10:43 AM";
 	_outgoingTime.textAlignment = NSTextAlignmentRight;
 	[_outgoingBubble addSubview:_outgoingTime];

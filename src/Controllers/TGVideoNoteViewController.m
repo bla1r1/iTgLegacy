@@ -1,5 +1,6 @@
 #import "TGVideoNoteViewController.h"
 #import "TGVideoNoteRecorder.h"
+#import "TGRecordBar.h"
 #import "TGClient.h"
 #import "TGTheme.h"
 #import "TGStyle.h"
@@ -9,58 +10,19 @@
 
 static const CGFloat kPreviewMax   = 300.0f;
 static const CGFloat kPreviewInset = 40.0f;
-static const CGFloat kBarHeight    = 58.0f;
-static const CGFloat kOnceSide     = 44.0f;
-static const CGFloat kSendSide     = 54.0f;
-static const CGFloat kDotSide      = 10.0f;
-static const CGFloat kBarInset     = 14.0f;
-static const CGFloat kBlurDownscale = 14.0f;
-static const CGFloat kTimerWidth   = 82.0f;
-static const CGFloat kCancelWidth  = 94.0f;
-/// A soft backdrop without CoreImage: the same downsample/upscale trick the
-/// hold presentation uses, which cannot fault on the A4.
-static UIImage *TGVideoNoteBlurredImage(UIImage *image) {
-	if (!image)
-		return nil;
-	CGSize size = image.size;
-	if (size.width < 2 || size.height < 2)
-		return nil;
-	CGSize small = CGSizeMake(MAX(1.0f, floorf(size.width / kBlurDownscale)),
-							  MAX(1.0f, floorf(size.height / kBlurDownscale)));
-	UIGraphicsBeginImageContextWithOptions(small, NO, 1.0f);
-	CGContextRef ctx = UIGraphicsGetCurrentContext();
-	if (!ctx){
-		UIGraphicsEndImageContext();
-		return nil;
-	}
-	CGContextSetInterpolationQuality(ctx, kCGInterpolationLow);
-	[image drawInRect:CGRectMake(0, 0, small.width, small.height)];
-	UIImage *down = UIGraphicsGetImageFromCurrentImageContext();
-	UIGraphicsEndImageContext();
-	if (!down)
-		return nil;
-	UIGraphicsBeginImageContextWithOptions(size, NO, 1.0f);
-	ctx = UIGraphicsGetCurrentContext();
-	if (!ctx){
-		UIGraphicsEndImageContext();
-		return nil;
-	}
-	CGContextSetInterpolationQuality(ctx, kCGInterpolationLow);
-	[down drawInRect:CGRectMake(0, 0, size.width, size.height)];
-	UIImage *soft = UIGraphicsGetImageFromCurrentImageContext();
-	UIGraphicsEndImageContext();
-	return soft;
-}
+/// As soft as the system's own blur from iOS 7, drawn once when the screen opens.
+static const CGFloat kBlurRadius = 24.0f;
 
 @interface TGVideoNoteViewController ()
 @property (nonatomic, assign) int64_t chatId;
 @property (nonatomic, assign) int64_t threadId;
 @property (nonatomic, strong) UIImage *background;
 @property (nonatomic, strong) AVCaptureVideoPreviewLayer *preview;
-@property (nonatomic, strong) UILabel *timerLabel;
+@property (nonatomic, strong) UIView *previewHost;
+@property (nonatomic, strong) TGRecordBar *bar;
 @property (nonatomic, strong) NSTimer *timer;
+@property (nonatomic, assign) NSInteger loggedSecond;
 @property (nonatomic, strong) UIButton *onceButton;
-@property (nonatomic, strong) UIButton *pauseButton;
 @property (nonatomic, strong) UIButton *flashButton;
 @property (nonatomic, strong) UIView *flashView;
 @property (nonatomic, assign) CGRect previewFrame;
@@ -89,190 +51,129 @@ static UIImage *TGVideoNoteBlurredImage(UIImage *image) {
 - (void)attachPreviewWithSession:(AVCaptureSession *)session {
 	if (self.preview || !session)
 		return;
-	CGRect circle = self.previewFrame;
 	self.preview = [AVCaptureVideoPreviewLayer layerWithSession:session];
 	self.preview.videoGravity = AVLayerVideoGravityResizeAspectFill;
 	// The front camera hands its frames over sideways on this hardware: the
-	// preview itself asks for portrait, and the mirroring is what makes
-	// round video feel right in the hand, like Telegram.
+	// preview itself asks for portrait. The connection mirrors a front camera
+	// on its own, and asking it to again throws on iOS 6.
 	AVCaptureConnection *previewConnection = self.preview.connection;
 	if ([previewConnection isVideoOrientationSupported])
 		previewConnection.videoOrientation = AVCaptureVideoOrientationPortrait;
-	if ([previewConnection isVideoMirroringSupported] &&
-			[[TGVideoNoteRecorder shared] isFrontCamera])
-		previewConnection.videoMirrored = YES;
-	UIView *host = [[UIView alloc] initWithFrame:circle];
-	host.layer.cornerRadius = TGHalf(circle.size.width);
-	host.layer.masksToBounds = YES;
-	host.backgroundColor = [UIColor blackColor];
-	// Just above the dim, below every control built over the chat.
-	[self.view insertSubview:host atIndex:2];
-	self.preview.frame = host.bounds;
-	[host.layer addSublayer:self.preview];
+	self.preview.frame = self.previewHost.bounds;
+	[self.previewHost.layer addSublayer:self.preview];
+}
+
+/// The circle is a hole in a square of the backdrop laid over the square video.
+/// A rounded mask on live video makes the render server draw it offscreen for
+/// every frame, which the A4 cannot spare; this blends one small image instead.
+- (UIImage *)circleCoverForBackdrop:(UIImage *)backdrop {
+	CGRect circle = self.previewFrame;
+	CGSize screen = self.view.bounds.size;
+	UIGraphicsBeginImageContextWithOptions(circle.size, NO, 0);
+	CGContextSetInterpolationQuality(UIGraphicsGetCurrentContext(), kCGInterpolationHigh);
+	[backdrop drawInRect:CGRectMake(-circle.origin.x, -circle.origin.y,
+			screen.width, screen.height)];
+	CGContextRef ctx = UIGraphicsGetCurrentContext();
+	CGContextSetBlendMode(ctx, kCGBlendModeClear);
+	CGContextFillEllipseInRect(ctx, CGRectMake(0, 0, circle.size.width, circle.size.height));
+	UIImage *cover = UIGraphicsGetImageFromCurrentImageContext();
+	UIGraphicsEndImageContext();
+	return cover;
+}
+
+- (void)loadView {
+	self.view = [[UIView alloc] initWithFrame:self.overlayFrame];
 }
 
 - (void)viewDidLoad {
 	[super viewDidLoad];
 	NSLog(@"TGVideoNoteVC: viewDidLoad bounds %@", NSStringFromCGRect(self.view.bounds));
-	self.view.backgroundColor = [UIColor blackColor];
+	self.view.backgroundColor = [[TGTheme shared] mediaViewerBackdropColour];
 
+	// Spread to the screen's size once, so the backdrop and the circle's cover
+	// are the same pixels: scaled up separately, by the GPU and by CoreGraphics,
+	// the cover showed as a faint square around the circle.
+	UIImage *small = [TGTheme softenedImage:self.background radius:kBlurRadius dim:TGAlphaHighlight];
+	self.background = nil;
+	UIGraphicsBeginImageContextWithOptions(self.view.bounds.size, YES, 1);
+	CGContextSetInterpolationQuality(UIGraphicsGetCurrentContext(), kCGInterpolationHigh);
+	[small drawInRect:self.view.bounds];
+	UIImage *soft = UIGraphicsGetImageFromCurrentImageContext();
+	UIGraphicsEndImageContext();
 	UIImageView *backdrop = [[UIImageView alloc] initWithFrame:self.view.bounds];
 	backdrop.autoresizingMask = UIViewAutoresizingFlexibleWidth |
 			UIViewAutoresizingFlexibleHeight;
-	backdrop.contentMode = UIViewContentModeScaleAspectFill;
-	backdrop.clipsToBounds = YES;
-	backdrop.image = TGVideoNoteBlurredImage(self.background);
+	backdrop.contentMode = UIViewContentModeScaleToFill;
+	backdrop.opaque = YES;
+	backdrop.image = soft;
 	[self.view addSubview:backdrop];
-
-	UIView *dim = [[UIView alloc] initWithFrame:self.view.bounds];
-	dim.autoresizingMask = backdrop.autoresizingMask;
-	dim.backgroundColor = [[TGTheme shared] mediaViewerBackdropColour];
-	dim.alpha = 0.28f;
-	[self.view addSubview:dim];
 
 	// The circle fills in as soon as frames exist: the warm-up loop is
 	// off-thread, so until then the circle is a black window the controls
 	// already work around.
-	CGFloat side = MIN(kPreviewMax, MIN(self.view.bounds.size.width - kPreviewInset,
-									   self.view.bounds.size.height * 0.58f));
-	CGFloat y = TGCenteredOrigin(self.view.bounds.size.height * 0.46f, side);
+	CGFloat width = self.view.bounds.size.width;
+	CGFloat height = self.view.bounds.size.height;
+	CGFloat barY = height - TGMetricInputBarHeight;
+	CGFloat side = MIN(kPreviewMax, MIN(width - kPreviewInset, barY - TGDoubled(TGMetricPadLarge)));
+	CGFloat y = TGCenteredOrigin(barY, side);
 	self.previewFrame = CGRectMake(TGCenteredOrigin(self.view.bounds.size.width, side),
 			y, side, side);
+	self.previewHost = [[UIView alloc] initWithFrame:self.previewFrame];
+	self.previewHost.backgroundColor = [[TGTheme shared] mediaViewerBackdropColour];
+	self.previewHost.clipsToBounds = YES;
+	[self.view addSubview:self.previewHost];
+	UIImageView *cover = [[UIImageView alloc] initWithFrame:self.previewFrame];
+	cover.image = [self circleCoverForBackdrop:soft];
+	[self.view addSubview:cover];
 	// A warm camera from an earlier go attaches at once; otherwise the
 	// recorder's own callback lands here when startRunning has seen the lens.
-	if ([TGVideoNoteRecorder shared].session)
+	if ([TGVideoNoteRecorder shared].session.isRunning)
 		[self attachPreviewWithSession:[TGVideoNoteRecorder shared].session];
 	__weak typeof(self) weakSelf = self;
 	[TGVideoNoteRecorder shared].onSession = ^(AVCaptureSession *session){
 		[weakSelf attachPreviewWithSession:session];
 	};
 
-	CGFloat barY = self.view.bounds.size.height - kBarHeight - kBarInset;
-	UIView *bar = [[UIView alloc] initWithFrame:CGRectMake(0, barY,
-			self.view.bounds.size.width, kBarHeight)];
-	bar.backgroundColor = [[TGTheme shared] inputBarColour];
-	bar.autoresizingMask = UIViewAutoresizingFlexibleTopMargin |
-			UIViewAutoresizingFlexibleWidth;
+	// The same strip as a locked voice note, docked where the composer was.
+	self.bar = [[TGRecordBar alloc] initWithFrame:CGRectMake(0, barY, width,
+			TGMetricInputBarHeight)];
+	[self.bar.cancelButton addTarget:self action:@selector(cancelTapped)
+					forControlEvents:UIControlEventTouchUpInside];
+	[self.bar.sendButton addTarget:self action:@selector(sendTapped)
+				  forControlEvents:UIControlEventTouchUpInside];
+	[self.bar.pauseButton addTarget:self action:@selector(pauseTapped)
+				   forControlEvents:UIControlEventTouchUpInside];
+	[self.view addSubview:self.bar];
 
-	UIImageView *barBg = [[UIImageView alloc] initWithFrame:bar.bounds];
-	barBg.image = [TGTheme skeuomorphicInputBarImageWithHeight:kBarHeight];
-	barBg.autoresizingMask = UIViewAutoresizingFlexibleWidth |
-			UIViewAutoresizingFlexibleHeight;
-	[bar addSubview:barBg];
-	[self.view addSubview:bar];
-
-	UIView *dot = [[UIView alloc] initWithFrame:CGRectMake(kBarInset,
-			TGCenteredOrigin(kBarHeight, kDotSide), kDotSide, kDotSide)];
-	dot.backgroundColor = [[TGTheme shared] destructiveColour];
-	dot.layer.cornerRadius = TGHalf(kDotSide);
-	[bar addSubview:dot];
-
-	self.timerLabel = [[UILabel alloc] initWithFrame:CGRectMake(kBarInset + kDotSide +
-			TGMetricPadSmall, TGMetricZero, kTimerWidth, kBarHeight)];
-	self.timerLabel.font = TGFontBody();
-	self.timerLabel.textColor = [[TGTheme shared] primaryTextColour];
-	self.timerLabel.backgroundColor = [UIColor clearColor];
-	self.timerLabel.text = @"0:00,0";
-	[bar addSubview:self.timerLabel];
-
-	UIButton *cancel = [UIButton buttonWithType:UIButtonTypeCustom];
-	cancel.frame = CGRectMake(CGRectGetMaxX(self.timerLabel.frame) + TGMetricPad,
-			TGMetricZero, kCancelWidth, kBarHeight);
-	[cancel setTitle:@"Cancel" forState:UIControlStateNormal];
-	[cancel setTitleColor:[[TGTheme shared] accentColour] forState:UIControlStateNormal];
-	cancel.backgroundColor = [UIColor clearColor];
-	cancel.titleLabel.font = TGFontRow();
-	[cancel addTarget:self action:@selector(cancelTapped)
-	 forControlEvents:UIControlEventTouchUpInside];
-	[cancel setContentHorizontalAlignment:UIControlContentHorizontalAlignmentLeft];
-	[bar addSubview:cancel];
-
-	UIButton *send = [UIButton buttonWithType:UIButtonTypeCustom];
-	send.frame = CGRectMake(bar.bounds.size.width - kSendSide - TGMetricPadSmall,
-			TGCenteredOrigin(kBarHeight, kSendSide), kSendSide, kSendSide);
-	send.backgroundColor = [[TGTheme shared] accentColour];
-	send.layer.cornerRadius = TGHalf(kSendSide);
-	[send setImage:[TGIcons send] forState:UIControlStateNormal];
-	[send setTintColor:[[TGTheme shared] onAccentColour]];
-	[send addTarget:self action:@selector(sendTapped)
-   forControlEvents:UIControlEventTouchUpInside];
-	[bar addSubview:send];
-
-	self.onceButton = [UIButton buttonWithType:UIButtonTypeCustom];
-	self.onceButton.frame = CGRectMake(self.view.bounds.size.width - kOnceSide - kBarInset,
-			barY - TGDoubled(kOnceSide) - TGMetricPadLarge - TGMetricPad,
-			kOnceSide, kOnceSide);
-	self.onceButton.layer.cornerRadius = TGHalf(kOnceSide);
-	self.onceButton.layer.borderWidth = TGMetricHairline;
-	self.onceButton.backgroundColor = [[TGTheme shared] cardBackgroundColour];
-	self.onceButton.layer.borderColor = [[TGTheme shared] separatorColour].CGColor;
-	self.onceButton.titleLabel.font = TGFontCaptionStrong();
-	[self.onceButton setTitle:@"1" forState:UIControlStateNormal];
-	self.onceButton.accessibilityLabel = @"View once";
-	[self.onceButton setTitleColor:[[TGTheme shared] primaryTextColour]
-						  forState:UIControlStateNormal];
+	// The "1" sits where the voice note keeps it: right above the strip, on
+	// the same edge. The screen-flash light, which has no voice counterpart,
+	// stacks above it in the same disc. The wash stays touch-transparent, so
+	// the controls under it keep working.
+	CGFloat columnX = width - TGMetricRow - TGMetricVoiceLockMaxShift;
+	self.onceButton = [TGRecordBar onceButton];
+	self.onceButton.frame = CGRectMake(columnX, barY - TGMetricRow - TGMetricPadMedium,
+			TGMetricRow, TGMetricRow);
 	self.onceButton.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin |
 			UIViewAutoresizingFlexibleTopMargin;
 	[self.onceButton addTarget:self action:@selector(onceTapped)
 			  forControlEvents:UIControlEventTouchUpInside];
 	[self.view addSubview:self.onceButton];
 
-	UIButton *pause = [UIButton buttonWithType:UIButtonTypeCustom];
-	pause.frame = CGRectMake(self.view.bounds.size.width - kOnceSide - kBarInset,
-			barY - kOnceSide - TGMetricPad,
-			kOnceSide, kOnceSide);
-	pause.layer.cornerRadius = TGHalf(kOnceSide);
-	pause.layer.borderWidth = TGMetricHairline;
-	pause.backgroundColor = [[TGTheme shared] cardBackgroundColour];
-	pause.layer.borderColor = [[TGTheme shared] separatorColour].CGColor;
-	[pause setImage:[TGIcons pause] forState:UIControlStateNormal];
-	pause.tintColor = [[TGTheme shared] primaryTextColour];
-	pause.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin |
-			UIViewAutoresizingFlexibleTopMargin;
-	[pause addTarget:self action:@selector(pauseTapped)
-	 forControlEvents:UIControlEventTouchUpInside];
-	[self.view addSubview:pause];
-	self.pauseButton = pause;
-
-	UIButton *flip = [UIButton buttonWithType:UIButtonTypeCustom];
-	flip.frame = CGRectMake(kBarInset, CGRectGetMinY(pause.frame),
-			kOnceSide, kOnceSide);
-	flip.layer.cornerRadius = TGHalf(kOnceSide);
-	flip.layer.borderWidth = TGMetricHairline;
-	flip.backgroundColor = [[TGTheme shared] cardBackgroundColour];
-	flip.layer.borderColor = [[TGTheme shared] separatorColour].CGColor;
-	[flip setImage:[TGIcons glyphNamed:@"video"
-							   colour:[[TGTheme shared] primaryTextColour]
-								 side:TGMetricMenuGlyph]
-		  forState:UIControlStateNormal];
-	flip.autoresizingMask = UIViewAutoresizingFlexibleTopMargin;
-	// The screen-flash light takes the two dead controls' spot (the camera
-	// flip and the mic mute, which the capture output could never do): a
-	// bolt, and the flash itself is a bright wash over the screen - front
-	// cameras on hardware with no torch light themselves this way. It stays
-	// touch-transparent, so the controls above the wash keep working.
-	UIButton *flash = [UIButton buttonWithType:UIButtonTypeCustom];
-	flash.frame = CGRectMake(kBarInset, CGRectGetMinY(pause.frame),
-			kOnceSide, kOnceSide);
-	flash.layer.cornerRadius = TGHalf(kOnceSide);
-	flash.layer.borderWidth = TGMetricHairline;
-	flash.backgroundColor = [[TGTheme shared] cardBackgroundColour];
-	flash.layer.borderColor = [[TGTheme shared] separatorColour].CGColor;
-	[flash setImage:[TGIcons glyphNamed:@"flash"
-								 colour:[[TGTheme shared] primaryTextColour]
-								   side:TGMetricMenuGlyph]
-		  forState:UIControlStateNormal];
-	flash.autoresizingMask = UIViewAutoresizingFlexibleTopMargin;
-	[flash addTarget:self action:@selector(flashToggled)
-    forControlEvents:UIControlEventTouchUpInside];
-	[self.view addSubview:flash];
-	self.flashButton = flash;
+	self.flashButton = [TGRecordBar discOfSide:TGMetricRow];
+	self.flashButton.frame = CGRectMake(columnX,
+			CGRectGetMinY(self.onceButton.frame) - TGMetricRow - TGMetricPadSmall,
+			TGMetricRow, TGMetricRow);
+	self.flashButton.autoresizingMask = self.onceButton.autoresizingMask;
+	[self showFlashOn:NO];
+	[self.flashButton addTarget:self action:@selector(flashToggled)
+			   forControlEvents:UIControlEventTouchUpInside];
+	[self.view addSubview:self.flashButton];
 
 	self.flashView = [[UIView alloc] initWithFrame:self.view.bounds];
 	self.flashView.autoresizingMask = UIViewAutoresizingFlexibleWidth |
 			UIViewAutoresizingFlexibleHeight;
-	self.flashView.backgroundColor = [UIColor whiteColor];
-	self.flashView.alpha = 0.0f;
+	self.flashView.backgroundColor = [UIColor whiteColor];  // the lamp: white under every theme
+	self.flashView.alpha = TGAlphaTransparent;
 	self.flashView.userInteractionEnabled = NO;
 	[self.view addSubview:self.flashView];
 	[self.view bringSubviewToFront:self.flashView];
@@ -286,7 +187,7 @@ static UIImage *TGVideoNoteBlurredImage(UIImage *image) {
 	[super viewDidAppear:animated];
 	// Whatever came before this view had time to run, the lens may already
 	// be up without the callback landing here - attach what is there.
-	if (!self.preview && [TGVideoNoteRecorder shared].session)
+	if (!self.preview && [TGVideoNoteRecorder shared].session.isRunning)
 		[self attachPreviewWithSession:[TGVideoNoteRecorder shared].session];
 	NSLog(@"TGVideoNoteVC: appeared, preview %@", self.preview);
 }
@@ -298,27 +199,21 @@ static UIImage *TGVideoNoteBlurredImage(UIImage *image) {
 }
 
 - (void)tick {
-	NSTimeInterval d = [TGVideoNoteRecorder shared].duration;
-	self.timerLabel.text = [NSString stringWithFormat:@"%ld:%02ld,%ld",
-			(long)(d / 60), (long)((NSInteger)d % 60),
-			(long)((NSInteger)(d * 10) % 10)];
-	// Once a second is enough for the same fact in the log: when the clock
+	TGVideoNoteRecorder *recorder = [TGVideoNoteRecorder shared];
+	NSTimeInterval d = recorder.duration;
+	[self.bar showSeconds:d paused:recorder.paused];
+	// Once per second of recording is enough for the log: when the clock
 	// refuses to walk on the device, this is where the line stops.
-	if (((NSInteger)(d * 10)) % 10 < 1)
+	if (!self.loggedSecond || (NSInteger)d != self.loggedSecond - 1){
+		self.loggedSecond = (NSInteger)d + 1;
 		NSLog(@"TGVideoNote: clock %.1f s (recording=%d paused=%d)",
-				d,
-				[[TGVideoNoteRecorder shared] recording],
-				[[TGVideoNoteRecorder shared] paused]);
+				d, recorder.recording, recorder.paused);
+	}
 }
 
 - (void)onceTapped {
 	self.onceOn = !self.onceOn;
-	BOOL on = self.onceOn;
-	[self.onceButton setTitleColor:on ? [[TGTheme shared] onAccentColour]
-									 : [[TGTheme shared] barButtonColour]
-						  forState:UIControlStateNormal];
-	self.onceButton.backgroundColor = on ? [[TGTheme shared] accentColour]
-										 : [UIColor clearColor];
+	[TGRecordBar setOnce:self.onceOn onButton:self.onceButton];
 }
 
 /// The recorder pauses the way Telegram's does: nothing new is written and
@@ -329,24 +224,32 @@ static UIImage *TGVideoNoteBlurredImage(UIImage *image) {
 	TGVideoNoteRecorder *recorder = [TGVideoNoteRecorder shared];
 	if (recorder.paused){
 		[recorder resume];
-		[self.pauseButton setImage:[TGIcons pause] forState:UIControlStateNormal];
+		[self.bar.pauseButton setImage:[TGIcons pause] forState:UIControlStateNormal];
 	} else {
 		[recorder pause];
-		[self.pauseButton setImage:[TGIcons play] forState:UIControlStateNormal];
+		[self.bar.pauseButton setImage:[TGIcons play] forState:UIControlStateNormal];
 	}
 }
 
 /// The screen as the lamp: full-white at half power, over everything but
 /// never swallowing a tap. A second tap turns it off.
 - (void)flashToggled {
-	BOOL on = self.flashView.alpha <= 0.0f;
+	BOOL on = self.flashView.alpha <= TGAlphaTransparent;
 	[UIView animateWithDuration:TGAnimationDurationFast animations:^{
-		self.flashView.alpha = on ? 0.55f : 0.0f;
+		self.flashView.alpha = on ? TGAlphaDimmed : TGAlphaTransparent;
 	}];
-	self.flashButton.backgroundColor = on ? [[TGTheme shared] accentColour]
-										  : [[TGTheme shared] cardBackgroundColour];
-	self.flashButton.tintColor = on ? [[TGTheme shared] onAccentColour]
-									: [[TGTheme shared] primaryTextColour];
+	[self showFlashOn:on];
+}
+
+/// Drawn in its colour rather than tinted: iOS 6 ignores a tint on a custom
+/// button's image.
+- (void)showFlashOn:(BOOL)on {
+	TGTheme *theme = [TGTheme shared];
+	self.flashButton.backgroundColor = on ? [theme accentColour] : [theme inputBarColour];
+	[self.flashButton setImage:[TGIcons glyphNamed:@"flash"
+											colour:on ? [theme onAccentColour] : [theme primaryTextColour]
+											  side:TGMetricMenuGlyph]
+					  forState:UIControlStateNormal];
 }
 
 - (void)sendTapped {
@@ -378,9 +281,7 @@ static UIImage *TGVideoNoteBlurredImage(UIImage *image) {
 - (void)dismiss {
 	[TGVideoNoteRecorder shared].onSession = nil;
 	[TGVideoNoteRecorder shared].onReady = nil;
-	[self willMoveToParentViewController:nil];
 	[self.view removeFromSuperview];
-	[self removeFromParentViewController];
 	if (self.onDismiss)
 		self.onDismiss();
 }

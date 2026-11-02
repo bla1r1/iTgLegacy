@@ -85,4 +85,22 @@ static const CGFloat kGap = 8.0f;
 	XCTAssertEqualObjects(TGChatListArchiveSubtitle(0), @"0 chats");
 }
 
+- (void)testAvatarWindow_CoversTheScreenAndNotTheWholeList {
+	NSRange top = TGAvatarWindow(0, 14, 176);
+	XCTAssertEqual(top.location, (NSUInteger)0);
+	XCTAssertEqual(top.length, (NSUInteger)14);
+	NSRange middle = TGAvatarWindow(50, 14, 176);
+	XCTAssertEqual(middle.location, (NSUInteger)49);
+	XCTAssertEqual(middle.length, (NSUInteger)14);
+}
+
+- (void)testAvatarWindow_StopsAtTheEndOfTheList {
+	NSRange end = TGAvatarWindow(170, 14, 176);
+	XCTAssertEqual(end.location, (NSUInteger)169);
+	XCTAssertEqual(end.length, (NSUInteger)7);
+	NSRange past = TGAvatarWindow(500, 14, 176);
+	XCTAssertEqual(past.length, (NSUInteger)0);
+	XCTAssertEqual(TGAvatarWindow(0, 14, 0).length, (NSUInteger)0);
+}
+
 @end

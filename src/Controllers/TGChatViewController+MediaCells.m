@@ -63,7 +63,7 @@
 		cell.mediaStamp.font = TGFontMicro();
 		cell.mediaStamp.text = durStr;
 		cell.mediaStamp.textAlignment = NSTextAlignmentLeft;
-		cell.mediaStamp.layer.cornerRadius = 0;
+		cell.mediaStamp.layer.cornerRadius = TGMetricCornerNone;
 		cell.mediaStamp.frame = durFrame;
 
 		[cell.contentView addSubview:cell.time];
@@ -246,7 +246,7 @@
 			cell.icon.hidden = NO;
 			cell.icon.layer.cornerRadius = TGMetricCornerSmall;
 			cell.icon.backgroundColor = [[TGTheme shared] mediaOverlayColour];
-			cell.icon.textColor = [UIColor whiteColor];
+			cell.icon.textColor = [[TGTheme shared] onMediaColour];
 			cell.icon.font = TGFontPlate();
 			cell.icon.text = [TGCapabilities gifAutoplayWanted] ? @" GIF · tap to play "
 																: @" GIF · autoplay off ";

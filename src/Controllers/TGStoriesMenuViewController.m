@@ -69,14 +69,13 @@
 }
 
 - (void)addStory {
-	TGStoryComposerViewController *composer = [[TGStoryComposerViewController alloc]
-			initWithChatId:self.chatId title:self.chatTitle];
-	composer.hidesBottomBarWhenPushed = YES;
-	composer.onPosted = ^{
-		if (self.onStoriesChanged)
-			self.onStoriesChanged();
-	};
-	[self.navigationController pushViewController:composer animated:YES];
+	__weak typeof(self) weakSelf = self;
+	[TGStoryComposerViewController openFromController:self chatId:self.chatId
+												title:self.chatTitle onPosted:^{
+		TGStoriesMenuViewController *me = weakSelf;
+		if (me.onStoriesChanged)
+			me.onStoriesChanged();
+	}];
 }
 
 - (void)openMyStory {
@@ -145,6 +144,12 @@
 }
 
 - (void)activateStealth {
+	// Stealth mode is a Premium feature; asking first would end in a refusal.
+	if (![[TGClient shared].me[@"is_premium"] boolValue]){
+		[TGAlertSheet showMessage:@"Stealth mode needs Telegram Premium."
+							title:@"Stealth Mode" inView:self.view];
+		return;
+	}
 	__weak typeof(self) weakSelf = self;
 	[TGAlertSheet showConfirm:@"Activate stealth mode? Your views of stories "
 			@"will be hidden from their posters for the next window."

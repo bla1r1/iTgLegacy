@@ -328,7 +328,7 @@
 		// The card meets the bubble's top edge; the bubble no longer clips
 		// (see TGBubbleBackImage), so the card rounds its own top corners.
 		cell.picture.clipsToBounds = NO;
-		cell.picture.layer.cornerRadius = 0;
+		cell.picture.layer.cornerRadius = TGMetricCornerNone;
 		cell.picture.image = [TGIcons roundedImage:[self imageFor:m] size:CGSizeMake(mapW, mapH)
 											radius:[[TGTheme shared] bubbleCornerRadius]
 										   corners:UIRectCornerTopLeft | UIRectCornerTopRight];
@@ -344,7 +344,7 @@
 		cell.icon.hidden = NO;
 		cell.icon.layer.cornerRadius = TGMetricCornerSmall;
 		cell.icon.backgroundColor = [[TGTheme shared] mediaOverlayColour];
-		cell.icon.textColor = [UIColor whiteColor];
+		cell.icon.textColor = [[TGTheme shared] onMediaColour];
 		cell.icon.font = TGFontPlate();
 		cell.icon.text = @" Apple Maps ";
 		cell.icon.frame = CGRectMake(kMediaStampInset, fwd + mapH - TGMetricFloatingDateHeight,

@@ -687,7 +687,7 @@ static const CGFloat kVersionRow   = 40.0f;
 static const CGFloat kPreviewInset    = TGMetricPadMedium + TGMetricPadTiny;
 static const CGFloat kPreviewTop      = TGMetricPadLarge - TGMetricPadTiny;
 static const CGFloat kPreviewGap      = TGMetricPad;
-static const CGFloat kPreviewTextLeft = 9.0f;
+static const CGFloat kPreviewTextLeft = TGMetricBubblePadH;
 static const CGFloat kPreviewStampRoom = 46.0f;
 static const CGFloat kPreviewStampW   = 30.0f;
 static const CGFloat kPreviewStampMineRoom = 22.0f;
@@ -809,7 +809,7 @@ static const CGFloat kMeTextInset  = TGMetricPadMedium;
 		text.adjustsFontSizeToFitWidth = NO;
 		text.numberOfLines = 0;
 		text.shadowColor = [theme etchedTextShadowColour];
-		text.shadowOffset = CGSizeMake(0, 1.0f);
+		text.shadowOffset = TGMetricShadowOffsetEtched;
 		[bubble addSubview:text];
 
 		UILabel *stamp = [[UILabel alloc] initWithFrame:

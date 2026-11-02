@@ -788,4 +788,10 @@ static NSDictionary *albumAnswer(long long albumId) {
 	XCTAssertEqual(countStoryRequests(c, @"removePendingLiveStoryReactions"), (NSUInteger)1);
 }
 
+- (void)testStoryRowProbes_AskAboutAScreenfulOnTheOldestPhones {
+	XCTAssertEqual(TGStoryRowProbeLimit(TGDeviceTierVintage), (NSUInteger)12);
+	XCTAssertEqual(TGStoryRowProbeLimit(TGDeviceTierLegacy), (NSUInteger)60);
+	XCTAssertEqual(TGStoryRowProbeLimit(TGDeviceTierFull), (NSUInteger)60);
+}
+
 @end

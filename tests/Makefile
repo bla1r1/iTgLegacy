@@ -117,6 +117,7 @@ CLIENT_OBJC_SRCS := \
     $(SRC)/Core/TGClient+Language.m \
     $(SRC)/Core/TGClient+Search.m \
     $(SRC)/Core/TGClient+Stories.m \
+    $(SRC)/Core/TGDevice.m \
     $(SRC)/Core/TGClient+Business.m \
     $(SRC)/Core/TGClient+Tier2.m \
     $(SRC)/Core/TGClient+Tier3.m \

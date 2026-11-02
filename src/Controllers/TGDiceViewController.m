@@ -22,9 +22,7 @@
 			? [NSString stringWithFormat:@"%@ · Dice", self.chatTitle]
 			: @"Stake Dice";
 	self.tableView.rowHeight = TGMetricRow;
-	self.tableView.separatorColor = [[TGTheme shared] separatorColour];
-	self.tableView.backgroundColor = [[TGTheme shared] groupedBackgroundColour];
-	[[TGTheme shared] styleNavigationBar:self.navigationController.navigationBar];
+	[self applyTheme];
 	self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc]
 			initWithTitle:@"Refresh" style:UIBarButtonItemStylePlain
 				   target:self action:@selector(refreshTapped)];
@@ -32,10 +30,18 @@
 			selector:@selector(stateChanged:)
 				name:TGStakeDiceStateChangedNotification object:nil];
 	[self refresh];
+	[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(applyTheme) name:TGThemeChangedNotification object:nil];
 }
 
 - (void)dealloc {
 	[[NSNotificationCenter defaultCenter] removeObserver:self];
+}
+
+- (void)applyTheme {
+	self.tableView.separatorColor = [[TGTheme shared] separatorColour];
+	self.tableView.backgroundColor = [[TGTheme shared] groupedBackgroundColour];
+	[[TGTheme shared] styleNavigationBar:self.navigationController.navigationBar];
+	[self.tableView reloadData];
 }
 
 - (void)stateChanged:(NSNotification *)note {

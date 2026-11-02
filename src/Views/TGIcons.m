@@ -291,6 +291,20 @@ static void TGDrawTabPath(CGContextRef ctx, UIBezierPath *path, BOOL filled) {
 	}];
 }
 
++ (UIImage *)sendOnAccent {
+	UIImage *send = [self send];
+	// From iOS 7 the button's tint colours the template. iOS 6 has no tint for
+	// an image, so the colour goes into the bitmap.
+	if ([send respondsToSelector:@selector(imageWithRenderingMode:)])
+		return send;
+	UIImage *cached = TGIconsGetCached(@"send-on-accent");
+	if (cached)
+		return cached;
+	UIImage *image = [self image:send filledWith:[[TGTheme shared] onAccentColour]];
+	sCache[@"send-on-accent"] = image;
+	return image;
+}
+
 + (UIImage *)send {
 	UIImage *svg = [self pathIconNamed:@"send"];
 	if (svg)
@@ -581,7 +595,7 @@ static void TGDrawTabPath(CGContextRef ctx, UIBezierPath *path, BOOL filled) {
 
 + (UIImage *)searchLensOfSize:(CGFloat)size colour:(UIColor *)colour {
 	if (size <= 0) size = 16.0f;
-	if (!colour) colour = [UIColor grayColor];
+	if (!colour) colour = [[TGTheme shared] secondaryTextColour];
 	CGFloat scale = [UIScreen mainScreen].scale;
 	NSString *key = [NSString stringWithFormat:@"searchLens-%.1f-%lu", size, (unsigned long)[colour hash]];
 	UIImage *cached = TGIconsGetCached(key);

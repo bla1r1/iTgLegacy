@@ -38,3 +38,10 @@ void TGChatListRowAccessories(CGFloat rightEdge,
 	if (previewRight)
 		*previewRight = x;
 }
+
+NSRange TGAvatarWindow(NSInteger firstVisible, NSUInteger rows, NSUInteger total) {
+	NSUInteger start = firstVisible > 1 ? (NSUInteger)(firstVisible - 1) : 0;
+	if (start >= total)
+		return NSMakeRange(total, 0);
+	return NSMakeRange(start, MIN(rows, total - start));
+}

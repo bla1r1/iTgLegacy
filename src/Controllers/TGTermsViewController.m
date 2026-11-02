@@ -56,6 +56,11 @@
 				   target:self
 				   action:@selector(acceptTapped)];
 	[self applyTheme];
+	[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(applyTheme) name:TGThemeChangedNotification object:nil];
+}
+
+- (void)dealloc {
+	[[NSNotificationCenter defaultCenter] removeObserver:self];
 }
 
 - (void)applyTheme {

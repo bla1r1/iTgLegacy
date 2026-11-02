@@ -101,11 +101,12 @@ static const CGFloat TGMetricCallLabelHeight     = 15.0f;
 static const CGFloat TGMetricCallStatusTopSmall  = 52.0f;
 static const CGFloat TGMetricCallStatusTop       = 76.0f;
 static const CGFloat TGMetricCallStatusTopTall   = 112.0f;
-/// The four-word key in the top-right corner and the bar a minimised call
-/// leaves over the app.
+/// The four-word key in the top-right corner, and the bar a minimised call
+/// leaves: the status bar's own row, as the system's in-call bar is, so nothing
+/// under it moves or is covered.
 static const CGFloat TGMetricCallKeyWidth        = 128.0f;
 static const CGFloat TGMetricCallKeyHeight       = 32.0f;
-static const CGFloat TGMetricCallBarHeight       = 64.0f;
+static const CGFloat TGMetricCallBarHeight       = 20.0f;
 static const CGFloat TGMetricCallKeyCardWidth    = 280.0f;
 static const CGFloat TGMetricCallKeyCardHeight   = 220.0f;
 static const CGFloat TGMetricCallKeyGlyphSize    = 34.0f;
@@ -157,7 +158,8 @@ static const CGFloat TGMetricProfileAvatar      = 80.0f;
 static const CGFloat TGMetricViewerTopBar       = 54.0f;
 static const CGFloat TGMetricViewerBottomBar    = 62.0f;
 static const CGFloat TGMetricViewerTitleSide       = 70.0f;
-static const CGFloat TGMetricViewerCaptionMarginRight = 88.0f;
+/// The Save button and a gap: a two-line caption must stop short of it.
+static const CGFloat TGMetricViewerCaptionMarginRight = 96.0f;
 static const CGFloat TGMetricViewerScrubberMarginRight = 104.0f;
 /// The author's round picture in the viewer's header, beside their name.
 static const CGFloat TGMetricViewerAvatarSide   = 28.0f;
@@ -297,9 +299,8 @@ static const CGFloat TGMetricCallGlyphSide      = 28.0f;
 static const CGFloat TGMetricPlayerThumbSide    = 8.0f;
 static const CGFloat TGMetricRecordDotSide      = 9.0f;
 static const CGFloat TGMetricRecordHaloSide     = 60.0f;
-static const CGFloat TGMetricJumpBadgeHeight    = TGMetricLineBody;
-static const CGFloat TGMetricChatBadgeHeight    = TGMetricLineRow;
-static const CGFloat TGMetricChatBadgeTop       = 42.0f;
+/// 43 keeps the badge centred where the 20 pt one sat at 42.
+static const CGFloat TGMetricChatBadgeTop       = 43.0f;
 static const CGFloat TGMetricFolderPillInset    = TGMetricPadSmall;
 static const CGFloat TGMetricHistoryPageAroundPinned = 40.0f;
 static const CGFloat TGMetricHistoryTopGate          = 100.0f;
@@ -408,6 +409,10 @@ static const CGFloat TGMetricSliderThumbD          = 22.0f;
 static const CGFloat TGMetricSliderTrackH          = 6.0f;
 static const CGFloat TGMetricTextFieldH            = 36.0f;
 static const CGFloat TGMetricBadgeH                = 18.0f;
+/// Every badge is one badge: the chat row's and the jump button's are the
+/// control's height, so the three cannot drift to 18, 18 and 20 again.
+static const CGFloat TGMetricJumpBadgeHeight       = TGMetricBadgeH;
+static const CGFloat TGMetricChatBadgeHeight       = TGMetricBadgeH;
 static const CGFloat TGMetricTabBarH               = 49.0f;
 
 #ifdef __cplusplus

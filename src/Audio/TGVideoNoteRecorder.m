@@ -12,9 +12,13 @@
 // export hands one note over.
 //
 #import "TGVideoNoteRecorder.h"
+#import "TGDevice.h"
 #import <AVFoundation/AVFoundation.h>
 
 static const CGFloat kVideoNoteSide = 480.0f;
+/// Long enough for the overlay's first frame to reach the screen before
+/// startRunning holds the main thread.
+static const NSTimeInterval kSessionStartDelay = 0.05;
 
 @interface TGVideoNoteRecorder () <AVCaptureFileOutputRecordingDelegate>
 @property (nonatomic, strong) AVCaptureSession *session;
@@ -35,6 +39,8 @@ static const CGFloat kVideoNoteSide = 480.0f;
 @property (nonatomic, assign) BOOL isReadyFlag;
 /// The segments closed by a pause (or a send) so far, on disk.
 @property (nonatomic, strong) NSMutableArray *segmentPaths;
+/// A cancel is closing the running file; its delegate call only cleans up.
+@property (nonatomic, assign) BOOL cancelling;
 /// How many files a pause_and_all_that_has_resumed promised. The delegate
 /// fills segmentPaths asynchronously, so a stop right after a pause waits for
 /// the count to catch up instead of exporting with a missing tail.
@@ -137,7 +143,11 @@ static const CGFloat kVideoNoteSide = 480.0f;
 	}
 
 	AVCaptureSession *session = [[AVCaptureSession alloc] init];
-	session.sessionPreset = AVCaptureSessionPreset640x480;
+	// The A4 encodes, previews and exports on one core. 480x360 cuts the raw
+	// file from about 5 Mbit/s to a fraction of it and leaves the note's 360 pt
+	// square as sharp as a 178 pt circle can show.
+	session.sessionPreset = [TGDevice tier] == TGDeviceTierVintage
+			? AVCaptureSessionPresetMedium : AVCaptureSessionPreset640x480;
 
 	AVCaptureDevice *camera = [AVCaptureDevice defaultDeviceWithMediaType:AVMediaTypeVideo];
 	for (AVCaptureDevice *candidate in [AVCaptureDevice devicesWithMediaType:AVMediaTypeVideo])
@@ -184,49 +194,59 @@ static const CGFloat kVideoNoteSide = 480.0f;
 	self.pendingStop = NO;
 	self.completion = nil;
 
-	// The lens takes seconds to wake on this hardware, and startRunning
-	// blocks until it does - off the main thread, so the overlay and the
-	// chat behind it stay alive while the camera looks for light.
+	// On the main thread, a turn after the overlay is up. iOS 6 will not finish
+	// starting a session anywhere else: from a dispatch queue or from a thread
+	// with its own run loop alike, startRunning returns with isRunning still NO,
+	// no frame ever arrives and the file fails with AVErrorSessionNotRunning.
+	// The price is about 1.2 s of main thread on the A4, behind a screen that
+	// has already drawn itself and is not asking for input yet.
+	self.cancelling = NO;
 	self.warmupToken++;
-	NSInteger token = self.warmupToken;
+	NSInteger sessionToken = self.warmupToken;
 	self.isStartingFlag = YES;
-	NSInteger sessionToken = token;
 	__weak typeof(self) weakSelf = self;
-	dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+	dispatch_after(dispatch_time(DISPATCH_TIME_NOW,
+			(int64_t)(kSessionStartDelay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+		TGVideoNoteRecorder *me = weakSelf;
+		if (!me || me.warmupToken != sessionToken)
+			return;
 		[session startRunning];
-		dispatch_async(dispatch_get_main_queue(), ^{
-			TGVideoNoteRecorder *me = weakSelf;
-			if (!me || me.warmupToken != sessionToken){
-				[session stopRunning];
-				return;
-			}
-			me.isStartingFlag = NO;
-			me.isRecordingFlag = YES;
-			me.isReadyFlag = NO;
-			me.startedAt = nil;
-			NSLog(@"TGVideoNoteRecorder: session running (file pending)");
-			if (me.onSession)
-				me.onSession(session);
-		});
-		// The file opens half a second after the frames exist. Starting
-		// recording in the same breath as startRunning is what killed the
-		// note on iOS 6: the output gave up before the first frame found
-		// a connection.
-		double when = 0.5;
-		dispatch_after(dispatch_time(DISPATCH_TIME_NOW,
-				(int64_t)(when * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-			TGVideoNoteRecorder *me = weakSelf;
-			if (!me || me.warmupToken != sessionToken || me.session != session)
-				return;
-			[me recordSegment];
-			me.startedAt = [NSDate date];
-			me.isReadyFlag = YES;
-			NSLog(@"TGVideoNoteRecorder: file open, recording begins");
-			if (me.onReady)
-				me.onReady();
-		});
+		[me sessionStarted:@[session, @(sessionToken)]];
 	});
 	return YES;
+}
+
+- (void)sessionStarted:(NSArray *)arguments {
+	AVCaptureSession *session = arguments[0];
+	NSInteger sessionToken = [arguments[1] integerValue];
+	if (self.warmupToken != sessionToken){
+		[session stopRunning];
+		return;
+	}
+	self.isStartingFlag = NO;
+	self.isRecordingFlag = YES;
+	self.isReadyFlag = NO;
+	self.startedAt = nil;
+	NSLog(@"TGVideoNoteRecorder: session running=%d (file pending)", session.isRunning);
+	if (self.onSession)
+		self.onSession(session);
+	// The file opens half a second after the frames exist. Starting recording
+	// in the same breath as startRunning is what killed the note on iOS 6: the
+	// output gave up before the first frame found a connection.
+	double when = 0.5;
+	__weak typeof(self) weakSelf = self;
+	dispatch_after(dispatch_time(DISPATCH_TIME_NOW,
+			(int64_t)(when * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+		TGVideoNoteRecorder *later = weakSelf;
+		if (!later || later.warmupToken != sessionToken || later.session != session)
+			return;
+		[later recordSegment];
+		later.startedAt = [NSDate date];
+		later.isReadyFlag = YES;
+		NSLog(@"TGVideoNoteRecorder: file open, recording begins");
+		if (later.onReady)
+			later.onReady();
+	});
 }
 
 - (void)stopWithCompletion:(void (^)(NSString *, NSTimeInterval))completion {
@@ -294,6 +314,9 @@ static const CGFloat kVideoNoteSide = 480.0f;
 	self.isRecordingFlag = NO;
 	self.isStartingFlag = NO;
 	self.warmupToken++;    // any warm-up callback still in flight stops now
+	// The delegate can answer inside stopRecording, before anything below has
+	// run, and would export a note nobody wants on the way out.
+	self.cancelling = YES;
 	if (self.output.isRecording)
 		[self.output stopRecording];
 	[self.session stopRunning];
@@ -314,6 +337,11 @@ static const CGFloat kVideoNoteSide = 480.0f;
 		fromConnections:(NSArray *)connections
 		error:(NSError *)error {
 	NSString *closed = outputFileURL.path;
+	if (self.cancelling){
+		self.cancelling = NO;
+		[[NSFileManager defaultManager] removeItemAtPath:closed error:nil];
+		return;
+	}
 	BOOL finalStop = (self.startedAt != nil) || self.pendingStop;
 	NSLog(@"TGVideoNoteRecorder: segment closed (%d, error=%@)",
 			finalStop, error.localizedDescription ?: @"none");
@@ -384,16 +412,27 @@ static const CGFloat kVideoNoteSide = 480.0f;
 		return;
 	}
 
+	// The camera writes sideways and says so in the track's transform, which a
+	// composition does not apply by itself: without it a portrait note comes
+	// out on its side.
 	CGSize natural = track.naturalSize;
-	CGFloat side = MIN(natural.width, natural.height);
+	CGAffineTransform upright = track.preferredTransform;
+	CGRect shown = CGRectApplyAffineTransform(
+			CGRectMake(0, 0, natural.width, natural.height), upright);
+	CGFloat side = MIN(shown.size.width, shown.size.height);
 	if (side <= 0)
 		side = 480;
-	CGFloat scale = kVideoNoteSide / side;
+	CGFloat renderSide = MIN(kVideoNoteSide, side);
+	CGFloat scale = renderSide / side;
+	NSLog(@"TGVideoNoteRecorder: segment %.0fx%.0f shown %.0fx%.0f, square %.0f",
+			natural.width, natural.height, shown.size.width, shown.size.height, renderSide);
 
 	AVMutableVideoCompositionLayerInstruction *layer =
 			[AVMutableVideoCompositionLayerInstruction videoCompositionLayerInstructionWithAssetTrack:track];
-	CGAffineTransform transform = CGAffineTransformMakeTranslation(
-			-(natural.width - side) / 2.0f, -(natural.height - side) / 2.0f);
+	CGAffineTransform transform = CGAffineTransformConcat(upright,
+			CGAffineTransformMakeTranslation(
+					-shown.origin.x - (shown.size.width - side) / 2.0f,
+					-shown.origin.y - (shown.size.height - side) / 2.0f));
 	transform = CGAffineTransformConcat(transform,
 			CGAffineTransformMakeScale(scale, scale));
 	[layer setTransform:transform atTime:kCMTimeZero];
@@ -404,7 +443,7 @@ static const CGFloat kVideoNoteSide = 480.0f;
 	instruction.layerInstructions = @[layer];
 
 	AVMutableVideoComposition *composition = [AVMutableVideoComposition videoComposition];
-	composition.renderSize = CGSizeMake(kVideoNoteSide, kVideoNoteSide);
+	composition.renderSize = CGSizeMake(renderSide, renderSide);
 	composition.frameDuration = CMTimeMake(1, 30);
 	composition.instructions = @[instruction];
 

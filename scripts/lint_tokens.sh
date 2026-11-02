@@ -42,9 +42,12 @@ if [ -n "$hits" ]; then
 fi
 
 # ── 3. a colour mixed by hand outside the palette ────────────────────────────
-# All colours must originate from TGTheme+Colours.
-hits=$(grep -rnE '\[UIColor colorWith(Red|Hue|White):[0-9]' src \
-        --include='*.m' --include='*.mm' --include='*.h' | grep -v '^src/Core/')
+# All colours must originate from TGTheme+Colours. Any first argument counts:
+# a palette hidden behind `((c >> 16) & 0xFF) / 255.0f` is still a palette. The
+# one exception is TGBackgroundColour, which draws what the server sent.
+hits=$(grep -rnE '\[UIColor colorWith(Red|Hue|White):' src \
+        --include='*.m' --include='*.mm' --include='*.h' | grep -v '^src/Core/' \
+        | grep -v '^src/Controllers/TGBackgroundsViewController.m')
 if [ -n "$hits" ]; then
     report "A colour is mixed in a screen instead of coming from the palette:" \
             "add a name to TGTheme+Colours.m and ask the theme for it"
@@ -115,7 +118,7 @@ fi
 #
 # A raw literal, or a hand-written "/ 2", is still neither.
 hits=$(grep -rnE '\.cornerRadius\s*=\s*([^;]+);' src --include='*.m' --include='*.mm' \
-        | grep -vE '\.cornerRadius\s*=\s*(0|0\.0f|TGMetricCornerNone);' \
+        | grep -vE '\.cornerRadius\s*=\s*TGMetricCornerNone;' \
         | grep -vE '\.cornerRadius\s*=\s*.*(\[|TGMetricCorner|TGHalf\(|kCorner|radius;)' \
         | grep -v '^src/Core/TGStyle')
 if [ -n "$hits" ]; then
@@ -249,6 +252,121 @@ hits=$(grep -rnE '\b(localizedCaseInsensitive)?[Cc]ontainsString:' src \
 if [ -n "$hits" ]; then
     report "A selector newer than this app's oldest supported iOS:" \
             "use [string rangeOfString:...].location != NSNotFound"
+    echo "$hits"
+fi
+
+# ── 16. a shadow spelled out ────────────────────────────────────────────────
+# Rule 15 lets 0 and 1 through, so CGSizeMake(0, 1) passed everywhere as a
+# private copy of the etched offset.
+hits=$(grep -rnE 'shadowOffset\s*=\s*CGSizeMake|shadow(Opacity|Radius)\s*=\s*[0-9]' \
+        src/Controllers src/Views --include='*.m' --include='*.mm')
+if [ -n "$hits" ]; then
+    report "A shadow is written out instead of named:" \
+            "TGMetricShadowOffset*, TGMetricShadow*Radius, TGMetricShadow*Opacity"
+    echo "$hits"
+fi
+
+# ── 17. a translucency spelled out ──────────────────────────────────────────
+hits=$(grep -rnE '\.alpha\s*=[^;]*[^0-9A-Za-z_]0?\.[0-9]*[1-9]|k[A-Za-z]*Alpha\s*=\s*0?\.[0-9]' \
+        src/Controllers src/Views --include='*.m' --include='*.mm')
+if [ -n "$hits" ]; then
+    report "An alpha is written out instead of named:" \
+            "TGAlphaDimmed, TGAlphaHighlight... see TGStyle+Decorations.h"
+    echo "$hits"
+fi
+
+# ── 18. a step of the spacing scale under a private name ────────────────────
+hits=$(grep -rnE 'static const CGFloat k[A-Za-z]*(Gap|Pad|Inset|Margin)\s*=\s*(2|4|8|10|16|20)(\.0)?f?;' \
+        src/Controllers src/Views --include='*.m' --include='*.mm')
+if [ -n "$hits" ]; then
+    report "A step of the spacing scale has been copied into a constant:" \
+            "TGMetricPadTiny, PadSmall, Pad, PadMedium, PadLarge or PadWide"
+    echo "$hits"
+fi
+
+# ── 19. a private copy of a size the app already has a name for ─────────────
+# Each of these drifted or could: the video note's record dot was 10 beside the
+# voice note's 9, and the theme preview set its text at 9 beside the bubble's 10.
+hits=$(grep -rnE 'static const CGFloat k(DotSide|PreviewTextLeft|TailWidth|TailHeight|ChoiceGlyph|OnceSide|ActionBarCloseSide|MiniCloseSide|BarEditHeight|BarControlSide)\s*=\s*[0-9]' \
+        src/Controllers src/Views --include='*.m' --include='*.mm')
+if [ -n "$hits" ]; then
+    report "A shared size has been copied as a number:" \
+            "point the constant at its TGMetric token"
+    echo "$hits"
+fi
+
+# ── 20. white named directly ────────────────────────────────────────────────
+# White on a filled control is onAccentColour and white over a picture is
+# onMediaColour. What may name it: the QR plate a scanner needs, the screen used
+# as a lamp, and the icon and avatar drawing that bakes it into a bitmap.
+hits=$(grep -rnF '[UIColor whiteColor]' src/Controllers src/Views --include='*.m' --include='*.mm' \
+        | grep -vE '^src/Controllers/TGLoginViewController\+Steps.m|^src/Controllers/TGVideoNoteViewController.m|^src/Views/TGIcons\+(Menu|Avatars).m')
+if [ -n "$hits" ]; then
+    report "White is named directly:" \
+            "[[TGTheme shared] onAccentColour] on a filled control, onMediaColour over a picture"
+    echo "$hits"
+fi
+
+# ── 21. a badge in its own type ─────────────────────────────────────────────
+# The chat row's badge was 13 bold, the jump button's 12 and TGBadge's 11.
+hits=$(grep -rnE '(_label|[bB]adge)\.font\s*=\s*TGFont' src/UI/TGBadge.m src/Views/TGChatCell.m \
+        src/Controllers/TGChatViewController+Chrome.m | grep -v 'TGFontCaptionStrong()')
+if [ -n "$hits" ]; then
+    report "A badge has its own type:" "TGFontCaptionStrong()"
+    echo "$hits"
+fi
+
+# ── 22. a screen that paints itself once ────────────────────────────────────
+# A screen left in another tab's stack outlives a theme change and is painted
+# in the old colours when the user comes back. It needs the notification, its
+# own or a base class's. The exceptions either repaint in viewWillAppear or are
+# full-screen and modal over dark media, where nothing can change the theme
+# underneath them; the call screen comes back from its bar, and is the one left
+# to do.
+for f in src/Controllers/*ViewController.m; do
+    b=$(basename "$f" .m)
+    grep -q 'Colour\]' "$f" || continue
+    grep -q 'TGThemeChangedNotification' "$f" && continue
+    case "$b" in
+        TGStickerPacksViewController|TGMessageAudienceViewController|TGStickerEditorViewController) continue ;;
+        TGVideoNoteViewController|TGStoryViewerViewController|TGQRViewController|TGCallViewController) continue ;;
+    esac
+    sup=$(sed -n "s/^@interface $b *: *\([A-Za-z0-9_]*\).*/\1/p" "${f%.m}.h" "$f" 2>/dev/null | head -1)
+    case "$sup" in
+        TGListViewController|TGTier2ListViewController|TGBusinessBaseViewController) continue ;;
+    esac
+    report "A screen paints theme colours but never hears the theme change:" "$f"
+done
+
+# ── 23. a recording strip of its own ────────────────────────────────────────
+# The round video once drew its own: 58 pt to the composer's 48, floating 14 pt
+# off the bottom, a 54 pt send disc to the voice note's 34. TGRecordBar is the
+# strip; a recording that wants one asks for it.
+hits=$(grep -rln 'skeuomorphicInputBarImageWithHeight' src/Controllers src/Views \
+        | grep -vE 'TGChatViewController\+Input.m|TGRecordBar.m')
+if [ -n "$hits" ]; then
+    report "A recording draws its own strip:" "use TGRecordBar"
+    echo "$hits"
+fi
+
+# ── 24. mirroring a connection that mirrors itself ─────────────────────────
+# automaticallyAdjustsVideoMirroring is on by default, and setting videoMirrored
+# over it raises on iOS 6: the round video recorder died this way on the iPod
+# touch 4 the moment the camera attached.
+hits=$(grep -rnE '\.videoMirrored\s*=' src --include='*.m' --include='*.mm')
+if [ -n "$hits" ]; then
+    report "videoMirrored is set over the connection's own mirroring, which throws:" \
+            "leave it to automaticallyAdjustsVideoMirroring"
+    echo "$hits"
+fi
+
+# ── 25. a capture session started on a queue ────────────────────────────────
+# iOS 6 finishes startRunning through the caller's run loop. On a dispatch queue
+# it returns with isRunning NO and every file fails with SessionNotRunning.
+hits=$(grep -rn -B8 'startRunning\]' src --include='*.m' --include='*.mm' | grep -E 'dispatch_(a)?sync\(.*global_queue|get_global_queue')
+if [ -n "$hits" ]; then
+    report "A capture session is started on a dispatch queue, which iOS 6 never finishes:" \
+            "give it a thread with a run loop, or the main thread"
     echo "$hits"
 fi
 

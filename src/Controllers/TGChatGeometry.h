@@ -116,15 +116,9 @@ static const CGFloat kMediaStampInset = TGMetricPadSmall;
 // The two strips that take the composer's place: one while a voice note is
 // being recorded, one while a track is playing.
 
-/// The red dot, the running clock beside it, and the "slide to cancel" line.
-static const CGFloat kRecordDotX      = TGMetricPadLarge;
-static const CGFloat kRecordClockX    = 32.0f;
-static const CGFloat kRecordClockW    = 62.0f;
+/// The "slide to cancel" line, over TGRecordBar.
 static const CGFloat kRecordSlideX    = 100.0f;
 static const CGFloat kRecordSlideRoom = 180.0f;
-/// The Cancel button that replaces all of it once recording is locked.
-static const CGFloat kRecordCancelW   = 100.0f;
-static const CGFloat kRecordCancelH   = 32.0f;
 /// The lock pill above the mic: a padlock over an arrow.
 static const CGFloat kRecordLockGlyph = 18.0f;
 static const CGFloat kRecordLockArrow = 16.0f;

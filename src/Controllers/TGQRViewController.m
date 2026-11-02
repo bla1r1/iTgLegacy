@@ -33,7 +33,7 @@
 	[path addLineToPoint:CGPointMake(0, CGRectGetMaxY(b) - arm)];
 	path.lineWidth = width;
 	path.lineCapStyle = kCGLineCapRound;
-	[[UIColor whiteColor] setStroke];
+	[[[TGTheme shared] onMediaColour] setStroke];
 	[path stroke];
 }
 
@@ -63,7 +63,7 @@ static const CGFloat kQRTextInset = 24.0f;
 - (void)viewDidLoad {
 	[super viewDidLoad];
 	self.title = @"Scan QR Code";
-	self.view.backgroundColor = [UIColor blackColor];
+	self.view.backgroundColor = [[TGTheme shared] mediaViewerBackdropColour];
 	if ([self respondsToSelector:@selector(setEdgesForExtendedLayout:)])
 		self.edgesForExtendedLayout = UIRectEdgeNone;
 
@@ -154,7 +154,7 @@ static const CGFloat kQRTextInset = 24.0f;
 		self.hint.numberOfLines = 2;
 		self.hint.textAlignment = NSTextAlignmentCenter;
 		self.hint.font = TGFontBody();
-		self.hint.textColor = [UIColor whiteColor];
+		self.hint.textColor = [[TGTheme shared] onMediaColour];
 		self.hint.backgroundColor = [UIColor clearColor];
 		[self.view addSubview:self.hint];
 
@@ -164,9 +164,9 @@ static const CGFloat kQRTextInset = 24.0f;
 				CGRectGetMaxY(self.hint.frame) + TGMetricPad,
 				TGMetricQRManualWidth, TGMetricRow);
 		[self.manualButton setTitle:@"Enter a Link" forState:UIControlStateNormal];
-		[self.manualButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+		[self.manualButton setTitleColor:[[TGTheme shared] onMediaColour] forState:UIControlStateNormal];
 		self.manualButton.titleLabel.font = TGFontBody();
-		self.manualButton.layer.borderColor = [UIColor whiteColor].CGColor;
+		self.manualButton.layer.borderColor = [[TGTheme shared] onMediaColour].CGColor;
 		self.manualButton.layer.borderWidth = TGMetricHairline;
 		self.manualButton.layer.cornerRadius = TGMetricCornerControl;
 		[self.manualButton addTarget:self action:@selector(manualLinkTapped)
@@ -203,7 +203,7 @@ static const CGFloat kQRTextInset = 24.0f;
 	label.text = message;
 	label.numberOfLines = 0;
 	label.textAlignment = NSTextAlignmentCenter;
-	label.textColor = [UIColor whiteColor];
+	label.textColor = [[TGTheme shared] onMediaColour];
 	label.backgroundColor = [UIColor clearColor];
 	self.failureLabel = label;
 	[self.view addSubview:label];

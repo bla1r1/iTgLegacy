@@ -41,6 +41,10 @@ void TGChatListRowAccessories(CGFloat rightEdge,
                               CGRect *pinFrame,
                               CGFloat *previewRight);
 
+/// The chats a stopped scroll needs pictures for: one row behind it, for the
+/// archive row that shifts the list by one, and `rows` from there on.
+NSRange TGAvatarWindow(NSInteger firstVisible, NSUInteger rows, NSUInteger total);
+
 #ifdef __cplusplus
 }
 #endif

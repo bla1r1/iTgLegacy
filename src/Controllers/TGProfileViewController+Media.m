@@ -241,7 +241,7 @@ static const CGFloat kVideoMarkInset = TGMetricPadWide;
 			if ([tile[@"isVideo"] boolValue] || [tile[@"kind"] isEqualToString:@"messageVideo"]) {
 				UIImageView *mark = [[UIImageView alloc] initWithFrame:
 						CGRectMake(side - kVideoMarkInset, side - kVideoMarkInset, kVideoMark, kVideoMark)];
-				mark.image = [TGIcons glyphNamed:@"video" colour:[UIColor whiteColor] side:kVideoMark];
+				mark.image = [TGIcons glyphNamed:@"video" colour:[[TGTheme shared] onMediaColour] side:kVideoMark];
 				[thumb addSubview:mark];
 			}
 		}
@@ -358,7 +358,7 @@ static const CGFloat kVideoMarkInset = TGMetricPadWide;
 			if ([tile[@"isVideo"] boolValue]){
 				UIImageView *mark = [[UIImageView alloc] initWithFrame:
 						CGRectMake(side - kVideoMarkInset, side - kVideoMarkInset, kVideoMark, kVideoMark)];
-				mark.image = [TGIcons glyphNamed:@"video" colour:[UIColor whiteColor]
+				mark.image = [TGIcons glyphNamed:@"video" colour:[[TGTheme shared] onMediaColour]
 									  side:kVideoMark];
 				[thumb addSubview:mark];
 			}

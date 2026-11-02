@@ -62,6 +62,18 @@ static TGSheet *sOpenSheet = nil;
 	return self;
 }
 
++ (UIImage *)topRoundedPlate {
+	CGFloat side = TGDoubled(kEdgeCorner) + 1;
+	UIGraphicsBeginImageContextWithOptions(CGSizeMake(side, side), NO, 0);
+	[[[TGTheme shared] cardBackgroundColour] setFill];
+	[[UIBezierPath bezierPathWithRoundedRect:CGRectMake(0, 0, side, side)
+						   byRoundingCorners:UIRectCornerTopLeft | UIRectCornerTopRight
+								 cornerRadii:CGSizeMake(kEdgeCorner, kEdgeCorner)] fill];
+	UIImage *plate = UIGraphicsGetImageFromCurrentImageContext();
+	UIGraphicsEndImageContext();
+	return [plate resizableImageWithCapInsets:UIEdgeInsetsMake(kEdgeCorner, kEdgeCorner, 0, kEdgeCorner)];
+}
+
 - (UIView *)addCardOfHeight:(CGFloat)height edgeToEdge:(BOOL)edgeToEdge {
 	CGFloat width = edgeToEdge ? self.bounds.size.width
 							   : self.bounds.size.width - TGDoubled(TGMetricCardMargin);
@@ -70,15 +82,14 @@ static TGSheet *sOpenSheet = nil;
 	card.backgroundColor = [[TGTheme shared] cardBackgroundColour];
 	if (edgeToEdge){
 		// Only the top corners: the card stands on the screen edge, and a
-		// rounded bottom would show the backdrop through it. maskedCorners
-		// arrives in iOS 11, so the shape is a mask layer.
-		CAShapeLayer *mask = [CAShapeLayer layer];
-		mask.path = [UIBezierPath bezierPathWithRoundedRect:card.bounds
-										 byRoundingCorners:UIRectCornerTopLeft |
-														   UIRectCornerTopRight
-											   cornerRadii:CGSizeMake(kEdgeCorner,
-																	  kEdgeCorner)].CGPath;
-		card.layer.mask = mask;
+		// rounded bottom would show the backdrop through it. A stretched image
+		// rather than a mask layer: a mask renders the card and whatever scrolls
+		// in it offscreen for every frame, which the A4 cannot spare.
+		card.backgroundColor = [UIColor clearColor];
+		UIImageView *plate = [[UIImageView alloc] initWithFrame:card.bounds];
+		plate.image = [TGSheet topRoundedPlate];
+		plate.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+		[card addSubview:plate];
 	} else {
 		card.layer.cornerRadius = kCorner;
 		card.clipsToBounds = YES;

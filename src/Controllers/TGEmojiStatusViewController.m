@@ -145,9 +145,7 @@ static UIImage *TGStatusImageAtPath(NSString *path) {
 	self.stickerByEmojiId = [NSMutableDictionary dictionary];
 	self.imagesRequested = [NSMutableSet set];
 	self.tableView.rowHeight = kStatusGridRow;
-	self.tableView.separatorColor = [[TGTheme shared] separatorColour];
-	self.tableView.backgroundColor = [[TGTheme shared] groupedBackgroundColour];
-	[[TGTheme shared] styleNavigationBar:self.navigationController.navigationBar];
+	[self applyTheme];
 
 	if (self.target != TGEmojiStatusTargetChat)
 		self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc]
@@ -155,6 +153,18 @@ static UIImage *TGStatusImageAtPath(NSString *path) {
 					   target:self action:@selector(clearTapped)];
 
 	[self loadLists];
+	[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(applyTheme) name:TGThemeChangedNotification object:nil];
+}
+
+- (void)dealloc {
+	[[NSNotificationCenter defaultCenter] removeObserver:self];
+}
+
+- (void)applyTheme {
+	self.tableView.separatorColor = [[TGTheme shared] separatorColour];
+	self.tableView.backgroundColor = [[TGTheme shared] groupedBackgroundColour];
+	[[TGTheme shared] styleNavigationBar:self.navigationController.navigationBar];
+	[self.tableView reloadData];
 }
 
 - (void)viewWillAppear:(BOOL)animated {

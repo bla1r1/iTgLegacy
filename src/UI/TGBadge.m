@@ -50,7 +50,7 @@ static const CGFloat kBadgePadH = 6.0f;
 	[self addSubview:_backgroundView];
 
 	_label = [[UILabel alloc] init];
-	_label.font = TGFontMicroStrong();
+	_label.font = TGFontCaptionStrong();
 	_label.textAlignment = NSTextAlignmentCenter;
 	[self addSubview:_label];
 

@@ -101,7 +101,7 @@ WEBP_ARMV7 := -F$(ROOT_DIR)/libs -framework WebP
 WEBP_ARM64 := -L$(BUILD_DIR)/arm64/libs -lwebp
 #        ^^ backed by the repacked archive from scripts/repack_arm64_libs.sh
 
-FRAMEWORKS := -framework UIKit -framework Foundation -framework QuickLook \
+FRAMEWORKS := -framework UIKit -framework Accelerate -framework Foundation -framework QuickLook \
               -framework SystemConfiguration -framework CoreGraphics \
               -framework QuartzCore -framework MediaPlayer \
               -framework AVFoundation -framework AudioToolbox \
@@ -295,6 +295,8 @@ APP_SRC_M := \
 	src/Controllers/TGChatListViewController+Actions.m \
 	src/Controllers/TGChatListViewController+Search.m \
 	src/Views/TGChatCell.m \
+	src/Views/TGRecordBar.m \
+	src/Controllers/TGStoryCameraViewController.m \
 	src/Views/TGChatListRowGeometry.m \
 	src/Views/TGStoriesCell.m \
 	src/Views/TGEmojiData.m \

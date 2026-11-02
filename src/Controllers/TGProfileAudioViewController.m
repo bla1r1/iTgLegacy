@@ -29,9 +29,7 @@
 	self.title = self.subjectTitle.length ? self.subjectTitle : @"Profile Audio";
 	self.audios = @[];
 	self.tableView.rowHeight = TGMetricPersonRow;
-	self.tableView.separatorColor = [[TGTheme shared] separatorColour];
-	self.tableView.backgroundColor = [[TGTheme shared] groupedBackgroundColour];
-	[[TGTheme shared] styleNavigationBar:self.navigationController.navigationBar];
+	[self applyTheme];
 	if ([self isOwnProfile])
 		self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc]
 				initWithBarButtonSystemItem:UIBarButtonSystemItemAdd
@@ -42,6 +40,18 @@
 	hold.minimumPressDuration = 0.5;
 	[self.tableView addGestureRecognizer:hold];
 	[self load];
+	[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(applyTheme) name:TGThemeChangedNotification object:nil];
+}
+
+- (void)dealloc {
+	[[NSNotificationCenter defaultCenter] removeObserver:self];
+}
+
+- (void)applyTheme {
+	self.tableView.separatorColor = [[TGTheme shared] separatorColour];
+	self.tableView.backgroundColor = [[TGTheme shared] groupedBackgroundColour];
+	[[TGTheme shared] styleNavigationBar:self.navigationController.navigationBar];
+	[self.tableView reloadData];
 }
 
 - (void)viewWillAppear:(BOOL)animated {

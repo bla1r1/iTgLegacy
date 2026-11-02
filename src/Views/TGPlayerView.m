@@ -13,18 +13,17 @@
 
 static const CGFloat kMiniArtSide        = TGMetricPlayerArt;
 static const CGFloat kMiniBtnSide        = 32.0f;
-static const CGFloat kMiniCloseSide      = 28.0f;
+static const CGFloat kMiniCloseSide      = TGMetricButtonSmallH;
 static const CGFloat kProgressHeight     = 2.0f;
-static const CGFloat kModalHeaderH       = TGMetricRow;
 static const CGFloat kModalArtSide       = TGMetricPlayerModalArtSide;
 static const CGFloat kModalMainBtnSide   = TGMetricPlayerModalButtonMain;
 static const CGFloat kModalSideBtnSide   = TGMetricPlayerModalButtonSide;
 static const CGFloat kModalVolIconSide   = 20.0f;
 static const CGFloat kModalSliderH       = TGMetricPlayerModalSliderH;
 static const CGFloat kModalTimeW         = 50.0f;
-static const CGFloat kModalTimeH         = 16.0f;
-static const CGFloat kModalQueueRowH     = 50.0f;
-static const CGFloat kShadowOffsetY      = 3.0f;
+static const CGFloat kModalHeaderH       = TGMetricRow;
+static const CGFloat kModalTimeH         = TGMetricLineCaption;
+static const CGFloat kModalQueueRowH     = TGMetricActionRow;
 
 static NSString *TGPlayerFormatTime(NSTimeInterval seconds) {
 	if (seconds < 0 || isnan(seconds)) seconds = 0;
@@ -362,15 +361,15 @@ static NSString *TGPlayerFormatTime(NSTimeInterval seconds) {
 	// Artwork Container with realistic drop shadow
 	UIView *artShadowView = [[UIView alloc] initWithFrame:CGRectMake(artX, y, kModalArtSide, kModalArtSide)];
 	artShadowView.layer.shadowColor = [UIColor blackColor].CGColor;
-	artShadowView.layer.shadowOpacity = 0.35f;
-	artShadowView.layer.shadowOffset = CGSizeMake(0, kShadowOffsetY);
-	artShadowView.layer.shadowRadius = 4.0f;
+	artShadowView.layer.shadowOpacity = TGMetricShadowArtOpacity;
+	artShadowView.layer.shadowOffset = TGMetricShadowOffsetArt;
+	artShadowView.layer.shadowRadius = TGMetricShadowArtRadius;
 	artShadowView.layer.cornerRadius = TGMetricCornerCard;
 	[_deckView addSubview:artShadowView];
 
 	_artworkView = [[UIImageView alloc] initWithFrame:artShadowView.bounds];
 	_artworkView.layer.cornerRadius = TGMetricCornerCard;
-	_artworkView.layer.borderColor = [UIColor whiteColor].CGColor;
+	_artworkView.layer.borderColor = [[TGTheme shared] onMediaColour].CGColor;
 	_artworkView.layer.borderWidth = 1.0f;
 	_artworkView.clipsToBounds = YES;
 	_artworkView.contentMode = UIViewContentModeScaleAspectFill;

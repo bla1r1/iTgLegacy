@@ -60,6 +60,11 @@
 	return [UIColor whiteColor];        ///< text/icons over accentColour
 }
 
+// A photo stays the same photo under every theme, so what sits on it does too.
+- (UIColor *)onMediaColour {
+	return [UIColor whiteColor];
+}
+
 - (UIColor *)destructiveColour {
 	return TGRole(@"destructive", rgb(0xE5, 0x39, 0x35));
 }

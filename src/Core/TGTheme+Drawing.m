@@ -8,6 +8,7 @@
 // (TGTheme+Gradients.m) and the depth materials (TGTheme+Effects.m).
 // See docs/theme_system.md for the full map.
 //
+#import <Accelerate/Accelerate.h>
 #import "TGTextDraw.h"
 #import "TGThemeInternal.h"
 #import "TGStyle.h"
@@ -746,6 +747,50 @@ static const CGFloat kSwitchTagHeight  = 12.0f;
 	field.background = [self skeuomorphicWellImageWithHeight:h cornerRadius:TGMetricCornerControl];
 	field.font = TGFontInput();
 	field.textColor = [[TGTheme shared] primaryTextColour];
+}
+
++ (UIImage *)softenedImage:(UIImage *)image radius:(CGFloat)radius dim:(CGFloat)dim {
+	CGSize size = image.size;
+	if (!image.CGImage || size.width < 2 || size.height < 2)
+		return nil;
+	// A quarter of the side: three box passes on it are a good Gaussian, cheap
+	// on the A4, and an image view scales the answer up smoothly.
+	const CGFloat shrink = 4.0f;
+	size_t w = MAX((size_t)1, (size_t)ceilf(size.width / shrink));
+	size_t h = MAX((size_t)1, (size_t)ceilf(size.height / shrink));
+	size_t rowBytes = w * 4;
+	void *pixels = malloc(rowBytes * h);
+	void *scratch = malloc(rowBytes * h);
+	CGColorSpaceRef space = CGColorSpaceCreateDeviceRGB();
+	CGContextRef ctx = (pixels && scratch) ? CGBitmapContextCreate(pixels, w, h, 8, rowBytes, space,
+			kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Little) : NULL;
+	CGColorSpaceRelease(space);
+	if (!ctx){
+		free(pixels);
+		free(scratch);
+		return nil;
+	}
+	CGRect all = CGRectMake(0, 0, w, h);
+	CGContextSetInterpolationQuality(ctx, kCGInterpolationLow);
+	CGContextDrawImage(ctx, all, image.CGImage);
+	if (dim > 0){
+		CGContextSetRGBFillColor(ctx, 0, 0, 0, dim);
+		CGContextFillRect(ctx, all);
+	}
+	uint32_t kernel = ((uint32_t)MAX(1.0f, radius / shrink)) | 1;
+	vImage_Buffer one = {pixels, h, w, rowBytes};
+	vImage_Buffer two = {scratch, h, w, rowBytes};
+	vImageBoxConvolve_ARGB8888(&one, &two, NULL, 0, 0, kernel, kernel, NULL, kvImageEdgeExtend);
+	vImageBoxConvolve_ARGB8888(&two, &one, NULL, 0, 0, kernel, kernel, NULL, kvImageEdgeExtend);
+	vImageBoxConvolve_ARGB8888(&one, &two, NULL, 0, 0, kernel, kernel, NULL, kvImageEdgeExtend);
+	memcpy(pixels, scratch, rowBytes * h);
+	CGImageRef blurred = CGBitmapContextCreateImage(ctx);
+	CGContextRelease(ctx);
+	free(pixels);
+	free(scratch);
+	UIImage *soft = blurred ? [UIImage imageWithCGImage:blurred] : nil;
+	CGImageRelease(blurred);
+	return soft;
 }
 
 + (UIImage *)skeuomorphicInputBarImageWithHeight:(CGFloat)height {

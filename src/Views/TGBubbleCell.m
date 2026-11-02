@@ -9,7 +9,7 @@
 #import <CoreText/CoreText.h>
 
 /// How visible the part of a voice note nobody has heard yet is.
-static const CGFloat kWaveUnplayedAlpha = 0.32f;
+static const CGFloat kWaveUnplayedAlpha = TGAlphaHighlight;
 
 @interface TGBubbleCell () {
 	CTFrameRef _textFrame;          // the laid-out body text, for hit-testing
@@ -159,7 +159,7 @@ static const CGFloat kWaveUnplayedAlpha = 0.32f;
 
 	self.icon = [[UILabel alloc] init];
 	self.icon.textAlignment = NSTextAlignmentCenter;
-	self.icon.textColor = [UIColor whiteColor];
+	self.icon.textColor = [[TGTheme shared] onAccentColour];
 	self.icon.font = TGFontHeader();
 	// Unclipped: the rounded corners are its background colour's, and the
 	// glyph never leaves the tile, so a clip would buy an offscreen pass for
@@ -186,7 +186,7 @@ static const CGFloat kWaveUnplayedAlpha = 0.32f;
 
 	self.mediaStamp = [[UILabel alloc] init];
 	self.mediaStamp.font = TGFontMicro();
-	self.mediaStamp.textColor = [UIColor whiteColor];
+	self.mediaStamp.textColor = [[TGTheme shared] onMediaColour];
 	self.mediaStamp.textAlignment = NSTextAlignmentCenter;
 	self.mediaStamp.layer.cornerRadius = TGMetricCornerControl;
 	self.mediaStamp.hidden = YES;
@@ -238,7 +238,7 @@ static const CGFloat kWaveUnplayedAlpha = 0.32f;
 	}
 	self.collageMoreLabel = [[UILabel alloc] init];
 	self.collageMoreLabel.textAlignment = NSTextAlignmentCenter;
-	self.collageMoreLabel.textColor = [UIColor whiteColor];
+	self.collageMoreLabel.textColor = [[TGTheme shared] onMediaColour];
 	self.collageMoreLabel.font = TGFontHeader();
 	self.collageMoreLabel.backgroundColor = [[TGTheme shared] mediaOverlayColour];
 	self.collageMoreLabel.layer.cornerRadius = TGMetricCornerSmall;
@@ -586,7 +586,7 @@ static const CGFloat kWaveUnplayedAlpha = 0.32f;
 	if (self.mediaStamp.superview != self.bubble) {
 		[self.bubble addSubview:self.mediaStamp];
 		self.mediaStamp.layer.cornerRadius = TGMetricCornerControl;
-		self.mediaStamp.textColor = [UIColor whiteColor];
+		self.mediaStamp.textColor = [[TGTheme shared] onMediaColour];
 	}
 	self.quoteBar.hidden = YES;
 	self.quote.hidden = YES;

@@ -8,7 +8,14 @@
 // flat dictionary per story and per row, because a 4S cannot afford to walk a
 // TDLib tree three times per cell.
 //
+#import "TGDevice.h"
 #import "TGClient+Base.h"
+
+/// How many chats the first pass over the story strip asks about, on this tier.
+#ifdef __cplusplus
+extern "C"
+#endif
+NSUInteger TGStoryRowProbeLimit(TGDeviceTier tier);
 
 @interface TGClient (Stories)
 

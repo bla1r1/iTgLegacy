@@ -96,5 +96,8 @@ no exception.
 | B1 + B5 | Same profile media pipeline (`currentMediaTabs` / grid / flatten) | Medium — refactor in one pass |
 | B4 | Independent — "TDLib events never reach the UI" | Low |
 | B3 | Independent — TDLib schema drift / deprecated UIActionSheet | None |
+| B16 | Round video recorder dies the moment it opens on the iPod touch 4 | `TGVideoNoteViewController` set `videoMirrored` over the connection's `automaticallyAdjustsVideoMirroring`, which throws `NSInvalidArgumentException` on iOS 6 | **fixed** — `lint_tokens.sh` rule 24; capture cannot run on the host, checked on iPod4,1 / 6.1.6 with `itglegacy://videonote` |
+| B17 | Round video clock runs but nothing is recorded (`-11803 Cannot Record`) | `TGVideoNoteRecorder` called `startRunning` on a dispatch queue; iOS 6 finishes it through the caller's run loop, so `isRunning` stays NO | **fixed** — `lint_tokens.sh` rule 25; same device check: 8.4 s, 480x480, H.264 + AAC |
+| B18 | Back from a call leaves a blue wall reading "name · Ringing" over the whole app | `TGCallMiniBar` gave its window a root view controller, which on iOS 6 sizes its view to the screen whatever the window's frame, and a window does not clip | **fixed** — no host check for a window's look, checked on iPod4,1 / 6.1.6 with `itglegacy://callbar/Name` |
 
 Suggested order: `TGClient+Files.m` (B1+B2), status formatter (B4), tab-kind fix (B1 UI), gifts flatten (B5), contacts `getChat` on open (B6), then B3 (after crash log or as defensive cleanup immediately).

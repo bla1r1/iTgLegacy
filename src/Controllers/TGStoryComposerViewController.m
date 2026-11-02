@@ -1,26 +1,40 @@
 #import "TGStoryComposerViewController.h"
+#import "TGStoryCameraViewController.h"
 #import "TGClient.h"
 #import "TGTheme.h"
 #import "TGStyle.h"
 #import "TGAlertSheet.h"
-#import "TGIcons.h"
-#import <AVFoundation/AVFoundation.h>
-#import <CoreMedia/CoreMedia.h>
-#import <MobileCoreServices/MobileCoreServices.h>
 
 /// Telegram accepts a 1080x1920 photo and a 720x1280 video. This client only
-/// re-sizes the photo; a picked video is sent as recorded and the sheet says
-/// when it is not the size Telegram prefers.
+/// re-sizes the photo; a picked video is sent as recorded.
 static const CGFloat kStoryPhotoWidth = 1080.0f;
 static const CGFloat kStoryPhotoHeight = 1920.0f;
-static const CGFloat kStoryCaptionRow = 132.0f;
-static const CGFloat kStoryPreviewRow = TGMetricStoryInputHeight;
 static const NSInteger kStorySectionChoices = 0;
 static const NSInteger kStorySectionOptions = 1;
 static const NSInteger kStorySectionPublish = 2;
+static const NSInteger kStoryChoiceRows = 4;
+/// Only 24 hours is free; the other three periods are Premium.
+static const NSInteger kStoryFreePeriod = 86400;
 
-@interface TGStoryComposerViewController () <UIImagePickerControllerDelegate,
-		UINavigationControllerDelegate, UITextViewDelegate>
+/// What to tell somebody Telegram would not let post. TDLib's own wording for
+/// "premium needed" talks about posting *more* stories, which is not what an
+/// account that has never had Premium needs to hear.
+static NSString *TGStoryRefusalText(NSDictionary *answer) {
+	if ([answer[@"type"] isEqualToString:@"canPostStoryResultPremiumNeeded"])
+		return @"Posting stories needs Telegram Premium.";
+	NSString *reason = answer[@"reason"];
+	return reason.length ? reason : @"Telegram refused that.";
+}
+
+static BOOL TGStoryAccountHasPremium(void) {
+	return [[TGClient shared].me[@"is_premium"] boolValue];
+}
+
+/// Opens at most one flow at a time: the answer from Telegram takes a moment,
+/// and a second tap on the plus would otherwise stack a second camera.
+static BOOL sStoryFlowOpening = NO;
+
+@interface TGStoryComposerViewController ()
 @property (nonatomic, assign) int64_t chatId;
 @property (nonatomic, copy) NSString *posterTitle;
 @property (nonatomic, assign) int64_t targetChatId;
@@ -29,10 +43,7 @@ static const NSInteger kStorySectionPublish = 2;
 @property (nonatomic, copy) NSString *mediaPath;
 @property (nonatomic, assign) BOOL isVideo;
 @property (nonatomic, assign) double videoDuration;
-@property (nonatomic, strong) UIImage *previewImage;
-@property (nonatomic, strong) UIImageView *previewView;
-@property (nonatomic, strong) UITextView *captionView;
-@property (nonatomic, assign) BOOL captionShowsPlaceholder;
+@property (nonatomic, copy) NSString *caption;
 @property (nonatomic, copy) NSString *privacy;
 @property (nonatomic, strong) NSArray *privacyUserIds;
 @property (nonatomic, assign) NSInteger activePeriod;
@@ -59,11 +70,41 @@ static const NSInteger kStorySectionPublish = 2;
 	return self;
 }
 
++ (void)openFromController:(UIViewController *)controller
+					chatId:(int64_t)chatId
+					 title:(NSString *)title
+				  onPosted:(void (^)(void))onPosted {
+	if (!controller || sStoryFlowOpening)
+		return;
+	sStoryFlowOpening = YES;
+	__weak UIViewController *weakController = controller;
+	[[TGClient shared] canPostStoryInChat:chatId completion:^(NSDictionary *answer){
+		sStoryFlowOpening = NO;
+		UIViewController *host = weakController;
+		if (!host)
+			return;
+		if (![answer[@"ok"] boolValue]){
+			[TGAlertSheet showMessage:TGStoryRefusalText(answer)
+								title:@"New Story" inView:host.view];
+			return;
+		}
+		TGStoryComposerViewController *composer = [[TGStoryComposerViewController alloc]
+				initWithChatId:chatId title:title];
+		composer.onPosted = onPosted;
+		// The caller may itself be sitting under a modal (the story viewer is).
+		UIViewController *top = host;
+		while (top.presentedViewController)
+			top = top.presentedViewController;
+		[top presentViewController:[TGStoryCameraViewController flowForComposer:composer]
+						  animated:YES completion:nil];
+	}];
+}
+
 - (void)viewDidLoad {
 	[super viewDidLoad];
 	if ([self respondsToSelector:@selector(setEdgesForExtendedLayout:)])
 		self.edgesForExtendedLayout = UIRectEdgeNone;
-	self.title = @"New Story";
+	self.title = @"Story Settings";
 	[[TGTheme shared] styleGroupedTable:self.tableView];
 	__weak typeof(self) weakSelf = self;
 	[[NSNotificationCenter defaultCenter] addObserverForName:TGThemeChangedNotification
@@ -72,6 +113,13 @@ static const NSInteger kStorySectionPublish = 2;
 		[weakSelf.tableView reloadData];
 	}];
 	[self loadPostChats];
+}
+
+- (void)viewWillAppear:(BOOL)animated {
+	[super viewWillAppear:animated];
+	// The camera and editor before this hide both the bar and the status bar.
+	TGStoryFlowSetStatusBarHidden(NO);
+	[self.navigationController setNavigationBarHidden:NO animated:animated];
 }
 
 /// Chats this account may post on behalf of. The own story is always first:
@@ -93,25 +141,19 @@ static const NSInteger kStorySectionPublish = 2;
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
 	if (section == kStorySectionChoices)
-		return 6;
-	if (section == kStorySectionOptions)
-		return 2;
+		return kStoryChoiceRows;
 	return 2;
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
-	if (section == kStorySectionChoices)
-		return @"Story";
 	if (section == kStorySectionOptions)
 		return @"Options";
-	return @"Publish";
+	if (section == kStorySectionPublish)
+		return @"Publish";
+	return nil;
 }
 
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
-	if (indexPath.section == kStorySectionChoices && indexPath.row == 0)
-		return kStoryPreviewRow;
-	if (indexPath.section == kStorySectionChoices && indexPath.row == 1)
-		return kStoryCaptionRow;
 	return TGMetricRow;
 }
 
@@ -135,7 +177,7 @@ static const NSInteger kStorySectionPublish = 2;
 		if (indexPath.row == 0){
 			cell.textLabel.text = self.posting ? @"Posting…" : @"Post Story";
 			cell.textLabel.textColor = [[TGTheme shared] accentColour];
-			cell.detailTextLabel.text = self.mediaPath ? @"" : @"Pick media first";
+			cell.detailTextLabel.text = @"";
 			cell.selectionStyle = self.mediaPath && !self.posting
 					? UITableViewCellSelectionStyleBlue
 					: UITableViewCellSelectionStyleNone;
@@ -160,106 +202,18 @@ static const NSInteger kStorySectionPublish = 2;
 	}
 
 	if (indexPath.row == 0){
-		cell.textLabel.text = self.mediaPath ? @"" : @"Choose Photo or Video";
-		cell.detailTextLabel.text = self.mediaPath ? nil : @"Required";
-		cell.accessoryView = nil;
-
-		if (!self.previewView){
-			self.previewView = [[UIImageView alloc] initWithFrame:CGRectZero];
-			self.previewView.contentMode = UIViewContentModeScaleAspectFill;
-			self.previewView.clipsToBounds = YES;
-			self.previewView.backgroundColor = [[TGTheme shared] fileTileColour];
-		}
-		if (self.mediaPath){
-			if (self.previewView.superview != cell.contentView){
-				[self.previewView removeFromSuperview];
-				[cell.contentView addSubview:self.previewView];
-			}
-			CGFloat cellWidth = cell.contentView.bounds.size.width > 0
-					? cell.contentView.bounds.size.width
-					: tableView.bounds.size.width - TGDoubled(TGMetricPadMedium);
-			self.previewView.frame = CGRectMake(0, 0, cellWidth,
-					kStoryPreviewRow);
-			self.previewView.image = self.previewImage;
-
-			UILabel *change = (UILabel *)[cell.contentView viewWithTag:6];
-			if (!change){
-				change = [[UILabel alloc] initWithFrame:CGRectZero];
-				change.tag = 6;
-				change.font = TGFontCaptionStrong();
-				change.textColor = [UIColor whiteColor];
-				change.backgroundColor = [[TGTheme shared] mediaOverlayColour];
-				change.textAlignment = NSTextAlignmentCenter;
-				[cell.contentView addSubview:change];
-			}
-			change.text = @"Change Media";
-			change.hidden = NO;
-			change.frame = CGRectMake(TGMetricPadLarge,
-					kStoryPreviewRow - TGMetricLineCaption - TGMetricPadSmall,
-					TGMetricStoryBubble + TGMetricPadLarge, TGMetricLineCaption);
-
-			UILabel *duration = (UILabel *)[cell.contentView viewWithTag:7];
-			if (!duration){
-				duration = [[UILabel alloc] initWithFrame:CGRectZero];
-				duration.tag = 7;
-				duration.font = TGFontCaption();
-				duration.textColor = [UIColor whiteColor];
-				duration.backgroundColor = [[TGTheme shared] mediaOverlayColour];
-				duration.textAlignment = NSTextAlignmentCenter;
-				[cell.contentView addSubview:duration];
-			}
-			duration.text = self.isVideo && self.videoDuration > 0
-					? [NSString stringWithFormat:@"%.0fs", self.videoDuration] : @"";
-			duration.hidden = !self.isVideo || self.videoDuration <= 0;
-			duration.frame = CGRectMake(cellWidth -
-					TGMetricStoryBubble - TGMetricPadLarge,
-					kStoryPreviewRow - TGMetricLineCaption - TGMetricPadSmall,
-					TGMetricStoryBubble, TGMetricLineCaption);
-		} else {
-			[self.previewView removeFromSuperview];
-			[cell.contentView viewWithTag:6].hidden = YES;
-			[cell.contentView viewWithTag:7].hidden = YES;
-		}
-		return cell;
-	}
-	if (indexPath.row == 1){
-		cell.textLabel.text = @"";
-		if (!self.captionView){
-			self.captionView = [[UITextView alloc] initWithFrame:CGRectZero];
-			self.captionView.font = TGFontBody();
-			self.captionView.backgroundColor = [UIColor clearColor];
-			self.captionView.textColor = [[TGTheme shared] primaryTextColour];
-			self.captionView.delegate = self;
-			[self.captionView setText:@"Add a caption"];
-			self.captionView.textColor = [[TGTheme shared] secondaryTextColour];
-			self.captionShowsPlaceholder = YES;
-		}
-		// The caption is one view the controller owns; a reload may hand the
-		// row a different cell, so it is moved rather than added once.
-		if (self.captionView.superview != cell.contentView){
-			[self.captionView removeFromSuperview];
-			[cell.contentView addSubview:self.captionView];
-		}
-		self.captionView.frame = CGRectMake(
-				TGMetricPadLarge, TGMetricPadSmall,
-				tableView.bounds.size.width - TGDoubled(TGMetricPadLarge) -
-				TGMetricGutter,
-				kStoryCaptionRow - TGDoubled(TGMetricPadSmall));
-		return cell;
-	}
-	if (indexPath.row == 2){
 		cell.textLabel.text = @"Privacy";
 		cell.detailTextLabel.text = [self privacyTitle];
 		cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
 		return cell;
 	}
-	if (indexPath.row == 3){
+	if (indexPath.row == 1){
 		cell.textLabel.text = @"Active For";
 		cell.detailTextLabel.text = [self activePeriodTitle];
 		cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
 		return cell;
 	}
-	if (indexPath.row == 4){
+	if (indexPath.row == 2){
 		cell.textLabel.text = @"Post As";
 		cell.detailTextLabel.text = self.targetTitle ?: @"My Story";
 		cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
@@ -280,22 +234,18 @@ static const NSInteger kStorySectionPublish = 2;
 		if (indexPath.row == 0)
 			[self postStory];
 		else
-			[self.navigationController popViewControllerAnimated:YES];
+			[self closeFlow];
 		return;
 	}
 	if (indexPath.row == 0){
-		[self pickMedia];
-		return;
-	}
-	if (indexPath.row == 2){
 		[self choosePrivacy];
 		return;
 	}
-	if (indexPath.row == 3){
+	if (indexPath.row == 1){
 		[self chooseActivePeriod];
 		return;
 	}
-	if (indexPath.row == 4){
+	if (indexPath.row == 2){
 		[self chooseTargetChat];
 		return;
 	}
@@ -323,27 +273,6 @@ static const NSInteger kStorySectionPublish = 2;
 }
 
 #pragma mark - choices
-
-- (void)pickMedia {
-	NSArray *choices = @[@"Photo Library", @"Camera"];
-	__weak typeof(self) weakSelf = self;
-	[TGAlertSheet showChoices:choices title:@"Add to Story" destructiveIndex:-1
-					   inView:self.view onChoice:^(NSInteger choice){
-		TGStoryComposerViewController *me = weakSelf;
-		if (!me)
-			return;
-		UIImagePickerController *picker = [[UIImagePickerController alloc] init];
-		picker.delegate = me;
-		picker.sourceType = choice == 1 && [UIImagePickerController
-				isSourceTypeAvailable:UIImagePickerControllerSourceTypeCamera]
-				? UIImagePickerControllerSourceTypeCamera
-				: UIImagePickerControllerSourceTypePhotoLibrary;
-		picker.mediaTypes = [UIImagePickerController
-				availableMediaTypesForSourceType:picker.sourceType] ?: @[];
-		picker.allowsEditing = NO;
-		[me presentViewController:picker animated:YES completion:nil];
-	}];
-}
 
 - (void)choosePrivacy {
 	NSArray *choices = @[@"Everybody", @"My Contacts", @"Close Friends", @"Selected Users"];
@@ -388,7 +317,13 @@ static const NSInteger kStorySectionPublish = 2;
 }
 
 - (void)chooseActivePeriod {
-	NSArray *choices = @[@"6 hours", @"12 hours", @"24 hours", @"48 hours"];
+	BOOL premium = TGStoryAccountHasPremium();
+	// Telegram shows the paid periods and explains the lock when one is
+	// tapped; hiding them would leave no hint that Premium changes anything.
+	NSArray *choices = @[premium ? @"6 hours" : @"6 hours (Premium)",
+						 premium ? @"12 hours" : @"12 hours (Premium)",
+						 @"24 hours",
+						 premium ? @"48 hours" : @"48 hours (Premium)"];
 	NSArray *values = @[@21600, @43200, @86400, @172800];
 	__weak typeof(self) weakSelf = self;
 	[TGAlertSheet showChoices:choices title:@"Active Period" destructiveIndex:-1
@@ -396,7 +331,14 @@ static const NSInteger kStorySectionPublish = 2;
 		TGStoryComposerViewController *me = weakSelf;
 		if (!me || choice < 0 || choice >= (NSInteger)values.count)
 			return;
-		me.activePeriod = [values[choice] integerValue];
+		NSInteger period = [values[choice] integerValue];
+		if (period != kStoryFreePeriod && !TGStoryAccountHasPremium()){
+			[TGAlertSheet showMessage:@"That period needs Telegram Premium. "
+					@"Without it a story stays up for 24 hours."
+								title:@"Active For" inView:me.view];
+			return;
+		}
+		me.activePeriod = period;
 		[me.tableView reloadData];
 	}];
 }
@@ -439,38 +381,16 @@ static const NSInteger kStorySectionPublish = 2;
 	return @"24 hours";
 }
 
-#pragma mark - the picker
+#pragma mark - what the earlier steps hand over
 
-- (void)imagePickerController:(UIImagePickerController *)picker
-		didFinishPickingMediaWithInfo:(NSDictionary *)info {
-	NSString *type = info[UIImagePickerControllerMediaType];
-	[picker dismissViewControllerAnimated:YES completion:nil];
-	if ([type isEqualToString:(NSString *)kUTTypeMovie]){
-		NSURL *url = info[UIImagePickerControllerMediaURL];
-		if (!url)
-			return;
-		self.isVideo = YES;
-		self.mediaPath = url.path;
-		self.previewImage = nil;
-		self.videoDuration = 0;
-		AVURLAsset *asset = [AVURLAsset assetWithURL:url];
-		if (asset.duration.value > 0)
-			self.videoDuration = CMTimeGetSeconds(asset.duration);
-		[self.tableView reloadData];
-		return;
-	}
-	UIImage *image = info[UIImagePickerControllerOriginalImage];
-	if (!image)
-		return;
-	self.isVideo = NO;
-	self.videoDuration = 0;
-	self.previewImage = image;
-	self.mediaPath = [self writeStoryPhoto:image];
-	[self.tableView reloadData];
-}
-
-- (void)imagePickerControllerDidCancel:(UIImagePickerController *)picker {
-	[picker dismissViewControllerAnimated:YES completion:nil];
+- (void)useMediaAtPath:(NSString *)path
+			   isVideo:(BOOL)isVideo
+			  duration:(double)duration
+			   caption:(NSString *)caption {
+	self.mediaPath = path;
+	self.isVideo = isVideo;
+	self.videoDuration = duration;
+	self.caption = caption;
 }
 
 - (void)toggleChanged:(UISwitch *)toggle {
@@ -485,7 +405,7 @@ static const NSInteger kStorySectionPublish = 2;
 - (NSString *)writeStoryPhoto:(UIImage *)image {
 	UIGraphicsBeginImageContextWithOptions(CGSizeMake(kStoryPhotoWidth,
 			kStoryPhotoHeight), YES, 1);
-	[[UIColor blackColor] setFill];
+	[[UIColor blackColor] setFill];  // export/letterbox
 	UIRectFill(CGRectMake(0, 0, kStoryPhotoWidth, kStoryPhotoHeight));
 	CGFloat scale = MIN(kStoryPhotoWidth / image.size.width,
 						kStoryPhotoHeight / image.size.height);
@@ -511,7 +431,7 @@ static const NSInteger kStorySectionPublish = 2;
 	if (self.posting)
 		return;
 	if (!self.mediaPath.length){
-		[TGAlertSheet showMessage:@"Choose a photo or a video first."
+		[TGAlertSheet showMessage:@"There is no photo or video to post."
 							title:@"New Story" inView:self.view];
 		return;
 	}
@@ -526,18 +446,15 @@ static const NSInteger kStorySectionPublish = 2;
 		if (![answer[@"ok"] boolValue]){
 			me.posting = NO;
 			[me.tableView reloadData];
-			[TGAlertSheet showMessage:answer[@"reason"] ?: @"Telegram refused that."
+			[TGAlertSheet showMessage:TGStoryRefusalText(answer)
 								title:@"New Story" inView:me.view];
 			return;
 		}
-		NSString *caption = me.captionView.text ?: @"";
-		if (me.captionShowsPlaceholder)
-			caption = @"";
 		[[TGClient shared] postStoryToChat:me.targetChatId
 									  path:me.mediaPath
 								   isVideo:me.isVideo
 								  duration:me.videoDuration
-								   caption:caption
+								   caption:me.caption ?: @""
 								   privacy:me.privacy
 								   userIds:me.privacyUserIds
 							 activePeriod:me.activePeriod
@@ -554,27 +471,14 @@ static const NSInteger kStorySectionPublish = 2;
 			}
 			if (me.onPosted)
 				me.onPosted();
-			[me.navigationController popViewControllerAnimated:YES];
+			[me closeFlow];
 		}];
 	}];
 }
 
-#pragma mark - caption placeholder
-
-- (void)textViewDidBeginEditing:(UITextView *)textView {
-	if (self.captionShowsPlaceholder){
-		textView.text = @"";
-		textView.textColor = [[TGTheme shared] primaryTextColour];
-		self.captionShowsPlaceholder = NO;
-	}
-}
-
-- (void)textViewDidEndEditing:(UITextView *)textView {
-	if (!textView.text.length){
-		textView.text = @"Add a caption";
-		textView.textColor = [[TGTheme shared] secondaryTextColour];
-		self.captionShowsPlaceholder = YES;
-	}
+/// Dismisses camera, editor and this table together; they are one modal.
+- (void)closeFlow {
+	[self.navigationController dismissViewControllerAnimated:YES completion:nil];
 }
 
 @end

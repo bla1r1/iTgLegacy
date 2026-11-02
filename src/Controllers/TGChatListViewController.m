@@ -23,15 +23,15 @@ static const CGFloat kRowGlyph     = 28.0f;
 static const CGFloat kListTitleWidth  = 150.0f;
 static const CGFloat kListTitleHeight = TGMetricRow;
 static const CGFloat kListChevronWidth = 12.0f;
-static const CGFloat kListChevronGap   = 2.0f;
+static const CGFloat kListChevronGap   = TGMetricPadTiny;
 static const CGFloat kListStorySide    = 24.0f;
-static const CGFloat kListStoryGap     = 4.0f;
+static const CGFloat kListStoryGap     = TGMetricPadSmall;
 /// The chat-list bar controls: the Edit pill, the circled add and the blue
 /// compose button. Named here because only this header stacks them.
 static const CGFloat kBarEditWidth    = 66.0f;
-static const CGFloat kBarEditHeight   = 30.0f;
+static const CGFloat kBarEditHeight   = TGMetricSegmentedHeight;
 static const CGFloat kBarRightWidth   = 92.0f;
-static const CGFloat kBarControlSide  = 36.0f;
+static const CGFloat kBarControlSide  = TGMetricButtonMediumH;
 static const CGFloat kBarComposeSide  = 46.0f;
 static const CGFloat kBarComposeX     = 46.0f;
 static const CGFloat kBarControlTop   = 5.0f;
@@ -41,6 +41,9 @@ static const NSInteger kFolderArchiveTag = 1000;
 static const CGFloat kFolderPillPad = 26.0f;
 static const CGFloat kFolderPillMax = 150.0f;
 static const CGFloat kFolderPillGap = 6.0f;
+
+/// A 3.5" screen shows six rows of 76 pt; this is two screens.
+static const NSUInteger kAvatarWindowRows = 14;
 
 @implementation TGChatListViewController
 
@@ -445,7 +448,7 @@ static NSDictionary *TGChatSnapshotRow(NSDictionary *chat) {
 	compose.layer.cornerRadius = TGHalf(kBarComposeSide);
 	compose.backgroundColor = [[TGTheme shared] composeButtonColour];
 	[compose setImage:[TGIcons glyphNamed:@"compose"
-								   colour:[UIColor whiteColor]
+								   colour:[[TGTheme shared] onAccentColour]
 									 side:TGMetricLineTitle]
 			 forState:UIControlStateNormal];
 	[compose addTarget:self action:@selector(composeTapped)
@@ -677,7 +680,7 @@ static NSDictionary *TGChatSnapshotRow(NSDictionary *chat) {
 		pill.layer.cornerRadius = TGHalf(pillHeight);
 		if (active){
 			[pill setBackgroundColor:[[TGTheme shared] accentColour]];
-			[pill setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+			[pill setTitleColor:[[TGTheme shared] onAccentColour] forState:UIControlStateNormal];
 		} else {
 			[pill setBackgroundColor:[[TGTheme shared] cardBackgroundColour]];
 			[pill setTitleColor:[[TGTheme shared] primaryTextColour]
@@ -1020,6 +1023,16 @@ static NSDictionary *TGChatSnapshotRow(NSDictionary *chat) {
 	if (y > TGMetricHairline && fabs(y - previousHeight) > TGMetricHairline)
 		return;
 	self.tableView.contentOffset = CGPointMake(0, self.parkOffset);
+}
+
+- (void)scrollViewDidEndDecelerating:(UIScrollView *)scrollView {
+	if (scrollView == self.tableView)
+		[self fetchMissingAvatars];
+}
+
+- (void)scrollViewDidEndDragging:(UIScrollView *)scrollView willDecelerate:(BOOL)decelerate {
+	if (scrollView == self.tableView && !decelerate)
+		[self fetchMissingAvatars];
 }
 
 - (void)scrollViewDidScroll:(UIScrollView *)scrollView {
@@ -1435,16 +1448,13 @@ static NSDictionary *TGChatSnapshotRow(NSDictionary *chat) {
 							title:@"New Story" inView:self.view];
 		return;
 	}
-	TGStoryComposerViewController *composer = [[TGStoryComposerViewController alloc]
-			initWithChatId:savedId title:@"Your Story"];
 	__weak typeof(self) weakSelf = self;
-	composer.onPosted = ^{
+	[TGStoryComposerViewController openFromController:self chatId:savedId
+												title:@"Your Story" onPosted:^{
 		TGChatListViewController *me = weakSelf;
 		me.storyRowsReadAt = nil;
 		[me reloadStoriesIfNeeded];
-	};
-	composer.hidesBottomBarWhenPushed = YES;
-	[self.navigationController pushViewController:composer animated:YES];
+	}];
 }
 
 - (void)openStoriesMenu {
@@ -1496,7 +1506,14 @@ static dispatch_semaphore_t TGAvtDecodeGate(NSInteger cap) {
 	__weak typeof(self) weakSelf = self;
 	CGFloat screenScale = [UIScreen mainScreen].scale;
 	dispatch_semaphore_t gate = TGAvtDecodeGate(2);
-	NSMutableArray *rows = [NSMutableArray arrayWithArray:self.chats ?: @[]];
+	// What is on screen and a screenful ahead, not the whole list: 176 downloads
+	// and decodes at launch on the A4 paid for rows nobody had looked at yet.
+	// The next stop of the scroll asks for what it reached.
+	NSArray *chats = self.chats ?: @[];
+	NSInteger first = [[self.tableView indexPathsForVisibleRows] firstObject]
+			? [[[self.tableView indexPathsForVisibleRows] firstObject] row] : 0;
+	NSRange window = TGAvatarWindow(first, kAvatarWindowRows, chats.count);
+	NSMutableArray *rows = [NSMutableArray arrayWithArray:[chats subarrayWithRange:window]];
 	[rows addObjectsFromArray:self.storyRows ?: @[]];
 	NSNumber *ownPhoto = [TGClient shared].me[@"profile_photo"][@"small"][@"id"]
 			?: [[TGClient shared] photoFileIdForUserId:

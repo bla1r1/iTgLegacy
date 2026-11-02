@@ -26,9 +26,7 @@
 	self.topics = [[TGClient shared] directMessagesChatTopicsForChat:self.chatId]
 			?: @[];
 	self.tableView.rowHeight = TGMetricPersonRow;
-	self.tableView.separatorColor = [[TGTheme shared] separatorColour];
-	self.tableView.backgroundColor = [[TGTheme shared] groupedBackgroundColour];
-	[[TGTheme shared] styleNavigationBar:self.navigationController.navigationBar];
+	[self applyTheme];
 	self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc]
 			initWithTitle:@"More" style:UIBarButtonItemStylePlain
 				   target:self action:@selector(loadMoreTapped)];
@@ -36,10 +34,18 @@
 			selector:@selector(topicsChanged:)
 				name:TGDirectMessagesTopicsChangedNotification object:nil];
 	[self loadMore];
+	[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(applyTheme) name:TGThemeChangedNotification object:nil];
 }
 
 - (void)dealloc {
 	[[NSNotificationCenter defaultCenter] removeObserver:self];
+}
+
+- (void)applyTheme {
+	self.tableView.separatorColor = [[TGTheme shared] separatorColour];
+	self.tableView.backgroundColor = [[TGTheme shared] groupedBackgroundColour];
+	[[TGTheme shared] styleNavigationBar:self.navigationController.navigationBar];
+	[self.tableView reloadData];
 }
 
 - (void)viewWillAppear:(BOOL)animated {

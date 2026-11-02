@@ -14,6 +14,9 @@
 					  threadId:(int64_t)threadId
 				 background:(UIImage *)background;
 
+/// Where the screen will sit, known before it builds itself: the circle and the
+/// cover over it are drawn once, for this size.
+@property (nonatomic, assign) CGRect overlayFrame;
 @property (nonatomic, copy) void (^onDismiss)(void);
 
 @end

@@ -148,6 +148,11 @@ typedef NS_ENUM(NSInteger, TGButtonStyle) {
 
 /// Brushed aluminum satin metal image for chat composer bar.
 + (UIImage *)skeuomorphicInputBarImageWithHeight:(CGFloat)height;
+/// A soft backdrop without CoreImage, whose blur crashed on the A4. `radius` is
+/// in the image's points and `dim` darkens it, baked in so a screen needs no
+/// extra blended layer. The result is smaller than the input: show it in a view
+/// that scales it. Nil for no image, and the caller keeps what it had.
++ (UIImage *)softenedImage:(UIImage *)image radius:(CGFloat)radius dim:(CGFloat)dim;
 
 
 
@@ -179,6 +184,7 @@ typedef NS_ENUM(NSInteger, TGButtonStyle) {
 - (UIColor *)composeButtonColour;   ///< the blue new-message button
 - (UIColor *)accentColour;          ///< buttons, links, unread badges
 - (UIColor *)onAccentColour;        ///< text and icons rendered over accentColour / badges
+- (UIColor *)onMediaColour;         ///< text and icons over a picture, a camera or mediaOverlayColour
 - (UIColor *)destructiveColour;     ///< delete actions, red alerts
 - (UIColor *)hudBackgroundColour;   ///< background for HUD/toasts
 - (UIColor *)hudTextColour;         ///< text inside HUD/toasts

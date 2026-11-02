@@ -104,7 +104,7 @@ static NSString *TGStoryRelativeTime(NSTimeInterval timestamp) {
 
 	_senderLabel = [[UILabel alloc] initWithFrame:CGRectZero];
 	_senderLabel.font = TGFontSubheadStrong();
-	_senderLabel.textColor = [UIColor whiteColor];
+	_senderLabel.textColor = [[TGTheme shared] onMediaColour];
 	_senderLabel.backgroundColor = [UIColor clearColor];
 	_senderLabel.lineBreakMode = NSLineBreakByTruncatingTail;
 	[self.view addSubview:_senderLabel];
@@ -124,7 +124,7 @@ static NSString *TGStoryRelativeTime(NSTimeInterval timestamp) {
 
 	_captionLabel = [[UILabel alloc] initWithFrame:CGRectZero];
 	_captionLabel.font = TGFontBody();
-	_captionLabel.textColor = [UIColor whiteColor];
+	_captionLabel.textColor = [[TGTheme shared] onMediaColour];
 	_captionLabel.backgroundColor = [UIColor clearColor];
 	_captionLabel.numberOfLines = 4;
 	[self.view addSubview:_captionLabel];
@@ -137,7 +137,7 @@ static NSString *TGStoryRelativeTime(NSTimeInterval timestamp) {
 
 	UIButton *close = [UIButton buttonWithType:UIButtonTypeCustom];
 	close.frame = CGRectMake(0, 0, TGMetricStoryCloseSide, TGMetricStoryCloseSide);
-	[close setImage:[TGIcons glyphNamed:@"close" colour:[UIColor whiteColor]
+	[close setImage:[TGIcons glyphNamed:@"close" colour:[[TGTheme shared] onMediaColour]
 								  side:TGMetricStoryCloseSide - TGMetricPadSmall]
 		   forState:UIControlStateNormal];
 	[close addTarget:self action:@selector(closeTapped) forControlEvents:UIControlEventTouchUpInside];
@@ -146,7 +146,7 @@ static NSString *TGStoryRelativeTime(NSTimeInterval timestamp) {
 
 	UIButton *menu = [UIButton buttonWithType:UIButtonTypeCustom];
 	menu.frame = CGRectMake(0, 0, TGMetricStoryCloseSide, TGMetricStoryCloseSide);
-	[menu setImage:[TGIcons glyphNamed:@"more" colour:[UIColor whiteColor]
+	[menu setImage:[TGIcons glyphNamed:@"more" colour:[[TGTheme shared] onMediaColour]
 								 side:TGMetricStoryCloseSide - TGMetricPadSmall]
 		  forState:UIControlStateNormal];
 	[menu addTarget:self action:@selector(menuTapped) forControlEvents:UIControlEventTouchUpInside];
@@ -276,7 +276,7 @@ static NSString *TGStoryRelativeTime(NSTimeInterval timestamp) {
 		track.layer.cornerRadius = TGHalf(TGMetricStoryProgressHeight);
 		[track setClipsToBounds:YES];
 		UIView *fill = [[UIView alloc] initWithFrame:track.bounds];
-		fill.backgroundColor = [UIColor whiteColor];
+		fill.backgroundColor = [[TGTheme shared] onMediaColour];
 		fill.layer.cornerRadius = TGHalf(TGMetricStoryProgressHeight);
 		[track addSubview:fill];
 		[self.progressHost addSubview:track];
@@ -1159,14 +1159,13 @@ static NSString *TGStoryRelativeTime(NSTimeInterval timestamp) {
 }
 
 - (void)addStory {
-	TGStoryComposerViewController *composer = [[TGStoryComposerViewController alloc]
-			initWithChatId:self.chatId title:@"Your Story"];
-	composer.onPosted = ^{
-		if (self.onStoriesChanged)
-			self.onStoriesChanged();
-	};
-	composer.hidesBottomBarWhenPushed = YES;
-	[self.navigationController pushViewController:composer animated:YES];
+	__weak typeof(self) weakSelf = self;
+	[TGStoryComposerViewController openFromController:self chatId:self.chatId
+												title:@"Your Story" onPosted:^{
+		TGStoryViewerViewController *me = weakSelf;
+		if (me.onStoriesChanged)
+			me.onStoriesChanged();
+	}];
 }
 
 - (void)reloadCurrent {

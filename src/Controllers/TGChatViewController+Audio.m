@@ -74,40 +74,7 @@ static const NSTimeInterval kRecordToggleTapSeconds = 0.25;
 	CGRect bar = self.inputBar.frame;
 	TGTheme *theme = [TGTheme shared];
 	if (!self.recordPanel){
-		self.recordPanel = [[UIView alloc] initWithFrame:bar];
-		self.recordPanel.backgroundColor = [theme inputBarColour];
-		self.recordPanel.autoresizingMask = UIViewAutoresizingFlexibleWidth |
-											UIViewAutoresizingFlexibleTopMargin;
-
-		// The composer's own wooden strip, since the panel takes the
-		// composer's place while a note is being held together.
-		UIImageView *panelBg = [[UIImageView alloc] initWithFrame:
-				CGRectMake(0, 0, bar.size.width, kInputHeight)];
-		panelBg.image = [TGTheme skeuomorphicInputBarImageWithHeight:kInputHeight];
-		panelBg.autoresizingMask = UIViewAutoresizingFlexibleWidth |
-				UIViewAutoresizingFlexibleHeight;
-		[self.recordPanel addSubview:panelBg];
-
-		UIView *hair = [[UIView alloc] initWithFrame:CGRectMake(0, 0, bar.size.width,
-				TGMetricBorderWidth)];
-		hair.backgroundColor = [theme separatorColour];
-		hair.autoresizingMask = UIViewAutoresizingFlexibleWidth;
-		[self.recordPanel addSubview:hair];
-
-		self.recordDot = [[UIView alloc] initWithFrame:
-				CGRectMake(kRecordDotX, TGCenteredOrigin(kInputHeight, TGMetricRecordDotSide),
-						TGMetricRecordDotSide, TGMetricRecordDotSide)];
-		self.recordDot.backgroundColor = [theme destructiveColour];
-		self.recordDot.layer.cornerRadius = TGHalf(TGMetricRecordDotSide);
-		[self.recordPanel addSubview:self.recordDot];
-
-		self.recordClock = [[UILabel alloc] initWithFrame:
-				CGRectMake(kRecordClockX, TGCenteredOrigin(kInputHeight, TGMetricLineRow),
-						kRecordClockW, TGMetricLineRow)];
-		self.recordClock.font = TGFontRow();
-		self.recordClock.textColor = [theme primaryTextColour];
-		self.recordClock.backgroundColor = [UIColor clearColor];
-		[self.recordPanel addSubview:self.recordClock];
+		self.recordPanel = [[TGRecordBar alloc] initWithFrame:bar];
 
 		self.recordCancelSlideLabel = [[UILabel alloc] initWithFrame:
 				CGRectMake(kRecordSlideX, TGCenteredOrigin(kInputHeight, TGMetricLineRow),
@@ -119,53 +86,15 @@ static const NSTimeInterval kRecordToggleTapSeconds = 0.25;
 		self.recordCancelSlideLabel.autoresizingMask = UIViewAutoresizingFlexibleWidth;
 		[self.recordPanel addSubview:self.recordCancelSlideLabel];
 
-		// Cancel text button for locked mode (centered, like TG Desktop / Mobile)
-		self.recordCancelButton = [UIButton buttonWithType:UIButtonTypeCustom];
-		self.recordCancelButton.frame =
-				CGRectMake(TGCenteredOrigin(bar.size.width, kRecordCancelW),
-						TGCenteredOrigin(kInputHeight, kRecordCancelH),
-						kRecordCancelW, kRecordCancelH);
-		[self.recordCancelButton setTitle:@"Cancel" forState:UIControlStateNormal];
-		[self.recordCancelButton setTitleColor:[theme accentColour] forState:UIControlStateNormal];
-		self.recordCancelButton.titleLabel.font = TGFontRow();
+		// Cancel, send and pause wait for the lock: until then a finger is
+		// welded to the mic and none of them can be reached.
+		self.recordCancelButton = self.recordPanel.cancelButton;
 		[self.recordCancelButton addTarget:self action:@selector(recordCancel) forControlEvents:UIControlEventTouchUpInside];
-		self.recordCancelButton.hidden = YES;
-		[self.recordPanel addSubview:self.recordCancelButton];
-
-		// Circular Send button for locked mode (right side, like TG Desktop / Mobile)
-		self.recordSendButton = [UIButton buttonWithType:UIButtonTypeCustom];
-		self.recordSendButton.frame = CGRectMake(bar.size.width - TGMetricRow, TGCenteredOrigin(kInputHeight, TGMetricCallControlSide), TGMetricCallControlSide, TGMetricCallControlSide);
-		self.recordSendButton.backgroundColor = [theme accentColour];
-		self.recordSendButton.layer.cornerRadius = TGHalf(TGMetricCallControlSide);
-		self.recordSendButton.layer.masksToBounds = YES;
-		[self.recordSendButton setImage:[TGIcons send] forState:UIControlStateNormal];
-		self.recordSendButton.tintColor = [UIColor whiteColor];
-		self.recordSendButton.imageEdgeInsets = UIEdgeInsetsZero;
-		self.recordSendButton.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
+		self.recordSendButton = self.recordPanel.sendButton;
 		[self.recordSendButton addTarget:self action:@selector(recordFinish) forControlEvents:UIControlEventTouchUpInside];
-		self.recordSendButton.hidden = YES;
-		[self.recordPanel addSubview:self.recordSendButton];
-
-		// The pause next to it, where Telegram's locked view keeps one: a
-		// paused note is still a note, and the tap sends whatever it holds.
-		// Only usable once the lock has taken over the screen, when a finger
-		// is no longer welded to the mic.
-		self.recordPauseButton = [UIButton buttonWithType:UIButtonTypeCustom];
-		self.recordPauseButton.frame = CGRectMake(bar.size.width - TGMetricRow - TGMetricCallControlSide - TGMetricPad,
-				TGCenteredOrigin(kInputHeight, TGMetricCallControlSide),
-				TGMetricCallControlSide, TGMetricCallControlSide);
-		self.recordPauseButton.backgroundColor = [theme inputBarColour];
-		self.recordPauseButton.layer.borderWidth = TGMetricHairline;
-		self.recordPauseButton.layer.borderColor = [theme separatorColour].CGColor;
-		self.recordPauseButton.layer.cornerRadius = TGHalf(TGMetricCallControlSide);
-		[self.recordPauseButton setImage:[TGIcons pause] forState:UIControlStateNormal];
-		self.recordPauseButton.tintColor = [theme primaryTextColour];
-		self.recordPauseButton.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
+		self.recordPauseButton = self.recordPanel.pauseButton;
 		[self.recordPauseButton addTarget:self action:@selector(recordPauseToggled)
 				  forControlEvents:UIControlEventTouchUpInside];
-		self.recordPauseButton.hidden = YES;
-		[self.recordPanel addSubview:self.recordPauseButton];
-
 
 		// Classic halo and disc (original design)
 		CGFloat halo = TGMetricRecordHaloSide, disc = TGMetricRow;
@@ -182,7 +111,7 @@ static const NSTimeInterval kRecordToggleTapSeconds = 0.25;
 				CGRectGetMidX(ring.frame) - TGHalf(disc), TGCenteredOrigin(kInputHeight, disc), disc, disc)];
 		button.backgroundColor = [theme accentColour];
 		button.layer.cornerRadius = TGHalf(TGMetricRow);
-		button.image = [TGIcons microphoneOfSide:disc colour:[UIColor whiteColor]];
+		button.image = [TGIcons microphoneOfSide:disc colour:[theme onAccentColour]];
 		button.tag = 0x81C2;
 		button.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
 		[self.recordPanel addSubview:button];
@@ -205,15 +134,9 @@ static const NSTimeInterval kRecordToggleTapSeconds = 0.25;
 	self.recordCancelSlideLabel.alpha = TGAlphaOpaque;
 	[self.recordPanel viewWithTag:0x81C1].hidden = NO;
 	[self.recordPanel viewWithTag:0x81C2].hidden = NO;
-	self.recordDot.frame = CGRectMake(TGMetricPadLarge,
-			TGCenteredOrigin(kInputHeight, TGMetricRecordDotSide),
-			TGMetricRecordDotSide, TGMetricRecordDotSide);
-	self.recordClock.frame = CGRectMake(kRecordClockX,
-			TGCenteredOrigin(kInputHeight, TGMetricLineRow), kRecordClockW, TGMetricLineRow);
 
 	self.recordPanel.frame = bar;
-	self.recordClock.text = @"0:00,0";
-	self.recordDot.alpha = TGAlphaOpaque;
+	[self.recordPanel showSeconds:0 paused:NO];
 	self.recordPanel.userInteractionEnabled = NO;
 	[self.view addSubview:self.recordPanel];
 
@@ -231,7 +154,7 @@ static const NSTimeInterval kRecordToggleTapSeconds = 0.25;
 				CGRectMake(TGCenteredOrigin(pillW, kRecordLockGlyph), TGMetricPad,
 						kRecordLockGlyph, kRecordLockGlyph)];
 		lockIcon.image = [TGIcons lockOfSide:kRecordLockGlyph
-									  colour:[UIColor whiteColor]];
+									  colour:[[TGTheme shared] onMediaColour]];
 		lockIcon.backgroundColor = [UIColor clearColor];
 		[pill addSubview:lockIcon];
 
@@ -247,16 +170,7 @@ static const NSTimeInterval kRecordToggleTapSeconds = 0.25;
 		self.recordLockView = pill;
 	}
 	if (!self.recordOnceButton){
-		self.recordOnceButton = [UIButton buttonWithType:UIButtonTypeCustom];
-		self.recordOnceButton.titleLabel.font = TGFontCaptionStrong();
-		[self.recordOnceButton setTitle:@"1" forState:UIControlStateNormal];
-		self.recordOnceButton.accessibilityLabel = @"View once";
-		[self.recordOnceButton setTitleColor:[[TGTheme shared] accentColour]
-									forState:UIControlStateNormal];
-		self.recordOnceButton.layer.cornerRadius = TGHalf(TGMetricRow);
-		self.recordOnceButton.layer.borderWidth = TGMetricHairline;
-		self.recordOnceButton.layer.borderColor =
-				[[TGTheme shared] separatorColour].CGColor;
+		self.recordOnceButton = [TGRecordBar onceButton];
 		[self.recordOnceButton addTarget:self action:@selector(toggleRecordOnce)
 						forControlEvents:UIControlEventTouchUpInside];
 	}
@@ -473,8 +387,13 @@ static const NSTimeInterval kRecordToggleTapSeconds = 0.25;
 		}
 		self.inputBar.hidden = YES;
 		self.recordPanel.hidden = YES;
-		UIGraphicsBeginImageContextWithOptions(self.view.bounds.size, YES, 0.0f);
-		[self.view.layer renderInContext:UIGraphicsGetCurrentContext()];
+		// The overlay covers the navigation bar too, so the backdrop has to
+		// hold it: a shot of the chat alone came out stretched to fit.
+		UIView *shown = (self.tabBarController ?: self.navigationController ?: self).view;
+		CGRect covered = [shown convertRect:[UIScreen mainScreen].applicationFrame fromView:nil];
+		UIGraphicsBeginImageContextWithOptions(covered.size, YES, 0.0f);
+		CGContextTranslateCTM(UIGraphicsGetCurrentContext(), -covered.origin.x, -covered.origin.y);
+		[shown.layer renderInContext:UIGraphicsGetCurrentContext()];
 		UIImage *background = UIGraphicsGetImageFromCurrentImageContext();
 		UIGraphicsEndImageContext();
 		self.videoNoteOverlayActive = YES;
@@ -487,14 +406,21 @@ static const NSTimeInterval kRecordToggleTapSeconds = 0.25;
 		recorder.onDismiss = ^{
 			weakSelf.videoNoteOverlayActive = NO;
 			weakSelf.inputBar.hidden = NO;
+			// The hold that led here left the voice strip, the lock and the "1"
+			// behind the overlay; the next voice note needs them back in order.
+			[weakSelf hideRecordPanel];
+			weakSelf.recordPanel.hidden = NO;
+			weakSelf.videoNoteOverlay = nil;
 		};
-		UIViewController *host = self.navigationController ?: self;
-		recorder.view.frame = host.view.bounds;
+		// Over the whole app, tab bar included: this is a part of the chat, not
+		// a place of its own, and a child added to a navigation controller
+		// would land in its stack.
+		UIView *hostView = (self.tabBarController ?: self.navigationController ?: self).view;
+		// Under the status bar, whatever the host's own view does about it.
+		recorder.overlayFrame = covered;
+		[hostView addSubview:recorder.view];
 		recorder.view.autoresizingMask = UIViewAutoresizingFlexibleWidth |
 				UIViewAutoresizingFlexibleHeight;
-		[host addChildViewController:recorder];
-		[host.view addSubview:recorder.view];
-		[recorder didMoveToParentViewController:host];
 		self.videoNoteOverlay = recorder;
 		return;
 	}
@@ -518,14 +444,10 @@ static const NSTimeInterval kRecordToggleTapSeconds = 0.25;
 	NSTimeInterval d = self.videoNoteMode
 			? [TGVideoNoteRecorder shared].duration
 			: [TGVoiceRecorder shared].duration;
-	// Shows tenths of seconds smoothly updated every 100ms
-	self.recordClock.text = [NSString stringWithFormat:@"%ld:%02ld,%ld",
-			(long)(d / 60), (long)((NSInteger)d % 60), (long)((NSInteger)(d * 10) % 10)];
+	[self.recordPanel showSeconds:d paused:paused];
 	if (((NSInteger)(d * 10)) % 10 < 1)
 		NSLog(@"TGVoiceRecorder: clock %.1f s (recording=%d paused=%d)",
 				d, [[TGVoiceRecorder shared] recording], paused);
-	self.recordDot.alpha = paused ? TGAlphaRingTrack
-			: (((NSInteger)(d * 2) % 2 == 0) ? TGAlphaOpaque : TGAlphaRingTrack);
 
 	if (!sIsLocked && !paused) {
 		UIView *ring = [self.recordPanel viewWithTag:0x81C1];
@@ -580,12 +502,7 @@ static const NSTimeInterval kRecordToggleTapSeconds = 0.25;
 /// countdown timer of its own.
 - (void)toggleRecordOnce {
 	self.recordOnce = !self.recordOnce;
-	BOOL on = self.recordOnce;
-	[self.recordOnceButton setTitleColor:on
-			? [[TGTheme shared] onAccentColour] : [[TGTheme shared] accentColour]
-								forState:UIControlStateNormal];
-	self.recordOnceButton.backgroundColor = on
-			? [[TGTheme shared] accentColour] : [UIColor clearColor];
+	[TGRecordBar setOnce:self.recordOnce onButton:self.recordOnceButton];
 }
 
 /// The pause disc beside send. Both halves the pause has: the first tap stops
@@ -660,7 +577,7 @@ static const NSTimeInterval kRecordToggleTapSeconds = 0.25;
 	circle.layer.cornerRadius = TGHalf(side);
 	circle.clipsToBounds = YES;
 	circle.layer.masksToBounds = YES;
-	circle.backgroundColor = [UIColor blackColor];
+	circle.backgroundColor = [[TGTheme shared] mediaViewerBackdropColour];
 	circle.tag = 0xF119;
 
 	[[AVAudioSession sharedInstance] setCategory:AVAudioSessionCategoryPlayback error:nil];

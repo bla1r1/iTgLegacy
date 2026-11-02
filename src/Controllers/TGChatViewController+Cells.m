@@ -253,10 +253,10 @@ static char kTGReactionChipInfoKey;
 		cell.shineGradientLayer.hidden = YES;
 		cell.body.textColor = [theme primaryTextColour];
 		cell.body.shadowColor = [theme etchedTextShadowColour];
-		cell.body.shadowOffset = CGSizeMake(0, 1.0f);
+		cell.body.shadowOffset = TGMetricShadowOffsetEtched;
 		cell.time.textColor = mine ? [theme timeMineColour] : [theme timeColour];
 		cell.time.shadowColor = [theme etchedTextShadowColour];
-		cell.time.shadowOffset = CGSizeMake(0, 1.0f);
+		cell.time.shadowOffset = TGMetricShadowOffsetEtched;
 	} else {
 		cell.shineBar.hidden = YES;
 		cell.shineGradientLayer.hidden = YES;
@@ -517,7 +517,7 @@ UIImage *TGBubbleBackImage(TGTheme *theme, BOOL mine, BOOL first, BOOL last) {
 	}
 
 	cell.bubble.clipsToBounds = NO;
-	cell.bubble.layer.cornerRadius = 0;
+	cell.bubble.layer.cornerRadius = TGMetricCornerNone;
 	cell.bubble.layer.borderWidth = 0;
 	cell.bubble.layer.borderColor = [UIColor clearColor].CGColor;
 	cell.bubble.backgroundColor = [UIColor clearColor];

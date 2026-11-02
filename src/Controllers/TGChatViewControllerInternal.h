@@ -8,6 +8,7 @@
 #import "TGUI.h"
 #import "TGClient.h"
 #import "TGVideoNoteViewController.h"
+#import "TGRecordBar.h"
 #import "TGSheet.h"
 #import "TGTheme.h"
 #import "TGIcons.h"
@@ -94,9 +95,7 @@
 @property (nonatomic, strong) UISearchBar *chatSearchBar;
 @property (nonatomic, strong) NSArray *messagesBeforeSearch;
 @property (nonatomic, strong) NSTimer *recordTimer;
-@property (nonatomic, strong) UIView *recordPanel;      // shown while holding
-@property (nonatomic, strong) UILabel *recordClock;
-@property (nonatomic, strong) UIView *recordDot;
+@property (nonatomic, strong) TGRecordBar *recordPanel;      // shown while holding
 @property (nonatomic, strong) UIView *recordLockView;
 @property (nonatomic, strong) UIButton *recordCancelButton;
 @property (nonatomic, strong) UIButton *recordSendButton;

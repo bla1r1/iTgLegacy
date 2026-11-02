@@ -36,9 +36,6 @@ static const NSInteger kEphemeralSectionResult = 2;
 	self.lastMessageId = 0;
 	self.resultText = @"No request sent yet.";
 	self.tableView.rowHeight = TGMetricRow;
-	self.tableView.separatorColor = [[TGTheme shared] separatorColour];
-	self.tableView.backgroundColor = [[TGTheme shared] groupedBackgroundColour];
-	[[TGTheme shared] styleNavigationBar:self.navigationController.navigationBar];
 	self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc]
 			initWithTitle:@"Receiver" style:UIBarButtonItemStylePlain
 				   target:self action:@selector(changeReceiver)];
@@ -53,8 +50,6 @@ static const NSInteger kEphemeralSectionResult = 2;
 					   header.bounds.size.width - TGDoubled(TGMetricPadMedium),
 					   height)];
 	self.composer.font = TGFontBody();
-	self.composer.backgroundColor = [[TGTheme shared] cardBackgroundColour];
-	self.composer.textColor = [[TGTheme shared] primaryTextColour];
 	self.composer.autoresizingMask = UIViewAutoresizingFlexibleWidth;
 	self.composer.layer.cornerRadius = TGMetricCornerControl;
 	self.composer.clipsToBounds = YES;
@@ -66,11 +61,26 @@ static const NSInteger kEphemeralSectionResult = 2;
 					   TGMetricLineBody)];
 	self.placeholder.text = @"Ephemeral message text";
 	self.placeholder.font = TGFontBody();
-	self.placeholder.textColor = [[TGTheme shared] placeholderColour];
 	self.placeholder.backgroundColor = [UIColor clearColor];
 	self.placeholder.userInteractionEnabled = NO;
 	[header addSubview:self.placeholder];
 	self.tableView.tableHeaderView = header;
+	[self applyTheme];
+	[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(applyTheme) name:TGThemeChangedNotification object:nil];
+}
+
+- (void)dealloc {
+	[[NSNotificationCenter defaultCenter] removeObserver:self];
+}
+
+- (void)applyTheme {
+	self.tableView.separatorColor = [[TGTheme shared] separatorColour];
+	self.tableView.backgroundColor = [[TGTheme shared] groupedBackgroundColour];
+	[[TGTheme shared] styleNavigationBar:self.navigationController.navigationBar];
+	self.composer.backgroundColor = [[TGTheme shared] cardBackgroundColour];
+	self.composer.textColor = [[TGTheme shared] primaryTextColour];
+	self.placeholder.textColor = [[TGTheme shared] placeholderColour];
+	[self.tableView reloadData];
 }
 
 - (void)viewWillAppear:(BOOL)animated {

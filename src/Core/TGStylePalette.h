@@ -13,6 +13,8 @@ extern "C" {
 UIColor *TGColourLink(void);
 UIColor *TGColourCodeBackground(void);
 UIColor *TGColourCodeBlockBackground(void);
+/// Telegram's colour for a sender's name, which no theme overrides.
+UIColor *TGColourPeerName(int64_t colourId, BOOL dark);
 
 #pragma mark - icon tile hues
 

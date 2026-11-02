@@ -116,7 +116,7 @@
 		emoji.font = TGFontEmojiMeta();
 		emoji.textAlignment = NSTextAlignmentCenter;
 		emoji.backgroundColor = [[TGTheme shared] mediaOverlayColour];
-		emoji.textColor = [UIColor whiteColor];
+		emoji.textColor = [[TGTheme shared] onMediaColour];
 		emoji.text = sticker[@"emoji"] ?: @"";
 		[tile addSubview:emoji];
 

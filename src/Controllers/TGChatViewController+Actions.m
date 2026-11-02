@@ -74,52 +74,6 @@ static UIImage *TGHoldSnapshotOfBubble(UIView *bubble) {
 	return image;
 }
 
-/// CoreImage's Gaussian blur, cropped back to the capture's own box. The
-/// input is clamped first, otherwise the filter samples transparent black
-/// outside the edges and draws a dark frame around the chat. Nil is a real
-/// answer - no filter, no context, no output - and the caller keeps the
-/// sharp capture under the dim instead.
-static UIImage *TGHoldBlurredImage(UIImage *image, CGFloat radius) {
-	// CIGaussianBlur returns garbage on this GPU/iOS combination (it crashed
-	// with EXC_BAD_ACCESS inside CIContext on the iPod). A downscale/downsample
-	// to a tenth and a smooth upscale is the same soft backdrop, costs almost
-	// nothing, and cannot fault: CoreGraphics clamps every size here.
-	CGImageRef source = image.CGImage;
-	if (!source)
-		return nil;
-	CGSize size = image.size;
-	if (size.width < 2 || size.height < 2)
-		return nil;
-	CGFloat factor = MAX(2.0f, radius);
-	CGSize small = CGSizeMake(MAX(1.0f, floorf(size.width / factor)),
-							  MAX(1.0f, floorf(size.height / factor)));
-
-	UIGraphicsBeginImageContextWithOptions(small, NO, 1);
-	CGContextRef ctx = UIGraphicsGetCurrentContext();
-	if (!ctx){
-		UIGraphicsEndImageContext();
-		return nil;
-	}
-	CGContextSetInterpolationQuality(ctx, kCGInterpolationLow);
-	[image drawInRect:CGRectMake(0, 0, small.width, small.height)];
-	UIImage *down = UIGraphicsGetImageFromCurrentImageContext();
-	UIGraphicsEndImageContext();
-	if (!down)
-		return nil;
-
-	UIGraphicsBeginImageContextWithOptions(size, NO, 1);
-	ctx = UIGraphicsGetCurrentContext();
-	if (!ctx){
-		UIGraphicsEndImageContext();
-		return nil;
-	}
-	CGContextSetInterpolationQuality(ctx, kCGInterpolationLow);
-	[down drawInRect:CGRectMake(0, 0, size.width, size.height)];
-	UIImage *soft = UIGraphicsGetImageFromCurrentImageContext();
-	UIGraphicsEndImageContext();
-	return soft;
-}
-
 /// What the reply strip shows on its second line. The rows here are already
 /// flattened, so TGMessagePreview - which reads a raw TDLib content - cannot
 /// be used; a media row carries no text and is named by its kind instead.
@@ -461,7 +415,7 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 	__weak typeof(self) weakSelf = self;
 	if (screenshot){
 		dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_LOW, 0), ^{
-			UIImage *blurred = TGHoldBlurredImage(screenshot, kHoldBlurRadius);
+			UIImage *blurred = [TGTheme softenedImage:screenshot radius:kHoldBlurRadius dim:0];
 			if (!blurred)
 				return;
 			dispatch_async(dispatch_get_main_queue(), ^{
@@ -1950,7 +1904,7 @@ static NSString *TGStatGraphLine(NSDictionary *graph, NSString *label) {
 	UIWindow *window = [UIApplication sharedApplication].keyWindow;
 
 	UIView *backdrop = [[UIView alloc] initWithFrame:window.bounds];
-	backdrop.backgroundColor = [UIColor blackColor];
+	backdrop.backgroundColor = [[TGTheme shared] mediaViewerBackdropColour];
 	backdrop.tag = 0xF117;
 
 	// A scroll view is all zooming needs; a 4S has no room for a custom one.

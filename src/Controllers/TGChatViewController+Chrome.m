@@ -103,7 +103,7 @@ static NSString *TGDayTitle(NSTimeInterval stamp) {
 
 #pragma mark - the bar over a chat nobody has spoken to
 
-static const CGFloat kActionBarCloseSide = 44.0f;
+static const CGFloat kActionBarCloseSide = TGMetricButtonLargeH;
 
 /// The chat dict row of the open chat, read fresh: the bar follows the chat,
 /// so its kind and words are re-derived on every pass rather than stored.
@@ -413,8 +413,8 @@ static const CGFloat kActionBarCloseSide = 44.0f;
 	[self.view addSubview:self.jumpButton];
 
 	self.jumpBadge = [[UILabel alloc] init];
-	self.jumpBadge.font = TGFontMetaStrong();
-	self.jumpBadge.textColor = [UIColor whiteColor];
+	self.jumpBadge.font = TGFontCaptionStrong();
+	self.jumpBadge.textColor = [[TGTheme shared] onAccentColour];
 	self.jumpBadge.textAlignment = NSTextAlignmentCenter;
 	self.jumpBadge.layer.cornerRadius = TGHalf(TGMetricJumpBadgeHeight);
 	self.jumpBadge.hidden = YES;

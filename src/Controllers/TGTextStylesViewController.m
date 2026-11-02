@@ -23,9 +23,7 @@
 	self.title = @"Text Styles";
 	self.styles = [TGClient shared].textCompositionStyles ?: @[];
 	self.tableView.rowHeight = TGMetricRow;
-	self.tableView.separatorColor = [[TGTheme shared] separatorColour];
-	self.tableView.backgroundColor = [[TGTheme shared] groupedBackgroundColour];
-	[[TGTheme shared] styleNavigationBar:self.navigationController.navigationBar];
+	[self applyTheme];
 	self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc]
 			initWithBarButtonSystemItem:UIBarButtonSystemItemAdd
 								 target:self action:@selector(createTapped)];
@@ -36,10 +34,18 @@
 	[[NSNotificationCenter defaultCenter] addObserver:self
 			selector:@selector(stylesChanged:)
 				name:TGTextCompositionStylesChangedNotification object:nil];
+	[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(applyTheme) name:TGThemeChangedNotification object:nil];
 }
 
 - (void)dealloc {
 	[[NSNotificationCenter defaultCenter] removeObserver:self];
+}
+
+- (void)applyTheme {
+	self.tableView.separatorColor = [[TGTheme shared] separatorColour];
+	self.tableView.backgroundColor = [[TGTheme shared] groupedBackgroundColour];
+	[[TGTheme shared] styleNavigationBar:self.navigationController.navigationBar];
+	[self.tableView reloadData];
 }
 
 - (void)viewWillAppear:(BOOL)animated {

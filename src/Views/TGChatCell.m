@@ -72,7 +72,7 @@ static UIFont *TGChatCellTitleFont(void) {
 
 	self.badge = [[UILabel alloc] init];
 	self.badge.font = TGFontCaptionStrong();
-	self.badge.textColor = [UIColor whiteColor];
+	self.badge.textColor = [[TGTheme shared] onAccentColour];
 	self.badge.backgroundColor = [theme badgeColour];
 	self.badge.textAlignment = NSTextAlignmentCenter;
 	self.badge.layer.cornerRadius = TGHalf(TGMetricChatBadgeHeight);
@@ -82,7 +82,7 @@ static UIFont *TGChatCellTitleFont(void) {
 	self.editCheck = [[UILabel alloc] init];
 	self.editCheck.text = @"\u2713";
 	self.editCheck.font = TGFontCaptionStrong();
-	self.editCheck.textColor = [UIColor whiteColor];
+	self.editCheck.textColor = [[TGTheme shared] onAccentColour];
 	self.editCheck.backgroundColor = [theme accentColour];
 	self.editCheck.textAlignment = NSTextAlignmentCenter;
 	self.editCheck.layer.cornerRadius = TGHalf(TGMetricChatBadgeHeight);

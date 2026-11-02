@@ -39,7 +39,7 @@ UIFont *TGFontCaption(void);
 UIFont *TGFontCaptionStrong(void);
 /// 12, regular. A sender line, a forward line, a footer under a section.
 UIFont *TGFontMeta(void);
-/// 12, bold. A sender's name inside a bubble, the jump badge.
+/// 12, bold. A sender's name inside a bubble.
 UIFont *TGFontMetaStrong(void);
 /// 11, regular. A timestamp.
 UIFont *TGFontMicro(void);

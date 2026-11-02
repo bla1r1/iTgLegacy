@@ -262,7 +262,7 @@
     [self.actionButton setBackgroundImage:[TGTheme buttonImageForStyle:TGButtonStyleAction highlighted:YES height:TGMetricRow] forState:UIControlStateHighlighted];
     self.actionButton.backgroundColor = [UIColor clearColor];
     self.actionButton.layer.borderWidth = 0.0f;
-    [self.actionButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+    [self.actionButton setTitleColor:[[TGTheme shared] onAccentColour] forState:UIControlStateNormal];
 
     // Secondary buttons
     [self.qrCodeButton setTitleColor:[theme accentColour] forState:UIControlStateNormal];

@@ -72,6 +72,8 @@ static const CGFloat kThumbStripH   = 54.0f;
 @property (nonatomic, strong) UIScrollView *pager;
 @property (nonatomic, strong) UIView *topBar;
 @property (nonatomic, strong) UIView *bottomBar;
+@property (nonatomic, strong) UIView *statusPlate;
+@property (nonatomic, assign) BOOL statusBarWasHidden;
 @property (nonatomic, strong) UILabel *counterLabel;
 @property (nonatomic, strong) UILabel *dateLabel;
 @property (nonatomic, strong) UIImageView *authorAvatar;
@@ -153,7 +155,14 @@ static const CGFloat kThumbStripH   = 54.0f;
 - (void)present {
 	self.self_ = self;      // nothing else owns this while it is up
 
-	self.window = [UIApplication sharedApplication].keyWindow;
+	// The viewer is the whole screen, as Telegram's is: the status bar goes
+	// while it is up. Where the system keeps it (a view controller decides
+	// from iOS 7), buildChrome leaves it room instead.
+	UIApplication *app = [UIApplication sharedApplication];
+	self.statusBarWasHidden = app.statusBarHidden;
+	[app setStatusBarHidden:YES withAnimation:UIStatusBarAnimationFade];
+
+	self.window = app.keyWindow;
 	CGRect bounds = self.window.bounds;
 
 	// A window-sized view and nobody owning it but itself: no layout pass
@@ -219,6 +228,8 @@ static const CGFloat kThumbStripH   = 54.0f;
 
 - (void)dismiss {
 	[self stopMovie];
+	[[UIApplication sharedApplication] setStatusBarHidden:self.statusBarWasHidden
+											withAnimation:UIStatusBarAnimationFade];
 	[UIView animateWithDuration:TGAnimationDurationNormal animations:^{
 		self.backdrop.alpha = 0;
 	} completion:^(BOOL done){
@@ -270,8 +281,19 @@ static const CGFloat kThumbStripH   = 54.0f;
 	CGRect bounds = self.backdrop.bounds;
 	UIColor *plate = [[TGTheme shared] mediaOverlayColour];
 
+	UIApplication *app = [UIApplication sharedApplication];
+	CGFloat statusRoom = app.statusBarHidden ? 0 : MIN(app.statusBarFrame.size.width,
+			app.statusBarFrame.size.height);
+	[self.statusPlate removeFromSuperview];
+	self.statusPlate = nil;
+	if (statusRoom > 0){
+		self.statusPlate = [[UIView alloc] initWithFrame:
+				CGRectMake(0, 0, bounds.size.width, statusRoom)];
+		self.statusPlate.backgroundColor = plate;
+		[self.backdrop addSubview:self.statusPlate];
+	}
 	self.topBar = [[UIView alloc] initWithFrame:
-			CGRectMake(0, 0, bounds.size.width, kTopBar)];
+			CGRectMake(0, statusRoom, bounds.size.width, kTopBar)];
 	self.topBar.backgroundColor = plate;
 	[self.backdrop addSubview:self.topBar];
 
@@ -279,7 +301,7 @@ static const CGFloat kThumbStripH   = 54.0f;
 	close.frame = CGRectMake(kChromeInset,
 			TGCenteredOrigin(kTopBar, TGMetricViewerHeaderIcon),
 			TGMetricViewerHeaderIcon, TGMetricViewerHeaderIcon);
-	[close setImage:[TGIcons glyphNamed:@"close" colour:[UIColor whiteColor]
+	[close setImage:[TGIcons glyphNamed:@"close" colour:[[TGTheme shared] onMediaColour]
 								  side:TGMetricPadLarge]
 		   forState:UIControlStateNormal];
 	[close addTarget:self action:@selector(dismiss)
@@ -291,7 +313,7 @@ static const CGFloat kThumbStripH   = 54.0f;
 			bounds.size.width - kChromeInset - TGMetricViewerHeaderIcon,
 			TGCenteredOrigin(kTopBar, TGMetricViewerHeaderIcon),
 			TGMetricViewerHeaderIcon, TGMetricViewerHeaderIcon);
-	[self.moreButton setImage:[TGIcons glyphNamed:@"more" colour:[UIColor whiteColor]
+	[self.moreButton setImage:[TGIcons glyphNamed:@"more" colour:[[TGTheme shared] onMediaColour]
 										   side:TGMetricPadLarge]
 					 forState:UIControlStateNormal];
 	[self.moreButton addTarget:self action:@selector(moreTapped)
@@ -318,7 +340,7 @@ static const CGFloat kThumbStripH   = 54.0f;
 			CGRectMake(labelsX, labelsTop, labelsW, TGMetricLineBody)];
 	self.counterLabel.font = TGFontBodyStrong();
 	self.counterLabel.textAlignment = NSTextAlignmentLeft;
-	self.counterLabel.textColor = [UIColor whiteColor];
+	self.counterLabel.textColor = [[TGTheme shared] onMediaColour];
 	self.counterLabel.backgroundColor = [UIColor clearColor];
 	self.counterLabel.lineBreakMode = NSLineBreakByTruncatingTail;
 	[self.topBar addSubview:self.counterLabel];
@@ -343,7 +365,7 @@ static const CGFloat kThumbStripH   = 54.0f;
 					bounds.size.width - TGMetricViewerCaptionMarginRight, kCaptionHeight)];
 	self.captionLabel.font = TGFontCaption();
 	self.captionLabel.numberOfLines = 2;
-	self.captionLabel.textColor = [UIColor whiteColor];
+	self.captionLabel.textColor = [[TGTheme shared] onMediaColour];
 	self.captionLabel.backgroundColor = [UIColor clearColor];
 	[self.bottomBar addSubview:self.captionLabel];
 
@@ -363,8 +385,8 @@ static const CGFloat kThumbStripH   = 54.0f;
 	// The video strip lives in the bottom bar and only appears on a video page.
 	self.playButton = [UIButton buttonWithType:UIButtonTypeCustom];
 	self.playButton.frame = CGRectMake(TGMetricPad, kStripTop, kPlayWidth, kStripHeight);
-	[self.playButton setImage:[TGIcons play] forState:UIControlStateNormal];
-	self.playButton.tintColor = [UIColor whiteColor];
+	[self.playButton setImage:[self playGlyph] forState:UIControlStateNormal];
+	self.playButton.tintColor = [[TGTheme shared] onMediaColour];
 	[self.playButton addTarget:self action:@selector(toggleMovie)
 			  forControlEvents:UIControlEventTouchUpInside];
 	self.playButton.hidden = YES;
@@ -386,11 +408,19 @@ static const CGFloat kThumbStripH   = 54.0f;
 			CGRectMake(bounds.size.width - kClockWidth - kChromeInset - TGMetricPadTiny,
 					kStripTop, kClockWidth, kStripHeight)];
 	self.timeLabel.font = TGFontMicro();
-	self.timeLabel.textColor = [UIColor whiteColor];
+	self.timeLabel.textColor = [[TGTheme shared] onMediaColour];
 	self.timeLabel.textAlignment = NSTextAlignmentRight;
 	self.timeLabel.backgroundColor = [UIColor clearColor];
 	self.timeLabel.hidden = YES;
 	[self.bottomBar addSubview:self.timeLabel];
+}
+
+- (UIImage *)playGlyph {
+	return [TGIcons image:[TGIcons play] filledWith:[[TGTheme shared] onMediaColour]];
+}
+
+- (UIImage *)pauseGlyph {
+	return [TGIcons image:[TGIcons pause] filledWith:[[TGTheme shared] onMediaColour]];
 }
 
 - (void)buildThumbStrip {
@@ -471,12 +501,12 @@ static const CGFloat kThumbStripH   = 54.0f;
 		BOOL selected = (btn.tag == self.index);
 		if (selected) {
 			btn.layer.borderWidth = 2.0f;
-			btn.layer.borderColor = [UIColor whiteColor].CGColor;
+			btn.layer.borderColor = [[TGTheme shared] onMediaColour].CGColor;
 			btn.alpha = 1.0f;
 		} else {
 			btn.layer.borderWidth = 0.0f;
 			btn.layer.borderColor = [UIColor clearColor].CGColor;
-			btn.alpha = 0.5f;
+			btn.alpha = TGAlphaDimmed;
 		}
 	}
 
@@ -899,10 +929,10 @@ static const CGFloat kThumbStripH   = 54.0f;
 		// and a rate of zero is what paused means.
 		if (self.player.rate > TGPlaybackSpeedStopped){
 			[self.player pause];
-			[self.playButton setImage:[TGIcons play] forState:UIControlStateNormal];
+			[self.playButton setImage:[self playGlyph] forState:UIControlStateNormal];
 		} else {
 			[self.player play];
-			[self.playButton setImage:[TGIcons pause] forState:UIControlStateNormal];
+			[self.playButton setImage:[self pauseGlyph] forState:UIControlStateNormal];
 		}
 		return;
 	}
@@ -958,7 +988,7 @@ static const CGFloat kThumbStripH   = 54.0f;
 	[page addSubview:self.playerView];
 
 	self.moviePage = self.index;
-	[self.playButton setImage:[TGIcons pause] forState:UIControlStateNormal];
+	[self.playButton setImage:[self pauseGlyph] forState:UIControlStateNormal];
 
 	[[NSNotificationCenter defaultCenter] addObserver:self
 			selector:@selector(movieFinished)
@@ -1020,7 +1050,7 @@ static const CGFloat kThumbStripH   = 54.0f;
 		[self.player play];
 		return;
 	}
-	[self.playButton setImage:[TGIcons play] forState:UIControlStateNormal];
+	[self.playButton setImage:[self playGlyph] forState:UIControlStateNormal];
 	self.scrubber.value = 0;
 	[self.player seekToTime:kCMTimeZero];
 }
@@ -1040,7 +1070,7 @@ static const CGFloat kThumbStripH   = 54.0f;
 	self.player = nil;
 	self.moviePage = NSNotFound;
 	self.movieLoops = NO;
-	[self.playButton setImage:[TGIcons play] forState:UIControlStateNormal];
+	[self.playButton setImage:[self playGlyph] forState:UIControlStateNormal];
 	self.scrubber.value = 0;
 }
 

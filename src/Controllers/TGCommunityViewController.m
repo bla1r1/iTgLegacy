@@ -53,6 +53,11 @@ static const CGFloat kCommunityPhotoBar  = 92.0f;
 	[self rebuild];
 }
 
+- (void)applyTheme {
+	[super applyTheme];
+	self.photoView.backgroundColor = [[TGTheme shared] cardBackgroundColour];
+}
+
 #pragma mark - data
 
 - (void)buildPhotoHeader {

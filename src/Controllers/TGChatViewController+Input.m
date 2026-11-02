@@ -76,8 +76,8 @@
 	self.sendButton.backgroundColor = [UIColor clearColor];
 	self.sendButton.layer.shouldRasterize = YES;
 	self.sendButton.layer.rasterizationScale = scale;
-	[self.sendButton setImage:[TGIcons send] forState:UIControlStateNormal];
-	self.sendButton.tintColor = [UIColor whiteColor];
+	[self.sendButton setImage:[TGIcons sendOnAccent] forState:UIControlStateNormal];
+	self.sendButton.tintColor = [[TGTheme shared] onAccentColour];
 	self.sendButton.imageEdgeInsets = UIEdgeInsetsZero;
 	self.sendButton.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
 	[self.sendButton addTarget:self action:@selector(sendTapped)
@@ -589,6 +589,22 @@ static const NSInteger kBannerSubtitleTag = 72;
 
 #pragma mark - attachments
 
+/// The camera tile of the attach sheet. The shot comes back through the same
+/// delegate as a library pick, so it is sent by the code that sends those.
+/// A device with no camera gets the library instead of nothing.
+- (void)pickCamera {
+	if (![UIImagePickerController isSourceTypeAvailable:
+			UIImagePickerControllerSourceTypeCamera]){
+		[self pickMedia];
+		return;
+	}
+	UIImagePickerController *picker = [[UIImagePickerController alloc] init];
+	picker.sourceType = UIImagePickerControllerSourceTypeCamera;
+	// Without the movie type the camera takes stills only.
+	picker.mediaTypes = @[(NSString *)kUTTypeImage, (NSString *)kUTTypeMovie];
+	picker.delegate = (id<UIImagePickerControllerDelegate, UINavigationControllerDelegate>)self;
+	[self presentViewController:picker animated:YES completion:nil];
+}
 
 - (void)attachTapped {
 	[self.input resignFirstResponder];
@@ -605,6 +621,7 @@ static const NSInteger kBannerSubtitleTag = 72;
 	sheet.onChoice = ^(TGAttachChoice choice){
 		switch (choice){
 			case TGAttachChoiceGallery:  [weakSelf pickMedia]; break;
+			case TGAttachChoiceCamera:   [weakSelf pickCamera]; break;
 			case TGAttachChoiceLocation: [weakSelf sendCurrentLocation]; break;
 			case TGAttachChoiceContact:  [weakSelf pickContact]; break;
 			case TGAttachChoiceChecklist: {

@@ -212,7 +212,7 @@ static NSString *TGGiftStamp(NSNumber *unix) {
 	ok.layer.masksToBounds = YES;
 	[ok setTitle:@"OK" forState:UIControlStateNormal];
 	ok.titleLabel.font = TGFontHeader();
-	[ok setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+	[ok setTitleColor:[[TGTheme shared] onAccentColour] forState:UIControlStateNormal];
 	[ok addTarget:self action:@selector(dismiss)
 		  forControlEvents:UIControlEventTouchUpInside];
 	[_card addSubview:ok];
