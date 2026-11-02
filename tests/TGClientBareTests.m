@@ -7,6 +7,7 @@
 #import "TGTestRunner.h"
 #import "TGClient.h"
 #import "TGClientInternal.h"
+#import "TGGhostMode.h"
 
 @interface TGClientBareTests : XCTestCase @end
 
@@ -286,6 +287,23 @@ static NSDictionary *plainB(NSDictionary *d) {
 	XCTAssertEqualObjects(got.firstObject[@"id"], @"200");
 	XCTAssertEqualObjects(got.firstObject[@"archived"], @YES);
 	XCTAssertEqualObjects(got.firstObject[@"cover"][@"fileId"], @(501));
+}
+
+- (void)testGhostMode_ReadingLeavesNoTraceButSendingGoesThrough {
+	TGClient *c = B();
+	TGGhostModeSetOn(YES);
+	[c send:@{@"@type" : @"viewMessages", @"chat_id" : @(1)}];
+	[c send:@{@"@type" : @"sendChatAction", @"chat_id" : @(1)}];
+	[c send:@{@"@type" : @"setOption", @"name" : @"online",
+			  @"value" : @{@"@type" : @"optionValueBoolean", @"value" : @YES}}];
+	[c request:@{@"@type" : @"openStory"} completion:^(NSDictionary *r){}];
+	XCTAssertEqual(c.outbox.count, (NSUInteger)0);
+	XCTAssertEqual(c.pendingRequests.count, (NSUInteger)0);
+	[c send:@{@"@type" : @"sendMessage", @"chat_id" : @(1)}];
+	XCTAssertEqual(c.outbox.count, (NSUInteger)1);
+	TGGhostModeSetOn(NO);
+	[c send:@{@"@type" : @"viewMessages", @"chat_id" : @(1)}];
+	XCTAssertEqual(c.outbox.count, (NSUInteger)2);
 }
 
 @end

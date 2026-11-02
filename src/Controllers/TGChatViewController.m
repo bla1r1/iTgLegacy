@@ -1398,10 +1398,15 @@ static const CGFloat kPinnedTextX = TGMetricPadLarge + kPinnedGlyph + TGMetricPa
 		NSArray *pool = self.rawMessages.count ? self.rawMessages : self.messages;
 		NSInteger targetIdx = [pool indexOfObject:m];
 		if (targetIdx == NSNotFound) targetIdx = 0;
+		// The picture grows out of its bubble, when the bubble is on screen.
+		id tappedCell = [tableView cellForRowAtIndexPath:indexPath];
+		UIView *source = [tappedCell isKindOfClass:TGBubbleCell.class]
+				? ((TGBubbleCell *)tappedCell).picture : nil;
 		[TGMediaViewer presentItems:pool
 							startAt:targetIdx
 							 inChat:self.chatId
-							isAlbum:NO];
+							isAlbum:NO
+						   fromView:source];
 		return;
 	}
 

@@ -8,6 +8,12 @@
 // (TGTheme+Gradients.m) and the depth materials (TGTheme+Effects.m).
 // See docs/theme_system.md for the full map.
 //
+// Every surface here has two looks, picked by +drawsSkeuomorphicChrome. iOS 6
+// gets the gradients, gloss and bevels above; from iOS 7 the same shapes are
+// flat fills from the same colours with a hairline, because that is what the
+// system's own controls look like there. The flat branch comes first in each
+// method and returns, so the iOS 6 drawing below it is untouched.
+//
 #import <Accelerate/Accelerate.h>
 #import "TGTextDraw.h"
 #import "TGThemeInternal.h"
@@ -136,6 +142,25 @@ static UIImage *TGTileEnd(TGTileCanvas *canvas) {
 }
 
 
+// Flat look, iOS 7 on. A pressed flat control is its fill scaled darker; the
+// outline is the fill scaled darker still, so one tint gives all three.
+static const CGFloat kFlatPressed      = 0.86f;
+static const CGFloat kFlatRim          = 0.78f;
+static const CGFloat kFlatWellRim      = 0.88f;
+// Plate (sheet card, toast): how far the gradient moves from the colour. The
+// top lifts a little toward white and the bottom sinks toward black; on a white
+// card only the bottom shows, which is the subtle gradient iOS 6 sheets had.
+static const CGFloat kPlateTopLift     = 0.10f;
+static const CGFloat kPlateBottomSink  = 0.06f;
+static const CGFloat kPlateLightTopSink = 0.015f;
+static const CGFloat kPlateHighlight   = 0.55f;
+// Gloss on a round tile: white at the top of the upper half, nearly clear at
+// the equator, and the rim a shade down from the tile's own hue.
+static const CGFloat kGlossTop         = 0.60f;
+static const CGFloat kGlossEquator     = 0.10f;
+static const CGFloat kGlossRimShade    = 0.70f;
+static const CGFloat kSliderTrackWidth = 18.0f;
+
 static const CGFloat kSkeuoCapInset    = TGMetricPadTiny;
 static const CGFloat kSkeuoRimInset    = 0.75f;
 static const CGFloat kSkeuoThumbPad    = TGMetricPadTiny;
@@ -148,6 +173,38 @@ static const CGFloat kSwitchTextY      = 10.0f;
 static const CGFloat kSwitchTagWidth   = 24.0f;
 static const CGFloat kSwitchTagHeight  = 12.0f;
 
+
+/// `colour` with its red, green and blue scaled by `factor`, alpha kept. A
+/// colour that will not give its components (a pattern) is returned as is.
+static UIColor *TGScaledColour(UIColor *colour, CGFloat factor) {
+	CGFloat r = 0, g = 0, b = 0, a = 1.0f;
+	if (![colour getRed:&r green:&g blue:&b alpha:&a])
+		return colour;
+	return [UIColor colorWithRed:MIN(r * factor, 1.0f) green:MIN(g * factor, 1.0f)
+							blue:MIN(b * factor, 1.0f) alpha:a];
+}
+
+/// `colour` moved `amount` of the way toward white (lift > 0) or black.
+static UIColor *TGLiftedColour(UIColor *colour, CGFloat toward, CGFloat amount) {
+	CGFloat r = 0, g = 0, b = 0, a = 1.0f;
+	if (![colour getRed:&r green:&g blue:&b alpha:&a])
+		return colour;
+	return [UIColor colorWithRed:r + (toward - r) * amount green:g + (toward - g) * amount
+							blue:b + (toward - b) * amount alpha:a];
+}
+
+/// A vertical gradient from `top` to `bottom` over [y0, y1] in the current
+/// context. Two stops cover every plate here; the longer ones stay inline.
+static void TGDrawVertical(CGContextRef ctx, UIColor *top, UIColor *bottom,
+						   CGFloat y0, CGFloat y1) {
+	CGColorSpaceRef cs = CGColorSpaceCreateDeviceRGB();
+	CFArrayRef colours = (__bridge CFArrayRef)@[ (id)top.CGColor, (id)bottom.CGColor ];
+	CGGradientRef grad = CGGradientCreateWithColors(cs, colours, NULL);
+	CGContextDrawLinearGradient(ctx, grad, CGPointMake(0, y0), CGPointMake(0, y1), 0);
+	CGGradientRelease(grad);
+	CGColorSpaceRelease(cs);
+}
+
 @implementation TGTheme (Skeuomorphism)
 
 + (UIImage *)skeuomorphicBarImageWithColor:(UIColor *)tint height:(CGFloat)height {
@@ -155,6 +212,16 @@ static const CGFloat kSwitchTagHeight  = 12.0f;
 	CGFloat scale = [UIScreen mainScreen].scale;
 	UIGraphicsBeginImageContextWithOptions(CGSizeMake(width, height), NO, scale);
 	CGContextRef ctx = UIGraphicsGetCurrentContext();
+
+	if (![TGTheme drawsSkeuomorphicChrome]) {
+		[tint setFill];
+		UIRectFill(CGRectMake(0, 0, width, height));
+		[TGScaledColour(tint, kFlatRim) setFill];
+		UIRectFill(CGRectMake(0, height - TGMetricHairline, width, TGMetricHairline));
+		UIImage *flat = UIGraphicsGetImageFromCurrentImageContext();
+		UIGraphicsEndImageContext();
+		return [flat resizableImageWithCapInsets:UIEdgeInsetsMake(0, kSkeuoCapInset, 0, kSkeuoCapInset)];
+	}
 
 	CGFloat r = 0, g = 0, b = 0, a = 1.0f;
 	if (![tint getRed:&r green:&g blue:&b alpha:&a]) {
@@ -212,6 +279,23 @@ static const CGFloat kSwitchTagHeight  = 12.0f;
 	CGFloat scale = [UIScreen mainScreen].scale;
 	UIGraphicsBeginImageContextWithOptions(CGSizeMake(width, height), NO, scale);
 	CGContextRef ctx = UIGraphicsGetCurrentContext();
+
+	if (![TGTheme drawsSkeuomorphicChrome]) {
+		// A flat button: the tint, darker while pressed, inside a hairline of
+		// the tint's own darker shade. A silver button on a white card needs
+		// the line to be seen at all.
+		CGFloat inset = TGHalf(TGMetricHairline);
+		CGRect plate = CGRectInset(CGRectMake(0, 0, width, height), inset, inset);
+		UIBezierPath *shape = [UIBezierPath bezierPathWithRoundedRect:plate cornerRadius:radius];
+		[(highlighted ? TGScaledColour(tint, kFlatPressed) : tint) setFill];
+		[shape fill];
+		[TGScaledColour(tint, kFlatRim) setStroke];
+		shape.lineWidth = TGMetricHairline;
+		[shape stroke];
+		UIImage *flat = UIGraphicsGetImageFromCurrentImageContext();
+		UIGraphicsEndImageContext();
+		return [flat resizableImageWithCapInsets:UIEdgeInsetsMake(radius, radius, radius, radius)];
+	}
 
 	CGFloat r = 0, g = 0, b = 0, a = 1.0f;
 	if (![tint getRed:&r green:&g blue:&b alpha:&a]) {
@@ -468,6 +552,21 @@ static const CGFloat kSwitchTagHeight  = 12.0f;
 	UIGraphicsBeginImageContextWithOptions(CGSizeMake(width, height), NO, scale);
 	CGContextRef ctx = UIGraphicsGetCurrentContext();
 
+	if (![TGTheme drawsSkeuomorphicChrome]) {
+		// An iOS 7 field is a white plate with a hairline, not a recess.
+		CGFloat inset = TGHalf(TGMetricHairline);
+		UIBezierPath *shape = [UIBezierPath bezierPathWithRoundedRect:
+				CGRectInset(CGRectMake(0, 0, width, height), inset, inset) cornerRadius:radius];
+		[[[TGTheme shared] cardBackgroundColour] setFill];
+		[shape fill];
+		[TGScaledColour([[TGTheme shared] separatorColour], kFlatWellRim) setStroke];
+		shape.lineWidth = TGMetricHairline;
+		[shape stroke];
+		UIImage *flat = UIGraphicsGetImageFromCurrentImageContext();
+		UIGraphicsEndImageContext();
+		return [flat resizableImageWithCapInsets:UIEdgeInsetsMake(radius, radius, radius, radius)];
+	}
+
 	CGRect rect = CGRectMake(0.5f, 0.5f, width - 1.0f, height - 1.0f);
 	UIBezierPath *path = [UIBezierPath bezierPathWithRoundedRect:rect cornerRadius:radius];
 
@@ -498,12 +597,24 @@ static const CGFloat kSwitchTagHeight  = 12.0f;
 }
 
 + (UIImage *)skeuomorphicSliderTrackImageFilled:(BOOL)filled {
-	CGFloat width = 18.0f;
+	CGFloat width = kSliderTrackWidth;
 	CGFloat height = TGMetricSliderTrackH;
 	CGFloat radius = TGHalf(height);
 	CGFloat scale = [UIScreen mainScreen].scale;
 	UIGraphicsBeginImageContextWithOptions(CGSizeMake(width, height), NO, scale);
 	CGContextRef ctx = UIGraphicsGetCurrentContext();
+
+	if (![TGTheme drawsSkeuomorphicChrome]) {
+		// Flat: the filled side is the accent, the rest the separator grey.
+		// No recess and no highlight line; the thumb carries the outline.
+		TGTheme *theme = [TGTheme shared];
+		[(filled ? [theme accentColour] : [theme separatorColour]) setFill];
+		[[UIBezierPath bezierPathWithRoundedRect:CGRectMake(0, 0, width, height)
+									cornerRadius:radius] fill];
+		UIImage *flat = UIGraphicsGetImageFromCurrentImageContext();
+		UIGraphicsEndImageContext();
+		return [flat resizableImageWithCapInsets:UIEdgeInsetsMake(radius, radius, radius, radius)];
+	}
 
 	CGRect rect = CGRectMake(0.5f, 0.5f, width - 1.0f, height - 1.0f);
 	UIBezierPath *path = [UIBezierPath bezierPathWithRoundedRect:rect cornerRadius:radius];
@@ -561,6 +672,21 @@ static const CGFloat kSwitchTagHeight  = 12.0f;
 
 	CGRect circle = CGRectMake(kSkeuoThumbPad, kSkeuoThumbLift, TGDoubled(radius), TGDoubled(radius));
 	UIBezierPath *p = [UIBezierPath bezierPathWithOvalInRect:circle];
+
+	if (![TGTheme drawsSkeuomorphicChrome]) {
+		// A flat white knob with a hairline. It keeps the iOS 6 image's size and
+		// position so the slider's thumb rect does not move between looks.
+		UIBezierPath *flatCircle = [UIBezierPath bezierPathWithOvalInRect:
+				CGRectInset(circle, TGHalf(TGMetricHairline), TGHalf(TGMetricHairline))];
+		[[[TGTheme shared] cardBackgroundColour] setFill];
+		[flatCircle fill];
+		[TGScaledColour([[TGTheme shared] separatorColour], kFlatRim) setStroke];
+		flatCircle.lineWidth = TGMetricHairline;
+		[flatCircle stroke];
+		UIImage *flat = UIGraphicsGetImageFromCurrentImageContext();
+		UIGraphicsEndImageContext();
+		return flat;
+	}
 	[p addClip];
 
 	CGColorSpaceRef cs = CGColorSpaceCreateDeviceRGB();
@@ -598,6 +724,24 @@ static const CGFloat kSwitchTagHeight  = 12.0f;
 	CGFloat scale = [UIScreen mainScreen].scale;
 	UIGraphicsBeginImageContextWithOptions(CGSizeMake(width, height), NO, scale);
 	CGContextRef ctx = UIGraphicsGetCurrentContext();
+
+	if (![TGTheme drawsSkeuomorphicChrome]) {
+		// No ON/OFF tags and no recess: the system's flat switch is a pill,
+		// accent when on and the separator grey when off.
+		TGTheme *theme = [TGTheme shared];
+		UIColor *fill = isOn ? [theme accentColour] : [theme separatorColour];
+		CGFloat inset = TGHalf(TGMetricHairline);
+		UIBezierPath *pill = [UIBezierPath bezierPathWithRoundedRect:
+				CGRectInset(CGRectMake(0, 0, width, height), inset, inset) cornerRadius:radius];
+		[fill setFill];
+		[pill fill];
+		[TGScaledColour(fill, kFlatRim) setStroke];
+		pill.lineWidth = TGMetricHairline;
+		[pill stroke];
+		UIImage *flat = UIGraphicsGetImageFromCurrentImageContext();
+		UIGraphicsEndImageContext();
+		return flat;
+	}
 
 	CGRect rect = CGRectMake(0.5f, 0.5f, width - 1.0f, height - 1.0f);
 	UIBezierPath *path = [UIBezierPath bezierPathWithRoundedRect:rect cornerRadius:radius];
@@ -673,6 +817,18 @@ static const CGFloat kSwitchTagHeight  = 12.0f;
 
 	CGRect circle = CGRectMake(0.5f, 0.5f, side - 1.0f, side - 1.0f);
 	UIBezierPath *p = [UIBezierPath bezierPathWithOvalInRect:circle];
+
+	if (![TGTheme drawsSkeuomorphicChrome]) {
+		// White disc, hairline, no ridges.
+		[[[TGTheme shared] cardBackgroundColour] setFill];
+		[p fill];
+		[TGScaledColour([[TGTheme shared] separatorColour], kFlatRim) setStroke];
+		p.lineWidth = TGMetricHairline;
+		[p stroke];
+		UIImage *flat = UIGraphicsGetImageFromCurrentImageContext();
+		UIGraphicsEndImageContext();
+		return flat;
+	}
 	[p addClip];
 
 	CGColorSpaceRef cs = CGColorSpaceCreateDeviceRGB();
@@ -729,14 +885,19 @@ static const CGFloat kSwitchTagHeight  = 12.0f;
 	[button setBackgroundImage:high forState:UIControlStateHighlighted];
 	button.titleLabel.font = TGFontRowStrong();
 
+	BOOL etched = [TGTheme drawsSkeuomorphicChrome];
 	if (style == TGButtonStyleSilver || style == TGButtonStyleGhost) {
 		[button setTitleColor:TG_TEXT_PRIMARY forState:UIControlStateNormal];
-		[button setTitleShadowColor:[UIColor colorWithWhite:1.0f alpha:0.80f] forState:UIControlStateNormal];
-		button.titleLabel.shadowOffset = CGSizeMake(0, 1.0f);
+		// Flat from iOS 7: no shadow colour and no offset, so the label draws
+		// no second copy of itself.
+		[button setTitleShadowColor:(etched ? [UIColor colorWithWhite:1.0f alpha:0.80f] : nil)
+						   forState:UIControlStateNormal];
+		button.titleLabel.shadowOffset = etched ? TGMetricShadowOffsetEtched : CGSizeZero;
 	} else {
 		[button setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
-		[button setTitleShadowColor:[UIColor colorWithWhite:0.0f alpha:0.45f] forState:UIControlStateNormal];
-		button.titleLabel.shadowOffset = CGSizeMake(0, -1.0f);
+		[button setTitleShadowColor:(etched ? [UIColor colorWithWhite:0.0f alpha:0.45f] : nil)
+						   forState:UIControlStateNormal];
+		button.titleLabel.shadowOffset = etched ? TGMetricShadowOffsetNav : CGSizeZero;
 	}
 }
 
@@ -799,8 +960,21 @@ static const CGFloat kSwitchTagHeight  = 12.0f;
 	UIGraphicsBeginImageContextWithOptions(CGSizeMake(width, height), YES, scale);
 	CGContextRef ctx = UIGraphicsGetCurrentContext();
 
-	CGColorSpaceRef cs = CGColorSpaceCreateDeviceRGB();
 	TGTheme *theme = [TGTheme shared];
+	if (![TGTheme drawsSkeuomorphicChrome]) {
+		// The composer on iOS 7 on: the theme's strip colour and a hairline
+		// along its top edge, nothing brushed.
+		[[theme inputBarColour] setFill];
+		UIRectFill(CGRectMake(0, 0, width, height));
+		[[theme separatorColour] setFill];
+		UIRectFill(CGRectMake(0, 0, width, TGMetricHairline));
+		UIImage *flat = UIGraphicsGetImageFromCurrentImageContext();
+		UIGraphicsEndImageContext();
+		CGFloat flatCap = TGMetricPadTiny;
+		return [flat resizableImageWithCapInsets:UIEdgeInsetsMake(flatCap, flatCap, flatCap, flatCap)];
+	}
+
+	CGColorSpaceRef cs = CGColorSpaceCreateDeviceRGB();
 	// Classic iOS 6 brushed aluminum satin gradient
 	CGFloat comps[] = {
 		0.92f, 0.93f, 0.95f, 1.0f,
@@ -825,6 +999,101 @@ static const CGFloat kSwitchTagHeight  = 12.0f;
 	UIGraphicsEndImageContext();
 	CGFloat cap = TGMetricPadTiny;
 	return [img resizableImageWithCapInsets:UIEdgeInsetsMake(cap, cap, cap, cap)];
+}
+
++ (UIImage *)chromePlateImageWithColour:(UIColor *)colour
+                                 height:(CGFloat)height
+                           cornerRadius:(CGFloat)radius
+                                corners:(UIRectCorner)corners
+                                    rim:(UIColor *)rim {
+	// One column wider than the two caps: the single column between them is
+	// what stretches, so the plate is as wide as the card with no distortion.
+	CGFloat width = TGDoubled(radius) + 1.0f;
+	CGFloat scale = [UIScreen mainScreen].scale;
+	UIGraphicsBeginImageContextWithOptions(CGSizeMake(width, height), NO, scale);
+	CGContextRef ctx = UIGraphicsGetCurrentContext();
+
+	CGFloat inset = rim ? TGHalf(TGMetricBorderWidth) : 0.0f;
+	UIBezierPath *shape = [UIBezierPath bezierPathWithRoundedRect:
+			CGRectInset(CGRectMake(0, 0, width, height), inset, inset)
+			byRoundingCorners:corners cornerRadii:CGSizeMake(radius, radius)];
+
+	if (![TGTheme drawsSkeuomorphicChrome]) {
+		[colour setFill];
+		[shape fill];
+	} else {
+		CGContextSaveGState(ctx);
+		[shape addClip];
+		// A light colour is already as bright as it gets at the top, so it
+		// starts a shade under white and the highlight line has something to
+		// stand out from. A dark one is lifted instead.
+		CGFloat r = 0, g = 0, b = 0, a = 1.0f;
+		BOOL light = [colour getRed:&r green:&g blue:&b alpha:&a] && (r + g + b) > 2.4f;
+		UIColor *top = light ? TGScaledColour(colour, 1.0f - kPlateLightTopSink)
+							 : TGLiftedColour(colour, 1.0f, kPlateTopLift);
+		TGDrawVertical(ctx, top, TGLiftedColour(colour, 0.0f, kPlateBottomSink), 0, height);
+		// One device pixel, whatever the scale.
+		[[UIColor colorWithWhite:1.0f alpha:kPlateHighlight] setFill];
+		UIRectFill(CGRectMake(0, inset, width, 1.0f / scale));
+		CGContextRestoreGState(ctx);
+	}
+
+	if (rim) {
+		[rim setStroke];
+		shape.lineWidth = TGMetricBorderWidth;
+		[shape stroke];
+	}
+	UIImage *img = UIGraphicsGetImageFromCurrentImageContext();
+	UIGraphicsEndImageContext();
+	return [img resizableImageWithCapInsets:UIEdgeInsetsMake(0, radius, 0, radius)];
+}
+
++ (UIImage *)calloutGlossImageWithSize:(CGSize)size {
+	if (![TGTheme drawsSkeuomorphicChrome] || size.width < 1.0f || size.height < 1.0f)
+		return nil;
+	TGTheme *theme = [TGTheme shared];
+	UIGraphicsBeginImageContextWithOptions(size, NO, [UIScreen mainScreen].scale);
+	CGContextRef ctx = UIGraphicsGetCurrentContext();
+	// Three stops as the old gradient layer had: the strong reflection, a thin
+	// one holding to 85% of the way down, then nothing. The end is white at no
+	// alpha, not clearColor, which would darken the tail in the blend.
+	UIColor *gone = [UIColor colorWithWhite:1.0f alpha:0.0f];
+	CFArrayRef colours = (__bridge CFArrayRef)@[ (id)[theme calloutGlossTopColour].CGColor,
+												 (id)[theme calloutGlossBottomColour].CGColor,
+												 (id)gone.CGColor ];
+	CGFloat locs[] = { 0.0f, 0.85f, 1.0f };
+	CGColorSpaceRef cs = CGColorSpaceCreateDeviceRGB();
+	CGGradientRef grad = CGGradientCreateWithColors(cs, colours, locs);
+	CGContextDrawLinearGradient(ctx, grad, CGPointZero, CGPointMake(0, size.height), 0);
+	CGGradientRelease(grad);
+	CGColorSpaceRelease(cs);
+	UIImage *img = UIGraphicsGetImageFromCurrentImageContext();
+	UIGraphicsEndImageContext();
+	return img;
+}
+
++ (void)drawGlossOnOvalInRect:(CGRect)rect baseColour:(UIColor *)colour {
+	CGContextRef ctx = UIGraphicsGetCurrentContext();
+	if (!ctx)
+		return;
+	// The highlight is clipped to the oval's upper half, so its straight lower
+	// edge is the tile's equator, as on an iOS 6 glass button.
+	CGContextSaveGState(ctx);
+	[[UIBezierPath bezierPathWithOvalInRect:rect] addClip];
+	CGContextClipToRect(ctx, CGRectMake(rect.origin.x, rect.origin.y,
+			rect.size.width, TGHalf(rect.size.height)));
+	TGDrawVertical(ctx, [UIColor colorWithWhite:1.0f alpha:kGlossTop],
+			[UIColor colorWithWhite:1.0f alpha:kGlossEquator],
+			CGRectGetMinY(rect), CGRectGetMidY(rect));
+	CGContextRestoreGState(ctx);
+
+	// The rim goes on last and inside the oval, so it is not cut by the
+	// bitmap's edge.
+	CGFloat inset = TGHalf(TGMetricBorderWidth);
+	UIBezierPath *ring = [UIBezierPath bezierPathWithOvalInRect:CGRectInset(rect, inset, inset)];
+	[TGScaledColour(colour, kGlossRimShade) setStroke];
+	ring.lineWidth = TGMetricBorderWidth;
+	[ring stroke];
 }
 
 /// The system's rounded grouped cell, coloured by the theme: UIKit draws the

@@ -644,6 +644,7 @@
 }
 
 - (void)sendVideoNoteAtPath:(NSString *)path duration:(NSInteger)seconds
+					 length:(NSInteger)length
 					 toChat:(int64_t)chatId thread:(int64_t)threadId
 				   viewOnce:(BOOL)viewOnce {
 	if (!path.length)
@@ -661,7 +662,7 @@
 				@"@type" : @"inputVideoNote",
 				@"video_note" : @{@"@type" : @"inputFileLocal", @"path" : path},
 				@"duration" : @(seconds),
-				@"length" : @(480),
+				@"length" : @(length),
 			},
 			@"self_destruct_type" : destruct,
 		},

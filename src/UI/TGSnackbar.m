@@ -67,7 +67,11 @@ static TGSnackbar *sOpenBar = nil;
 	// Up from below the edge, the way it arrives in their design.
 	CGRect resting = bar.frame;
 	bar.frame = CGRectOffset(resting, 0, kBarHeight + kBarInset);
-	[UIView animateWithDuration:TGAnimationDurationNormal animations:^{ bar.frame = resting; }];
+	bar.alpha = TGAlphaTransparent;
+	[UIView animateWithDuration:TGAnimationDurationNormal animations:^{
+		bar.frame = resting;
+		bar.alpha = TGAlphaOpaque;
+	}];
 
 	bar->_tick = [NSTimer scheduledTimerWithTimeInterval:1.0
 												  target:bar
@@ -79,10 +83,15 @@ static TGSnackbar *sOpenBar = nil;
 - (void)buildWithText:(NSString *)text {
 	// steel-gray_dark, which is what their plate is - it has to read over both
 	// a light and a dark chat.
-	self.backgroundColor = [[TGTheme shared] snackbarBackgroundColour];
-	self.layer.cornerRadius = TGMetricCornerMedium;
-	self.layer.borderColor = [[TGTheme shared] separatorColour].CGColor;
-	self.layer.borderWidth = 1.0f;
+	self.backgroundColor = [UIColor clearColor];
+	UIImageView *plate = [[UIImageView alloc] initWithFrame:self.bounds];
+	plate.image = [TGTheme chromePlateImageWithColour:[[TGTheme shared] snackbarBackgroundColour]
+											   height:kBarHeight
+										 cornerRadius:TGMetricCornerMedium
+											  corners:UIRectCornerAllCorners
+												  rim:[[TGTheme shared] separatorColour]];
+	plate.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+	[self addSubview:plate];
 
 	CGRect ring = CGRectMake(TGMetricPadLarge, TGCenteredOrigin(kBarHeight, kRingSide),
 			kRingSide, kRingSide);

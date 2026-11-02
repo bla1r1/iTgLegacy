@@ -134,6 +134,10 @@
 
 - (UIColor *)groupedBackgroundColour {
 	///< the page behind a settings list
+	// The pinstripe is iOS 6's page. iOS 7 on has the plain grey one, the
+	// colour its own grouped tables are drawn on.
+	if (![TGTheme drawsSkeuomorphicChrome])
+		return rgb(0xEF, 0xEF, 0xF4);
 	return [UIColor colorWithPatternImage:[TGTheme skeuomorphicPinstripePattern]];
 }
 

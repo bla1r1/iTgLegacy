@@ -26,6 +26,15 @@ static NSString *const kWallpaperTypeKey = @"themeWallpaperType";
 	return s;
 }
 
++ (BOOL)drawsSkeuomorphicChrome {
+	static BOOL draws;
+	static dispatch_once_t once;
+	dispatch_once(&once, ^{
+		draws = NSFoundationVersionNumber <= NSFoundationVersionNumber_iOS_6_1;
+	});
+	return draws;
+}
+
 - (id)init {
 	self = [super init];
 	if (!self)
@@ -201,7 +210,7 @@ static NSString *const kWallpaperTypeKey = @"themeWallpaperType";
 
 	// iOS 6's own tab bar: black glass and the blue glow on the selected
 	// item, the look every app on the phone around this one has.
-	if (NSFoundationVersionNumber <= NSFoundationVersionNumber_iOS_6_1) {
+	if ([TGTheme drawsSkeuomorphicChrome]) {
 		// The system tab bar tinted the slate blue of the system nav bar, so
 		// the top and bottom of the screen are one colour.
 		bar.tintColor = [self systemBarBlueColour];
@@ -335,7 +344,7 @@ static NSString *const kWallpaperTypeKey = @"themeWallpaperType";
 	// iOS 6 draws its own bar: tinted, it is the real gloss, edge and shadow,
 	// and its Back and Done buttons match it because they come from the same
 	// place. The procedural imitation below was close, never the same.
-	if (NSFoundationVersionNumber <= NSFoundationVersionNumber_iOS_6_1) {
+	if ([TGTheme drawsSkeuomorphicChrome]) {
 		if ([bar respondsToSelector:@selector(setBackgroundImage:forBarMetrics:)])
 			[bar setBackgroundImage:nil forBarMetrics:UIBarMetricsDefault];
 		if ([bar respondsToSelector:@selector(setShadowImage:)])

@@ -1,3 +1,4 @@
+#import "TGGhostMode.h"
 #import "TGClientInternal.h"
 #import "TGBase64.h"
 #import "TGDatabaseKey.h"
@@ -394,6 +395,8 @@ static BOOL TGVerboseClientLog(void) {
 // guard aborts on `Scheduler.cpp:126 Check !scheduler_->has_guard_ failed`.
 // So callers only enqueue here, and the receive thread does the sending.
 - (void)send:(NSDictionary *)request {
+	if (TGGhostModeOn() && TGGhostModeBlocks(request))
+		return;
 	NSMutableData *z = TGJsonSerializeForSend(request);
 	if (!z){
 		NSLog(@"TGClient: cannot encode %@", request);
@@ -427,6 +430,13 @@ static BOOL TGVerboseClientLog(void) {
 - (void)request:(NSDictionary *)request completion:(void (^)(NSDictionary *))completion {
 	if (!completion){
 		[self send:request];
+		return;
+	}
+	if (TGGhostModeOn() && TGGhostModeBlocks(request)){
+		// The caller is told it worked, so a screen does not hang on an answer.
+		dispatch_async(dispatch_get_main_queue(), ^{
+			completion(@{@"@type" : @"ok"});
+		});
 		return;
 	}
 	NSString *extra = [NSString stringWithFormat:@"r%lu", (unsigned long)(++self.requestSeq)];

@@ -38,6 +38,7 @@ static NSString *const kTileIdentifier = @"tile";
 @property (nonatomic, strong) UIImageView *check;
 - (void)showGlyph:(UIImage *)glyph;
 - (void)showPhoto:(UIImage *)photo tick:(UIImage *)tick;
+- (void)popCheck;
 @end
 
 @implementation TGAttachTile
@@ -89,9 +90,20 @@ static NSString *const kTileIdentifier = @"tile";
 	self.check.image = tick;
 }
 
+/// The tick was just added by a tap, so it lands with a small pop. Reused
+/// cells get their check without this.
+- (void)popCheck {
+	CAKeyframeAnimation *pop = [CAKeyframeAnimation animationWithKeyPath:@"transform.scale"];
+	pop.values = @[@0.6f, @1.1f, @1.0f];
+	pop.duration = TGAnimationDurationNormal;
+	[self.check.layer addAnimation:pop forKey:@"tickPop"];
+}
+
 - (void)prepareForReuse {
 	[super prepareForReuse];
 	self.photo.image = nil;
+	// The reused cell must not carry on popping its previous photo's tick.
+	[self.check.layer removeAnimationForKey:@"tickPop"];
 }
 
 @end
@@ -267,8 +279,8 @@ static NSString *const kTileIdentifier = @"tile";
 	}
 	self.strip.contentSize = CGSizeMake(x + TGMetricPad, frame.size.height);
 
-	// Same slot as the strip. Switching between them is a hidden flag, not a
-	// relayout, because it happens under a finger.
+	// Same slot as the strip, so the button slides over it without a relayout,
+	// which happens under a finger.
 	self.sendButton = [UIButton buttonWithType:UIButtonTypeCustom];
 	self.sendButton.frame = frame;
 	self.sendButton.hidden = YES;
@@ -281,12 +293,40 @@ static NSString *const kTileIdentifier = @"tile";
 	[card addSubview:self.sendButton];
 }
 
+/// The send button covers the strip once there is something to send. Both
+/// slides are transforms, so the strip stays under it and is revealed again
+/// as the button leaves.
+- (void)showSendButton {
+	self.sendButton.hidden = NO;
+	self.sendButton.transform = CGAffineTransformMakeTranslation(0, kStripHeight);
+	[UIView animateWithDuration:TGAnimationDurationFast animations:^{
+		self.sendButton.transform = CGAffineTransformIdentity;
+	}];
+}
+
+- (void)hideSendButton {
+	__weak TGAttachSheet *weakSheet = self;
+	[UIView animateWithDuration:TGAnimationDurationFast animations:^{
+		weakSheet.sendButton.transform = CGAffineTransformMakeTranslation(0, kStripHeight);
+	} completion:^(BOOL finished){
+		// Ticking again during the slide has already taken the button back.
+		TGAttachSheet *sheet = weakSheet;
+		if (!sheet || sheet->_ticked > 0)
+			return;
+		sheet.sendButton.hidden = YES;
+		sheet.sendButton.transform = CGAffineTransformIdentity;
+	}];
+}
+
 /// One round bitmap per tile, hue and glyph together, so the strip scrolls as
 /// seven plain images and not seven layers with corner masks.
 - (UIImage *)stripTileWithGlyph:(NSString *)glyph hue:(UIColor *)hue {
 	UIGraphicsBeginImageContextWithOptions(CGSizeMake(kStripTile, kStripTile), NO, 0);
+	CGRect oval = CGRectMake(0, 0, kStripTile, kStripTile);
 	[hue setFill];
-	[[UIBezierPath bezierPathWithOvalInRect:CGRectMake(0, 0, kStripTile, kStripTile)] fill];
+	[[UIBezierPath bezierPathWithOvalInRect:oval] fill];
+	if ([TGTheme drawsSkeuomorphicChrome])
+		[TGTheme drawGlossOnOvalInRect:oval baseColour:hue];
 	UIImage *mark = [TGIcons glyphNamed:glyph
 								 colour:[[TGTheme shared] onAccentColour]
 								   side:TGMetricMenuGlyph];
@@ -466,6 +506,7 @@ static NSString *const kTileIdentifier = @"tile";
 - (void)toggleAssetAtIndex:(NSInteger)index {
 	if (index < 0 || index >= kMaxPhotos || index >= (NSInteger)self.assets.count)
 		return;
+	BOOL added = NO;
 	if (_order[index]){
 		// Everything ticked after it moves up one, so the numbers read 1..n
 		// with no gap, which is also the order the album goes out in.
@@ -478,18 +519,24 @@ static NSString *const kTileIdentifier = @"tile";
 		_ticked--;
 	} else {
 		_order[index] = ++_ticked;
+		added = YES;
 	}
 
 	for (TGAttachTile *tile in [self.grid visibleCells]){
 		NSIndexPath *path = [self.grid indexPathForCell:tile];
-		if (path && path.item > 0)
+		if (path && path.item > 0){
 			tile.check.image = [self tickForPosition:_order[path.item - 1]];
+			if (added && path.item - 1 == index)
+				[tile popCheck];
+		}
 	}
 
-	self.strip.hidden = _ticked > 0;
-	self.sendButton.hidden = _ticked == 0;
 	[self.sendButton setTitle:[NSString stringWithFormat:@"Send %ld", (long)_ticked]
 					 forState:UIControlStateNormal];
+	if (added && _ticked == 1)
+		[self showSendButton];
+	else if (!added && _ticked == 0)
+		[self hideSendButton];
 }
 
 #pragma mark - actions

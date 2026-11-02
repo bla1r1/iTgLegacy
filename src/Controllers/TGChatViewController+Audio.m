@@ -17,6 +17,8 @@ static BOOL sSendInFlight;
 /// switch, not a recording - Telegram waits the same beat before it starts
 /// writing, so a tap never produces a stray shard of audio.
 static const NSTimeInterval kRecordToggleTapSeconds = 0.25;
+/// How long the hint under a mode switch stays readable.
+static const NSTimeInterval kRecordHintSeconds = 1.6;
 
 @implementation TGChatViewController (Audio)
 
@@ -111,7 +113,6 @@ static const NSTimeInterval kRecordToggleTapSeconds = 0.25;
 				CGRectGetMidX(ring.frame) - TGHalf(disc), TGCenteredOrigin(kInputHeight, disc), disc, disc)];
 		button.backgroundColor = [theme accentColour];
 		button.layer.cornerRadius = TGHalf(TGMetricRow);
-		button.image = [TGIcons microphoneOfSide:disc colour:[theme onAccentColour]];
 		button.tag = 0x81C2;
 		button.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
 		[self.recordPanel addSubview:button];
@@ -134,6 +135,10 @@ static const NSTimeInterval kRecordToggleTapSeconds = 0.25;
 	self.recordCancelSlideLabel.alpha = TGAlphaOpaque;
 	[self.recordPanel viewWithTag:0x81C1].hidden = NO;
 	[self.recordPanel viewWithTag:0x81C2].hidden = NO;
+	// From the first hundredth of the hold the disc says what is being recorded.
+	((UIImageView *)[self.recordPanel viewWithTag:0x81C2]).image = self.videoNoteMode
+			? [TGIcons glyphNamed:@"video" colour:[theme onAccentColour] side:TGMetricMenuGlyph]
+			: [TGIcons microphoneOfSide:TGMetricRow colour:[theme onAccentColour]];
 
 	self.recordPanel.frame = bar;
 	[self.recordPanel showSeconds:0 paused:NO];
@@ -244,7 +249,38 @@ static const NSTimeInterval kRecordToggleTapSeconds = 0.25;
 	self.videoNoteMode = !self.videoNoteMode;
 	[[NSUserDefaults standardUserDefaults] setBool:self.videoNoteMode
 											forKey:kRecordVideoModeKey];
-	[self updateRecordModeIcon];
+	[UIView transitionWithView:self.micButton duration:TGAnimationDurationNormal
+					   options:UIViewAnimationOptionTransitionFlipFromLeft
+					animations:^{ [self updateRecordModeIcon]; }
+					completion:nil];
+	[self showRecordModeHint];
+}
+
+/// A tap that changed nothing a person could read would look like a dead button.
+- (void)showRecordModeHint {
+	UILabel *hint = [[UILabel alloc] init];
+	hint.text = self.videoNoteMode ? @"Hold to record video. Tap for voice."
+								   : @"Hold to record voice. Tap for video.";
+	hint.font = TGFontCaption();
+	hint.textColor = [[TGTheme shared] onMediaColour];
+	hint.backgroundColor = [[TGTheme shared] mediaOverlayColour];
+	hint.textAlignment = NSTextAlignmentCenter;
+	hint.layer.cornerRadius = TGMetricCornerMedium;
+	CGFloat width = [hint.text sizeWithFont:hint.font].width + TGDoubled(TGMetricPadLarge);
+	CGRect bar = self.inputBar.frame;
+	hint.frame = CGRectMake(bar.size.width - width - TGMetricPad,
+			CGRectGetMinY(bar) - TGMetricTextFieldH, width, TGMetricButtonSmallH);
+	hint.alpha = TGAlphaTransparent;
+	[self.view addSubview:hint];
+	[UIView animateWithDuration:TGAnimationDurationFast animations:^{
+		hint.alpha = TGAlphaOpaque;
+	} completion:^(BOOL finished){
+		[UIView animateWithDuration:TGAnimationDurationSlow delay:kRecordHintSeconds options:0 animations:^{
+			hint.alpha = TGAlphaTransparent;
+		} completion:^(BOOL gone){
+			[hint removeFromSuperview];
+		}];
+	}];
 }
 
 /// Telegram waits a beat before it starts writing, and so do we: the touch
@@ -410,7 +446,11 @@ static const NSTimeInterval kRecordToggleTapSeconds = 0.25;
 			// behind the overlay; the next voice note needs them back in order.
 			[weakSelf hideRecordPanel];
 			weakSelf.recordPanel.hidden = NO;
-			weakSelf.videoNoteOverlay = nil;
+			weakSelf.table.scrollEnabled = YES;
+			// Not from here: this block belongs to the recorder being released.
+			dispatch_async(dispatch_get_main_queue(), ^{
+				weakSelf.videoNoteOverlay = nil;
+			});
 		};
 		// Over the whole app, tab bar included: this is a part of the chat, not
 		// a place of its own, and a child added to a navigation controller
@@ -478,7 +518,8 @@ static const NSTimeInterval kRecordToggleTapSeconds = 0.25;
 		[me clearComposeState];
 		if (video)
 			[[TGClient shared] sendVideoNoteAtPath:path
-										  duration:(NSInteger)seconds
+										  duration:(NSInteger)ceil(seconds)
+											length:[TGVideoNoteRecorder shared].noteSide
 											toChat:me.chatId
 											thread:me.threadId
 										  viewOnce:me.recordOnce];

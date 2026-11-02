@@ -330,15 +330,12 @@ onDefaultReaction:(void (^)(NSString *))defaultChoice
 		_reactionCard.layer.borderWidth = 1.0f;
 		[_reactionWrapper addSubview:_reactionCard];
 
-		CAGradientLayer *rGloss = [CAGradientLayer layer];
-		rGloss.frame = CGRectMake(0, 0, reactionW, TGHalf(reactionH));
-		rGloss.colors = @[
-			(id)[theme calloutGlossTopColour].CGColor,
-			(id)[theme calloutGlossBottomColour].CGColor,
-			(id)[UIColor clearColor].CGColor
-		];
-		rGloss.locations = @[ @0.0f, @0.85f, @1.0f ];
-		[_reactionCard.layer addSublayer:rGloss];
+		UIImage *rGlossImage = [TGTheme calloutGlossImageWithSize:CGSizeMake(reactionW, TGHalf(reactionH))];
+		if (rGlossImage) {
+			UIImageView *rGloss = [[UIImageView alloc] initWithFrame:CGRectMake(0, 0, reactionW, TGHalf(reactionH))];
+			rGloss.image = rGlossImage;
+			[_reactionCard addSubview:rGloss];
+		}
 
 		_reactionPicker.frame = CGRectMake(TGHalf(kReactionPadH), TGHalf(kReactionPadV), pSize.width, pSize.height);
 		[_reactionCard addSubview:_reactionPicker];
@@ -361,15 +358,12 @@ onDefaultReaction:(void (^)(NSString *))defaultChoice
 	_actionCard.layer.borderWidth = 1.0f;
 	[_actionWrapper addSubview:_actionCard];
 
-	CAGradientLayer *gloss = [CAGradientLayer layer];
-	gloss.frame = CGRectMake(0, 0, kMenuCardW, TGHalf(actionCardH));
-	gloss.colors = @[
-		(id)[theme calloutGlossTopColour].CGColor,
-		(id)[theme calloutGlossBottomColour].CGColor,
-		(id)[UIColor clearColor].CGColor
-	];
-	gloss.locations = @[ @0.0f, @0.85f, @1.0f ];
-	[_actionCard.layer addSublayer:gloss];
+	UIImage *glossImage = [TGTheme calloutGlossImageWithSize:CGSizeMake(kMenuCardW, TGHalf(actionCardH))];
+	if (glossImage) {
+		UIImageView *gloss = [[UIImageView alloc] initWithFrame:CGRectMake(0, 0, kMenuCardW, TGHalf(actionCardH))];
+		gloss.image = glossImage;
+		[_actionCard addSubview:gloss];
+	}
 
 	// The lifted card is the one that can be taller than the room below the
 	// bubble. Its rows live in a scroll view so every action stays reachable;

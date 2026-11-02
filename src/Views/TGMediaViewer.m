@@ -21,6 +21,7 @@
 static const CGFloat kTopBar    = TGMetricViewerTopBar;
 static const CGFloat kBottomBar = TGMetricViewerBottomBar;
 static const NSInteger kZoomTag = 0x7001;
+static const NSInteger kSpinnerOffset = 2;   // kZoomTag + 2 is a page's spinner
 
 /// The top bar stacks the counter over the date; Done sits beside them. The
 /// bottom bar carries the caption, Save, and - on a video - a transport strip
@@ -88,6 +89,20 @@ static const CGFloat kThumbStripH   = 54.0f;
 @property (nonatomic, assign) CGPoint dragOrigin;
 @property (nonatomic, assign) BOOL dragging;
 
+/// The bubble the picture grew from. Weak: the chat owns it, and a cell can be
+/// reused or gone by the time the viewer closes. `startIndex` is the page it
+/// stands for - the zoom back only makes sense while that page is still up.
+@property (nonatomic, weak) UIView *sourceView;
+@property (nonatomic, assign) NSInteger startIndex;
+@property (nonatomic, assign) BOOL sourceHidden;
+@property (nonatomic, assign) BOOL dismissing;
+/// Pages whose picture is a thumbnail standing in for the original, so Share
+/// and Save do not hand out the blurry copy.
+@property (nonatomic, strong) NSMutableSet *placeholderPages;
+/// Work in flight per page (poster, original, video file). A counted set,
+/// because a video page has the poster and the movie coming at once.
+@property (nonatomic, strong) NSCountedSet *loading;
+
 /// One page per item, built lazily: twenty full-size pictures at once is more
 /// memory than this device has.
 @property (nonatomic, strong) NSMutableDictionary *pages;     // index -> UIView
@@ -112,6 +127,11 @@ static const CGFloat kThumbStripH   = 54.0f;
 @implementation TGMediaViewer
 
 + (void)presentItems:(NSArray *)items startAt:(NSInteger)index inChat:(int64_t)chatId isAlbum:(BOOL)isAlbum {
+	[self presentItems:items startAt:index inChat:chatId isAlbum:isAlbum fromView:nil];
+}
+
++ (void)presentItems:(NSArray *)items startAt:(NSInteger)index inChat:(int64_t)chatId
+			 isAlbum:(BOOL)isAlbum fromView:(UIView *)sourceView {
 	NSMutableArray *media = [NSMutableArray array];
 	NSInteger adjusted = 0;
 	for (NSUInteger i = 0; i < items.count; i++){
@@ -133,6 +153,7 @@ static const CGFloat kThumbStripH   = 54.0f;
 	viewer.index = MIN(MAX(adjusted, 0), (NSInteger)media.count - 1);
 	viewer.chatId = chatId;
 	viewer.isAlbum = isAlbum;
+	viewer.sourceView = sourceView;
 	[viewer present];
 }
 
@@ -145,6 +166,8 @@ static const CGFloat kThumbStripH   = 54.0f;
 		_pages = [NSMutableDictionary dictionary];
 		_originals = [NSMutableDictionary dictionary];
 		_requested = [NSMutableSet set];
+		_placeholderPages = [NSMutableSet set];
+		_loading = [NSCountedSet set];
 		_moviePage = NSNotFound;
 	}
 	return self;
@@ -173,8 +196,10 @@ static const CGFloat kThumbStripH   = 54.0f;
 			object:nil];
 
 	self.backdrop = [[UIView alloc] initWithFrame:bounds];
-	self.backdrop.backgroundColor = [[TGTheme shared] mediaViewerBackdropColour];
-	self.backdrop.alpha = 0;
+	// Clear to start with, and brought up to the backdrop colour by the open
+	// transition. Fading the view's alpha instead would fade the grown picture
+	// and the chrome with it.
+	self.backdrop.backgroundColor = [UIColor clearColor];
 	[self.window addSubview:self.backdrop];
 
 	self.pager = [[UIScrollView alloc] initWithFrame:bounds];
@@ -223,20 +248,206 @@ static const CGFloat kThumbStripH   = 54.0f;
 	[self loadPagesAround:self.index];
 	[self refreshChrome];
 
-	[UIView animateWithDuration:TGAnimationDurationNormal animations:^{ self.backdrop.alpha = 1; }];
+	self.startIndex = self.index;
+	[self runOpenTransition];
+}
+
+#pragma mark - open and close transitions
+
+/// Where the viewer's picture lands and leaves from, as a transform. The ghost
+/// is laid out at its resting frame and scaled down onto the bubble, so the
+/// render server moves one texture and the main thread does nothing for the
+/// length of the animation. The scale is not uniform: a bubble that crops its
+/// photo is a different shape from the photo, and for 250 ms nobody sees the
+/// difference.
+static CGAffineTransform TGTransformOnto(CGRect resting, CGRect target) {
+	CGFloat sx = target.size.width  / MAX(resting.size.width,  TGMetricScaleFull);
+	CGFloat sy = target.size.height / MAX(resting.size.height, TGMetricScaleFull);
+	return CGAffineTransformMake(sx, 0, 0, sy,
+			CGRectGetMidX(target) - CGRectGetMidX(resting),
+			CGRectGetMidY(target) - CGRectGetMidY(resting));
+}
+
+- (UIImageView *)sourceImageView {
+	UIView *source = self.sourceView;
+	return [source isKindOfClass:UIImageView.class] ? (UIImageView *)source : nil;
+}
+
+- (void)setEdgeChromeAlpha:(CGFloat)alpha {
+	self.topBar.alpha = alpha;
+	self.bottomBar.alpha = alpha;
+	self.thumbStrip.alpha = alpha;
+	self.statusPlate.alpha = alpha;
+}
+
+/// The chrome comes in after the picture has landed, so the eye has one thing
+/// to follow at a time.
+- (void)fadeInChrome {
+	self.backdrop.userInteractionEnabled = YES;
+	[UIView animateWithDuration:TGAnimationDurationNormal animations:^{
+		CGFloat alpha = self.chromeHidden ? TGAlphaTransparent : TGAlphaOpaque;
+		self.topBar.alpha = alpha;
+		self.bottomBar.alpha = alpha;
+		self.thumbStrip.alpha = alpha;
+		self.statusPlate.alpha = TGAlphaOpaque;
+	}];
+}
+
+- (void)runOpenTransition {
+	UIColor *dim = [[TGTheme shared] mediaViewerBackdropColour];
+	UIImageView *source = [self sourceImageView];
+	UIImage *thumb = source.image;
+	CGRect from = source ? [source convertRect:source.bounds toView:self.backdrop] : CGRectZero;
+	BOOL grows = thumb && thumb.size.width > 0 && thumb.size.height > 0 &&
+			source.window && !source.hidden &&
+			CGRectIntersectsRect(from, self.backdrop.bounds);
+
+	[self setEdgeChromeAlpha:TGAlphaTransparent];
+	// Touches during the 250 ms would meet a viewer that is half built.
+	self.backdrop.userInteractionEnabled = NO;
+
+	if (!grows){
+		self.sourceView = nil;      // nothing to hide, nothing to return to
+		self.pager.alpha = TGAlphaTransparent;
+		[UIView animateWithDuration:TGAnimationDurationNormal animations:^{
+			self.backdrop.backgroundColor = dim;
+			self.pager.alpha = TGAlphaOpaque;
+		} completion:^(BOOL done){
+			[self fadeInChrome];
+		}];
+		return;
+	}
+
+	CGRect resting = AVMakeRectWithAspectRatioInsideRect(thumb.size, self.backdrop.bounds);
+	UIImageView *ghost = [[UIImageView alloc] initWithFrame:resting];
+	ghost.image = thumb;
+	ghost.contentMode = UIViewContentModeScaleToFill;
+	ghost.userInteractionEnabled = NO;
+	ghost.transform = TGTransformOnto(resting, from);
+	// The pager waits until the ghost has landed: its page is still empty, and
+	// its spinner would show beside a picture that is on its way.
+	self.pager.alpha = TGAlphaTransparent;
+	[self.backdrop insertSubview:ghost aboveSubview:self.pager];
+
+	source.hidden = YES;
+	self.sourceHidden = YES;
+
+	__weak typeof(self) weakSelf = self;
+	[UIView animateWithDuration:TGAnimationDurationMedium
+						  delay:0
+						options:UIViewAnimationOptionCurveEaseOut
+					 animations:^{
+		ghost.transform = CGAffineTransformIdentity;
+		self.backdrop.backgroundColor = dim;
+	} completion:^(BOOL done){
+		TGMediaViewer *me = weakSelf;
+		if (me)
+			[me landedWithGhost:ghost thumbnail:thumb];
+		else
+			[ghost removeFromSuperview];
+	}];
+}
+
+/// The thumbnail stays on the page as its picture until the original arrives,
+/// so the swap from ghost to page is the same pixels in the same place.
+- (void)landedWithGhost:(UIImageView *)ghost thumbnail:(UIImage *)thumb {
+	UIImageView *picture = (UIImageView *)[[self currentPage] viewWithTag:kZoomTag + 1];
+	if (picture && !picture.image){
+		picture.image = thumb;
+		[self.placeholderPages addObject:@(self.startIndex)];
+	}
+	self.pager.alpha = TGAlphaOpaque;
+	[ghost removeFromSuperview];
+	[self fadeInChrome];
+}
+
+/// A ghost of the picture as it is on screen now, with the rect it should
+/// shrink into. Nil whenever the way back is not certain: the page was changed
+/// or zoomed, the bubble has scrolled away or been reused, or the picture has
+/// not arrived. Those fade instead.
+- (UIImageView *)closingGhostTarget:(CGRect *)target {
+	UIImageView *source = [self sourceImageView];
+	if (!source || !source.window || self.dragging || self.index != self.startIndex)
+		return nil;
+	UIScrollView *page = [self currentPage];
+	UIImageView *picture = (UIImageView *)[page viewWithTag:kZoomTag + 1];
+	UIImage *image = picture.image;
+	if (!image || page.zoomScale > page.minimumZoomScale + TGAlphaEpsilon)
+		return nil;
+	CGRect to = [source convertRect:source.bounds toView:self.backdrop];
+	if (!CGRectIntersectsRect(to, self.backdrop.bounds))
+		return nil;
+
+	CGRect fit = AVMakeRectWithAspectRatioInsideRect(image.size, picture.bounds);
+	UIImageView *ghost = [[UIImageView alloc] initWithFrame:
+			[picture convertRect:fit toView:self.backdrop]];
+	ghost.image = image;
+	ghost.contentMode = UIViewContentModeScaleToFill;
+	ghost.userInteractionEnabled = NO;
+	*target = to;
+	return ghost;
+}
+
+- (void)restoreSource {
+	if (self.sourceHidden)
+		self.sourceView.hidden = NO;
+	self.sourceHidden = NO;
 }
 
 - (void)dismiss {
+	[self dismissWithZoom:YES];
+}
+
+- (void)dismissWithZoom:(BOOL)zoom {
+	if (self.dismissing)
+		return;
+	self.dismissing = YES;
+	self.backdrop.userInteractionEnabled = NO;
 	[self stopMovie];
 	[[UIApplication sharedApplication] setStatusBarHidden:self.statusBarWasHidden
 											withAnimation:UIStatusBarAnimationFade];
-	[UIView animateWithDuration:TGAnimationDurationNormal animations:^{
-		self.backdrop.alpha = 0;
-	} completion:^(BOOL done){
-		[self.backdrop removeFromSuperview];
-		self.self_ = nil;       // and now it can go
-	}];
 	[[NSNotificationCenter defaultCenter] removeObserver:self];
+
+	// The completion blocks hold the backdrop rather than self: the viewer
+	// holds itself up until they run, and nothing should keep it past that.
+	UIView *backdrop = self.backdrop;
+	__weak typeof(self) weakSelf = self;
+	void (^finish)(void) = ^{
+		[backdrop removeFromSuperview];
+		weakSelf.self_ = nil;       // and now it can go
+	};
+
+	CGRect target = CGRectZero;
+	UIImageView *ghost = zoom ? [self closingGhostTarget:&target] : nil;
+	if (!ghost){
+		// The bubble shows through the fading backdrop, so it comes back first.
+		[self restoreSource];
+		[UIView animateWithDuration:TGAnimationDurationNormal animations:^{
+			backdrop.alpha = TGAlphaTransparent;
+		} completion:^(BOOL done){ finish(); }];
+		return;
+	}
+
+	// The ghost is drawn over the picture it copies, so hiding the pager the
+	// same instant changes nothing on screen.
+	CGRect resting = ghost.frame;
+	[self.backdrop insertSubview:ghost aboveSubview:self.pager];
+	self.pager.hidden = YES;
+	[UIView animateWithDuration:TGAnimationDurationMedium
+						  delay:0
+						options:UIViewAnimationOptionCurveEaseInOut
+					 animations:^{
+		ghost.transform = TGTransformOnto(resting, target);
+		backdrop.backgroundColor = [UIColor clearColor];
+		[self setEdgeChromeAlpha:TGAlphaTransparent];
+	} completion:^(BOOL done){
+		// The ghost is a squashed copy with square corners; the bubble is the
+		// real thing. Letting one dissolve into the other hides the join.
+		[weakSelf restoreSource];
+		[UIView animateWithDuration:TGAnimationDurationFast animations:^{
+			ghost.alpha = TGAlphaTransparent;
+		} completion:^(BOOL finished){ finish(); }];
+	}];
 }
 
 #pragma mark - chrome
@@ -262,6 +473,8 @@ static const CGFloat kThumbStripH   = 54.0f;
 		zoom.zoomScale = TGMetricZoomMin;
 		UIImageView *picture = [zoom viewWithTag:kZoomTag + 1];
 		picture.frame = zoom.bounds;
+		[zoom viewWithTag:kZoomTag + kSpinnerOffset].center =
+				CGPointMake(TGHalf(zoom.bounds.size.width), TGHalf(zoom.bounds.size.height));
 	}
 
 	[self.topBar removeFromSuperview];   self.topBar = nil;
@@ -497,18 +710,26 @@ static const CGFloat kThumbStripH   = 54.0f;
 	if (!self.thumbButtons.count)
 		return;
 
+	// The ring is a layer property and snaps; the dimming is alpha, which the
+	// render server eases, so the strip still reads as moving with the page.
 	for (UIButton *btn in self.thumbButtons) {
 		BOOL selected = (btn.tag == self.index);
 		if (selected) {
 			btn.layer.borderWidth = 2.0f;
 			btn.layer.borderColor = [[TGTheme shared] onMediaColour].CGColor;
-			btn.alpha = 1.0f;
 		} else {
 			btn.layer.borderWidth = 0.0f;
 			btn.layer.borderColor = [UIColor clearColor].CGColor;
-			btn.alpha = TGAlphaDimmed;
 		}
 	}
+	void (^dim)(void) = ^{
+		for (UIButton *btn in self.thumbButtons)
+			btn.alpha = (btn.tag == self.index) ? TGAlphaOpaque : TGAlphaDimmed;
+	};
+	if (animated)
+		[UIView animateWithDuration:TGAnimationDurationFast animations:dim];
+	else
+		dim();
 
 	if (self.index >= 0 && self.index < (NSInteger)self.thumbButtons.count) {
 		UIButton *curr = self.thumbButtons[self.index];
@@ -536,8 +757,26 @@ static const CGFloat kThumbStripH   = 54.0f;
 	[self.pager setContentOffset:CGPointMake(self.pager.bounds.size.width * idx, 0)
 						animated:animated];
 	[self loadPagesAround:idx];
+	if (animated)
+		[self fadeChromeText];
 	[self refreshChrome];
 	[self updateThumbStripSelection:animated];
+}
+
+/// The counter and the date change while the pages are still sliding, so the
+/// new text dissolves in rather than snapping. A CATransition is done by the
+/// render server and costs the main thread nothing after the call.
+- (void)fadeChromeText {
+	for (UILabel *label in @[self.counterLabel ?: [NSNull null],
+							 self.dateLabel ?: [NSNull null],
+							 self.captionLabel ?: [NSNull null]]){
+		if (![label isKindOfClass:UILabel.class])
+			continue;
+		CATransition *fade = [CATransition animation];
+		fade.type = kCATransitionFade;
+		fade.duration = TGAnimationDurationFast;
+		[label.layer addAnimation:fade forKey:@"tg.text"];
+	}
 }
 
 /// Telegram's viewer splits the picture into three: the left third goes back,
@@ -686,6 +925,14 @@ static const CGFloat kThumbStripH   = 54.0f;
 		[(UIView *)self.pages[key] removeFromSuperview];
 		[self.pages removeObjectForKey:key];
 		[self.originals removeObjectForKey:key];
+		[self.placeholderPages removeObject:key];
+		while ([self.loading containsObject:key])
+			[self.loading removeObject:key];
+		// Without this a page scrolled back to was built empty and never asked
+		// again, because its file still counted as requested.
+		NSNumber *dropped = [self fileIdForItem:self.items[i]];
+		if (dropped)
+			[self.requested removeObject:dropped];
 	}
 
 	for (NSInteger i = MAX(0, centre - 1);
@@ -714,6 +961,70 @@ static const CGFloat kThumbStripH   = 54.0f;
 	}
 }
 
+#pragma mark - progress
+
+/// Counts work in flight for a page and shows a white spinner while there is
+/// any. The spinner waits TGAnimationDurationNormal before it fades in, so a
+/// picture that is already on disk never flashes one.
+- (void)beginLoadingPage:(NSInteger)page {
+	[self.loading addObject:@(page)];
+	[self refreshSpinnerForPage:page];
+}
+
+- (void)endLoadingPage:(NSInteger)page {
+	if (![NSThread isMainThread]){
+		dispatch_async(dispatch_get_main_queue(), ^{ [self endLoadingPage:page]; });
+		return;
+	}
+	[self.loading removeObject:@(page)];
+	[self refreshSpinnerForPage:page];
+}
+
+- (void)refreshSpinnerForPage:(NSInteger)page {
+	UIScrollView *zoom = self.pages[@(page)];
+	if (!zoom)
+		return;
+	UIActivityIndicatorView *spinner = (UIActivityIndicatorView *)
+			[zoom viewWithTag:kZoomTag + kSpinnerOffset];
+	if ([self.loading countForObject:@(page)] == 0){
+		[spinner stopAnimating];
+		[spinner removeFromSuperview];
+		return;
+	}
+	if (spinner)
+		return;
+	spinner = [[UIActivityIndicatorView alloc]
+			initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleWhiteLarge];
+	spinner.tag = kZoomTag + kSpinnerOffset;
+	spinner.center = CGPointMake(TGHalf(zoom.bounds.size.width), TGHalf(zoom.bounds.size.height));
+	spinner.userInteractionEnabled = NO;
+	spinner.alpha = TGAlphaTransparent;
+	[zoom addSubview:spinner];
+	[spinner startAnimating];
+	[UIView animateWithDuration:TGAnimationDurationNormal
+						  delay:TGAnimationDurationNormal
+						options:0
+					 animations:^{ spinner.alpha = TGAlphaOpaque; }
+					 completion:nil];
+}
+
+/// The original replaces whatever the page was showing. On screen it dissolves
+/// in; a hard swap from a blurry thumbnail to the sharp one reads as a glitch.
+- (void)showOriginal:(UIImage *)image inPicture:(UIImageView *)picture page:(NSInteger)page {
+	UIView *zoom = self.pages[@(page)];
+	if (!zoom || [zoom viewWithTag:kZoomTag + 1] != picture)
+		return;     // the page was dropped while this was decoding
+	self.originals[@(page)] = image;
+	[self.placeholderPages removeObject:@(page)];
+	if (picture.window){
+		CATransition *fade = [CATransition animation];
+		fade.type = kCATransitionFade;
+		fade.duration = TGAnimationDurationNormal;
+		[picture.layer addAnimation:fade forKey:@"tg.original"];
+	}
+	picture.image = image;
+}
+
 /// Downloads and displays full-resolution media, using thumbnail as placeholder.
 - (void)fetchOriginalForPage:(NSInteger)page into:(UIImageView *)picture {
 	NSDictionary *item = self.items[page];
@@ -740,15 +1051,22 @@ static const CGFloat kThumbStripH   = 54.0f;
 		// fetched when the play button is pressed (or auto-started for GIFs).
 		NSNumber *thumb = item[@"photoId"];
 		if ([thumb isKindOfClass:NSNumber.class]){
+			__weak typeof(self) posterSelf = self;
+			[self beginLoadingPage:page];
 			[[TGMediaStore shared] downloadFile:thumb.integerValue completion:^(NSString *path){
-				if (!path.length)
+				if (!path.length){
+					[posterSelf endLoadingPage:page];
 					return;
+				}
 				dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
 					UIImage *poster = [TGIcons decodedImage:[UIImage imageWithContentsOfFile:path]
 												fittingSize:screen fill:NO scale:scale];
-					if (!poster)
-						return;
-					dispatch_async(dispatch_get_main_queue(), ^{ picture.image = poster; });
+					dispatch_async(dispatch_get_main_queue(), ^{
+						TGMediaViewer *me = posterSelf;
+						if (poster && me && !picture.image)
+							picture.image = poster;
+						[me endLoadingPage:page];
+					});
 				});
 			}];
 		}
@@ -763,9 +1081,12 @@ static const CGFloat kThumbStripH   = 54.0f;
 	[self.requested addObject:fileId];
 
 	__weak typeof(self) weakSelf = self;
+	[self beginLoadingPage:page];
 	[[TGMediaStore shared] downloadFile:fileId.integerValue completion:^(NSString *path){
-		if (!path.length)
+		if (!path.length){
+			[weakSelf endLoadingPage:page];
 			return;
+		}
 		dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
 			UIImage *image = [UIImage imageWithContentsOfFile:path];
 			if (!image && [path.pathExtension.lowercaseString isEqualToString:@"webp"])
@@ -773,11 +1094,11 @@ static const CGFloat kThumbStripH   = 54.0f;
 			// Fitted to the screen rather than the bubble: a 4S has 512MB and
 			// a 3000px photo decoded whole is most of what is left of it.
 			image = [TGIcons decodedImage:image fittingSize:screen fill:NO scale:scale];
-			if (!image)
-				return;
 			dispatch_async(dispatch_get_main_queue(), ^{
-				weakSelf.originals[@(page)] = image;
-				picture.image = image;
+				TGMediaViewer *me = weakSelf;
+				if (image)
+					[me showOriginal:image inPicture:picture page:page];
+				[me endLoadingPage:page];
 			});
 		});
 	}];
@@ -887,7 +1208,7 @@ static const CGFloat kThumbStripH   = 54.0f;
 					direction * self.backdrop.bounds.size.height);
 			self.backdrop.backgroundColor = [UIColor clearColor];
 		} completion:^(BOOL done){
-			[self dismiss];
+			[self dismissWithZoom:NO];
 		}];
 		return;
 	}
@@ -917,6 +1238,7 @@ static const CGFloat kThumbStripH   = 54.0f;
 
 	self.index = page;
 	[self loadPagesAround:page];
+	[self fadeChromeText];
 	[self refreshChrome];
 	[self updateThumbStripSelection:YES];
 }
@@ -944,7 +1266,10 @@ static const CGFloat kThumbStripH   = 54.0f;
 
 	self.timeLabel.text = @"...";
 	__weak typeof(self) weakSelf = self;
+	NSInteger fetchingPage = self.index;
+	[self beginLoadingPage:fetchingPage];
 	[[TGMediaStore shared] downloadFile:fileId.integerValue completion:^(NSString *path){
+		[weakSelf endLoadingPage:fetchingPage];
 		if (!path.length){
 			weakSelf.timeLabel.text = @"--:--";
 			return;
@@ -1137,7 +1462,7 @@ static const CGFloat kThumbStripH   = 54.0f;
 
 - (void)shareCurrent {
 	UIImage *image = self.originals[@(self.index)];
-	if (!image){
+	if (!image && ![self.placeholderPages containsObject:@(self.index)]){
 		UIView *page = self.pages[@(self.index)];
 		image = [(UIImageView *)[page viewWithTag:kZoomTag + 1] image];
 	}
@@ -1383,7 +1708,7 @@ static const CGFloat kThumbStripH   = 54.0f;
 	}
 
 	UIImage *image = self.originals[@(self.index)];
-	if (!image){
+	if (!image && ![self.placeholderPages containsObject:@(self.index)]){
 		UIView *page = self.pages[@(self.index)];
 		image = [(UIImageView *)[page viewWithTag:kZoomTag + 1] image];
 	}
@@ -1411,6 +1736,7 @@ static const CGFloat kThumbStripH   = 54.0f;
 }
 
 - (void)dealloc {
+	[self restoreSource];
 	[self.movieTimer invalidate];
 	[[NSNotificationCenter defaultCenter] removeObserver:self];
 }

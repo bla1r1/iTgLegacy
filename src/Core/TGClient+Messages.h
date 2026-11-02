@@ -135,6 +135,7 @@
 
 /// A square video note recorded on this device.
 - (void)sendVideoNoteAtPath:(NSString *)path duration:(NSInteger)seconds
+					 length:(NSInteger)length
 					 toChat:(int64_t)chatId thread:(int64_t)threadId
 				   viewOnce:(BOOL)viewOnce;
 

@@ -8,6 +8,13 @@
 
 + (instancetype)shared;
 
+/// YES on iOS 6 and earlier, where everything the app draws itself has gloss,
+/// gradients and etched text shadows like the system's controls around it.
+/// NO from iOS 7: the same surfaces are flat fills from the same colours with
+/// hairlines. Read once and kept; the OS does not change under a running app.
+/// Every drawn surface asks this and never tests the Foundation version itself.
++ (BOOL)drawsSkeuomorphicChrome;
+
 /// Posted when the style changes so open screens can restyle themselves.
 extern NSString *const TGThemeChangedNotification;
 
@@ -146,8 +153,31 @@ typedef NS_ENUM(NSInteger, TGButtonStyle) {
 /// Applies classic recessed well styling to a text field.
 + (void)applySkeuomorphicInputStyle:(UITextField *)field;
 
-/// Brushed aluminum satin metal image for chat composer bar.
+/// Brushed aluminum satin metal image for chat composer bar. A flat bar with
+/// a top hairline from iOS 7.
 + (UIImage *)skeuomorphicInputBarImageWithHeight:(CGFloat)height;
+
+/// A stretchable plate of `colour` for a card, sheet or toast, `height` tall so
+/// the gradient runs the whole way down instead of being squeezed into the
+/// corner caps. iOS 6: a soft vertical gradient and a 1 px highlight under the
+/// top edge. From iOS 7: the flat colour. `corners` picks the rounded ones;
+/// `rim` (nil for none) is drawn as an outline in either look. Only the width
+/// stretches, so the frame it fills must be `height` tall.
++ (UIImage *)chromePlateImageWithColour:(UIColor *)colour
+                                 height:(CGFloat)height
+                           cornerRadius:(CGFloat)radius
+                                corners:(UIRectCorner)corners
+                                    rim:(UIColor *)rim;
+
+/// The specular top half of a callout (popup menu, reaction bar), baked so the
+/// popup needs no gradient layer. Nil from iOS 7, which has no gloss.
++ (UIImage *)calloutGlossImageWithSize:(CGSize)size;
+
+/// Draws the iOS 6 gloss of a round tile into the current image context:
+/// a white highlight over the top half of the oval and a 1 pt darker rim.
+/// The caller fills the oval first and draws its glyph afterwards, and only
+/// calls this when +drawsSkeuomorphicChrome is on.
++ (void)drawGlossOnOvalInRect:(CGRect)rect baseColour:(UIColor *)colour;
 /// A soft backdrop without CoreImage, whose blur crashed on the A4. `radius` is
 /// in the image's points and `dim` darkens it, baked in so a screen needs no
 /// extra blended layer. The result is smaller than the input: show it in a view

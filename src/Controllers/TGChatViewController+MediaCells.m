@@ -185,14 +185,18 @@
 		}
 
 		__weak typeof(self) weakSelf = self;
+		__weak TGBubbleCell *weakCell = cell;
 		cell.onCollageItemTapped = ^(NSInteger idx) {
 			TGChatViewController *strongSelf = weakSelf;
 			if (!strongSelf) return;
 			if (idx >= 0 && idx < (NSInteger)albumMsgs.count) {
+				NSArray *tiles = weakCell.collageViews;
+				UIView *source = idx < (NSInteger)tiles.count ? tiles[idx] : nil;
 				[TGMediaViewer presentItems:albumMsgs
 									startAt:idx
 									 inChat:strongSelf.chatId
-									isAlbum:YES];
+									isAlbum:YES
+								   fromView:source];
 			}
 		};
 

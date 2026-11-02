@@ -16,9 +16,10 @@
 #import <AVFoundation/AVFoundation.h>
 
 static const CGFloat kVideoNoteSide = 480.0f;
-/// Long enough for the overlay's first frame to reach the screen before
-/// startRunning holds the main thread.
-static const NSTimeInterval kSessionStartDelay = 0.05;
+/// Long enough for the overlay's entrance to play before startRunning holds the
+/// main thread: what is already animating keeps moving, what is not yet committed
+/// would not start until the camera is up.
+static const NSTimeInterval kSessionStartDelay = 0.35;
 
 @interface TGVideoNoteRecorder () <AVCaptureFileOutputRecordingDelegate>
 @property (nonatomic, strong) AVCaptureSession *session;
@@ -39,6 +40,9 @@ static const NSTimeInterval kSessionStartDelay = 0.05;
 @property (nonatomic, assign) BOOL isReadyFlag;
 /// The segments closed by a pause (or a send) so far, on disk.
 @property (nonatomic, strong) NSMutableArray *segmentPaths;
+/// A flip waiting for the running file to close.
+@property (nonatomic, copy) void (^flipCompletion)(void);
+@property (nonatomic, assign, readwrite) NSInteger noteSide;
 /// A cancel is closing the running file; its delegate call only cleans up.
 @property (nonatomic, assign) BOOL cancelling;
 /// How many files a pause_and_all_that_has_resumed promised. The delegate
@@ -254,7 +258,19 @@ static const NSTimeInterval kSessionStartDelay = 0.05;
 		if (completion) completion(nil, 0);
 		return;
 	}
-	self.completion = [completion copy];
+	// An export ends on a thread of its own; whoever asked is drawing a screen,
+	// and UIKit off the main thread is a crash waiting for its moment.
+	void (^asked)(NSString *, NSTimeInterval) = [completion copy];
+	self.completion = ^(NSString *path, NSTimeInterval seconds){
+		dispatch_async(dispatch_get_main_queue(), ^{
+			if (asked)
+				asked(path, seconds);
+		});
+	};
+	// The running file counts: without it a note never paused measured zero,
+	// and a note of zero seconds is treated as a stray tap and not sent.
+	if (self.startedAt)
+		self.recordedDuration += -[self.startedAt timeIntervalSinceNow];
 	NSTimeInterval seconds = self.recordedDuration;
 	if (self.output.isRecording){
 		// A running segment is the tail of the note: the delegate closes it
@@ -306,10 +322,27 @@ static const NSTimeInterval kSessionStartDelay = 0.05;
 	if ([self.session canAddInput:next])
 		[self.session addInput:next];
 	[self.session commitConfiguration];
+	AVCaptureConnection *connection = [self.output connectionWithMediaType:AVMediaTypeVideo];
+	if ([connection isVideoOrientationSupported])
+		connection.videoOrientation = AVCaptureVideoOrientationPortrait;
+	if (self.onCameraSwitched)
+		self.onCameraSwitched();
+}
+
+- (void)flipCameraWithCompletion:(void (^)(void))completion {
+	void (^finished)(void) = completion ? [completion copy] : [^{} copy];
+	if (!self.startedAt){
+		[self switchCamera];
+		finished();
+		return;
+	}
+	self.flipCompletion = finished;
+	[self pause];
 }
 
 - (void)cancel {
 	self.completion = nil;
+	self.flipCompletion = nil;
 	self.pendingStop = NO;
 	self.isRecordingFlag = NO;
 	self.isStartingFlag = NO;
@@ -354,8 +387,18 @@ static const NSTimeInterval kSessionStartDelay = 0.05;
 		[self.segmentPaths addObject:closed];
 	}
 
-	if (!finalStop)
-		return;   // a pause closed this one; the session and preview stay up
+	if (!finalStop){
+		// A pause closed this one; the session and preview stay up. A flip is a
+		// pause with the lens changed in the gap.
+		if (self.flipCompletion){
+			void (^flipped)(void) = self.flipCompletion;
+			self.flipCompletion = nil;
+			[self switchCamera];
+			[self resume];
+			dispatch_async(dispatch_get_main_queue(), flipped);
+		}
+		return;
+	}
 
 	if (self.startedAt == nil && self.segmentPaths.count < self.expectedSegments)
 		return;   // the tail behind pendingStop; the next file closes it
@@ -423,6 +466,7 @@ static const NSTimeInterval kSessionStartDelay = 0.05;
 	if (side <= 0)
 		side = 480;
 	CGFloat renderSide = MIN(kVideoNoteSide, side);
+	self.noteSide = (NSInteger)renderSide;
 	CGFloat scale = renderSide / side;
 	NSLog(@"TGVideoNoteRecorder: segment %.0fx%.0f shown %.0fx%.0f, square %.0f",
 			natural.width, natural.height, shown.size.width, shown.size.height, renderSide);

@@ -223,6 +223,16 @@ static UIButton *TGStoryEdgeButton(UIImage *image, id target, SEL action) {
 	return button;
 }
 
+/// The camera and the editor are both full-screen black surfaces, so a push
+/// slide only shows the backdrop moving. The render server runs the fade, which
+/// keeps the main thread free while the editor's picture is being prepared.
+static void TGStoryCrossFade(UINavigationController *navigation) {
+	CATransition *fade = [CATransition animation];
+	fade.type = kCATransitionFade;
+	fade.duration = TGAnimationDurationNormal;
+	[navigation.view.layer addAnimation:fade forKey:@"tg.storyFade"];
+}
+
 #pragma mark - the flow's navigation controller
 
 /// Asks the screen on top about the status bar (iOS 7 reads it from the nav
@@ -283,6 +293,7 @@ static UIButton *TGStoryEdgeButton(UIImage *image, id target, SEL action) {
 @property (nonatomic, strong) UIButton *shutterButton;
 @property (nonatomic, strong) UIButton *galleryButton;
 @property (nonatomic, strong) UIButton *flipButton;
+@property (nonatomic, strong) UIActivityIndicatorView *spinner;
 @property (nonatomic, strong) id themeObserver;
 @end
 
@@ -380,6 +391,38 @@ static UIButton *TGStoryEdgeButton(UIImage *image, id target, SEL action) {
 	self.flashButton.hidden = !cameraOn || !self.input.device.hasFlash;
 	self.flipButton.hidden = !cameraOn
 			|| [AVCaptureDevice devicesWithMediaType:AVMediaTypeVideo].count < 2;
+}
+
+/// The spinner is a subview so it sits over the preview layer, and it is reused
+/// for the two moments where the screen has nothing to show: the camera
+/// starting on the A4 and the still being cut out of its buffer.
+- (void)showSpinner {
+	if (!self.spinner)
+		self.spinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:
+				UIActivityIndicatorViewStyleWhiteLarge];
+	self.spinner.center = CGPointMake(CGRectGetMidX(self.view.bounds),
+									  CGRectGetMidY(self.view.bounds));
+	self.spinner.userInteractionEnabled = NO;
+	[self.view addSubview:self.spinner];
+	[self.view bringSubviewToFront:self.spinner];
+	[self.spinner startAnimating];
+}
+
+- (void)hideSpinner {
+	[self.spinner stopAnimating];
+	[self.spinner removeFromSuperview];
+}
+
+- (void)setControlsAlpha:(CGFloat)alpha {
+	for (UIButton *button in @[self.closeButton, self.flashButton, self.flipButton,
+							   self.galleryButton, self.shutterButton])
+		button.alpha = alpha;
+}
+
+- (void)fadeControlsIn {
+	[UIView animateWithDuration:TGAnimationDurationNormal animations:^{
+		[self setControlsAlpha:TGAlphaOpaque];
+	}];
 }
 
 - (void)viewDidLayoutSubviews {
@@ -518,14 +561,21 @@ static UIButton *TGStoryEdgeButton(UIImage *image, id target, SEL action) {
 	// On the main thread, a turn after the screen is up. iOS 6 finishes
 	// starting a session through the calling thread's run loop: from a dispatch
 	// queue, which has none, startRunning returns with isRunning NO and the
-	// session never comes up.
+	// session never comes up. The delay is also what gets the spinner drawn
+	// before startRunning takes the main thread away.
 	NSInteger token = ++self.sessionToken;
+	[self setControlsAlpha:TGAlphaTransparent];
+	[self showSpinner];
 	__weak typeof(self) weakSelf = self;
-	dispatch_async(dispatch_get_main_queue(), ^{
+	dispatch_after(dispatch_time(DISPATCH_TIME_NOW,
+			(int64_t)(TGAnimationDurationNormal * NSEC_PER_SEC)),
+			dispatch_get_main_queue(), ^{
 		TGStoryCameraViewController *me = weakSelf;
 		if (!me || me.sessionToken != token || me.session != session)
 			return;
 		[session startRunning];
+		[me hideSpinner];
+		[me fadeControlsIn];
 	});
 }
 
@@ -540,6 +590,7 @@ static UIButton *TGStoryEdgeButton(UIImage *image, id target, SEL action) {
 /// this screen is covered or closed.
 - (void)stopSession {
 	self.sessionToken++;
+	[self hideSpinner];
 	AVCaptureSession *session = self.session;
 	self.session = nil;
 	self.input = nil;
@@ -555,6 +606,7 @@ static UIButton *TGStoryEdgeButton(UIImage *image, id target, SEL action) {
 - (void)cameraFailed {
 	self.noCamera = YES;
 	[self stopSession];
+	[self setControlsAlpha:TGAlphaOpaque];
 	[self refreshControls];
 	if (self.view.window && !self.presentedViewController && !self.closing)
 		[self openGallery];
@@ -620,7 +672,27 @@ static UIButton *TGStoryEdgeButton(UIImage *image, id target, SEL action) {
 	AVCaptureConnection *connection = [self.stillOutput connectionWithMediaType:AVMediaTypeVideo];
 	if (self.capturing || !self.session.isRunning || !connection)
 		return;
+
+	CAKeyframeAnimation *press = [CAKeyframeAnimation animationWithKeyPath:@"transform.scale"];
+	press.values = @[@1.0f, @0.85f, @1.0f];
+	press.duration = TGAnimationDurationFast;
+	[self.shutterButton.layer addAnimation:press forKey:@"tg.shutter"];
+
+	// The white flash covers the preview at the moment of the shot. It is a
+	// plain view rather than a layer so the fade and the removal are one step.
+	UIView *flash = [[UIView alloc] initWithFrame:self.view.bounds];
+	flash.backgroundColor = [[TGTheme shared] onMediaColour];
+	flash.alpha = TGAlphaDimmed;
+	flash.userInteractionEnabled = NO;
+	[self.view addSubview:flash];
+	[UIView animateWithDuration:TGAnimationDurationNormal animations:^{
+		flash.alpha = TGAlphaTransparent;
+	} completion:^(BOOL finished){
+		[flash removeFromSuperview];
+	}];
+
 	self.capturing = YES;
+	[self showSpinner];
 	__weak typeof(self) weakSelf = self;
 	[self.stillOutput captureStillImageAsynchronouslyFromConnection:connection
 			completionHandler:^(CMSampleBufferRef buffer, NSError *error){
@@ -632,18 +704,23 @@ static UIButton *TGStoryEdgeButton(UIImage *image, id target, SEL action) {
 			if (!me)
 				return;
 			me.capturing = NO;
-			if (me.closing)
+			if (me.closing){
+				[me hideSpinner];
 				return;
+			}
 			UIImage *image = jpeg.length ? [UIImage imageWithData:jpeg] : nil;
 			if (!image){
+				[me hideSpinner];
 				[TGAlertSheet showMessage:@"The camera did not give a picture. Try again."
 									title:@"New Story" inView:me.view];
 				return;
 			}
+			[me hideSpinner];
+			TGStoryCrossFade(me.navigationController);
 			[me.navigationController pushViewController:
 					[[TGStoryEditorViewController alloc] initWithComposer:me.composer
 																	image:image]
-											   animated:YES];
+											   animated:NO];
 		});
 	}];
 }
@@ -694,7 +771,8 @@ static UIButton *TGStoryEdgeButton(UIImage *image, id target, SEL action) {
 	self.handingOver = YES;
 	__weak typeof(self) weakSelf = self;
 	[picker dismissViewControllerAnimated:YES completion:^{
-		[weakSelf.navigationController pushViewController:editor animated:YES];
+		TGStoryCrossFade(weakSelf.navigationController);
+		[weakSelf.navigationController pushViewController:editor animated:NO];
 	}];
 }
 
@@ -927,9 +1005,21 @@ static UIButton *TGStoryEdgeButton(UIImage *image, id target, SEL action) {
 	TGStoryFlowSetStatusBarHidden(YES);
 	[self.navigationController setNavigationBarHidden:YES animated:animated];
 	[self layoutBar];
+	// Starts under the screen edge; viewDidAppear brings it up once the photo
+	// has settled.
+	self.bar.transform = CGAffineTransformMakeTranslation(0,
+			CGRectGetHeight(self.bar.bounds));
 	[[NSNotificationCenter defaultCenter] addObserver:self
 			selector:@selector(keyboardWillChange:)
 			name:UIKeyboardWillChangeFrameNotification object:nil];
+}
+
+- (void)viewDidAppear:(BOOL)animated {
+	[super viewDidAppear:animated];
+	[UIView animateWithDuration:TGAnimationDurationNormal delay:TGAnimationDurationFast
+						options:UIViewAnimationOptionCurveEaseOut animations:^{
+		self.bar.transform = CGAffineTransformIdentity;
+	} completion:nil];
 }
 
 - (void)viewWillDisappear:(BOOL)animated {
@@ -959,7 +1049,8 @@ static UIButton *TGStoryEdgeButton(UIImage *image, id target, SEL action) {
 
 - (void)backTapped {
 	[self.captionField resignFirstResponder];
-	[self.navigationController popViewControllerAnimated:YES];
+	TGStoryCrossFade(self.navigationController);
+	[self.navigationController popViewControllerAnimated:NO];
 }
 
 - (void)backgroundTapped {

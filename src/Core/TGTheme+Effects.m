@@ -62,11 +62,17 @@
 	return [UIColor colorWithWhite:1.0f alpha:0.18f];   ///< shine on iOS 6 buttons
 }
 
+// Both text shadows are an iOS 6 habit. Clear from iOS 7, so the many labels
+// that set them (bubbles, titles, captions) go flat without each one asking.
 - (UIColor *)etchedTextShadowColour {
+	if (![TGTheme drawsSkeuomorphicChrome])
+		return [UIColor clearColor];
 	return [UIColor colorWithWhite:1.0f alpha:0.7f];    ///< light drop shadow under text
 }
 
 - (UIColor *)navBarTextShadowColour {
+	if (![TGTheme drawsSkeuomorphicChrome])
+		return [UIColor clearColor];
 	return [UIColor colorWithWhite:0.0f alpha:0.4f];    ///< dark shadow under nav titles
 }
 

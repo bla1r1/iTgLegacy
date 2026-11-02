@@ -296,6 +296,7 @@ APP_SRC_M := \
 	src/Controllers/TGChatListViewController+Search.m \
 	src/Views/TGChatCell.m \
 	src/Views/TGRecordBar.m \
+	src/Core/TGGhostMode.m \
 	src/Controllers/TGStoryCameraViewController.m \
 	src/Views/TGChatListRowGeometry.m \
 	src/Views/TGStoriesCell.m \

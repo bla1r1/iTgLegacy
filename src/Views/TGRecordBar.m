@@ -69,9 +69,7 @@ static const CGFloat kRecordCancelH = 32.0f;
 		self.sendButton.frame = CGRectMake(width - TGMetricRow,
 				TGCenteredOrigin(height, TGMetricCallControlSide),
 				TGMetricCallControlSide, TGMetricCallControlSide);
-		self.sendButton.backgroundColor = [theme accentColour];
-		self.sendButton.layer.cornerRadius = TGHalf(TGMetricCallControlSide);
-		self.sendButton.layer.masksToBounds = YES;
+		[TGRecordBar paintDisc:self.sendButton colour:[theme accentColour]];
 		[self.sendButton setImage:[TGIcons sendOnAccent] forState:UIControlStateNormal];
 		self.sendButton.tintColor = [theme onAccentColour];
 		self.sendButton.imageEdgeInsets = UIEdgeInsetsZero;
@@ -101,15 +99,83 @@ static const CGFloat kRecordCancelH = 32.0f;
 			: (((NSInteger)(seconds * 2) % 2 == 0) ? TGAlphaOpaque : TGAlphaRingTrack);
 }
 
+- (void)setActionsEnabled:(BOOL)enabled animated:(BOOL)animated {
+	self.pauseButton.enabled = enabled;
+	self.sendButton.enabled = enabled;
+	CGFloat alpha = enabled ? TGAlphaOpaque : TGAlphaDisabled;
+	void (^apply)(void) = ^{
+		self.pauseButton.alpha = alpha;
+		self.sendButton.alpha = alpha;
+	};
+	if (animated)
+		[UIView animateWithDuration:TGAnimationDurationNormal animations:apply];
+	else
+		apply();
+}
+
++ (UIImage *)flipGlyphOfSide:(CGFloat)side colour:(UIColor *)colour {
+	UIGraphicsBeginImageContextWithOptions(CGSizeMake(side, side), NO, 0);
+	CGContextRef ctx = UIGraphicsGetCurrentContext();
+	[colour setStroke];
+	[colour setFill];
+	CGContextSetLineWidth(ctx, TGMetricStrokeIcon);
+	CGContextSetLineCap(ctx, kCGLineCapRound);
+	CGFloat centre = TGHalf(side);
+	CGFloat radius = side * 0.3f;
+	CGFloat trim = 0.55f;
+	CGFloat head = side * 0.16f;
+	const NSInteger steps = 14;
+	for (NSInteger arc = 0; arc < 2; arc++){
+		CGFloat from = arc * (CGFloat)M_PI + trim;
+		CGFloat span = (CGFloat)M_PI - TGDoubled(trim);
+		CGPoint last = CGPointZero;
+		CGFloat heading = 0;
+		for (NSInteger i = 0; i <= steps; i++){
+			CGFloat angle = from + span * i / steps;
+			last = CGPointMake(centre + radius * cosf(angle), centre + radius * sinf(angle));
+			if (i == 0)
+				CGContextMoveToPoint(ctx, last.x, last.y);
+			else
+				CGContextAddLineToPoint(ctx, last.x, last.y);
+			heading = angle + (CGFloat)M_PI_2;
+		}
+		CGContextStrokePath(ctx);
+		CGContextMoveToPoint(ctx, last.x + head * cosf(heading), last.y + head * sinf(heading));
+		CGContextAddLineToPoint(ctx, last.x + head * cosf(heading + 2.2f), last.y + head * sinf(heading + 2.2f));
+		CGContextAddLineToPoint(ctx, last.x + head * cosf(heading - 2.2f), last.y + head * sinf(heading - 2.2f));
+		CGContextClosePath(ctx);
+		CGContextFillPath(ctx);
+	}
+	UIImage *image = UIGraphicsGetImageFromCurrentImageContext();
+	UIGraphicsEndImageContext();
+	return image;
+}
+
 + (UIButton *)discOfSide:(CGFloat)side {
-	TGTheme *theme = [TGTheme shared];
 	UIButton *disc = [UIButton buttonWithType:UIButtonTypeCustom];
 	disc.frame = CGRectMake(0, 0, side, side);
-	disc.backgroundColor = [theme inputBarColour];
-	disc.layer.borderWidth = TGMetricHairline;
-	disc.layer.borderColor = [theme separatorColour].CGColor;
-	disc.layer.cornerRadius = TGHalf(side);
+	[self paintDisc:disc colour:[[TGTheme shared] inputBarColour]];
 	return disc;
+}
+
++ (void)paintDisc:(UIButton *)disc colour:(UIColor *)colour {
+	CGFloat side = disc.bounds.size.width;
+	UIGraphicsBeginImageContextWithOptions(CGSizeMake(side, side), NO, 0);
+	CGRect box = CGRectMake(0, 0, side, side);
+	[colour setFill];
+	[[UIBezierPath bezierPathWithOvalInRect:box] fill];
+	if ([TGTheme drawsSkeuomorphicChrome]){
+		[TGTheme drawGlossOnOvalInRect:box baseColour:colour];
+	} else {
+		CGFloat inset = TGHalf(TGMetricHairline);
+		UIBezierPath *rim = [UIBezierPath bezierPathWithOvalInRect:CGRectInset(box, inset, inset)];
+		[[[TGTheme shared] separatorColour] setStroke];
+		rim.lineWidth = TGMetricHairline;
+		[rim stroke];
+	}
+	UIImage *image = UIGraphicsGetImageFromCurrentImageContext();
+	UIGraphicsEndImageContext();
+	[disc setBackgroundImage:image forState:UIControlStateNormal];
 }
 
 + (UIButton *)onceButton {
@@ -125,7 +191,7 @@ static const CGFloat kRecordCancelH = 32.0f;
 	TGTheme *theme = [TGTheme shared];
 	[button setTitleColor:on ? [theme onAccentColour] : [theme accentColour]
 				 forState:UIControlStateNormal];
-	button.backgroundColor = on ? [theme accentColour] : [theme inputBarColour];
+	[self paintDisc:button colour:on ? [theme accentColour] : [theme inputBarColour]];
 }
 
 @end

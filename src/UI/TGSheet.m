@@ -62,45 +62,34 @@ static TGSheet *sOpenSheet = nil;
 	return self;
 }
 
-+ (UIImage *)topRoundedPlate {
-	CGFloat side = TGDoubled(kEdgeCorner) + 1;
-	UIGraphicsBeginImageContextWithOptions(CGSizeMake(side, side), NO, 0);
-	[[[TGTheme shared] cardBackgroundColour] setFill];
-	[[UIBezierPath bezierPathWithRoundedRect:CGRectMake(0, 0, side, side)
-						   byRoundingCorners:UIRectCornerTopLeft | UIRectCornerTopRight
-								 cornerRadii:CGSizeMake(kEdgeCorner, kEdgeCorner)] fill];
-	UIImage *plate = UIGraphicsGetImageFromCurrentImageContext();
-	UIGraphicsEndImageContext();
-	return [plate resizableImageWithCapInsets:UIEdgeInsetsMake(kEdgeCorner, kEdgeCorner, 0, kEdgeCorner)];
-}
-
 - (UIView *)addCardOfHeight:(CGFloat)height edgeToEdge:(BOOL)edgeToEdge {
 	CGFloat width = edgeToEdge ? self.bounds.size.width
 							   : self.bounds.size.width - TGDoubled(TGMetricCardMargin);
 	UIView *card = [[UIView alloc] initWithFrame:CGRectMake(
 			edgeToEdge ? 0 : TGMetricCardMargin, self.bounds.size.height, width, height)];
-	card.backgroundColor = [[TGTheme shared] cardBackgroundColour];
+	card.backgroundColor = [UIColor clearColor];
+
+	// A stretched image rather than a mask layer: a mask renders the card and
+	// whatever scrolls in it offscreen for every frame, which the A4 cannot
+	// spare. The plate carries the fill and the outline on both OS looks.
+	UIImageView *plate = [[UIImageView alloc] initWithFrame:card.bounds];
+	plate.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
 	if (edgeToEdge){
 		// Only the top corners: the card stands on the screen edge, and a
-		// rounded bottom would show the backdrop through it. A stretched image
-		// rather than a mask layer: a mask renders the card and whatever scrolls
-		// in it offscreen for every frame, which the A4 cannot spare.
-		card.backgroundColor = [UIColor clearColor];
-		UIImageView *plate = [[UIImageView alloc] initWithFrame:card.bounds];
-		plate.image = [TGSheet topRoundedPlate];
-		plate.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-		[card addSubview:plate];
+		// rounded bottom would show the backdrop through it.
+		plate.image = [TGTheme chromePlateImageWithColour:[[TGTheme shared] cardBackgroundColour]
+												   height:height
+											 cornerRadius:kEdgeCorner
+												  corners:UIRectCornerTopLeft | UIRectCornerTopRight
+													  rim:nil];
 	} else {
-		card.layer.cornerRadius = kCorner;
-		card.clipsToBounds = YES;
-		card.layer.borderColor = [[TGTheme shared] separatorColour].CGColor;
-		card.layer.borderWidth = TGMetricHairline;
+		plate.image = [TGTheme chromePlateImageWithColour:[[TGTheme shared] cardBackgroundColour]
+												   height:height
+											 cornerRadius:kCorner
+												  corners:UIRectCornerAllCorners
+													  rim:[[TGTheme shared] separatorColour]];
 	}
-
-	UIView *shine = [[UIView alloc] initWithFrame:CGRectMake(TGMetricPadSmall, 0.5f, width - TGDoubled(TGMetricPadSmall), 1.0f)];
-	shine.backgroundColor = [[TGTheme shared] skeuoShineColour];
-	shine.userInteractionEnabled = NO;
-	[card addSubview:shine];
+	[card addSubview:plate];
 
 	[_cards addObject:card];
 	[_edgeFlags addObject:@(edgeToEdge)];

@@ -79,11 +79,12 @@ static NSString *ORDocPath(void) {
 	NSString *path = [NSTemporaryDirectory() stringByAppendingPathComponent:
 			@"once-test.mov"];
 	[@"/" writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:nil];
-	[c sendVideoNoteAtPath:path duration:13 toChat:42 thread:0 viewOnce:YES];
+	[c sendVideoNoteAtPath:path duration:13 length:360 toChat:42 thread:0 viewOnce:YES];
 
 	NSDictionary *content = lastRO(c, @"sendMessage")
 			[@"input_message_content"];
 	XCTAssertEqualObjects(content[@"@type"], @"inputMessageVideoNote");
+	XCTAssertEqualObjects(content[@"video_note"][@"length"], @(360));
 	XCTAssertEqualObjects(content[@"self_destruct_type"][@"@type"],
 			@"messageSelfDestructTypeImmediately");
 }
