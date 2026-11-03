@@ -8,7 +8,6 @@
 #import "TGStyle.h"
 #import "TGAlertSheet.h"
 #import "TGEmptyView.h"
-#import "TGDevShowcase.h"
 #import "TGImageLruCache.h"
 
 /// Avatars kept decoded while the list is open.
@@ -184,11 +183,6 @@ static NSArray *TGContactSections(NSArray *users) {
 		if (!me)
 			return;
 		NSMutableArray *list = [NSMutableArray arrayWithArray:users ?: @[]];
-		// The showcase people are a signed-out fixture. On a real account an
-		// empty contact list must stay empty, so the empty view can show.
-		if (list.count == 0 && ![[TGClient shared] hasSignedInAccount]) {
-			[list addObjectsFromArray:[TGDevShowcase allShowcaseContacts]];
-		}
 		me.users = [list sortedArrayUsingComparator:^NSComparisonResult(id a, id b){
 			return [TGContactName(a) localizedCaseInsensitiveCompare:TGContactName(b)];
 		}];
@@ -351,9 +345,6 @@ static NSString *TGContactName(NSDictionary *u) {
 	NSNumber *fileId = u[@"photoFileId"];
 	UIImage *photo = [fileId isKindOfClass:NSNumber.class] ? self.photos[fileId] : nil;
 	int64_t uid = [u[@"id"] longLongValue];
-	if (![[TGClient shared] hasSignedInAccount] && (uid == 20002 || uid == 10001)) {
-		photo = [TGDevShowcase avatarForUserId:uid];
-	}
 	if (!photo)
 		photo = [TGIcons avatarWithInitials:
 					(name.length ? [name substringToIndex:1].uppercaseString : @"?")
@@ -474,25 +465,6 @@ static NSString *TGContactName(NSDictionary *u) {
 	}
 	NSString *name = TGContactName(u);
 	int64_t uid = [u[@"id"] longLongValue];
-	if (![[TGClient shared] hasSignedInAccount]) {
-		// Signed-out bench only: real users can carry these ids too.
-		if (uid == 20002) {
-			TGChatViewController *vc = [[TGChatViewController alloc] init];
-			vc.chatId = kDevDurovChatId;
-			vc.chatTitle = name;
-			vc.hidesBottomBarWhenPushed = YES;
-			[self.navigationController pushViewController:vc animated:YES];
-			return;
-		} else if (uid == 10001) {
-			TGChatViewController *vc = [[TGChatViewController alloc] init];
-			vc.chatId = kDevBotChatId;
-			vc.chatTitle = name;
-			vc.hidesBottomBarWhenPushed = YES;
-			[self.navigationController pushViewController:vc animated:YES];
-			return;
-		}
-	}
-
 	__weak typeof(self) weakSelf = self;
 
 	[[TGClient shared] privateChatWithUser:[u[@"id"] longLongValue]

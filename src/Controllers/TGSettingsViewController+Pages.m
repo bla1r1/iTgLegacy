@@ -4,6 +4,7 @@
 #import "TGListViewController.h"
 #import "TGStyle.h"
 #import "TGGalleryViewController.h"
+#import "TGGhostMode.h"
 #import "AppDelegate.h"
 #import "TGChatViewController.h"
 #import "TGDevShowcase.h"
@@ -65,7 +66,11 @@ static NSArray *TGCustomResultRows(NSString *result) {
 		case TGSettingsPageAutosave:      return [self autosaveSections];
 		case TGSettingsPageWallpaper:     return [self wallpaperSections];
 		case TGSettingsPagePaymentData:   return [self paymentSections];
+#if TG_DEV
 		case TGSettingsPageDebug:         return [self debugSections];
+		case TGSettingsPageLanguageDev:   return [self languageDevSections];
+		case TGSettingsPagePaymentDev:    return [self paymentDevSections];
+#endif
 		default:                          return [self rootSections];
 	}
 }
@@ -148,7 +153,6 @@ static NSArray *TGCustomResultRows(NSString *result) {
 				stories.hidesBottomBarWhenPushed = YES;
 				[weakSelf.navigationController pushViewController:stories animated:YES];
 			}),
-			[weakSelf tier2ToolsRow],
 			TGIconTapRow(@"Proxy", proxyDetail, @"data", TGIconTileGrey(), ^{
 				[weakSelf openPage:TGSettingsPageProxy];
 			}),
@@ -237,11 +241,6 @@ static NSArray *TGCustomResultRows(NSString *result) {
 			}),
 		]),
 
-		// Emoji status, profile audio, text styles and the stake dice panel:
-		// the profile-extras wave answers from one category and the root list
-		// only places it.
-		[[self tier2Sections] firstObject] ?: TGSection(nil, nil, @[]),
-
 		TGSection(nil, nil, @[
 			TGRedRow(@"Log out", ^{
 				[TGAlertSheet showConfirm:@"Are you sure you want to log out?"
@@ -276,6 +275,18 @@ static NSArray *TGCustomResultRows(NSString *result) {
 	if (!rows.count)
 		[rows addObject:TGRow(TGKindPlain, @"Loading...")];
 
+	return @[
+		TGSection(nil,
+			@"This app's own text is English throughout. The language is what "
+			@"Telegram itself writes in, and it follows the account onto your "
+			@"other devices.", rows),
+	];
+}
+
+#if TG_DEV
+/// Reading and writing packs string by string is a console, not a language picker.
+- (NSArray *)languageDevSections {
+	__weak typeof(self) weakSelf = self;
 	NSString *code = self.countryCode ?: @"US";
 	NSString *countryName = self.countryInfo[@"name"] ?: code;
 	NSString *flag = self.countryFlag.length ? self.countryFlag
@@ -333,10 +344,6 @@ static NSArray *TGCustomResultRows(NSString *result) {
 	];
 
 	return @[
-		TGSection(nil,
-			@"This app's own text is English throughout. The language is what "
-			@"Telegram itself writes in, and it follows the account onto your "
-			@"other devices.", rows),
 		TGSection(@"Country",
 			@"Telegram answers the country's name, flag and preferred language; "
 			@"the code is the two-letter ISO one.", countryRows),
@@ -630,6 +637,8 @@ static NSArray *TGCustomResultRows(NSString *result) {
 	}];
 }
 
+#endif
+
 - (void)refreshLanguagePage {
 	[self rebuild];
 	[self loadForPage];
@@ -760,7 +769,9 @@ static NSString *TGCallDebugText(NSDictionary *call) {
 		}
 
 		NSMutableDictionary *row = [TGSubtitleRow(call[@"name"], detail, ^{
+#if TG_DEV
 			[weakSelf runRecentCallActionFor:call];
+#endif
 		}) mutableCopy];
 		if (missed)
 			row[TGRowKind] = TGKindDestructive;
@@ -769,6 +780,7 @@ static NSString *TGCallDebugText(NSDictionary *call) {
 	return @[TGSection(nil, nil, rows)];
 }
 
+#if TG_DEV
 /// A finished call leaves a message, and that message is an InputCall. The
 /// action sheet offers the two diagnostics TDLib accepts for one, and shows
 /// Telegram's own sentence when it refuses - a user account usually is.
@@ -820,6 +832,7 @@ static NSString *TGCallDebugText(NSDictionary *call) {
 		}];
 	}];
 }
+#endif
 
 #pragma mark - orders and payment data
 
@@ -903,29 +916,10 @@ static NSString *TGOrderLines(NSDictionary *order) {
 		TGSection(@"Saved order",
 				  @"The checkout Telegram remembers: name, phone, email and "
 				  @"shipping address from the last payment.", orderRows),
-
-		TGSection(@"Bank card",
-				  @"The number is looked up, not stored. Telegram's provider "
-				  @"answers with the card's title and the links its own page "
-				  @"opens.", @[
-			TGActionRow(@"Look Up a Card", ^{ [weakSelf showBankCardLookup]; }),
-		]),
-
-		TGSection(@"Suggested post offer",
-				  @"An offer puts a Stars price on a suggested post in a channel "
-				  @"direct-messages chat. The message has to allow it; otherwise "
-				  @"Telegram's refusal is shown.", @[
-			TGActionRow(@"Add an Offer", ^{ [weakSelf addOfferFlow]; }),
-		]),
-
-		TGSection(@"Order validation",
-				  @"Checks an order against a named invoice and reads back the "
-				  @"shipping options Telegram offers. Nothing is charged.", @[
-			TGActionRow(@"Validate an Order", ^{ [weakSelf validateOrderFlow]; }),
-		]),
 	];
 }
 
+#if TG_DEV
 - (void)showBankCardLookup {
 	__weak typeof(self) weakSelf = self;
 	[TGAlertSheet showInput:@"Look Up a Card"
@@ -1138,9 +1132,8 @@ static NSString *TGOrderLines(NSDictionary *order) {
 	[self rebuild];
 }
 
-/// Their Debug Menu, with what is actually inspectable on this build. Reached
-/// by ten taps on the version, and linked from nowhere - the same bargain
-/// their client makes.
+/// Dev mode's settings tab: what the build is, and every console that has no
+/// place in a person's settings.
 - (NSArray *)debugSections {
 	__weak typeof(self) weakSelf = self;
 	NSDictionary *info = [NSBundle mainBundle].infoDictionary;
@@ -1168,16 +1161,31 @@ static NSString *TGOrderLines(NSDictionary *order) {
 	[facts addObject:TGTapRow(@"Theme", [[TGTheme shared] currentThemeId], nil)];
 
 	return @[
-		TGSection(@"Dev & Showcase",
-				  @"Interactive showcase for all 30 TDLib message types, vector Lottie (.tgs), and VP9 video (.webm) stickers.", @[
-			TGTapRow(@"Open Message Types Showcase Chat", nil, ^{
-				TGChatViewController *chat = [[TGChatViewController alloc] init];
-				chat.chatId = kDevChatId;
-				chat.chatTitle = @"Dev Showcase";
-				chat.isGroup = YES;
-				chat.hidesBottomBarWhenPushed = YES;
-				[weakSelf.navigationController pushViewController:chat animated:YES];
+		TGSection(@"Test Account",
+				  @"Ghost mode keeps this client offline and marks nothing read, for "
+				  @"checks on a real account. It applies from the next launch too.", @[
+			TGSwitchRow(@"Ghost Mode", TGGhostModeOn(), ^(BOOL on){
+				[[NSUserDefaults standardUserDefaults] setBool:on forKey:@"TGGhostMode"];
+				[[NSUserDefaults standardUserDefaults] synchronize];
+				TGGhostModeSetOn(on);
 			}),
+		]),
+
+		TGSection(@"Consoles",
+				  @"Screens that send one request and show the answer.", @[
+			TGTapRow(@"Language Packs", @"Read and write strings, custom packs", ^{
+				[weakSelf openPage:TGSettingsPageLanguageDev];
+			}),
+			TGTapRow(@"Invoice Tools", @"Card lookup, offers, order validation", ^{
+				[weakSelf openPage:TGSettingsPagePaymentDev];
+			}),
+			[weakSelf tier2ToolsRow],
+			[weakSelf tier2ProxyCarrierRow],
+		]),
+
+		[[weakSelf tier2Sections] firstObject] ?: TGSection(nil, nil, @[]),
+
+		TGSection(@"Components", nil, @[
 			// The component gallery is a development surface, not a setting.
 			// It sat in Appearance next to the theme picker, where a user had
 			// no reason to open it.
@@ -1241,18 +1249,6 @@ static NSString *TGOrderLines(NSDictionary *order) {
 				TGStarsGiftsViewController *stars = [[TGStarsGiftsViewController alloc] init];
 				stars.hidesBottomBarWhenPushed = YES;
 				[weakSelf.navigationController pushViewController:stars animated:YES];
-			}),
-		]),
-
-		TGSection(@"Dev Harness",
-				  @"Preview rich media, interactive polls, audio tracks, and custom stickers.", @[
-			TGTapRow(@"Open Dev Showcase Chat", @"30 message types", ^{
-				TGChatViewController *vc = [[TGChatViewController alloc] init];
-				vc.chatId = kDevChatId;
-				vc.chatTitle = @"Dev Showcase";
-				vc.isGroup = YES;
-				vc.hidesBottomBarWhenPushed = YES;
-				[weakSelf.navigationController pushViewController:vc animated:YES];
 			}),
 		]),
 
@@ -1849,6 +1845,33 @@ static NSString *TGOrderLines(NSDictionary *order) {
 		]),
 	];
 }
+
+/// Provider lookups and order checks with nothing behind them to buy.
+- (NSArray *)paymentDevSections {
+	__weak typeof(self) weakSelf = self;
+	return @[
+		TGSection(@"Bank card",
+				  @"The number is looked up, not stored. Telegram's provider "
+				  @"answers with the card's title and the links its own page "
+				  @"opens.", @[
+			TGActionRow(@"Look Up a Card", ^{ [weakSelf showBankCardLookup]; }),
+		]),
+
+		TGSection(@"Suggested post offer",
+				  @"An offer puts a Stars price on a suggested post in a channel "
+				  @"direct-messages chat. The message has to allow it; otherwise "
+				  @"Telegram's refusal is shown.", @[
+			TGActionRow(@"Add an Offer", ^{ [weakSelf addOfferFlow]; }),
+		]),
+
+		TGSection(@"Order validation",
+				  @"Checks an order against a named invoice and reads back the "
+				  @"shipping options Telegram offers. Nothing is charged.", @[
+			TGActionRow(@"Validate an Order", ^{ [weakSelf validateOrderFlow]; }),
+		]),
+	];
+}
+#endif
 
 - (void)openResolvedChat:(int64_t)chatId title:(NSString *)title {
 	if (!chatId){

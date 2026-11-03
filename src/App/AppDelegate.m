@@ -53,6 +53,7 @@ static void TGSetAuthorizedSession(BOOL authorized) {
 	[[NSUserDefaults standardUserDefaults] setBool:authorized forKey:key];
 }
 
+#if TG_DEV
 static void TGDevCommandNotifyCallback(CFNotificationCenterRef center, void *observer, CFStringRef name, const void *object, CFDictionaryRef userInfo) {
 	NSString *cmd = [NSString stringWithContentsOfFile:@"/tmp/itg_cmd.txt" encoding:NSUTF8StringEncoding error:nil];
 	if (!cmd.length) return;
@@ -65,6 +66,7 @@ static void TGDevCommandNotifyCallback(CFNotificationCenterRef center, void *obs
 		});
 	}
 }
+#endif
 
 - (BOOL)application:(UIApplication *)application
 		didFinishLaunchingWithOptions:(NSDictionary *)launchOptions
@@ -85,8 +87,10 @@ static void TGDevCommandNotifyCallback(CFNotificationCenterRef center, void *obs
 	double launchStart = TGPerfNow();
 	TGWatchForIncomingCalls();
 
+#if TG_DEV
 	// Listen for developer automation commands via Darwin notification
 	CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, TGDevCommandNotifyCallback, CFSTR("org.legacy.itg.cmd"), NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
+#endif
 
 	application.applicationIconBadgeNumber = 0;
 	self.showNotifications = [[NSUserDefaults standardUserDefaults] boolForKey:@"showNotifications"];

@@ -1,7 +1,6 @@
 //
-// TGSettingsViewController+Tier2.m - the Settings rows added after the root
-// page was first drawn: Telegram Business, the web proxy carrier, the
-// communities/AI hub, and the profile extras.
+// TGSettingsViewController+Tier2.m - the Telegram Business row, and in dev builds
+// the web proxy carrier, the communities/AI hub and the profile extras.
 //
 // The rows live in a category so the root list gains calls, not branches:
 // a later screen that wants one of them can ask for the same row too.
@@ -27,6 +26,7 @@
 	});
 }
 
+#if TG_DEV
 - (NSDictionary *)tier2ProxyCarrierRow {
 	__weak typeof(self) weakSelf = self;
 	return TGIconTapRow(@"Web Proxy Carrier",
@@ -89,6 +89,7 @@
 		]),
 	];
 }
+#endif
 
 @end
 

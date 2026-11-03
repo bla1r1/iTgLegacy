@@ -15,7 +15,7 @@ for arg in "$@"; do
 done
 
 echo "[+] Building armv7 binary..."
-make ipa-armv7
+make DEV=1 ipa-armv7
 
 DEVICE_UDID="$(idevice_id -l 2>/dev/null | head -1)"
 if [ -z "$DEVICE_UDID" ]; then
@@ -36,7 +36,7 @@ SCP_CMD="sshpass -p alpine scp -O -P 2222 -o UserKnownHostsFile=/dev/null -o Hos
 
 if [ "$DO_FULL" -eq 1 ]; then
     echo "[+] Performing full IPA install via ideviceinstaller..."
-    ideviceinstaller -u "$DEVICE_UDID" install "$ROOT/build/ipa/LegacyTG-armv7.ipa"
+    ideviceinstaller -u "$DEVICE_UDID" install "$ROOT/build/ipa/LegacyTG-armv7-dev.ipa"
     echo "[+] Full install complete!"
     exit 0
 fi
@@ -46,7 +46,7 @@ REMOTE_APP_DIR="$($SSH_CMD "find /var/containers/Bundle/Application /var/mobile/
 
 if [ -z "$REMOTE_APP_DIR" ]; then
     echo "[!] App not found on device. Performing first-time full install..."
-    ideviceinstaller -u "$DEVICE_UDID" install "$ROOT/build/ipa/LegacyTG-armv7.ipa"
+    ideviceinstaller -u "$DEVICE_UDID" install "$ROOT/build/ipa/LegacyTG-armv7-dev.ipa"
     echo "[+] Installed!"
     exit 0
 fi

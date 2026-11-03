@@ -46,7 +46,7 @@ CFLAGS  := \
     -fobjc-arc \
     -fmodules \
     -O0 -g \
-    -DDEBUG=1
+    -DDEBUG=1 -DTG_DEV=1
 
 LDFLAGS := \
     $(if $(SDK),-isysroot $(SDK),) \

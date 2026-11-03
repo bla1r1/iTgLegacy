@@ -21,7 +21,7 @@ set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUNDLE_ID="org.legacy.itg"
-IPA="$ROOT/build/ipa/LegacyTG-armv7.ipa"
+IPA="$ROOT/build/ipa/LegacyTG-armv7-dev.ipa"
 LOGDIR="$ROOT/build/devlogs"
 STAMP="$(date +%Y%m%d-%H%M%S)"
 
@@ -89,7 +89,7 @@ wait_for_device() {
 # ------------------------------------------------------------------ build ---
 build() {
 	say "building armv7"
-	if ! make -C "$ROOT" ipa-armv7 > "$LOGDIR/build-$STAMP.log" 2>&1; then
+	if ! make -C "$ROOT" DEV=1 ipa-armv7 > "$LOGDIR/build-$STAMP.log" 2>&1; then
 		echo "BUILD FAILED - see $LOGDIR/build-$STAMP.log" >&2
 		grep -iE "error:|fixup error|Undefined symbols" "$LOGDIR/build-$STAMP.log" | head -20 >&2
 		return 1

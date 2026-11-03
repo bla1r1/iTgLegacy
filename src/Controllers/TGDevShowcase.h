@@ -4,6 +4,8 @@
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
 
+#if TG_DEV
+
 #define kDevChatId -7777777LL
 #define kDevDurovChatId -7777778LL
 #define kDevBotChatId -7777779LL
@@ -27,3 +29,8 @@
 + (UIImage *)trackArtwork;
 
 @end
+
+#define TGIsDevChat(chatId) [TGDevShowcase isDevChatId:(chatId)]
+#else
+#define TGIsDevChat(chatId) NO
+#endif

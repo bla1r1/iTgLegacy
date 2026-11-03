@@ -22,13 +22,21 @@
 
 ROOT_DIR   := $(shell pwd)
 BUILD_DIR  := $(ROOT_DIR)/build
+
+# DEV=1 is the build scripts/devrun.sh makes: dev mode, fixtures, bench and the
+# automation URLs. Those URLs drive the app from any web page, so a build without
+# it has to carry none of them: scripts/check_release.sh looks at the binary.
+DEV ?= 0
+ifeq ($(DEV),1)
+DEV_SUFFIX := -dev
+endif
 MACHOFIX   := $(BUILD_DIR)/tools/machofix
 APP_NAME   := LegacyTG
 IPA_DIR    := $(BUILD_DIR)/ipa
 
 IPA_FILE   := $(IPA_DIR)/$(APP_NAME).ipa
-IPA_ARMV7  := $(IPA_DIR)/$(APP_NAME)-armv7.ipa
-IPA_ARM64  := $(IPA_DIR)/$(APP_NAME)-arm64.ipa
+IPA_ARMV7  := $(IPA_DIR)/$(APP_NAME)-armv7$(DEV_SUFFIX).ipa
+IPA_ARM64  := $(IPA_DIR)/$(APP_NAME)-arm64$(DEV_SUFFIX).ipa
 
 # Compiler & Toolchain
 XCODE_DEV   := /Applications/Xcode-beta.app/Contents/Developer
@@ -96,6 +104,16 @@ INCLUDES  := -I$(ROOT_DIR)/include \
              -F$(ROOT_DIR)/libs
 
 DEFINES   :=
+ifeq ($(DEV),1)
+DEFINES   += -DTG_DEV=1
+ADD_DEV_SCHEMES = /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0 dict" \
+	-c "Add :CFBundleURLTypes:0:CFBundleURLName string org.legacy.itg.devrun" \
+	-c "Add :CFBundleURLTypes:0:CFBundleURLSchemes array" \
+	-c "Add :CFBundleURLTypes:0:CFBundleURLSchemes:0 string legacytg" \
+	-c "Add :CFBundleURLTypes:0:CFBundleURLSchemes:1 string itglegacy" "$(1)"
+else
+ADD_DEV_SCHEMES = true
+endif
 
 WEBP_ARMV7 := -F$(ROOT_DIR)/libs -framework WebP
 WEBP_ARM64 := -L$(BUILD_DIR)/arm64/libs -lwebp
@@ -310,6 +328,7 @@ APP_SRC_M := \
 	src/Views/TGMemberCell.m \
 	src/Views/TGBubbleCell.m \
 	src/Controllers/TGDevShowcase.m \
+	src/Controllers/TGDevModeViewController.m \
 	src/Controllers/TGChatViewController.m \
 	src/Controllers/TGChatViewController+Selection.m \
 	src/Controllers/TGChatViewController+Audio.m \
@@ -450,7 +469,27 @@ APP_SRC_C := \
 	src/Calls/TGCallCrypto.c
 
 # Object mapping for armv7
-ARMV7_OBJ_DIR := $(BUILD_DIR)/armv7/obj
+# Reached only from dev mode.
+DEV_SRC_M := \
+	src/App/TGBench.m \
+	src/Controllers/TGDevShowcase.m \
+	src/Controllers/TGDevModeViewController.m \
+	src/Controllers/TGGalleryViewController.m \
+	src/Controllers/TGTestHarnessViewController.m \
+	src/Controllers/TGEnvironmentViewController.m \
+	src/Controllers/TGTier2HubViewController.m \
+	src/Controllers/TGCommunitiesViewController.m \
+	src/Controllers/TGCommunityViewController.m \
+	src/Controllers/TGWebProxyCarrierViewController.m \
+	src/Controllers/TGTextStylesViewController.m \
+	src/Controllers/TGMessageToolsViewController.m \
+	src/Controllers/TGSuggestedPostViewController.m \
+	src/Controllers/TGAiComposeViewController.m
+ifneq ($(DEV),1)
+APP_SRC_M := $(filter-out $(DEV_SRC_M),$(APP_SRC_M))
+endif
+
+ARMV7_OBJ_DIR := $(BUILD_DIR)/armv7/obj$(DEV_SUFFIX)
 ARMV7_LIBTG_OBJS := $(patsubst %.c,$(ARMV7_OBJ_DIR)/%.o,$(LIBTG_SRC_C)) \
                     $(patsubst %.cpp,$(ARMV7_OBJ_DIR)/%.o,$(LIBTG_SRC_CXX))
 ARMV7_VOIP_OBJS  := $(patsubst %.cpp,$(ARMV7_OBJ_DIR)/%.o,$(VOIP_SRC_CXX)) \
@@ -464,7 +503,7 @@ ARMV7_APP_OBJS   := $(patsubst %.m,$(ARMV7_OBJ_DIR)/%.o,$(APP_SRC_M)) \
 ARMV7_ALL_OBJS   := $(ARMV7_LIBTG_OBJS) $(ARMV7_APP_OBJS)
 
 # Object mapping for arm64
-ARM64_OBJ_DIR := $(BUILD_DIR)/arm64/obj
+ARM64_OBJ_DIR := $(BUILD_DIR)/arm64/obj$(DEV_SUFFIX)
 ARM64_LIBTG_OBJS := $(patsubst %.c,$(ARM64_OBJ_DIR)/%.o,$(LIBTG_SRC_C)) \
                     $(patsubst %.cpp,$(ARM64_OBJ_DIR)/%.o,$(LIBTG_SRC_CXX))
 ARM64_VOIP_OBJS  := $(patsubst %.cpp,$(ARM64_OBJ_DIR)/%.o,$(VOIP_SRC_CXX)) \
@@ -547,6 +586,7 @@ ipa-armv7: $(MACHOFIX) $(ARMV7_ALL_OBJS)
 		-L$(BUILD_DIR)/armv7/libs -L$(BUILD_DIR)/armv7/tdlib/lib -L$(ROOT_DIR)/third_party/opus/lib \
 		$(ARMV7_ALL_OBJS) $(FRAMEWORKS) $(WEBP_ARMV7) $(TDLIB_LIBS) $(DEPS_LIBS) -o "$(BUILD_DIR)/armv7/app/$(APP_NAME).app/$(APP_NAME)"
 	@cp -f "$(ROOT_DIR)/resources/Info.plist" "$(BUILD_DIR)/armv7/app/$(APP_NAME).app/Info.plist" 2>/dev/null || true
+	@$(call ADD_DEV_SCHEMES,$(BUILD_DIR)/armv7/app/$(APP_NAME).app/Info.plist)
 	@cp -f "$(ROOT_DIR)/resources/fonts/"*.ttf "$(BUILD_DIR)/armv7/app/$(APP_NAME).app/" 2>/dev/null || true
 	@cp -f "$(ROOT_DIR)/resources/sounds/"*.mp3 "$(BUILD_DIR)/armv7/app/$(APP_NAME).app/" 2>/dev/null || true
 	@cp -rf "$(ROOT_DIR)/images/"* "$(BUILD_DIR)/armv7/app/$(APP_NAME).app/" 2>/dev/null || true
@@ -569,6 +609,7 @@ ipa-arm64: $(ARM64_ALL_OBJS)
 		-L$(BUILD_DIR)/arm64/libs -L$(BUILD_DIR)/arm64/tdlib64 -L$(ROOT_DIR)/third_party/opus/lib \
 		$(ARM64_ALL_OBJS) $(FRAMEWORKS) $(WEBP_ARM64) $(TDLIB_LIBS_ARM64) $(DEPS_LIBS) -o "$(BUILD_DIR)/arm64/app/$(APP_NAME).app/$(APP_NAME)"
 	@cp -f "$(ROOT_DIR)/resources/Info.plist" "$(BUILD_DIR)/arm64/app/$(APP_NAME).app/Info.plist" 2>/dev/null || true
+	@$(call ADD_DEV_SCHEMES,$(BUILD_DIR)/arm64/app/$(APP_NAME).app/Info.plist)
 	@cp -f "$(ROOT_DIR)/resources/fonts/"*.ttf "$(BUILD_DIR)/arm64/app/$(APP_NAME).app/" 2>/dev/null || true
 	@cp -f "$(ROOT_DIR)/resources/sounds/"*.mp3 "$(BUILD_DIR)/arm64/app/$(APP_NAME).app/" 2>/dev/null || true
 	@cp -rf "$(ROOT_DIR)/images/"* "$(BUILD_DIR)/arm64/app/$(APP_NAME).app/" 2>/dev/null || true

@@ -20,6 +20,7 @@ static const CGFloat kIconDumpSide = 52.0f;
 #import "TGEditProfileViewController.h"
 #import "TGProfileViewControllerInternal.h"
 #import "TGDevShowcase.h"
+#import "TGDevModeViewController.h"
 #import "TGTopicsViewController.h"
 #import "TGGalleryViewController.h"
 #import "TGVideoNoteRecorder.h"
@@ -37,11 +38,34 @@ static const CGFloat kIconDumpSide = 52.0f;
 
 - (UITabBarController *)activeTabBarController {
 	UIViewController *root = self.rootViewController ?: self.window.rootViewController;
+#if TG_DEV
+	// Dev mode sits over the app, so the routes act on what is on screen.
+	if ([root.presentedViewController isKindOfClass:[UITabBarController class]])
+		return (UITabBarController *)root.presentedViewController;
+#endif
 	if ([root isKindOfClass:[UITabBarController class]]) {
 		return (UITabBarController *)root;
 	}
 	return nil;
 }
+
+#if !TG_DEV
+
+// tg:// and telegram:// links are not followed yet, and nothing else is accepted.
+- (BOOL)application:(UIApplication *)application
+            openURL:(NSURL *)url
+  sourceApplication:(NSString *)sourceApplication
+         annotation:(id)annotation
+{
+	return NO;
+}
+
+- (BOOL)application:(UIApplication *)application handleOpenURL:(NSURL *)url
+{
+	return NO;
+}
+
+#else
 
 #pragma mark - remote control by URL
 
@@ -74,6 +98,30 @@ static const CGFloat kIconDumpSide = 52.0f;
 	NSString *host = url.host;
 	NSString *arg = [url.path stringByReplacingOccurrencesOfString:@"/" withString:@""];
 	NSLog(@"handleOpenURL: %@", host ?: @"(launch)");
+
+	// itglegacy://devmode[/close] - what three taps on Chats opens.
+	if ([host isEqualToString:@"devmode"]){
+		dispatch_async(dispatch_get_main_queue(), ^{
+			UIViewController *root = self.rootViewController ?: self.window.rootViewController;
+			if ([arg isEqualToString:@"close"])
+				[root dismissViewControllerAnimated:NO completion:nil];
+			else
+				[TGDevModeViewController presentFrom:root];
+		});
+		return YES;
+	}
+
+	// itglegacy://tabtaps/<count> - that many taps on the Chats tab, through the
+	// tab bar's delegate. An ssh round trip is too slow to make them one by one.
+	if ([host isEqualToString:@"tabtaps"]){
+		dispatch_async(dispatch_get_main_queue(), ^{
+			UITabBarController *tabs = [self activeTabBarController];
+			for (NSInteger i = 0; i < [arg integerValue]; i++)
+				[tabs.delegate tabBarController:tabs
+					 shouldSelectViewController:tabs.viewControllers.firstObject];
+		});
+		return YES;
+	}
 
 	if ([host isEqualToString:@"phone"] && arg.length){
 		self.currentPhoneNumber = arg;
@@ -297,7 +345,6 @@ static const CGFloat kIconDumpSide = 52.0f;
 
 			TGChatListViewController *chatList = (TGChatListViewController *)[nc.viewControllers firstObject];
 			NSArray *chats = [chatList isKindOfClass:[TGChatListViewController class]] ? [chatList visibleChats] : [TGClient shared].chats;
-			if (!chats.count) chats = [TGDevShowcase allShowcaseChats];
 			NSInteger idx = [arg integerValue];
 			if (idx < 0 || idx >= (NSInteger)chats.count){
 				NSLog(@"chatindex %ld out of range (%lu)",
@@ -1209,5 +1256,7 @@ static const CGFloat kIconDumpSide = 52.0f;
 
 	return YES;
 }
+
+#endif
 
 @end

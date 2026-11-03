@@ -553,9 +553,11 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 
 	[items addObject:@{@"title" : @"Copy Link", @"icon" : @"copy"}];
 	[items addObject:@{@"title" : @"Forward", @"icon" : @"forward"}];
+#if TG_DEV
 	// One row for the Tier 2 message tools: checklists, suggested posts,
 	// fact checks and the AI/rich requests that read this one message.
 	[items addObject:@{@"title" : @"Message Tools", @"icon" : @"data"}];
+#endif
 
 	// A channel post with a discussion group: the row that was only the bar
 	// under the bubble is also one tap from the hold, where Telegram puts it.
@@ -622,17 +624,23 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 		[items addObject:@{@"title" : @"Replace Photo", @"icon" : @"react"}];
 
 	[items addObject:@{@"title" : @"Message Info", @"icon" : @"data"}];
+#if TG_DEV
 	[items addObject:@{@"title" : @"Shared Media Map", @"icon" : @"data"}];
+#endif
+#if TG_DEV
 	// The message's own effect, or the server's list when this message has
 	// none: either way the sheet can name an effect and fetch it live.
 	if ([m[@"effectId"] longLongValue] > 0 ||
 			[TGClient shared].availableMessageEffectIds.count ||
 			[TGClient shared].availableStickerEffectIds.count)
 		[items addObject:@{@"title" : @"Message Effects", @"icon" : @"react"}];
+#endif
 
 	// A dice or a ball is a message whose whole point is the tap.
+#if TG_DEV
 	if ([m[@"kind"] isEqualToString:@"messageAnimatedEmoji"])
 		[items addObject:@{@"title" : @"Click Emoji", @"icon" : @"react"}];
+#endif
 	// A bot's buttons are the message's furniture; a bot account can take
 	// them off, and the row is where that interaction already lives.
 	if ([m[@"inlineRows"] count])
@@ -655,7 +663,9 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 	if ([m[@"kind"] isEqualToString:@"messageLocation"] ||
 			[m[@"kind"] isEqualToString:@"messageLiveLocation"]){
 		[items addObject:@{@"title" : @"Recent Locations", @"icon" : @"data"}];
+#if TG_DEV
 		[items addObject:@{@"title" : @"Weather Here", @"icon" : @"data"}];
+#endif
 	}
 
 	// Speech recognition is Telegram's, not the device's. A voice or video
@@ -663,12 +673,16 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 	if ([m[@"kind"] isEqualToString:@"messageVoiceNote"] ||
 			[m[@"kind"] isEqualToString:@"messageVideoNote"]){
 		[items addObject:@{@"title" : @"Transcribe", @"icon" : @"data"}];
+#if TG_DEV
 		[items addObject:@{@"title" : @"Rate Transcription", @"icon" : @"react"}];
+#endif
 	}
 
+#if TG_DEV
 	// A video message can carry advertisements around its playback.
 	if ([m[@"kind"] isEqualToString:@"messageVideo"])
 		[items addObject:@{@"title" : @"Video Advertisements", @"icon" : @"data"}];
+#endif
 
 	// A game message's score table belongs to the bot serving the game. The
 	// row is here because this is the message's own More menu, which is the
@@ -772,6 +786,7 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 		[self showMoreActions];
 		return;
 
+#if TG_DEV
 	} else if ([action isEqualToString:@"Message Tools"]){
 		TGMessageToolsViewController *tools = [[TGMessageToolsViewController alloc] init];
 		tools.chatId = self.chatId;
@@ -786,6 +801,7 @@ static NSInteger TGStickerFileId(NSDictionary *m) {
 		tools.hidesBottomBarWhenPushed = YES;
 		[self.navigationController pushViewController:tools animated:YES];
 
+#endif
 	} else if ([action isEqualToString:@"Show 1 Reply"] ||
 			   [action hasPrefix:@"Show "] ||
 			   [action isEqualToString:@"Leave a Comment"]){

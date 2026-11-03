@@ -26,9 +26,10 @@ typedef NS_ENUM(NSInteger, TGSettingsPage) {
 	/// TDLib keeps while the app is running.
 	TGSettingsPageNotificationSounds,
 	TGSettingsPageActiveNotifications,
-	/// Reached by tapping the version under the root list ten times, the way
-	/// their Debug Menu is. Not linked from anywhere.
-	TGSettingsPageDebug
+	/// Dev mode's settings tab and the consoles under it. Dev builds only.
+	TGSettingsPageDebug,
+	TGSettingsPageLanguageDev,
+	TGSettingsPagePaymentDev
 };
 
 @interface TGSettingsViewController : UITableViewController

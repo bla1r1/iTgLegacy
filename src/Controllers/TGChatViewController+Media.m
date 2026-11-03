@@ -68,9 +68,11 @@
 /// until the track bubble existed.
 - (UIImage *)artworkForTrack:(NSDictionary *)m {
 	NSNumber *coverId = m[@"albumCoverId"];
-	if ([TGDevShowcase isDevChatId:self.chatId] || (coverId && coverId.longLongValue < 0)) {
+#if TG_DEV
+	if (TGIsDevChat(self.chatId) || (coverId && coverId.longLongValue < 0)) {
 		return [TGDevShowcase trackArtwork];
 	}
+#endif
 	if (![coverId isKindOfClass:NSNumber.class] || coverId.integerValue <= 0)
 		return nil;
 
@@ -318,13 +320,15 @@
 	if (cached)
 		return cached;
 
-	if ([TGDevShowcase isDevChatId:self.chatId] || userId == 20002 || userId == 10001) {
+#if TG_DEV
+	if (TGIsDevChat(self.chatId)) {
 		UIImage *devAvatar = [TGDevShowcase avatarForUserId:userId];
 		if (devAvatar) {
 			self.senderAvatars[key] = devAvatar;
 			return devAvatar;
 		}
 	}
+#endif
 
 	NSString *initials = name.length ? [name substringToIndex:1] : @"?";
 	UIImage *placeholder = [TGIcons avatarWithInitials:initials.uppercaseString

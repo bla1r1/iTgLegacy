@@ -681,6 +681,7 @@ static CGAffineTransform TGTransformOnto(CGRect resting, CGRect target) {
 	if (![fileId isKindOfClass:NSNumber.class])
 		return;
 
+#if TG_DEV
 	if (fileId.longLongValue < 0) {
 		UIImage *fixture = [TGDevShowcase imageForPhotoId:fileId.longLongValue];
 		if (fixture) {
@@ -688,6 +689,7 @@ static CGAffineTransform TGTransformOnto(CGRect resting, CGRect target) {
 			return;
 		}
 	}
+#endif
 
 	__weak typeof(self) weakSelf = self;
 	__weak UIButton *weakBtn = btn;
@@ -1033,6 +1035,7 @@ static CGAffineTransform TGTransformOnto(CGRect resting, CGRect target) {
 	if (!fileId)
 		return;
 
+#if TG_DEV
 	if (fileId.longLongValue < 0) {
 		UIImage *fixture = [TGDevShowcase imageForPhotoId:fileId.longLongValue];
 		if (fixture) {
@@ -1041,6 +1044,7 @@ static CGAffineTransform TGTransformOnto(CGRect resting, CGRect target) {
 			return;
 		}
 	}
+#endif
 
 	CGSize screen = self.backdrop.bounds.size;
 	CGFloat scale = [UIScreen mainScreen].scale;

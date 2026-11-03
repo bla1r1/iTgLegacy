@@ -4,7 +4,6 @@
 #import "TGStyle.h"
 #import "TGAlertSheet.h"
 #import "TGMemberAvatarStore.h"
-#import "TGDevShowcase.h"
 #import "TGFastDate.h"
 #import "TGOptions.h"
 #import "TGStoryViewerViewController.h"
@@ -1451,19 +1450,7 @@ static NSDictionary *TGChatSnapshotRow(NSDictionary *chat) {
 	// would let a logout or a cleared account bring the old rows back.
 	if ([TGClient shared].chats.count)
 		self.cachedChats = @[];
-	NSMutableArray *list = [NSMutableArray array];
-	BOOL hasShowcase = NO;
-	for (NSDictionary *c in baseChats) {
-		if ([TGDevShowcase isDevChatId:[c[@"id"] longLongValue]]) {
-			hasShowcase = YES;
-			break;
-		}
-	}
-	if (!hasShowcase) {
-		[list addObjectsFromArray:[TGDevShowcase allShowcaseChats]];
-	}
-	[list addObjectsFromArray:baseChats];
-	self.chats = list;
+	self.chats = baseChats;
 	[self reloadStoriesIfNeeded];
 	[self applyFolderListFadeIfNeeded];
 	[self.tableView reloadData];
@@ -1777,15 +1764,12 @@ static NSString *TGChatDate(NSTimeInterval unix) {
 		return self.searchResults;
 
 	NSMutableArray *chats = [NSMutableArray array];
-	if (self.folderId == 0 && !self.showsArchive) {
-		[chats addObject:[TGDevShowcase devChatInfo]];
-	}
 
 	BOOL hideSaved = [[self headerRows] containsObject:@"saved"];
 	int64_t saved = hideSaved ? [[TGClient shared] savedMessagesChatId] : 0;
 	for (NSDictionary *c in self.chats){
 		int64_t chatId = [c[@"id"] longLongValue];
-		if (chatId == saved || chatId == self.chatPendingDeletion || chatId == kDevChatId)
+		if (chatId == saved || chatId == self.chatPendingDeletion)
 			continue;
 		[chats addObject:c];
 	}
@@ -1953,10 +1937,6 @@ static NSString *TGChatDate(NSTimeInterval unix) {
 	int64_t cid = [c[@"id"] longLongValue];
 	if ([c[@"isSaved"] boolValue])
 		photo = [TGIcons savedMessagesAvatarOfSide:kAvatar];
-	else if (cid == kDevChatId || cid == kDevBotChatId)
-		photo = [TGDevShowcase avatarForUserId:10001];
-	else if (cid == kDevDurovChatId)
-		photo = [TGDevShowcase avatarForUserId:20002];
 	if (!photo){
 		NSString *title = c[@"title"] ?: @"";
 		NSString *initials = title.length ? [title substringToIndex:1] : @"?";

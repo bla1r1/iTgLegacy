@@ -168,11 +168,13 @@ UIColor *TGSenderColour(int64_t userId) {
 		UIImage *cached = self.images[fileId];
 		if (cached)
 			return cached;
-		if (fileId.longLongValue < 0 || [TGDevShowcase isDevChatId:self.chatId]) {
+#if TG_DEV
+		if (fileId.longLongValue < 0 || TGIsDevChat(self.chatId)) {
 			UIImage *fixture = [TGDevShowcase imageForPhotoId:fileId.longLongValue];
 			if (fixture)
 				return fixture;
 		}
+#endif
 	}
 	return nil;
 }

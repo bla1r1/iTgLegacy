@@ -14,6 +14,9 @@
 #import "TGStyle.h"
 #import "TGPlayerView.h"
 #import "TGChatViewController.h"
+#if TG_DEV
+#import "TGDevModeViewController.h"
+#endif
 
 
 @interface RootViewController () <UINavigationControllerDelegate, UITabBarControllerDelegate>
@@ -155,6 +158,24 @@
 - (void)tabBarController:(UITabBarController *)tabs didSelectViewController:(UIViewController *)tab {
 	[self placeMiniPlayerOn:[self visibleScreen]];
 }
+
+#if TG_DEV
+/// Three taps on Chats within 0.5 s of each other. This is the delegate call a tap
+/// on the tab already selected still reaches.
+- (BOOL)tabBarController:(UITabBarController *)tabs shouldSelectViewController:(UIViewController *)tab {
+	static NSInteger taps;
+	static CFAbsoluteTime last;
+	CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
+	BOOL onChats = tab == tabs.viewControllers.firstObject;
+	taps = onChats && now - last < 0.5 ? taps + 1 : (onChats ? 1 : 0);
+	last = now;
+	if (taps == 3){
+		taps = 0;
+		[TGDevModeViewController presentFrom:self];
+	}
+	return YES;
+}
+#endif
 
 - (void)updateMiniPlayerLayoutAnimated:(BOOL)animated {
 	TGMusicPlayer *player = [TGMusicPlayer shared];

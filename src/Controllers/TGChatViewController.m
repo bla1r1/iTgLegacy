@@ -193,7 +193,7 @@ static const NSInteger kPinnedBodyTag = 0x9010;
 			selector:@selector(readOutboxChanged:)
 				name:TGChatReadOutboxChangedNotification object:nil];
 
-	if (![TGDevShowcase isDevChatId:self.chatId]) {
+	if (!TGIsDevChat(self.chatId)) {
 		// Captured before opening marks everything read.
 		self.readInboxAtOpen = [[TGClient shared] lastReadInboxForChat:self.chatId];
 		[[TGClient shared] openChat:self.chatId];
@@ -214,9 +214,6 @@ static const NSInteger kPinnedBodyTag = 0x9010;
 
 	[self reload];
 	TGPerfReportMemory("chat opened");
-	if ([TGDevShowcase isDevChatId:self.chatId]) {
-		return;
-	}
 }
 
 - (void)viewDidLayoutSubviews {
@@ -412,7 +409,7 @@ static const NSInteger kPinnedBodyTag = 0x9010;
 								 inChat:self.chatId
 								 thread:self.threadId
 								replyTo:self.replyToId];
-		if (![TGDevShowcase isDevChatId:self.chatId]) {
+		if (!TGIsDevChat(self.chatId)) {
 			[[TGClient shared] cancelTypingInChat:self.chatId thread:self.threadId];
 			[[TGClient shared] closeChat:self.chatId];
 		}
@@ -583,7 +580,8 @@ static const NSInteger kPinnedBodyTag = 0x9010;
 }
 
 - (void)reload {
-	if ([TGDevShowcase isDevChatId:self.chatId]) {
+#if TG_DEV
+	if (TGIsDevChat(self.chatId)) {
 		double fixtureStart = TGPerfNow();
 		NSArray *messages = [TGDevShowcase messagesForChatId:self.chatId];
 		TGPerfReport("chat dev", "fixtures", fixtureStart, 50.0);
@@ -609,6 +607,7 @@ static const NSInteger kPinnedBodyTag = 0x9010;
 		TGPerfReport("chat table", "layouts during reload", tableStart, 150.0);
 		return;
 	}
+#endif
 
 	__weak typeof(self) weakSelf = self;
 	double chatStart = TGPerfNow();

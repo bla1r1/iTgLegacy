@@ -191,7 +191,6 @@ static inline NSString *TGBytes(long long bytes) {
 @property (nonatomic, assign) BOOL suggestFrequent;
 @property (nonatomic, assign) long long networkSent;
 @property (nonatomic, assign) long long networkReceived;
-@property (nonatomic, assign) NSInteger versionTaps;
 @property (nonatomic, strong) NSString *tdlibVersion;
 @property (nonatomic, assign) BOOL pickingProfilePhoto;
 @property (nonatomic, assign) CGFloat lastScrollY;

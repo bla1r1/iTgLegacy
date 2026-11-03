@@ -191,7 +191,11 @@
 		case TGSettingsPageRecentCalls:   return @"Recent Calls";
 		case TGSettingsPageWallpaper:     return @"Chat Wallpaper";
 		case TGSettingsPagePaymentData:   return @"Orders and Payment Data";
-		case TGSettingsPageDebug:         return @"Debug Menu";
+#if TG_DEV
+		case TGSettingsPageDebug:         return @"Dev Settings";
+		case TGSettingsPageLanguageDev:   return @"Language Packs";
+		case TGSettingsPagePaymentDev:    return @"Invoice Tools";
+#endif
 		default:                          return @"Settings";
 	}
 }
@@ -268,8 +272,7 @@
 	[self.tableView reloadData];
 }
 
-/// The version, the way their page ends with one - and, as in their client,
-/// ten taps on it opens the debug menu.
+/// The version, the way their page ends with one.
 - (UIView *)tableView:(UITableView *)tableView viewForFooterInSection:(NSInteger)section {
 	// Every other footer is the system's (titleForFooterInSection:).
 	if (self.page != TGSettingsPageRoot || section != (NSInteger)self.sections.count - 1)
@@ -283,18 +286,7 @@
 	label.textAlignment = NSTextAlignmentCenter;
 	label.textColor = [[TGTheme shared] secondaryTextColour];
 	label.backgroundColor = [UIColor clearColor];
-	label.userInteractionEnabled = YES;
-	[label addGestureRecognizer:[[UITapGestureRecognizer alloc]
-			initWithTarget:self action:@selector(versionTapped)]];
 	return label;
-}
-
-- (void)versionTapped {
-	self.versionTaps++;
-	if (self.versionTaps < 10)
-		return;
-	self.versionTaps = 0;
-	[self openPage:TGSettingsPageDebug];
 }
 
 #pragma mark - loading
@@ -568,7 +560,7 @@
 		return;
 	}
 
-	if (self.page == TGSettingsPageLanguage){
+	if (self.page == TGSettingsPageLanguage || self.page == TGSettingsPageLanguageDev){
 		[[TGClient shared] languagesWithCompletion:^(NSArray *languages,
 													NSString *current){
 			weakSelf.languages = languages;

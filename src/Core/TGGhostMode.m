@@ -4,6 +4,10 @@ static BOOL sGhostRead;
 static BOOL sGhostOn;
 
 BOOL TGGhostModeOn(void) {
+#if !TG_DEV
+	// A test tool for a real account, never something a release can be left in.
+	return NO;
+#endif
 	if (!sGhostRead){
 		sGhostOn = [[NSUserDefaults standardUserDefaults] boolForKey:@"TGGhostMode"];
 		sGhostRead = YES;

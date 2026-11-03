@@ -128,11 +128,13 @@
 		if (placeholder.length)
 			me.input.placeholder = placeholder;
 	};
+#if TG_DEV
 	NSDictionary *fixture = [TGDevShowcase replyKeyboardForChatId:self.chatId];
 	if (fixture) {
 		apply(fixture);
 		return;
 	}
+#endif
 	[[TGClient shared] replyKeyboardForChat:self.chatId completion:apply];
 }
 
