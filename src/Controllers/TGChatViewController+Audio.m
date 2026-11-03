@@ -422,7 +422,11 @@ static const NSTimeInterval kRecordHintSeconds = 1.6;
 			return;
 		}
 		self.inputBar.hidden = YES;
+		// The hold's strip stays under the overlay while it fades in, so the
+		// bottom of the screen never shows a gap; the shot must not include it.
 		self.recordPanel.hidden = YES;
+		self.recordLockView.hidden = YES;
+		self.recordOnceButton.hidden = YES;
 		// The overlay covers the navigation bar too, so the backdrop has to
 		// hold it: a shot of the chat alone came out stretched to fit.
 		UIView *shown = (self.tabBarController ?: self.navigationController ?: self).view;
@@ -433,8 +437,9 @@ static const NSTimeInterval kRecordHintSeconds = 1.6;
 		UIImage *background = UIGraphicsGetImageFromCurrentImageContext();
 		UIGraphicsEndImageContext();
 		self.videoNoteOverlayActive = YES;
-		self.inputBar.hidden = YES;
-		self.recordPanel.hidden = YES;
+		self.recordPanel.hidden = NO;
+		self.recordLockView.hidden = NO;
+		self.recordOnceButton.hidden = NO;
 		NSLog(@"TGVideoNote: presenting overlay");
 		TGVideoNoteViewController *recorder = [[TGVideoNoteViewController alloc]
 				initWithChatId:self.chatId threadId:self.threadId background:background];
@@ -442,10 +447,9 @@ static const NSTimeInterval kRecordHintSeconds = 1.6;
 		recorder.onDismiss = ^{
 			weakSelf.videoNoteOverlayActive = NO;
 			weakSelf.inputBar.hidden = NO;
-			// The hold that led here left the voice strip, the lock and the "1"
-			// behind the overlay; the next voice note needs them back in order.
+			// The hold that led here left its strip, the lock and the "1" behind
+			// the overlay; the next voice note builds them again.
 			[weakSelf hideRecordPanel];
-			weakSelf.recordPanel.hidden = NO;
 			weakSelf.table.scrollEnabled = YES;
 			// Not from here: this block belongs to the recorder being released.
 			dispatch_async(dispatch_get_main_queue(), ^{

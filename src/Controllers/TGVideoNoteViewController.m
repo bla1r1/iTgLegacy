@@ -10,8 +10,6 @@
 
 static const CGFloat kPreviewMax   = 300.0f;
 static const CGFloat kPreviewInset = 40.0f;
-/// As soft as the system's own blur from iOS 7, drawn once when the screen opens.
-static const CGFloat kBlurRadius = 24.0f;
 /// A note may run a minute, and Telegram's recorder stops a beat short of it and
 /// still calls it a minute.
 static const NSTimeInterval kNoteLimitSeconds = 59.0;
@@ -31,10 +29,10 @@ static const CGFloat kPendingTop = 72.0f;
 @property (nonatomic, assign) int64_t chatId;
 @property (nonatomic, assign) int64_t threadId;
 @property (nonatomic, strong) UIImage *background;
-@property (nonatomic, strong) UIImage *softBackdrop;
 @property (nonatomic, strong) AVCaptureVideoPreviewLayer *preview;
 @property (nonatomic, strong) UIView *stage;
 @property (nonatomic, strong) UIView *previewHost;
+@property (nonatomic, strong) UIImageView *circleCover;
 @property (nonatomic, strong) CAShapeLayer *ring;
 @property (nonatomic, strong) UIActivityIndicatorView *spinner;
 @property (nonatomic, strong) TGRecordBar *bar;
@@ -74,6 +72,10 @@ static const CGFloat kPendingTop = 72.0f;
 - (void)attachPreviewWithSession:(AVCaptureSession *)session {
 	if (self.preview || !session)
 		return;
+	// From here the picture is live, and rounding it would cost a frame's worth
+	// of offscreen drawing every frame. See the note on the cover.
+	self.previewHost.clipsToBounds = NO;
+	self.circleCover.hidden = NO;
 	self.preview = [AVCaptureVideoPreviewLayer layerWithSession:session];
 	self.preview.videoGravity = AVLayerVideoGravityResizeAspectFill;
 	self.preview.frame = self.previewHost.bounds;
@@ -130,22 +132,26 @@ static const CGFloat kPendingTop = 72.0f;
 	[super viewDidLoad];
 	self.view.backgroundColor = [[TGTheme shared] mediaViewerBackdropColour];
 
-	// Spread to the screen's size once, so the backdrop and the circle's cover
-	// are the same pixels: scaled up separately, by the GPU and by CoreGraphics,
-	// the cover showed as a faint square around the circle.
-	UIImage *small = [TGTheme softenedImage:self.background radius:kBlurRadius dim:TGAlphaHighlight];
-	self.background = nil;
-	UIGraphicsBeginImageContextWithOptions(self.view.bounds.size, YES, 1);
-	CGContextSetInterpolationQuality(UIGraphicsGetCurrentContext(), kCGInterpolationHigh);
-	[small drawInRect:self.view.bounds];
-	UIImage *soft = UIGraphicsGetImageFromCurrentImageContext();
+	// The chat itself, the same pixels at the same place and only darker, so
+	// nothing moves or changes when this opens: recording is a state of the chat
+	// the way a voice note is, not a screen of its own. One flat image, because
+	// the circle's cover has to match it and a translucent layer over the live
+	// chat would be blended again for every video frame. Messages that arrive
+	// meanwhile show when the recording ends.
+	UIGraphicsBeginImageContextWithOptions(self.view.bounds.size, YES, 0.0f);
+	[self.background drawInRect:self.view.bounds];
+	CGContextRef ctx = UIGraphicsGetCurrentContext();
+	CGContextSetFillColorWithColor(ctx, [[[TGTheme shared] mediaViewerBackdropColour]
+			colorWithAlphaComponent:TGAlphaHighlight].CGColor);
+	CGContextFillRect(ctx, self.view.bounds);
+	UIImage *dimmed = UIGraphicsGetImageFromCurrentImageContext();
 	UIGraphicsEndImageContext();
-	self.softBackdrop = soft;
+	self.background = nil;
 	UIImageView *backdrop = [[UIImageView alloc] initWithFrame:self.view.bounds];
 	backdrop.autoresizingMask = UIViewAutoresizingFlexibleWidth |
 			UIViewAutoresizingFlexibleHeight;
 	backdrop.opaque = YES;
-	backdrop.image = soft;
+	backdrop.image = dimmed;
 	[self.view addSubview:backdrop];
 
 	self.lampBackdrop = [[UIView alloc] initWithFrame:self.view.bounds];
@@ -168,9 +174,15 @@ static const CGFloat kPendingTop = 72.0f;
 	self.previewHost.backgroundColor = [[TGTheme shared] mediaViewerBackdropColour];
 	self.previewHost.clipsToBounds = YES;
 	[self.stage addSubview:self.previewHost];
-	UIImageView *cover = [[UIImageView alloc] initWithFrame:local];
-	cover.image = [self circleCoverForBackdrop:soft];
-	[self.stage addSubview:cover];
+	// The cover only lines up with the backdrop at full size: scaled with the
+	// stage, its square of chat would slide over the chat behind it. So while the
+	// circle grows and shrinks the host rounds itself, which is cheap on a plain
+	// black layer and only for a moment on the video.
+	self.previewHost.layer.cornerRadius = TGHalf(side);
+	self.circleCover = [[UIImageView alloc] initWithFrame:local];
+	self.circleCover.image = [self circleCoverForBackdrop:dimmed];
+	self.circleCover.hidden = YES;
+	[self.stage addSubview:self.circleCover];
 	self.lampCover = [[UIImageView alloc] initWithFrame:local];
 	self.lampCover.alpha = TGAlphaTransparent;
 	[self.stage addSubview:self.lampCover];
@@ -201,7 +213,8 @@ static const CGFloat kPendingTop = 72.0f;
 		[weakSelf applyPreviewOrientation];
 	};
 
-	// The same strip as a locked voice note, docked where the composer was.
+	// The same strip as a locked voice note, docked where the composer was. It
+	// fades over the hold's strip in the same place, so it never travels.
 	self.bar = [[TGRecordBar alloc] initWithFrame:CGRectMake(0, barY, width,
 			TGMetricInputBarHeight)];
 	[self.bar.cancelButton addTarget:self action:@selector(cancelTapped)
@@ -271,7 +284,6 @@ static const CGFloat kPendingTop = 72.0f;
 - (void)prepareEntrance {
 	self.view.alpha = TGAlphaTransparent;
 	self.stage.transform = CGAffineTransformMakeScale(kStageScaleHidden, kStageScaleHidden);
-	self.bar.transform = CGAffineTransformMakeTranslation(0, TGMetricInputBarHeight);
 	for (UIView *control in [self sideControls])
 		control.alpha = TGAlphaTransparent;
 }
@@ -291,7 +303,6 @@ static const CGFloat kPendingTop = 72.0f;
 
 	[UIView animateWithDuration:TGAnimationDurationFast animations:^{
 		self.view.alpha = TGAlphaOpaque;
-		self.bar.transform = CGAffineTransformIdentity;
 	}];
 	[UIView animateWithDuration:TGAnimationDurationNormal delay:TGAnimationDurationFast
 						options:UIViewAnimationOptionCurveEaseOut animations:^{
@@ -309,6 +320,9 @@ static const CGFloat kPendingTop = 72.0f;
 	self.timer = nil;
 	[self restoreBrightness];
 	[self.spinner stopAnimating];
+	self.previewHost.clipsToBounds = YES;
+	self.circleCover.hidden = YES;
+	self.lampCover.hidden = YES;
 	// The chat behind has its composer back before the screen has finished
 	// leaving, so the two do not trade places with a gap.
 	if (self.onDismiss)
@@ -318,7 +332,6 @@ static const CGFloat kPendingTop = 72.0f;
 						options:UIViewAnimationOptionCurveEaseIn animations:^{
 		self.view.alpha = TGAlphaTransparent;
 		self.stage.transform = CGAffineTransformMakeScale(kStageScaleHidden, kStageScaleHidden);
-		self.bar.transform = CGAffineTransformMakeTranslation(0, TGMetricInputBarHeight);
 	} completion:^(BOOL finished){
 		[self.view removeFromSuperview];
 	}];
