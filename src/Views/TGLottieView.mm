@@ -851,6 +851,15 @@ static NSMutableSet *TGLottieBuilding(void) {
 	return set;
 }
 
+/// Held while a scroll is in flight on a single-core device. Only the first
+/// build of a sticker is gated: a cached model still paints at once, because
+/// it costs one layer contents assignment and no CPU.
+static BOOL sBuildsDeferred = NO;
+
++ (void)setBuildsDeferred:(BOOL)deferred {
+	sBuildsDeferred = deferred;
+}
+
 /// One sticker reuse must cost nothing over a background raster pass: on the
 /// iPod touch 4 every cell that showed the .webm dev sticker re-opened the
 /// demuxer and re-decoded the VP9 keyframe, 33-100 ms per row visible as
@@ -986,6 +995,11 @@ static NSMutableSet *TGLottieBuilding(void) {
 		// First look at this file: the parse and the first raster never run
 		// on the main thread, so the scroll is not held by them. Until they
 		// answer, this call is NO and the cell shows the emoji it stands for.
+		// While the table is scrolling on a single core, hold the build too:
+		// the raster would fight the scroll for the one core; the row reload
+		// after the scroll settles starts it then.
+		if (sBuildsDeferred)
+			return NO;
 		[self buildStickerModelForFile:path];
 		return NO;
 	}

@@ -18,5 +18,8 @@
 /// cover over it are drawn once, for this size.
 @property (nonatomic, assign) CGRect overlayFrame;
 @property (nonatomic, copy) void (^onDismiss)(void);
+/// Send was tapped. The chat owns the send now: it puts the row in place and
+/// stops the recorder itself, because both outlive this screen.
+@property (nonatomic, copy) void (^onSend)(BOOL once);
 
 @end

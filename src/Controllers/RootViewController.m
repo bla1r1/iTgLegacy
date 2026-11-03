@@ -13,9 +13,10 @@
 #import "TGMusicPlayer.h"
 #import "TGStyle.h"
 #import "TGPlayerView.h"
+#import "TGChatViewController.h"
 
 
-@interface RootViewController () <UINavigationControllerDelegate>
+@interface RootViewController () <UINavigationControllerDelegate, UITabBarControllerDelegate>
 @property (nonatomic, strong) TGPlayerMiniBar *playerMiniBar;
 @end
 
@@ -57,6 +58,9 @@
 	UINavigationController *settingsNC =
 		[[TGNavController alloc] initWithRootViewController:[[TGSettingsViewController alloc] init]];
 	settingsNC.delegate = self;
+	chatsNC.delegate = self;
+	contactsNC.delegate = self;
+	self.delegate = self;
 	settingsNC.tabBarItem = [[UITabBarItem alloc] initWithTitle:@"Settings"
 														   image:[TGIcons settings] tag:2];
 
@@ -102,11 +106,54 @@
 
 - (void)viewDidLayoutSubviews {
 	[super viewDidLayoutSubviews];
-	if (self.playerMiniBar) {
-		CGFloat barH = TGMetricPlayerBarHeight;
-		CGFloat barY = self.view.bounds.size.height - self.tabBar.bounds.size.height - barH;
-		self.playerMiniBar.frame = CGRectMake(0, barY, self.view.bounds.size.width, barH);
+	if (self.playerMiniBar)
+		[self placeMiniPlayerOn:[self visibleScreen]];
+}
+
+- (UIViewController *)visibleScreen {
+	UIViewController *tab = self.selectedViewController;
+	return [tab isKindOfClass:UINavigationController.class]
+			? [(UINavigationController *)tab topViewController] : tab;
+}
+
+/// At the foot of the screen, above the tab bar when there is one. A chat keeps
+/// the old height, which clears its composer. It overlays the screen, so a list
+/// under it gets the room back or its last row could never be reached.
+- (void)placeMiniPlayerOn:(UIViewController *)screen {
+	BOOL noTabBar = screen.hidesBottomBarWhenPushed &&
+			![screen isKindOfClass:TGChatViewController.class];
+	CGFloat barH = TGMetricPlayerBarHeight;
+	CGFloat barY = self.view.bounds.size.height - barH -
+			(noTabBar ? 0 : self.tabBar.bounds.size.height);
+	self.playerMiniBar.frame = CGRectMake(0, barY, self.view.bounds.size.width, barH);
+
+	if ([screen isKindOfClass:UITableViewController.class]){
+		UITableView *table = [(UITableViewController *)screen tableView];
+		UIEdgeInsets insets = table.contentInset;
+		// A list with a bottom inset of its own knows better.
+		if (insets.bottom == 0 || insets.bottom == barH){
+			insets.bottom = [TGMusicPlayer shared].current ? barH : 0;
+			table.contentInset = insets;
+			table.scrollIndicatorInsets = insets;
+		}
 	}
+}
+
+- (void)navigationController:(UINavigationController *)nc
+	  willShowViewController:(UIViewController *)screen animated:(BOOL)animated {
+	[UIView animateWithDuration:animated ? TGAnimationDurationFast : 0 animations:^{
+		[self placeMiniPlayerOn:screen];
+	}];
+}
+
+- (void)navigationController:(UINavigationController *)nc
+	   didShowViewController:(UIViewController *)screen animated:(BOOL)animated {
+	// A cancelled swipe back ends on a different screen from the one announced.
+	[self placeMiniPlayerOn:[self visibleScreen]];
+}
+
+- (void)tabBarController:(UITabBarController *)tabs didSelectViewController:(UIViewController *)tab {
+	[self placeMiniPlayerOn:[self visibleScreen]];
 }
 
 - (void)updateMiniPlayerLayoutAnimated:(BOOL)animated {
@@ -114,8 +161,7 @@
 	BOOL shouldShow = (player.current != nil);
 
 	CGFloat barH = TGMetricPlayerBarHeight;
-	CGFloat barY = self.view.bounds.size.height - self.tabBar.bounds.size.height - barH;
-	self.playerMiniBar.frame = CGRectMake(0, barY, self.view.bounds.size.width, barH);
+	[self placeMiniPlayerOn:[self visibleScreen]];
 
 	if (shouldShow && self.playerMiniBar.hidden) {
 		self.playerMiniBar.hidden = NO;

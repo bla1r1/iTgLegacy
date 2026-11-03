@@ -123,6 +123,44 @@ static NSArray *TGPacksFrom(NSDictionary *target) {
 	return out;
 }
 
+BOOL TGProfileBirthdayIsToday(NSInteger day, NSInteger month, NSDate *now) {
+	if (day <= 0 || month <= 0 || month > 12 || !now)
+		return NO;
+	NSCalendar *calendar = [NSCalendar currentCalendar];
+	NSDateComponents *parts = [calendar components:NSCalendarUnitDay | NSCalendarUnitMonth
+										  fromDate:now];
+	return parts.day == day && parts.month == month;
+}
+
+NSString *TGProfileBirthdayText(NSInteger day, NSInteger month, NSInteger year, NSDate *now) {
+	if (day <= 0 || month <= 0 || month > 12)
+		return nil;
+	static NSArray *months = nil;
+	if (!months)
+		months = @[@"", @"January", @"February", @"March", @"April", @"May", @"June",
+				@"July", @"August", @"September", @"October", @"November", @"December"];
+	if (TGProfileBirthdayIsToday(day, month, now))
+		return @"Birthday today";
+	if (year > 0){
+		NSCalendar *calendar = [NSCalendar currentCalendar];
+		NSInteger nowYear = [calendar components:NSCalendarUnitYear fromDate:now].year;
+		NSInteger age = nowYear - year;
+		// A future or impossible year reads as a date without an age, not as
+		// "(-2 years old)".
+		if (age >= 0)
+			return [NSString stringWithFormat:@"%@ %ld, %ld (%ld years old)",
+					months[month], (long)day, (long)year, (long)age];
+	}
+	return [NSString stringWithFormat:@"%@ %ld", months[month], (long)day];
+}
+
+NSString *TGFirstUsername(NSDictionary *user) {
+	NSArray *active = user[@"usernames"][@"active_usernames"];
+	if (![active isKindOfClass:NSArray.class] || !active.count)
+		return nil;
+	return active[0];
+}
+
 @implementation TGClient (Account)
 
 #pragma mark - contacts
@@ -208,9 +246,14 @@ static NSArray *TGPacksFrom(NSDictionary *target) {
 #pragma mark - people
 
 - (void)setUser:(int64_t)userId blocked:(BOOL)blocked {
+	// Chat ids are negative; a blocked channel has to be named as a chat, or
+	// the unblock goes to a user id that does not exist.
+	NSDictionary *sender = userId < 0
+			? @{@"@type" : @"messageSenderChat", @"chat_id" : @(userId)}
+			: @{@"@type" : @"messageSenderUser", @"user_id" : @(userId)};
 	[self send:@{
 		@"@type"      : @"setMessageSenderBlockList",
-		@"sender_id"  : @{@"@type" : @"messageSenderUser", @"user_id" : @(userId)},
+		@"sender_id"  : sender,
 		// A null block list is how TDLib spells "not blocked".
 		@"block_list" : blocked ? @{@"@type" : @"blockListMain"} : [NSNull null],
 	}];
@@ -343,16 +386,39 @@ static NSArray *TGPacksFrom(NSDictionary *target) {
 	}];
 }
 
-- (void)setName:(NSString *)firstName last:(NSString *)lastName {
-	[self send:@{
+- (void)setName:(NSString *)firstName
+			last:(NSString *)lastName
+	  completion:(void (^)(BOOL, NSString *))completion {
+	[self request:@{
 		@"@type"      : @"setName",
 		@"first_name" : firstName ?: @"",
 		@"last_name"  : lastName ?: @"",
+	} completion:^(NSDictionary *result){
+		BOOL failed = [result[@"@type"] isEqualToString:@"error"];
+		if (completion)
+			completion(!failed, failed ? (result[@"message"] ?: @"Telegram refused that.") : nil);
 	}];
 }
 
-- (void)setBio:(NSString *)bio {
-	[self send:@{@"@type" : @"setBio", @"bio" : bio ?: @""}];
+- (void)setBio:(NSString *)bio
+	completion:(void (^)(BOOL, NSString *))completion {
+	[self request:@{@"@type" : @"setBio", @"bio" : bio ?: @""}
+	   completion:^(NSDictionary *result){
+		BOOL failed = [result[@"@type"] isEqualToString:@"error"];
+		if (completion)
+			completion(!failed, failed ? (result[@"message"] ?: @"Telegram refused that.") : nil);
+	}];
+}
+
+- (void)bioLengthMaxWithCompletion:(void (^)(NSInteger))completion {
+	[self request:@{@"@type" : @"getOption", @"name" : @"bio_length_max"}
+	   completion:^(NSDictionary *option){
+		// getOption answers with the optionValueInteger itself, its number as a
+		// string over JSON; an error or an empty option reads as 0.
+		if (completion)
+			completion([option[@"@type"] isEqualToString:@"optionValueInteger"]
+					? [option[@"value"] integerValue] : 0);
+	}];
 }
 
 - (void)setUsername:(NSString *)username completion:(void (^)(BOOL))completion {
@@ -372,6 +438,10 @@ static NSArray *TGPacksFrom(NSDictionary *target) {
 
 - (int64_t)savedMessagesChatId {
 	return [self.me[@"id"] longLongValue];
+}
+
+- (BOOL)hasSignedInAccount {
+	return self.me != nil;
 }
 
 - (void)statusForUser:(int64_t)userId completion:(void (^)(NSString *))completion {
@@ -448,24 +518,29 @@ static NSArray *TGPacksFrom(NSDictionary *target) {
 	[self request:@{@"@type" : @"getUserFullInfo", @"user_id" : @(userId)}
 	   completion:^(NSDictionary *full){
 		NSDictionary *birth = full[@"birthdate"];
-		NSString *birthday = @"";
-		if ([birth[@"day"] integerValue] > 0){
-			static NSArray *months = nil;
-			if (!months) months = @[@"", @"January", @"February", @"March", @"April",
-					@"May", @"June", @"July", @"August", @"September", @"October",
-					@"November", @"December"];
-			NSInteger month = [birth[@"month"] integerValue];
-			birthday = [NSString stringWithFormat:@"%@ %@",
-					(month > 0 && month < 13) ? months[month] : @"", birth[@"day"]];
-		}
+		NSString *birthday = TGProfileBirthdayText([birth[@"day"] integerValue],
+				[birth[@"month"] integerValue], [birth[@"year"] integerValue], [NSDate date]);
 		NSString *tab = full[@"main_profile_tab"][@"@type"];
 		tab = [tab stringByReplacingOccurrencesOfString:@"profileTab" withString:@""];
+		// The bio travels as formatted text; the entities let the row keep its
+		// links and mentions instead of clipping them to one grey line.
+		NSDictionary *bio = full[@"bio"];
+		NSDictionary *note = full[@"note"];
 		if (completion) completion(@{
-			@"bio"          : full[@"bio"][@"text"] ?: @"",
+			@"bio"          : bio[@"text"] ?: @"",
+			@"bioEntities"  : [bio[@"entities"] isKindOfClass:NSArray.class]
+					? bio[@"entities"] : @[],
 			@"commonGroups" : full[@"group_in_common_count"] ?: @0,
-			@"birthday"     : birthday,
+			@"birthday"     : birthday ?: @"",
+			// The profile draws "Birthday today" in the online colour with a
+			// gift glyph; the flag travels beside the text so the row does not
+			// compare strings.
+			@"birthdayToday": @(TGProfileBirthdayIsToday([birth[@"day"] integerValue],
+					[birth[@"month"] integerValue], [NSDate date])),
 			// The note is this account's own copy; empty means none is kept.
-			@"note"         : full[@"note"][@"text"] ?: @"",
+			@"note"         : note[@"text"] ?: @"",
+			@"noteEntities" : [note[@"entities"] isKindOfClass:NSArray.class]
+					? note[@"entities"] : @[],
 			// A contact's private picture: an id is present only when one is
 			// set, which is what the profile's remove row keys off.
 			@"personalPhoto": full[@"personal_photo"][@"small"][@"id"] ?: @0,
@@ -474,6 +549,15 @@ static NSArray *TGPacksFrom(NSDictionary *target) {
 			// A user who has calls turned off should not be offered one.
 			@"canCall"      : full[@"can_be_called"] ?: @NO,
 			@"canVideoCall" : full[@"supports_video_calls"] ?: @NO,
+			// Whether this account has them blocked, read from the same
+			// full-info answer the card already waited for, so opening a
+			// profile is one round trip instead of two.
+			@"isBlocked"    : @([full[@"block_list"] isKindOfClass:NSDictionary.class]),
+			// The strip under the action buttons: the owner's saved music.
+			@"firstProfileAudio" : TGProfileAudioRow(full[@"first_profile_audio"]) ?: (id)[NSNull null],
+			// The channel this person set as their personal channel, if any.
+			@"personalChatId" : [full[@"personal_chat_id"] isKindOfClass:NSNumber.class]
+					? full[@"personal_chat_id"] : @0,
 		});
 	}];
 }
@@ -537,10 +621,19 @@ static NSArray *TGPacksFrom(NSDictionary *target) {
 		@"scope" : @{@"@type" : TGScopeType(scope)},
 	} completion:^(NSDictionary *current){
 		NSMutableDictionary *next = [@{
-			@"@type"        : @"scopeNotificationSettings",
-			@"mute_for"     : current[@"mute_for"] ?: @(0),
-			@"sound_id"     : current[@"sound_id"] ?: @(0),
-			@"show_preview" : current[@"show_preview"] ?: @YES,
+			@"@type"                : @"scopeNotificationSettings",
+			@"mute_for"             : current[@"mute_for"] ?: @(0),
+			@"sound_id"             : current[@"sound_id"] ?: @(0),
+			@"show_preview"         : current[@"show_preview"] ?: @YES,
+			@"use_default_mute_stories" :
+					current[@"use_default_mute_stories"] ?: @YES,
+			@"mute_stories"         : current[@"mute_stories"] ?: @NO,
+			@"story_sound_id"       : current[@"story_sound_id"] ?: @(0),
+			@"show_story_poster"    : current[@"show_story_poster"] ?: @YES,
+			@"disable_pinned_message_notifications" :
+					current[@"disable_pinned_message_notifications"] ?: @NO,
+			@"disable_mention_notifications" :
+					current[@"disable_mention_notifications"] ?: @NO,
 		} mutableCopy];
 		[next addEntriesFromDictionary:change(current)];
 		[self send:@{
@@ -700,9 +793,15 @@ static NSArray *TGPacksFrom(NSDictionary *target) {
 /// Their Edit Profile has a birthday row; TDLib keeps it as three numbers and
 /// a zero day means it is not set. Year is optional, which is why it is only
 /// written when it is there.
-- (void)setBirthdayDay:(NSInteger)day month:(NSInteger)month year:(NSInteger)year {
+- (void)setBirthdayDay:(NSInteger)day month:(NSInteger)month year:(NSInteger)year
+			completion:(void (^)(BOOL, NSString *))completion {
 	if (day <= 0){
-		[self send:@{@"@type" : @"setBirthdate", @"birthdate" : [NSNull null]}];
+		[self request:@{@"@type" : @"setBirthdate", @"birthdate" : [NSNull null]}
+		   completion:^(NSDictionary *result){
+			BOOL failed = [result[@"@type"] isEqualToString:@"error"];
+			if (completion)
+				completion(!failed, failed ? (result[@"message"] ?: @"Telegram refused that.") : nil);
+		}];
 		return;
 	}
 	NSMutableDictionary *birthdate = [@{
@@ -712,7 +811,12 @@ static NSArray *TGPacksFrom(NSDictionary *target) {
 	} mutableCopy];
 	if (year > 0)
 		birthdate[@"year"] = @(year);
-	[self send:@{@"@type" : @"setBirthdate", @"birthdate" : birthdate}];
+	[self request:@{@"@type" : @"setBirthdate", @"birthdate" : birthdate}
+	   completion:^(NSDictionary *result){
+		BOOL failed = [result[@"@type"] isEqualToString:@"error"];
+		if (completion)
+			completion(!failed, failed ? (result[@"message"] ?: @"Telegram refused that.") : nil);
+	}];
 }
 
 /// The signed-in account's own birthday as TDLib stores it: "day", "month",
@@ -735,6 +839,8 @@ static NSArray *TGPacksFrom(NSDictionary *target) {
 		@"@type" : @"setProfilePhoto",
 		@"photo" : @{@"@type" : @"inputChatPhotoStatic",
 					 @"photo" : @{@"@type" : @"inputFileLocal", @"path" : path ?: @""}},
+		// This path changes the main photo, not the public fallback.
+		@"is_public" : @NO,
 	} completion:^(NSDictionary *result){
 		BOOL ok = ![result[@"@type"] isEqualToString:@"error"];
 		if (!ok)
@@ -1095,10 +1201,10 @@ static NSDictionary *TGFlattenAutosaveScope(NSDictionary *settings) {
 		@"@type"   : @"getUserPrivacySettingRules",
 		@"setting" : @{@"@type" : [@"userPrivacySetting" stringByAppendingString:setting]},
 	} completion:^(NSDictionary *rules){
-		// The rules are a list, most specific first. The three answers a client
-		// offers are the shapes of the first rule; anything more elaborate,
-		// set from another client, reads as the closest of the three.
-		NSString *first = [rules[@"rules"] firstObject][@"@type"];
+		// The rules are a list, most specific first. The catch-all is last:
+		// reading the first rule showed "Nobody" for any account with a
+		// Premium/bot/user exception ahead of the real setting.
+		NSString *first = [rules[@"rules"] lastObject][@"@type"];
 		NSString *value = @"nobody";
 		if ([first isEqualToString:@"userPrivacySettingRuleAllowAll"])
 			value = @"everybody";
@@ -1133,7 +1239,9 @@ static NSDictionary *TGFlattenAutosaveScope(NSDictionary *settings) {
 	} completion:^(NSDictionary *result){
 		NSMutableArray *out = [NSMutableArray array];
 		for (NSDictionary *sender in result[@"senders"]){
-			NSNumber *userId = sender[@"user_id"];
+			// A blocked MessageSender is either a user or a chat/channel;
+			// keeping only user_id dropped every blocked channel.
+			NSNumber *userId = sender[@"user_id"] ?: sender[@"chat_id"];
 			if (!userId)
 				continue;
 			[out addObject:@{

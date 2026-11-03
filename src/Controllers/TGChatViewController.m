@@ -56,6 +56,9 @@ static const NSInteger kPinnedBodyTag = 0x9010;
 
 	if ([self respondsToSelector:@selector(setEdgesForExtendedLayout:)])
 		self.edgesForExtendedLayout = UIRectEdgeNone;
+	// A chat that opens right after a popped one must not inherit a defer flag
+	// left set by a scroll whose settle callback was cancelled on the way out.
+	[TGLottieView setBuildsDeferred:NO];
 
 	[[TGTheme shared] styleNavigationBar:self.navigationController.navigationBar];
 	double vcStart = TGPerfNow();
@@ -623,7 +626,8 @@ static const NSInteger kPinnedBodyTag = 0x9010;
 		NSInteger unreadRow = firstLoad ? [me unreadSeparatorRow] : NSNotFound;
 		// hold the bottom until the media has settled - unless the chat opens
 		// at what you have not read yet
-		me.anchorToBottom = unreadRow == NSNotFound;
+		// Opened on one message, the pin would pull the table away from it.
+		me.anchorToBottom = unreadRow == NSNotFound && !me.initialMessageId;
 		if (me.anchorToBottom)
 			dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(6.0 * NSEC_PER_SEC)),
 					dispatch_get_main_queue(), ^{ me.anchorToBottom = NO; });
@@ -805,7 +809,7 @@ static const NSInteger kPinnedBodyTag = 0x9010;
 		return;
 	__weak typeof(self) weakSelf = self;
 	[[TGClient shared] historyForChat:self.chatId
-						 fromMessageId:messageId
+					   aroundMessageId:messageId
 								 limit:(NSInteger)TGMetricHistoryPageAroundPinned
 							completion:^(NSArray *messages){
 		TGChatViewController *me = weakSelf;
@@ -956,7 +960,12 @@ static const NSInteger kPinnedBodyTag = 0x9010;
 /// NO when the message is not in the loaded window.
 - (BOOL)scrollToMessageId:(int64_t)messageId {
 	for (NSInteger row = 0; row < (NSInteger)self.messages.count; row++){
-		if ([self.messages[row][@"id"] longLongValue] != messageId)
+		NSDictionary *candidate = self.messages[row];
+		// An album is one row, under the id of its first message.
+		BOOL found = [candidate[@"id"] longLongValue] == messageId;
+		for (NSDictionary *member in candidate[@"albumMessages"])
+			found = found || [member[@"id"] longLongValue] == messageId;
+		if (!found)
 			continue;
 
 		NSIndexPath *path = [NSIndexPath indexPathForRow:row inSection:0];
@@ -983,7 +992,7 @@ static const NSInteger kPinnedBodyTag = 0x9010;
 
 	__weak typeof(self) weakSelf = self;
 	[[TGClient shared] historyForChat:self.chatId
-						fromMessageId:replyId
+					  aroundMessageId:replyId
 								limit:(NSInteger)TGMetricHistoryPageAroundPinned
 						   completion:^(NSArray *messages){
 		TGChatViewController *me = weakSelf;
@@ -1349,6 +1358,13 @@ static const NSInteger kPinnedBodyTag = 0x9010;
 	}
 	NSString *kind = m[@"kind"];
 
+	// A message still going out has an X on its disc: the tap takes it back
+	// rather than opening something that is not there yet.
+	if ([m[@"sending"] boolValue]){
+		[self cancelSendingRow:m];
+		return;
+	}
+
 	// Contact card tap
 	if ([kind isEqualToString:@"messageContact"]){
 		[self handleContactTapForMessage:m];
@@ -1411,20 +1427,7 @@ static const NSInteger kPinnedBodyTag = 0x9010;
 			[self togglePlayback];
 			return;
 		}
-		NSNumber *docId = m[@"docId"];
-		if (![docId isKindOfClass:NSNumber.class])
-			return;
-		[self beginDownloadHUDForFile:[docId integerValue]];
-		__weak typeof(self) weakSelf = self;
-		[[TGClient shared] downloadFile:[docId integerValue] completion:^(NSString *path){
-			dispatch_async(dispatch_get_main_queue(), ^{
-				[weakSelf endDownloadHUD];
-				if (path)
-					[weakSelf playVideoNoteAtPath:path row:indexPath.row];
-				else
-					[weakSelf showPlaybackFailure];
-			});
-		}];
+		[self playVideoNoteForMessage:m atRow:indexPath.row];
 		return;
 	}
 
@@ -1492,6 +1495,10 @@ static const NSInteger kPinnedBodyTag = 0x9010;
 - (void)scheduleGifAutoplayAfterScrolling {
 	if ([TGDevice tier] != TGDeviceTierVintage)
 		return;
+	// While the table is moving, a sticker that has not been built yet waits:
+	// its raster would fight the scroll for the one core. Cleared below once
+	// the scroll settles, then the rows that showed the emoji load for real.
+	[TGLottieView setBuildsDeferred:YES];
 	[NSObject cancelPreviousPerformRequestsWithTarget:self
 			selector:@selector(resumeGifAutoplayAfterScrolling) object:nil];
 	[self performSelector:@selector(resumeGifAutoplayAfterScrolling)
@@ -1505,6 +1512,11 @@ static const NSInteger kPinnedBodyTag = 0x9010;
 		return;
 	if (self.table.isDragging || self.table.isDecelerating)
 		return;
+
+	// The scroll has settled: let deferred sticker builds run and redraw the
+	// rows that had shown the emoji placeholder while the table moved.
+	[TGLottieView setBuildsDeferred:NO];
+	[self reloadTableDebounced];
 
 	NSArray *visible = [self.table indexPathsForVisibleRows];
 	NSIndexPath *nearest = nil;
@@ -1548,6 +1560,13 @@ static const NSInteger kPinnedBodyTag = 0x9010;
 }
 
 - (void)tableTapped:(UITapGestureRecognizer *)gesture {
+	// The playing circle is a subview of the table, and with a recognizer of its
+	// own it lost to this one: a tap could not pause the note.
+	UIView *circle = [self.table viewWithTag:0xF119];
+	if (circle && CGRectContainsPoint(circle.frame, [gesture locationInView:self.table])){
+		[self togglePlayback];
+		return;
+	}
 	[self hideStickerPanel];
 	[self.input resignFirstResponder];
 }

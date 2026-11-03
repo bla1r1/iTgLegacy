@@ -278,21 +278,37 @@ static NSDictionary *TGFlattenInviteLink(NSDictionary *link) {
 		@"can_send_other_messages": @(everything),
 		@"can_add_link_previews"  : @(basic),
 		@"can_react_to_messages"  : @(everything),
-		@"can_edit_tag"           : @(everything),
-		@"can_change_info"        : @(everything),
+		// These four are default member rights that reach past posting:
+		// renaming the group, pinning, creating topics and editing tags.
+		// A message preset never turns them on; setChatPermissionsFromPreset
+		// carries whatever the chat already allows instead.
+		@"can_edit_tag"           : @NO,
+		@"can_change_info"        : @NO,
 		@"can_invite_users"       : @(basic),
-		@"can_pin_messages"       : @(everything),
-		@"can_create_topics"      : @(everything),
+		@"can_pin_messages"       : @NO,
+		@"can_create_topics"      : @NO,
 	};
 }
 
 - (void)setChatPermissionsFromPreset:(NSString *)preset
 							   inChat:(int64_t)chatId
 						  completion:(void (^)(BOOL ok))completion {
+	NSMutableDictionary *permissions =
+			[[TGClient chatPermissionsForPreset:preset] mutableCopy];
+	// The four admin-like flags are not part of what a posting preset means.
+	// Keep what the chat already has rather than silently changing them.
+	NSDictionary *current = self.chatsById[@(chatId)][@"permissions"];
+	if ([current isKindOfClass:NSDictionary.class]){
+		for (NSString *key in @[@"can_change_info", @"can_pin_messages",
+								@"can_create_topics", @"can_edit_tag"]){
+			if ([current[key] isKindOfClass:NSNumber.class])
+				permissions[key] = current[key];
+		}
+	}
 	[self request:@{
 		@"@type"       : @"setChatPermissions",
 		@"chat_id"     : @(chatId),
-		@"permissions" : [TGClient chatPermissionsForPreset:preset],
+		@"permissions" : permissions,
 	} completion:^(NSDictionary *result){
 		if (completion)
 			completion(![result[@"@type"] isEqualToString:@"error"]);
@@ -463,12 +479,25 @@ static NSDictionary *TGFlattenInviteLink(NSDictionary *link) {
 			if (completion) completion(NO);
 			return;
 		}
-		[weakSelf request:@{@"@type"          : @"toggleSupergroupSignMessages",
-							@"supergroup_id"  : @(supergroupId),
-							@"sign_messages"  : @(on)}
-			 completion:^(NSDictionary *result){
-			if (completion)
-				completion(![result[@"@type"] isEqualToString:@"error"]);
+		// toggleSupergroupSignMessages requires both switches. The sender
+		// line is a separate setting; read it from the supergroup record so
+		// turning signatures on does not turn author profiles off.
+		[weakSelf request:@{@"@type" : @"getSupergroup",
+							@"supergroup_id" : @(supergroupId)}
+			 completion:^(NSDictionary *group){
+			if (completion && [group[@"@type"] isEqualToString:@"error"]){
+				completion(NO);
+				return;
+			}
+			[weakSelf request:@{
+				@"@type"             : @"toggleSupergroupSignMessages",
+				@"supergroup_id"     : @(supergroupId),
+				@"sign_messages"     : @(on),
+				@"show_message_sender" : group[@"show_message_sender"] ?: @NO,
+			} completion:^(NSDictionary *result){
+				if (completion)
+					completion(![result[@"@type"] isEqualToString:@"error"]);
+			}];
 		}];
 	}];
 }
@@ -487,7 +516,7 @@ static NSDictionary *TGFlattenInviteLink(NSDictionary *link) {
 		}
 		[weakSelf request:@{@"@type"           : @"toggleSupergroupJoinToSendMessages",
 							@"supergroup_id"   : @(supergroupId),
-							@"join_to_send"    : @(on)}
+							@"join_to_send_messages" : @(on)}
 			 completion:^(NSDictionary *result){
 			if (completion)
 				completion(![result[@"@type"] isEqualToString:@"error"]);
@@ -506,17 +535,26 @@ static NSDictionary *TGFlattenInviteLink(NSDictionary *link) {
 			if (completion) completion(NO, NO, NO, NO);
 			return;
 		}
-		[weakSelf request:@{@"@type" : @"getSupergroupFullInfo",
+		// sign_messages and join_to_send_messages live on the supergroup
+		// record, not on supergroupFullInfo. The old keys read as NO for
+		// every group, so the menu drew both switches off.
+		[weakSelf request:@{@"@type" : @"getSupergroup",
 							@"supergroup_id" : @(supergroupId)}
-			 completion:^(NSDictionary *full){
-			if ([full[@"@type"] isEqualToString:@"error"]){
+			 completion:^(NSDictionary *group){
+			if ([group[@"@type"] isEqualToString:@"error"]){
 				if (completion) completion(NO, NO, NO, NO);
 				return;
 			}
-			if (completion)
-				completion([full[@"sign_messages"] boolValue],
-						   [full[@"join_to_send"] boolValue],
-						   [full[@"is_all_history_available"] boolValue], YES);
+			[weakSelf request:@{@"@type" : @"getSupergroupFullInfo",
+								@"supergroup_id" : @(supergroupId)}
+				 completion:^(NSDictionary *full){
+				BOOL history = ![full[@"@type"] isEqualToString:@"error"] &&
+						[full[@"is_all_history_available"] boolValue];
+				if (completion)
+					completion([group[@"sign_messages"] boolValue],
+							   [group[@"join_to_send_messages"] boolValue],
+							   history, YES);
+			}];
 		}];
 	}];
 }

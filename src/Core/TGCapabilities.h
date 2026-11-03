@@ -33,6 +33,9 @@
 /// an iPhone 4S when Telegram shipped calls, so that one is a build problem
 /// rather than a hardware one.
 + (BOOL)canEncodeVideoCall;
+/// The longest side, in pixels, the H.264 decoder here plays: 720p on the A4,
+/// 1080p to the A8, 4K from the A9. A larger file plays no picture at all.
++ (int)maxVideoSide;
 
 /// Animated .tgs stickers play rather than showing their first frame.
 + (BOOL)canPlayAnimatedStickers;

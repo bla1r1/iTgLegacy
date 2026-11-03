@@ -205,6 +205,10 @@
 - (void)viewWillAppear:(BOOL)animated {
 	[super viewWillAppear:animated];
 	[[TGTheme shared] styleNavigationBar:self.navigationController.navigationBar];
+	// The header is held across reloads. An edit changes the name and picture,
+	// so returning to Settings must build it again rather than show the old one.
+	if (self.page == TGSettingsPageRoot)
+		self.profileCell = nil;
 	[self rebuild];
 	// The Archive switches are the one page that reads copy TDLib holds:
 	// the cached copy answers the first draw, the network refresh redraws.
@@ -975,9 +979,7 @@ static const CGFloat kMeTextInset  = TGMetricPadMedium;
 
 	NSDictionary *row = [self rowAt:path];
 	if ([row[TGRowKind] isEqualToString:TGKindProfile]){
-		UIViewController *profile = [[TGEditProfileViewController alloc] init];
-		profile.hidesBottomBarWhenPushed = YES;
-		[self.navigationController pushViewController:profile animated:YES];
+		[self openMyProfile];
 		return;
 	}
 
@@ -998,7 +1000,7 @@ static const CGFloat kMeTextInset  = TGMetricPadMedium;
 	UITableViewCell *profile = [[UITableViewCell alloc]
 			initWithStyle:UITableViewCellStyleDefault reuseIdentifier:nil];
 	[theme styleGroupedCell:profile forRow:0 totalRows:1];
-	profile.selectionStyle = UITableViewCellSelectionStyleNone;
+	profile.selectionStyle = UITableViewCellSelectionStyleBlue;
 
 	NSDictionary *me = [TGClient shared].me;
 	NSString *name = [me[@"first_name"] length] ? me[@"first_name"]

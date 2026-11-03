@@ -15,6 +15,10 @@ static const CGFloat kIconDumpSide = 52.0f;
 #import "TGChatViewController.h"
 #import "TGChatListViewController.h"
 #import "TGChatListViewControllerInternal.h"
+#import "TGChatViewControllerInternal.h"
+#import "TGProfileAppearanceViewController.h"
+#import "TGEditProfileViewController.h"
+#import "TGProfileViewControllerInternal.h"
 #import "TGDevShowcase.h"
 #import "TGTopicsViewController.h"
 #import "TGGalleryViewController.h"
@@ -94,6 +98,78 @@ static const CGFloat kIconDumpSide = 52.0f;
 			}
 			else [self.loginVC showCodeStepWithPhoneNumber:@"+1 555 0100"];
 		});
+		return YES;
+	}
+
+	// itglegacy://noteplay/<row> - the last recorded note plays at that row of the
+	// open chat; noteplay/state logs what the player is doing. A note in a fixture
+	// chat has no file to download.
+	if ([host isEqualToString:@"noteplay"]){
+		dispatch_async(dispatch_get_main_queue(), ^{
+			UITabBarController *tabs = [self activeTabBarController];
+			UINavigationController *nc = (UINavigationController *)tabs.selectedViewController;
+			TGChatViewController *chat = (TGChatViewController *)nc.topViewController;
+			if (![chat isKindOfClass:[TGChatViewController class]])
+				return;
+			if ([arg isEqualToString:@"state"]){
+				NSLog(@"noteplay: state=%ld rate=%.2f at %.1f", (long)chat.videoNotePlayer.playbackState,
+						chat.videoNotePlayer.currentPlaybackRate, chat.videoNotePlayer.currentPlaybackTime);
+				return;
+			}
+			if ([arg isEqualToString:@"speed"]){
+				[chat cyclePlaybackSpeed];
+				return;
+			}
+			if ([arg isEqualToString:@"toggle"]){
+				[chat togglePlayback];
+				return;
+			}
+			[chat playVideoNoteAtPath:[NSTemporaryDirectory() stringByAppendingPathComponent:
+					@"video-note-square-0.mov"] row:[arg integerValue]];
+		});
+		return YES;
+	}
+
+	// itglegacy://ownscreen/<colours|edit> - a screen of your own profile, which
+	// changes nothing until something on it is tapped.
+	if ([host isEqualToString:@"ownscreen"]){
+		dispatch_async(dispatch_get_main_queue(), ^{
+			UITabBarController *tabs = [self activeTabBarController];
+			tabs.selectedIndex = tabs.viewControllers.count - 1;
+			UINavigationController *nc = tabs.viewControllers[tabs.selectedIndex];
+			[nc popToRootViewControllerAnimated:NO];
+			UIViewController *screen = [arg isEqualToString:@"colours"]
+					? [[TGProfileAppearanceViewController alloc] init]
+					: [[TGEditProfileViewController alloc] init];
+			screen.hidesBottomBarWhenPushed = YES;
+			[nc pushViewController:screen animated:NO];
+		});
+		return YES;
+	}
+
+	// itglegacy://profile/<username|me>[:<tab>] - a public profile, so a check on the
+	// device never has to go through somebody's private chat.
+	if ([host isEqualToString:@"profile"] && arg.length){
+		NSArray *parts = [arg componentsSeparatedByString:@":"];
+		void (^open)(int64_t, NSString *) = ^(int64_t chatId, NSString *title){
+			dispatch_async(dispatch_get_main_queue(), ^{
+				if (!chatId)
+					return;
+				UITabBarController *tabs = [self activeTabBarController];
+				UINavigationController *nc = tabs.viewControllers[tabs.selectedIndex];
+				[nc popToRootViewControllerAnimated:NO];
+				TGProfileViewController *profile = [[TGProfileViewController alloc]
+						initWithChatId:chatId userId:chatId > 0 ? chatId : 0 title:title];
+				profile.hidesBottomBarWhenPushed = YES;
+				[nc pushViewController:profile animated:NO];
+				if (parts.count > 1)
+					[profile mediaTabSelected:parts[1]];
+			});
+		};
+		if ([parts[0] isEqualToString:@"me"])
+			open([[TGClient shared].me[@"id"] longLongValue], [TGClient shared].me[@"first_name"]);
+		else
+			[[TGClient shared] chatWithUsername:parts[0] completion:open];
 		return YES;
 	}
 

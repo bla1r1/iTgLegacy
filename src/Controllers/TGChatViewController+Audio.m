@@ -1,10 +1,13 @@
 #import "TGChatViewControllerInternal.h"
 #import "TGVideoNoteRecorder.h"
 #import "TGVideoNoteViewController.h"
+#import "TGPlaybackQueue.h"
+#import "TGMessageStreamStore.h"
 #import "TGVoiceRecorder.h"
 #import "TGVoiceDecoder.h"
 #import "TGMusicPlayer.h"
 #import "TGStyle.h"
+#import "TGAlertSheet.h"
 #import "TGPlayerView.h"
 
 static CGPoint sTouchStart;
@@ -12,6 +15,9 @@ static CGFloat sDragDeltaX;
 static BOOL sIsLocked;
 static BOOL sIsCancelled;
 static BOOL sSendInFlight;
+/// The local row a note shows before TDLib knows it. Above every real and
+/// pending id, so it sorts last and cannot collide with one.
+static int64_t sLocalNoteRowCounter;
 
 /// The tap-to-toggle threshold: release before it and the touch was a mode
 /// switch, not a recording - Telegram waits the same beat before it starts
@@ -444,6 +450,9 @@ static const NSTimeInterval kRecordHintSeconds = 1.6;
 		TGVideoNoteViewController *recorder = [[TGVideoNoteViewController alloc]
 				initWithChatId:self.chatId threadId:self.threadId background:background];
 		__weak typeof(self) weakSelf = self;
+		recorder.onSend = ^(BOOL once){
+			[weakSelf sendRecordedNoteOnce:once];
+		};
 		recorder.onDismiss = ^{
 			weakSelf.videoNoteOverlayActive = NO;
 			weakSelf.inputBar.hidden = NO;
@@ -513,32 +522,248 @@ static const NSTimeInterval kRecordHintSeconds = 1.6;
 	self.recordTimer = nil;
 	[self hideRecordPanel];
 
-	BOOL video = self.videoNoteMode;
+	if (self.videoNoteMode){
+		// The note's own send path stops the recorder: it needs the duration
+		// before the stop to show the row at its real length.
+		[self sendRecordedNoteOnce:self.recordOnce];
+		sSendInFlight = NO;
+		return;
+	}
+
 	__weak typeof(self) weakSelf = self;
 	void (^done)(NSString *, NSTimeInterval) = ^(NSString *path, NSTimeInterval seconds){
 		TGChatViewController *me = weakSelf;
 		if (!me || !path || seconds < 0.5)
 			return;   // a stray tap is not a message (me == nil after the send)
 		[me clearComposeState];
-		if (video)
-			[[TGClient shared] sendVideoNoteAtPath:path
-										  duration:(NSInteger)ceil(seconds)
-											length:[TGVideoNoteRecorder shared].noteSide
-											toChat:me.chatId
-											thread:me.threadId
-										  viewOnce:me.recordOnce];
-		else
-			[[TGClient shared] sendVoiceAtPath:path
-									  duration:(NSInteger)seconds
-										toChat:me.chatId
-										thread:me.threadId
-									  viewOnce:me.recordOnce];
+		[[TGClient shared] sendVoiceAtPath:path
+								  duration:(NSInteger)seconds
+									toChat:me.chatId
+									thread:me.threadId
+								  viewOnce:me.recordOnce
+								  progress:^(CGFloat fraction){
+			(void)fraction;
+			TGChatViewController *strong = weakSelf;
+			if (strong)
+				[strong refreshSendRings];
+		} accepted:nil completion:^(BOOL sent){
+			(void)sent;
+			TGChatViewController *strong = weakSelf;
+			if (strong)
+				[strong refreshSendRings];
+		}];
 	};
-	if (video)
-		[[TGVideoNoteRecorder shared] stopWithCompletion:done];
-	else
-		[[TGVoiceRecorder shared] stopWithCompletion:done];
+	[[TGVoiceRecorder shared] stopWithCompletion:done];
 	sSendInFlight = NO;
+}
+
+/// The note is on its way the instant Send is tapped: the row goes in before
+/// the transcode, at the size it will keep. The recorder's export fills the
+/// first half of the ring and TDLib's upload the second.
+- (void)sendRecordedNoteOnce:(BOOL)once {
+	TGVideoNoteRecorder *recorder = [TGVideoNoteRecorder shared];
+	NSTimeInterval recorded = recorder.duration;
+
+	int64_t rowId = (1LL << 52) + (++sLocalNoteRowCounter);
+	NSDictionary *row = @{
+		@"id"        : @(rowId),
+		@"chatId"    : @(self.chatId),
+		@"senderId"  : @([[TGClient shared].me[@"id"] longLongValue]),
+		@"outgoing"  : @YES,
+		@"date"      : @((NSInteger)[[NSDate date] timeIntervalSince1970]),
+		@"kind"      : @"messageVideoNote",
+		@"duration"  : @((NSInteger)ceil(recorded)),
+		@"sending"   : @YES,
+		@"viewOnce"  : @(once),
+		@"localNote" : @YES,
+	};
+	int64_t localId = rowId;
+	self.pendingNoteRowId = rowId;
+	self.pendingNoteRealId = 0;
+	self.pendingNoteProgress = 0;
+	self.pendingNoteCancelled = NO;
+
+	// The same append the live update uses, so the row is laid out, grouped
+	// and scrolled to exactly like one that arrived from TDLib.
+	[self.streamStore appendNewerMessages:@[row]];
+	self.rawMessages = [self.streamStore messages];
+	self.messages = [self groupedMessagesFromMessages:self.rawMessages];
+	self.atChatEnd = YES;
+	[self.table reloadData];
+	[self scrollToBottomAnimated:YES];
+
+	__weak typeof(self) weakSelf = self;
+	recorder.onExportProgress = ^(CGFloat fraction){
+		TGChatViewController *me = weakSelf;
+		if (!me)
+			return;
+		if (me.pendingNoteRowId == localId)
+			me.pendingNoteProgress = fraction * 0.5f;
+		[me refreshSendRings];
+	};
+
+	__block int64_t sentMessageId = 0;
+	// Strong self on purpose: leaving the chat must not cancel the note.
+	[recorder stopWithCompletion:^(NSString *path, NSTimeInterval seconds){
+		recorder.onExportProgress = nil;
+		if (seconds < 0.5){
+			// A stray tap: there is no note, so there is nothing to report.
+			BOOL current = (self.pendingNoteRowId == localId);
+			[self removeLocalNoteRowWithId:localId];
+			if (current){
+				self.pendingNoteRealId = 0;
+				self.pendingNoteProgress = 0;
+			}
+			[self refreshSendRings];
+			return;
+		}
+		if (!path){
+			BOOL current = (self.pendingNoteRowId == localId);
+			[self removeLocalNoteRowWithId:localId];
+			if (current){
+				self.pendingNoteRealId = 0;
+				self.pendingNoteProgress = 0;
+			}
+			[self refreshSendRings];
+			[TGAlertSheet showMessage:@"The video message was not sent."
+								 title:nil inView:self.view];
+			return;
+		}
+		// The X landed just as the transcode finished; the row is already
+		// gone, so the request must not leave either.
+		if (self.pendingNoteCancelled){
+			BOOL current = (self.pendingNoteRowId == localId);
+			[self removeLocalNoteRowWithId:localId];
+			if (current)
+				self.pendingNoteProgress = 0;
+			[self refreshSendRings];
+			return;
+		}
+		[[TGClient shared] sendVideoNoteAtPath:path
+									  duration:(NSInteger)ceil(seconds)
+										length:recorder.noteSide
+										toChat:self.chatId
+										thread:self.threadId
+									  viewOnce:once
+								   thumbnail:recorder.thumbnailPath
+									progress:^(CGFloat fraction){
+			if (self.pendingNoteRowId == 0 || self.pendingNoteRowId == localId)
+				self.pendingNoteProgress = 0.5f + 0.5f * fraction;
+			[self refreshSendRings];
+		} accepted:^(int64_t messageId){
+			// The X landed while sendMessage was already on the wire: the
+			// request cannot be taken back, but its result can be deleted.
+			// The cancel waits a turn because the waiter is registered after
+			// this block returns, and the cancel's own completion is what
+			// clears the pending state.
+			if (self.pendingNoteCancelled){
+				sentMessageId = messageId;
+				self.pendingNoteRealId = messageId;
+				__weak typeof(self) weakChat = self;
+				dispatch_async(dispatch_get_main_queue(), ^{
+					[[TGClient shared] cancelSendingMessage:messageId
+													inChat:weakChat.chatId];
+				});
+				return;
+			}
+			// updateNewMessage has already appended the real row, or will;
+			// only the local one is ours to take out.
+			sentMessageId = messageId;
+			[self removeLocalNoteRowWithId:localId];
+			self.pendingNoteRealId = messageId;
+			[self refreshSendRings];
+		} completion:^(BOOL sent){
+			BOOL cancelled = self.pendingNoteCancelled;
+			[self removeLocalNoteRowWithId:localId];
+			if (sentMessageId && self.pendingNoteRealId == sentMessageId)
+				self.pendingNoteRealId = 0;
+			if (self.pendingNoteRowId == 0)
+				self.pendingNoteProgress = 0;
+			[self refreshSendRings];
+			if (!sent && !cancelled)
+				[TGAlertSheet showMessage:@"The video message was not sent."
+									 title:nil inView:self.view];
+		}];
+	}];
+}
+
+/// Takes the local row out and rebuilds the two arrays the same way the
+/// deletion branch of onMessage does.
+- (void)removeLocalNoteRow {
+	[self removeLocalNoteRowWithId:self.pendingNoteRowId];
+}
+
+/// The id is explicit so a completion that lands while a second note is
+/// already waiting cannot take that newer row out by mistake.
+- (void)removeLocalNoteRowWithId:(int64_t)rowId {
+	if (rowId <= 0)
+		return;
+	if (self.pendingNoteRowId == rowId)
+		self.pendingNoteRowId = 0;
+	if (![self.streamStore removeMessageId:rowId])
+		return;
+	self.rawMessages = [self.streamStore messages];
+	self.messages = [self groupedMessagesFromMessages:self.rawMessages];
+	[self.table reloadData];
+}
+
+/// A progress tick touches only the visible rings. Reloading the table several
+/// times a second on an A4 is visible as a stutter.
+- (void)refreshSendRings {
+	for (UITableViewCell *tableCell in self.table.visibleCells){
+		if (![tableCell isKindOfClass:TGBubbleCell.class])
+			continue;
+		TGBubbleCell *cell = (TGBubbleCell *)tableCell;
+		NSIndexPath *indexPath = [self.table indexPathForCell:cell];
+		if (!indexPath || indexPath.row >= (NSInteger)self.messages.count)
+			continue;
+		NSDictionary *m = self.messages[indexPath.row];
+		if ([m[@"sending"] boolValue])
+			[cell showSendRingWithProgress:[self ringProgressForMessage:m]];
+		else
+			[cell hideSendRing];
+	}
+}
+
+- (CGFloat)ringProgressForMessage:(NSDictionary *)m {
+	if (![m[@"sending"] boolValue])
+		return 0;
+	if ([m[@"localNote"] boolValue])
+		return self.pendingNoteProgress;
+
+	int64_t messageId = [m[@"id"] longLongValue];
+	CGFloat fraction = [[TGClient shared] sendProgressForMessage:messageId];
+	// A voice note is upload only; a round note spends the first half of the
+	// same line being transcoded.
+	if ([m[@"kind"] isEqualToString:@"messageVoiceNote"])
+		return fraction;
+	return 0.5f + 0.5f * fraction;
+}
+
+/// A tap on a sending row takes it back instead of playing it.
+- (void)cancelSendingRow:(NSDictionary *)m {
+	if (![m[@"sending"] boolValue])
+		return;
+	if ([m[@"localNote"] boolValue]){
+		TGVideoNoteRecorder *recorder = [TGVideoNoteRecorder shared];
+		recorder.onExportProgress = nil;
+		[recorder cancel];
+		self.pendingNoteCancelled = YES;
+		self.pendingNoteProgress = 0;
+		self.pendingNoteRealId = 0;
+		[self removeLocalNoteRow];
+		[self refreshSendRings];
+		return;
+	}
+
+	int64_t messageId = [m[@"id"] longLongValue];
+	if (messageId <= 0)
+		return;
+	if (self.pendingNoteRealId == messageId){
+		self.pendingNoteRealId = 0;
+		self.pendingNoteProgress = 0;
+	}
+	[[TGClient shared] cancelSendingMessage:messageId inChat:self.chatId];
 }
 
 /// The one-time choice from above the record lock acts on what is being
@@ -601,6 +826,10 @@ static const NSTimeInterval kRecordHintSeconds = 1.6;
 /// MPMoviePlayerController is the only decoder iOS 7 offers, but it does not
 /// have to own the screen: its view goes in a mask of our own.
 - (void)playVideoNoteAtPath:(NSString *)path row:(NSInteger)row {
+	// One voice at a time, and togglePlayback looks at music first, so a track
+	// left playing would take the circle's pause for itself.
+	if (self.voicePlayer || [TGMusicPlayer shared].current)
+		[self stopPlayback];
 	[self stopVideoNote];
 
 	if (row >= 0 && row < (NSInteger)self.messages.count){
@@ -655,15 +884,13 @@ static const NSTimeInterval kRecordHintSeconds = 1.6;
 	[self.table addSubview:circle];
 	self.videoNotePlayer = player;
 
-	[circle addGestureRecognizer:[[UITapGestureRecognizer alloc]
-			initWithTarget:self action:@selector(togglePlayback)]];
-
 	[[NSNotificationCenter defaultCenter] addObserver:self
 			selector:@selector(videoNoteLoopNotification:)
 				name:MPMoviePlayerPlaybackDidFinishNotification
 			  object:player];
 	[player prepareToPlay];
 	[player play];
+	[self applyVideoNoteRate];
 
 	self.playingMessageId = [m[@"id"] longLongValue];
 	[self showPlayerBar];
@@ -673,7 +900,64 @@ static const NSTimeInterval kRecordHintSeconds = 1.6;
 }
 
 - (void)videoNoteLoopNotification:(NSNotification *)note {
+	BOOL ended = [note.userInfo[MPMoviePlayerPlaybackDidFinishReasonUserInfoKey] integerValue]
+			== MPMovieFinishReasonPlaybackEnded;
+	if (ended)
+		[self videoNoteEnded];
+	else
+		[self stopVideoNote];
+}
+
+- (void)videoNoteEnded {
+	int64_t ended = self.playingMessageId;
 	[self stopVideoNote];
+	[self playNextAfterMessage:ended];
+}
+
+/// play resets the movie player to normal speed, and a rate set before it has
+/// loaded is dropped, so this runs on every tick as well.
+- (void)applyVideoNoteRate {
+	float wanted = self.playbackRate ?: TGPlaybackSpeedNormal;
+	if (self.videoNotePlayer.playbackState == MPMoviePlaybackStatePlaying &&
+		self.videoNotePlayer.currentPlaybackRate != wanted)
+		self.videoNotePlayer.currentPlaybackRate = wanted;
+}
+
+- (BOOL)showsUnplayedMarkFor:(NSDictionary *)m {
+	return TGShowsUnplayedMark(m, self.chatId == [[TGClient shared] savedMessagesChatId]);
+}
+
+- (void)playVideoNoteForMessage:(NSDictionary *)m atRow:(NSInteger)row {
+	NSNumber *docId = m[@"docId"];
+	if (![docId isKindOfClass:NSNumber.class])
+		return;
+	[self beginDownloadHUDForFile:[docId integerValue]];
+	__weak typeof(self) weakSelf = self;
+	[[TGClient shared] downloadFile:[docId integerValue] completion:^(NSString *path){
+		dispatch_async(dispatch_get_main_queue(), ^{
+			[weakSelf endDownloadHUD];
+			if (path)
+				[weakSelf playVideoNoteAtPath:path row:row];
+			else
+				[weakSelf showPlaybackFailure];
+		});
+	}];
+}
+
+/// A run of voice and round notes plays through, the way their client does. The
+/// row comes into view first, because a round note plays where it sits.
+- (void)playNextAfterMessage:(int64_t)messageId {
+	NSInteger row = messageId ? TGNextPlayableRow(self.messages, messageId) : NSNotFound;
+	if (row == NSNotFound)
+		return;
+	NSDictionary *next = self.messages[row];
+	if ([next[@"kind"] isEqualToString:@"messageVideoNote"]){
+		[self.table scrollToRowAtIndexPath:[NSIndexPath indexPathForRow:row inSection:0]
+						  atScrollPosition:UITableViewScrollPositionNone animated:YES];
+		[self playVideoNoteForMessage:next atRow:row];
+	} else {
+		[self playVoiceNoteForMessage:next atRow:row];
+	}
 }
 
 - (void)stopVideoNote {
@@ -831,9 +1115,7 @@ static const NSTimeInterval kRecordHintSeconds = 1.6;
 	self.playerProgress.frame = CGRectMake(0, kPlayerBarHeight - kPlayerProgressH,
 			0, kPlayerProgressH);
 	[self.playerToggle setImage:[TGIcons pause] forState:UIControlStateNormal];
-	// A video note has no rate to change.
-	self.playerSpeed.hidden = (self.voicePlayer == nil);
-	[self.playerSpeed setTitle:@"1x" forState:UIControlStateNormal];
+	[self showPlaybackRate];
 	[self.view addSubview:self.playerBar];
 
 	// Push the messages down so the strip does not cover the newest one.
@@ -940,9 +1222,10 @@ static NSString *TGClockText(NSTimeInterval position, NSTimeInterval duration) {
 - (void)playbackTick {
 	if (self.videoNotePlayer && self.videoNotePlayer.duration > 0) {
 		if (self.videoNotePlayer.currentPlaybackTime >= self.videoNotePlayer.duration - 0.05) {
-			[self stopVideoNote];
+			[self videoNoteEnded];
 			return;
 		}
+		[self applyVideoNoteRate];
 	}
 	CGFloat played = [self playedFraction];
 	CGFloat barWidth = self.playerBar.bounds.size.width;
@@ -1040,6 +1323,10 @@ static NSString *TGClockText(NSTimeInterval position, NSTimeInterval duration) {
 	if (!ip || ip.row >= (NSInteger)self.messages.count)
 		return;
 	NSDictionary *m = self.messages[ip.row];
+	if ([m[@"sending"] boolValue]){
+		[self cancelSendingRow:m];
+		return;
+	}
 
 	if (!self.voicePlayer || cell.voiceMessageId != self.playingMessageId){
 		if (gesture.state == UIGestureRecognizerStateEnded){
@@ -1069,6 +1356,10 @@ static NSString *TGClockText(NSTimeInterval position, NSTimeInterval duration) {
 	if (!ip || ip.row >= (NSInteger)self.messages.count)
 		return;
 	NSDictionary *m = self.messages[ip.row];
+	if ([m[@"sending"] boolValue]){
+		[self cancelSendingRow:m];
+		return;
+	}
 	[self playVoiceNoteForMessage:m atRow:ip.row];
 }
 
@@ -1086,6 +1377,11 @@ static NSString *TGClockText(NSTimeInterval position, NSTimeInterval duration) {
 	NSIndexPath *ip = [self.table indexPathForCell:cell];
 	if (!ip || ip.row >= (NSInteger)self.messages.count)
 		return;
+	NSDictionary *m = self.messages[ip.row];
+	if ([m[@"sending"] boolValue]){
+		[self cancelSendingRow:m];
+		return;
+	}
 	[self tableView:self.table didSelectRowAtIndexPath:ip];
 }
 
@@ -1093,13 +1389,19 @@ static NSString *TGClockText(NSTimeInterval position, NSTimeInterval duration) {
 /// rate unless it was told to expect it before playing, which is why
 /// enableRate is set when the player is built rather than here.
 - (void)cyclePlaybackSpeed {
-	if (!self.voicePlayer)
-		return;
-	float rate = self.voicePlayer.rate;
-	float next = (rate < TGPlaybackSpeedThresholdFast) ? TGPlaybackSpeedFast : ((rate < TGPlaybackSpeedThresholdDouble) ? TGPlaybackSpeedDouble : TGPlaybackSpeedNormal);
-	self.voicePlayer.rate = next;
-	[self.playerSpeed setTitle:(next == TGPlaybackSpeedNormal ? @"1x" :
-			(next == TGPlaybackSpeedFast ? @"1.5x" : @"2x")) forState:UIControlStateNormal];
+	float rate = self.playbackRate ?: TGPlaybackSpeedNormal;
+	self.playbackRate = (rate < TGPlaybackSpeedThresholdFast) ? TGPlaybackSpeedFast
+			: ((rate < TGPlaybackSpeedThresholdDouble) ? TGPlaybackSpeedDouble : TGPlaybackSpeedNormal);
+	self.voicePlayer.rate = self.playbackRate;
+	[self applyVideoNoteRate];
+	[self showPlaybackRate];
+}
+
+- (void)showPlaybackRate {
+	float rate = self.playbackRate ?: TGPlaybackSpeedNormal;
+	[self.playerSpeed setTitle:(rate < TGPlaybackSpeedThresholdFast ? @"1x" :
+			(rate < TGPlaybackSpeedThresholdDouble ? @"1.5x" : @"2x"))
+					  forState:UIControlStateNormal];
 }
 
 /// Tapping anywhere along the strip's line jumps there.
@@ -1141,6 +1443,7 @@ static NSString *TGClockText(NSTimeInterval position, NSTimeInterval duration) {
             [self.playerToggle setImage:[TGIcons play] forState:UIControlStateNormal];
         } else {
             [self.videoNotePlayer play];
+            [self applyVideoNoteRate];
             [self startPlaybackTimer];
             [self.playerToggle setImage:[TGIcons pause] forState:UIControlStateNormal];
         }
@@ -1168,24 +1471,7 @@ static NSString *TGClockText(NSTimeInterval position, NSTimeInterval duration) {
 	if (!flag || currentId == 0)
 		return;
 
-	// Automatically play the next voice note in the chat (in chronological order: row + 1 ...)
-	NSInteger currentRow = NSNotFound;
-	for (NSInteger i = 0; i < (NSInteger)self.messages.count; i++) {
-		if ([self.messages[i][@"id"] longLongValue] == currentId) {
-			currentRow = i;
-			break;
-		}
-	}
-
-	if (currentRow != NSNotFound) {
-		for (NSInteger i = currentRow + 1; i < (NSInteger)self.messages.count; i++) {
-			NSDictionary *nextMsg = self.messages[i];
-			if ([nextMsg[@"type"] isEqualToString:@"voice"] && nextMsg[@"docId"]) {
-				[self playVoiceNoteForMessage:nextMsg atRow:i];
-				break;
-			}
-		}
-	}
+	[self playNextAfterMessage:currentId];
 }
 
 - (void)playVoiceNoteForMessage:(NSDictionary *)m atRow:(NSInteger)row {
@@ -1205,7 +1491,7 @@ static NSString *TGClockText(NSTimeInterval position, NSTimeInterval duration) {
 		[self togglePlayback];
 		return;
 	}
-	if (self.voicePlayer)
+	if (self.voicePlayer || self.videoNotePlayer)
 		[self stopPlayback];
 	[self beginDownloadHUDForFile:[docId integerValue]];
 	__weak typeof(self) weakSelf = self;
@@ -1232,6 +1518,7 @@ static NSString *TGClockText(NSTimeInterval position, NSTimeInterval duration) {
 			NSLog(@"voice: playing %.1f s (streaming)", me.voicePlayer.duration);
 			me.voicePlayer.delegate = (id<TGStreamingVoicePlayerDelegate>)me;
 			me.voicePlayer.enableRate = YES;   // for the speed button
+			me.voicePlayer.rate = me.playbackRate ?: TGPlaybackSpeedNormal;
 			me.playingMessageId = [m[@"id"] longLongValue];
 			[me.voicePlayer play];
 			[me showPlayerBar];

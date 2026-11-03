@@ -154,7 +154,20 @@
 	X(TGUpdateDirectMessagesChatTopic,    "updateDirectMessagesChatTopic") \
 	X(TGUpdateTextCompositionStyles,      "updateTextCompositionStyles") \
 	X(TGUpdateStakeDiceState,             "updateStakeDiceState") \
-	X(TGUpdateChatActiveStories,          "updateChatActiveStories")
+	X(TGUpdateChatActiveStories,          "updateChatActiveStories") \
+	X(TGUpdateStory,                      "updateStory") \
+	X(TGUpdateStoryDeleted,               "updateStoryDeleted") \
+	X(TGUpdateStoryPostSucceeded,         "updateStoryPostSucceeded") \
+	X(TGUpdateStoryPostFailed,            "updateStoryPostFailed") \
+	X(TGUpdateStoryListChatCount,         "updateStoryListChatCount") \
+	X(TGUpdateStoryStealthMode,           "updateStoryStealthMode") \
+	X(TGUpdateMessageFactCheck,           "updateMessageFactCheck") \
+	X(TGUpdateMessageEphemeralContent,    "updateMessageEphemeralContent") \
+	X(TGUpdateMessageSuggestedPostInfo,   "updateMessageSuggestedPostInfo") \
+	X(TGUpdateChatVideoChat,              "updateChatVideoChat") \
+	X(TGUpdateOwnedStarCount,             "updateOwnedStarCount") \
+	X(TGUpdateChatRevenueAmount,          "updateChatRevenueAmount") \
+	X(TGUpdateStarRevenueStatus,          "updateStarRevenueStatus")
 
 // The scaffold: updates the filter lets through and the dispatch marks
 // as read, but no branch acts on yet. Each is one screen this client has

@@ -118,6 +118,7 @@ CLIENT_OBJC_SRCS := \
     $(SRC)/Core/TGClient+Search.m \
     $(SRC)/Core/TGClient+Stories.m \
     $(SRC)/Core/TGDevice.m \
+    $(SRC)/Core/TGCapabilities.m \
     $(SRC)/Core/TGGhostMode.m \
     $(SRC)/Core/TGClient+Business.m \
     $(SRC)/Core/TGClient+Tier2.m \
@@ -141,7 +142,8 @@ CLIENT_OBJC_SRCS := \
     $(SRC)/Core/TGStickerBudget.m \
     $(SRC)/Core/TGPerf.m \
     $(SRC)/Controllers/TGUIFormat.m \
-    $(SRC)/Views/TGChatListRowGeometry.m
+    $(SRC)/Views/TGChatListRowGeometry.m \
+    $(SRC)/Core/TGPlaybackQueue.m
 
 # Test helper ObjC sources. TGClientStub and TGCallAudioEngineStub stand in
 # for the iOS-only production classes that TGCall.mm would otherwise need.
@@ -181,6 +183,9 @@ CLIENT_TEST_SRCS := \
     $(TESTS)/TGStatusTextTests.m \
     $(TESTS)/TGClientDraftsTests.m \
     $(TESTS)/TGClientReceiveLoopTests.m \
+    $(TESTS)/TGPlaybackQueueTests.m \
+    $(TESTS)/TGClientVideoNoteSendTests.m \
+    $(TESTS)/TGUpdatesCatchUpTests.m \
     $(TESTS)/TGClientAccountSlotsTests.m \
     $(TESTS)/TGClientFoldersTests.m \
     $(TESTS)/TGClientGroupsTests.m \

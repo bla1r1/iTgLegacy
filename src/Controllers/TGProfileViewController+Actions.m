@@ -95,23 +95,29 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 /// Only the ones that mean something here - a group has no one to call.
 - (void)buildActionsIn:(UIView *)header atY:(CGFloat)y {
 	NSMutableArray *tiles = [NSMutableArray array];
-	if (self.userId){
+	BOOL own = self.isOwnProfile;
+	if (self.userId && !own){
 		// A profile is often reached from a contact or a member list, not
-		// from the chat, so Message is the first thing Telegram offers.
-		if (self.userId != [[TGClient shared].me[@"id"] longLongValue])
+		// from the chat, so Message is the first thing Telegram offers. Opened
+		// from that chat (it passes a search), the chat is one step back.
+		if (!self.onSearchTapped)
 			[tiles addObject:@[@"chat", @"message"]];
-		[tiles addObject:@[@"call",  @"call"]];
-		if ([TGCapabilities canEncodeVideoCall])
+		// The person's own setting decides, and it arrives with full info.
+		if (self.canCall)
+			[tiles addObject:@[@"call",  @"call"]];
+		if (self.canCall && self.canVideoCall && [TGCapabilities canEncodeVideoCall])
 			[tiles addObject:@[@"video", @"video"]];
-	} else if (self.canInvite && !self.isChannel){
+	} else if (!self.userId && self.canInvite && !self.isChannel){
 		// The group's equivalent of Message: the one thing a profile does
 		// with people. A plain member does not get it, and neither does an
 		// administrator without the invite right. A channel invites through
 		// its link, not through a picker.
 		[tiles addObject:@[@"plus", @"add"]];
 	}
-	[tiles addObject:@[(self.muted ? @"unmute" : @"mute"),
-					   (self.muted ? @"unmute" : @"mute")]];
+	// Your own profile has nobody to call and nothing to mute.
+	if (!own)
+		[tiles addObject:@[(self.muted ? @"unmute" : @"mute"),
+						   (self.muted ? @"unmute" : @"mute")]];
 	if (self.onSearchTapped)
 		[tiles addObject:@[@"search", @"search"]];
 	[tiles addObject:@[@"more", @"more"]];
@@ -178,6 +184,27 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 /// The Message tile. A profile reached from Contacts has no chat behind it,
 /// and Telegram opens one from here after the same can-send pre-check the
 /// member sheet uses.
+- (void)addToContactsTapped {
+	NSArray *words = [self.name componentsSeparatedByString:@" "];
+	NSString *first = words.firstObject ?: @"";
+	NSString *last = words.count > 1 ? [[words subarrayWithRange:NSMakeRange(1, words.count - 1)]
+			componentsJoinedByString:@" "] : @"";
+	__weak typeof(self) weakSelf = self;
+	[[TGClient shared] addContactWithUserId:self.userId firstName:first lastName:last
+									  phone:self.phoneNumber ?: @"" completion:^(BOOL ok){
+		TGProfileViewController *me = weakSelf;
+		if (!me)
+			return;
+		if (!ok){
+			[TGAlertSheet showMessage:@"Telegram did not add this contact."
+								title:@"Add to Contacts" inView:me.view];
+			return;
+		}
+		me.isContact = YES;
+		[me loadDetails];
+	}];
+}
+
 - (void)messageTapped {
 	int64_t userId = self.userId;
 	if (!userId)
@@ -305,7 +332,7 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 	[items addObject:@{@"title" : @"Report", @"icon" : @"privacy",
 					   @"destructive" : @YES}];
 	BOOL isMe = self.userId == [[TGClient shared].me[@"id"] longLongValue];
-	if (self.userId && !isMe)
+	if (self.userId && !isMe && self.isContact)
 		[items addObject:@{@"title" : @"Delete Contact", @"icon" : @"delete", @"destructive" : @YES}];
 	// Leaving and deleting are not the same row. Telegram keeps Delete Group
 	// for the owner, because a group without one cannot be left; everybody

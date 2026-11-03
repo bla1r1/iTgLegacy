@@ -11,6 +11,40 @@
 #import "TGJsonWriter.hpp"
 #include "yyjson/yyjson.h"
 
+/// TDLib writes an absent object as null, which arrives here as NSNull, and
+/// reading a number out of it took the app down in the middle of a scroll. Code
+/// that asks the wrong type of a field is everywhere and only meets a null on
+/// the odd message, so NSNull answers like nil does: zero, nil, NO. A selector is
+/// logged once with its caller, so the field can still be found and fixed.
+@implementation NSNull (TGAnswersLikeNil)
+
+- (NSMethodSignature *)methodSignatureForSelector:(SEL)selector {
+	for (Class type in @[NSNumber.class, NSString.class, NSDictionary.class, NSArray.class]){
+		NSMethodSignature *signature = [type instanceMethodSignatureForSelector:selector];
+		if (signature)
+			return signature;
+	}
+	return [NSObject instanceMethodSignatureForSelector:selector];
+}
+
+- (void)forwardInvocation:(NSInvocation *)invocation {
+	static NSMutableSet *logged;
+	@synchronized(self.class){
+		if (!logged)
+			logged = [NSMutableSet set];
+		NSString *name = NSStringFromSelector(invocation.selector);
+		if (![logged containsObject:name]){
+			[logged addObject:name];
+			NSArray *stack = [NSThread callStackSymbols];
+			NSLog(@"TGJson: -[NSNull %@] from %@", name,
+					[stack subarrayWithRange:NSMakeRange(0, MIN((NSUInteger)8, stack.count))]);
+		}
+	}
+	[invocation invokeWithTarget:nil];
+}
+
+@end
+
 static id TGConvertVal(yyjson_val *val) {
 	if (!val)
 		return nil;

@@ -15,6 +15,10 @@
 /// Chat id of Saved Messages, which is the signed-in user's own chat.
 - (int64_t)savedMessagesChatId;
 
+/// YES once getMe has named the active account. The dev contacts are a
+/// signed-out fixture; a real account with no contacts must see its empty state.
+- (BOOL)hasSignedInAccount;
+
 /// Profile photo file id for a user, or nil if TDLib has not sent one.
 - (NSNumber *)photoFileIdForUserId:(int64_t)userId;
 
@@ -209,7 +213,8 @@
 - (void)myBirthdayWithCompletion:(void (^)(NSInteger day, NSInteger month,
                                            NSInteger year))completion;
 
-- (void)setBirthdayDay:(NSInteger)day month:(NSInteger)month year:(NSInteger)year;
+- (void)setBirthdayDay:(NSInteger)day month:(NSInteger)month year:(NSInteger)year
+			completion:(void (^)(BOOL ok, NSString *error))completion;
 
 /// Calls this account made or received, newest first: "userId", "chatId",
 /// "messageId" (the call record in the history), "name", "outgoing",
@@ -274,10 +279,18 @@
 - (void)setInactiveSessionTtlDays:(NSInteger)days
 					   completion:(void (^)(BOOL ok, NSString *error))completion;
 
-/// Change the signed-in user's own name and bio.
-- (void)setName:(NSString *)firstName last:(NSString *)lastName;
+/// Change the signed-in user's own name and bio. The completion answers so the
+/// edit form can stay put and report a refusal instead of popping optimistically.
+- (void)setName:(NSString *)firstName
+			last:(NSString *)lastName
+	  completion:(void (^)(BOOL ok, NSString *error))completion;
 
-- (void)setBio:(NSString *)bio;
+- (void)setBio:(NSString *)bio
+	completion:(void (^)(BOOL ok, NSString *error))completion;
+
+/// The server's limit for a bio, in characters, read with getOption. 0 means
+/// the answer has not arrived; the form hides the count then.
+- (void)bioLengthMaxWithCompletion:(void (^)(NSInteger maxLength))completion;
 
 - (void)setUsername:(NSString *)username completion:(void (^)(BOOL ok))completion;
 

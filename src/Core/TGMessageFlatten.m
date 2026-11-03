@@ -8,6 +8,44 @@
 //
 #import "TGClientInternal.h"
 #import "TGBase64.h"
+#import "TGCapabilities.h"
+
+/// Decoders are rated by a 16:9 frame: 1080x1080 passes on its long side alone and
+/// is still far over 720p.
+static BOOL TGVideoFits(NSDictionary *video, int maxSide) {
+	int w = [video[@"width"] intValue], h = [video[@"height"] intValue];
+	return MAX(w, h) <= maxSide && MIN(w, h) <= maxSide * 9 / 16;
+}
+
+/// Which file of a video to play. The original when it fits the decoder, or the
+/// largest H.264 copy Telegram made that does; the smallest copy goes in
+/// `fallback`, for an original that fits by size but not by profile.
+NSNumber *TGPlayableVideoFileId(NSDictionary *video, NSArray *alternatives, int maxSide,
+								NSNumber **fallback) {
+	NSNumber *best = nil, *smallest = nil;
+	int bestSide = 0, smallestSide = 0;
+	if ([alternatives isKindOfClass:NSArray.class])
+		for (NSDictionary *copy in alternatives){
+			NSNumber *fileId = copy[@"video"][@"id"];
+			if (![copy[@"codec"] isEqual:@"h264"] || ![fileId isKindOfClass:NSNumber.class])
+				continue;
+			if (!TGVideoFits(copy, maxSide))
+				continue;
+			int side = MAX([copy[@"width"] intValue], [copy[@"height"] intValue]);
+			if (side > bestSide){
+				best = fileId;
+				bestSide = side;
+			}
+			if (!smallest || side < smallestSide){
+				smallest = fileId;
+				smallestSide = side;
+			}
+		}
+	NSNumber *chosen = TGVideoFits(video, maxSide) || !best ? video[@"video"][@"id"] : best;
+	if (fallback)
+		*fallback = [smallest isEqual:chosen] ? nil : smallest;
+	return chosen;
+}
 
 
 /// Reactions as one short line: emoji and count, most used first. Custom
@@ -221,6 +259,7 @@ NSDictionary *TGFlattenMessage(NSDictionary *m) {
 
 	NSNumber *bigPhotoFileId = nil;
 	int mediaWidth = 0, mediaHeight = 0;
+	NSNumber *videoFallbackId = nil;
 	BOOL hasStickers = NO;   // media other stickers were attached to
 
 	if ([ctype isEqualToString:@"messagePhoto"]){
@@ -252,7 +291,8 @@ NSDictionary *TGFlattenMessage(NSDictionary *m) {
 	} else if ([ctype isEqualToString:@"messageVideo"]){
 		hasStickers = [content[@"video"][@"has_stickers"] boolValue];
 		photoFileId = content[@"video"][@"thumbnail"][@"file"][@"id"];
-		docFileId   = content[@"video"][@"video"][@"id"];
+		docFileId   = TGPlayableVideoFileId(content[@"video"], content[@"alternative_videos"],
+				[TGCapabilities maxVideoSide], &videoFallbackId);
 		docName     = content[@"video"][@"file_name"];
 		mediaWidth  = [content[@"video"][@"width"] intValue];
 		mediaHeight = [content[@"video"][@"height"] intValue];
@@ -606,7 +646,7 @@ NSDictionary *TGFlattenMessage(NSDictionary *m) {
 		break;
 	}
 
-	return @{
+	NSDictionary *row = @{
 		@"id"        : m[@"id"] ?: @(0),
 		@"text"      : text,
 		@"replyId"   : replyId    ?: [NSNull null],
@@ -622,6 +662,7 @@ NSDictionary *TGFlattenMessage(NSDictionary *m) {
 		@"mediaWidth": @(mediaWidth),
 		@"mediaHeight": @(mediaHeight),
 		@"docId"     : docFileId   ?: [NSNull null],
+		@"videoFallbackId" : videoFallbackId ?: [NSNull null],
 		@"docName"   : docName     ?: @"",
 		@"docSize"   : docSize     ?: @(0),
 		@"service"   : @(isService),
@@ -676,6 +717,7 @@ NSDictionary *TGFlattenMessage(NSDictionary *m) {
 		// A voice note nobody has listened to, or a round note nobody has
 		// watched. Telegram draws both as not-yet-heard until they are, so
 		// the chat has to know which ones they are.
+		@"channelPost" : @([m[@"is_channel_post"] boolValue]),
 		@"unplayed"  : @(([ctype isEqualToString:@"messageVoiceNote"] &&
 							![content[@"is_listened"] boolValue]) ||
 						 ([ctype isEqualToString:@"messageVideoNote"] &&
@@ -707,5 +749,39 @@ NSDictionary *TGFlattenMessage(NSDictionary *m) {
 							: (([content[@"text"] isKindOfClass:[NSDictionary class]] && content[@"text"][@"entities"])
 								? content[@"text"][@"entities"] : @[]),
 	};
+
+	// Only a sending row pays for the extra mutable copy: every other row
+	// keeps the literal dictionary it has always been.
+	if ([m[@"sending_state"][@"@type"]
+			isEqualToString:@"messageSendingStatePending"]){
+		NSMutableDictionary *sending = [row mutableCopy];
+		sending[@"sending"] = @YES;
+		return sending;
+	}
+	return row;
 }
+
+NSArray *TGMediaPageAppending(NSArray *existing, NSArray *more) {
+	if (!more.count)
+		return existing ?: @[];
+	if (!existing.count)
+		return more;
+	NSMutableSet *known = [NSMutableSet setWithCapacity:existing.count];
+	for (NSDictionary *message in existing){
+		NSNumber *messageId = message[@"id"];
+		if ([messageId isKindOfClass:NSNumber.class])
+			[known addObject:messageId];
+	}
+	NSMutableArray *out = [existing mutableCopy];
+	for (NSDictionary *message in more){
+		NSNumber *messageId = message[@"id"];
+		if ([messageId isKindOfClass:NSNumber.class] && [known containsObject:messageId])
+			continue;
+		[out addObject:message];
+		if ([messageId isKindOfClass:NSNumber.class])
+			[known addObject:messageId];
+	}
+	return out;
+}
+
 

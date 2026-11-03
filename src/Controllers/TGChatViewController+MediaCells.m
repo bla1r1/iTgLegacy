@@ -19,22 +19,33 @@
 		cell.bubble.backgroundColor = [theme fileTileColour];
 		cell.bubble.layer.borderWidth = TGMetricBorderNone;
 		cell.bubble.frame = layout.bubbleFrame;
+		// cornerRadius rounds the tile fill for free; a clip would be an
+		// offscreen pass per frame while the note scrolls. The thumbnail is
+		// baked into a circle (TGIcons setRoundedImage:) so neither the bubble
+		// nor the picture needs a mask or a clip.
 		cell.bubble.layer.cornerRadius = TGHalf(side);
-		cell.bubble.clipsToBounds = YES;
+		cell.bubble.clipsToBounds = NO;
 		cell.picture.hidden = NO;
-		cell.picture.image = [self imageFor:m];
+		[TGIcons setRoundedImage:[self imageFor:m] inView:cell.picture
+				size:CGSizeMake(side, side) radius:TGHalf(side)];
 		cell.picture.backgroundColor = [theme fileTileColour];
 		cell.picture.frame = CGRectMake(TGMetricZero, TGMetricZero, side, side);
 		cell.picture.layer.cornerRadius = TGHalf(side);
-		cell.picture.clipsToBounds = YES;
+		cell.picture.clipsToBounds = NO;
 		cell.body.hidden = YES;
 
 		cell.disc.hidden = NO;
 		cell.disc.userInteractionEnabled = YES;
 		CGFloat disc = kVideoDisc;
 		BOOL isPlaying = (self.playingMessageId == [m[@"id"] longLongValue] && self.videoNotePlayer != nil);
-		cell.disc.image = [TGIcons mediaDiscOfSide:disc playing:isPlaying];
+		BOOL sending = [m[@"sending"] boolValue];
+		cell.disc.image = sending ? [TGIcons cancelDiscOfSide:disc]
+				: [TGIcons mediaDiscOfSide:disc playing:isPlaying];
 		cell.disc.frame = CGRectMake(TGCenteredOrigin(side, disc), TGCenteredOrigin(side, disc), disc, disc);
+		if (sending)
+			[cell showSendRingWithProgress:[self ringProgressForMessage:m]];
+		else
+			[cell hideSendRing];
 		if (!cell.disc.gestureRecognizers.count) {
 			[cell.disc addGestureRecognizer:[[UITapGestureRecognizer alloc]
 					initWithTarget:self action:@selector(videoNoteDiscTapped:)]];
@@ -49,7 +60,7 @@
 		NSString *stamp = (layout.stamp.length && ![layout.stamp isEqualToString:@"(null)"]) ? layout.stamp : @"";
 
 		CGRect frame = layout.bubbleFrame;
-		BOOL unplayedDot = !mine && [m[@"unplayed"] boolValue];
+		BOOL unplayedDot = [self showsUnplayedMarkFor:m];
 		CGFloat durW = durStr.length ? TGTextSize(durStr, TGFontMicro(), 0).width : 0.0f;
 		CGFloat clockW = stamp.length ? TGTextSize(stamp, TGFontMicro(), 0).width : 0.0f;
 
@@ -110,9 +121,15 @@
 		cell.lottie.frame = CGRectMake(TGMetricZero, TGMetricZero, side, side);
 		BOOL playable = [cell.lottie loadStickerFile:animPath];
 		cell.lottie.hidden = !playable;
-		if (playable) {
+		// On Vintage the VP9/vector decode and the scroll share one core: a
+		// sticker told to play mid-drag starts a decode that fights the scroll
+		// for it. It keeps its first frame (already decoded and cached) until
+		// the scroll settles and the settle reload starts the animation.
+		BOOL scrollSettled = [TGDevice tier] != TGDeviceTierVintage ||
+				!(self.table.isDragging || self.table.isDecelerating);
+		if (playable && scrollSettled) {
 			[cell.lottie play];
-		} else {
+		} else if (!playable) {
 			// A .tgs that is not gzip, or a .webm this decoder cannot open,
 			// otherwise leaves a sticker-sized hole with a clock in it.
 			[self placeStickerEmoji:cell message:m inFrame:cell.lottie.frame];

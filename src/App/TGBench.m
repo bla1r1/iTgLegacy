@@ -109,6 +109,13 @@ static NSString *cachesPath(NSString *name) {
 		NSLog(@"[bench] pref %@ = %@", num, args[2]);
 		return;
 	}
+	if ([mode isEqualToString:@"null"]) {
+		// bench/null: the runtime on this iOS forwards to nil as the host's does.
+		id null = [NSNull null];
+		NSLog(@"[bench] null long=%lld count=%lu object=%@", [null longLongValue],
+				(unsigned long)[null count], [null objectForKey:@"x"]);
+		return;
+	}
 	if ([mode isEqualToString:@"slow"]) {
 		// bench/slow/0.25: every animation in the window at a quarter speed.
 		window.layer.speed = num.length ? [num floatValue] : 1.0f;

@@ -1,11 +1,38 @@
 #import "TGProfileViewControllerInternal.h"
+#import "TGClientInternal.h"
 #import "TGStyle.h"
 #import "TGAlertSheet.h"
 #import "TGMemberCell.h"
 #import "TGGroupMemberActions.h"
+#import "TGProfileAudioViewController.h"
+#import "TGProfileTrackCell.h"
+#import "TGMusicPlayer.h"
+#import "TGChatViewController.h"
+#import "UIImage+WebP.h"
+#import <AVFoundation/AVFoundation.h>
 
 /// Flattened messages carry a unix date, not a formatted stamp; the shared
 /// lists want a short one beside each row.
+/// A file's size as the row prints it. The file info sheet has its own copy;
+/// this one is only the compact line under a name here.
+static NSString *TGProfileFileSize(NSNumber *bytes) {
+	long long value = [bytes longLongValue];
+	if (value <= 0)
+		return nil;
+	if (value < 1024)
+		return [NSString stringWithFormat:@"%lld B", value];
+	if (value < 1024 * 1024)
+		return [NSString stringWithFormat:@"%.0f KB", value / 1024.0];
+	return [NSString stringWithFormat:@"%.1f MB", value / (1024.0 * 1024.0)];
+}
+
+static NSString *TGProfileDurationText(NSNumber *seconds) {
+	NSInteger value = [seconds integerValue];
+	if (value <= 0)
+		return nil;
+	return [NSString stringWithFormat:@"%ld:%02ld", (long)(value / 60), (long)(value % 60)];
+}
+
 static NSString *TGProfileShortDate(NSNumber *date) {
 	if (![date isKindOfClass:NSNumber.class] || !date.doubleValue)
 		return nil;
@@ -48,6 +75,15 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 	return img;
 }
 
+/// The bar under the selected tab, and the room a text row leaves at its sides.
+static const CGFloat kMediaTabLine = 2.0f;
+static const CGFloat kDetailInset = TGMetricPadWide;
+
+static const CGFloat kMusicStripInset = TGMetricPadMedium;
+static const CGFloat kMusicTitleTop   = TGMetricPadSmall;
+static const CGFloat kMusicArtistTop  = TGMetricPadSmall + TGMetricLineMicro;
+static const CGFloat kMusicChevronSide = TGMetricGiftStar;
+
 @implementation TGProfileViewController
 
 - (instancetype)initWithChatId:(int64_t)chatId userId:(int64_t)userId title:(NSString *)title {
@@ -59,6 +95,10 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 		_photos = @[];
 		_files = @[];
 		_thumbnailsRequested = [NSMutableSet set];
+		_loadedMediaKinds = [NSMutableSet set];
+		_loadingMediaKinds = [NSMutableSet set];
+		_mediaCounts = [NSMutableDictionary dictionary];
+		_coverImages = [NSMutableDictionary dictionary];
 		_memberCount = 0;
 		_canManage = NO;
 		_canInvite = NO;
@@ -142,13 +182,109 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 /// The profile as the current client draws it: a large picture centred, the
 /// name and status under it, and a row of tiles for the things you actually do
 /// here. The coloured block this replaced is the old design; everything since
+/// Downloads decode off the main thread and the circle is baked into the
+/// bitmap, so the scrolling header never carries a masked layer.
+- (void)applyAvatarImageAtPath:(NSString *)path {
+	if (!path.length)
+		return;
+	CGFloat side = TGMetricProfileAvatar;
+	CGFloat scale = [UIScreen mainScreen].scale;
+	__weak typeof(self) weakSelf = self;
+	dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+		UIImage *image = [TGIcons decodedImageAtPath:path
+										 fittingSize:CGSizeMake(side, side)
+												fill:YES
+											   scale:scale];
+		UIImage *round = [TGIcons roundedImage:image
+										 size:CGSizeMake(side, side)
+									   radius:TGHalf(side)
+									  corners:UIRectCornerAllCorners];
+		if (!round)
+			return;
+		dispatch_async(dispatch_get_main_queue(), ^{
+			weakSelf.avatarImage = round;
+			weakSelf.avatarView.image = round;
+		});
+	});
+}
+
+- (void)buildMusicStripIn:(UIView *)header atY:(CGFloat)y {
+	NSDictionary *track = self.firstProfileAudio;
+	if (!track)
+		return;
+	TGTheme *theme = [TGTheme shared];
+	CGFloat width = header.bounds.size.width;
+	UIView *band = [[UIView alloc] initWithFrame:
+			CGRectMake(kMusicStripInset, y,
+					width - TGDoubled(kMusicStripInset), kMusicStripHeight)];
+	band.backgroundColor = [theme cardBackgroundColour];
+	band.layer.cornerRadius = TGMetricCornerControl;
+	[header addSubview:band];
+
+	UIImageView *glyph = [[UIImageView alloc] initWithFrame:
+			CGRectMake(TGMetricPadMedium, TGCenteredOrigin(kMusicStripHeight, kMusicStripGlyph),
+					kMusicStripGlyph, kMusicStripGlyph)];
+	glyph.image = [TGIcons glyphNamed:@"music" colour:[theme accentColour]
+								side:kMusicStripGlyph];
+	glyph.contentMode = UIViewContentModeScaleAspectFit;
+	[band addSubview:glyph];
+
+	CGFloat textX = TGMetricPadMedium + kMusicStripGlyph + TGMetricPad;
+	CGFloat textW = band.bounds.size.width - textX - TGMetricPadMedium - kMusicChevronSide
+			- TGMetricPad;
+	UILabel *title = [[UILabel alloc] initWithFrame:
+			CGRectMake(textX, kMusicTitleTop, textW, TGMetricLineCaption)];
+	title.font = TGFontMetaStrong();
+	title.textColor = [theme accentColour];
+	title.backgroundColor = [UIColor clearColor];
+	title.lineBreakMode = NSLineBreakByTruncatingTail;
+	title.text = track[@"title"] ?: @"Audio";
+	[band addSubview:title];
+
+	UILabel *artist = [[UILabel alloc] initWithFrame:
+			CGRectMake(textX, kMusicArtistTop, textW, TGMetricLineCaption)];
+	artist.font = TGFontMeta();
+	artist.textColor = [theme secondaryTextColour];
+	artist.backgroundColor = [UIColor clearColor];
+	artist.lineBreakMode = NSLineBreakByTruncatingTail;
+	artist.text = [track[@"performer"] length] ? track[@"performer"] : @"Unknown artist";
+	[band addSubview:artist];
+
+	UIImageView *chevron = [[UIImageView alloc] initWithFrame:
+			CGRectMake(band.bounds.size.width - TGMetricPadMedium - kMusicChevronSide,
+					TGCenteredOrigin(kMusicStripHeight, kMusicChevronSide),
+					kMusicChevronSide, kMusicChevronSide)];
+	chevron.image = [TGIcons glyphNamed:@"forward" colour:[theme secondaryTextColour]
+								   side:kMusicChevronSide];
+	chevron.contentMode = UIViewContentModeScaleAspectFit;
+	[band addSubview:chevron];
+
+	// The whole band is the button, including the glyph and the two lines.
+	UIButton *tap = [UIButton buttonWithType:UIButtonTypeCustom];
+	tap.frame = band.bounds;
+	[tap addTarget:self action:@selector(musicStripTapped)
+		  forControlEvents:UIControlEventTouchUpInside];
+	[band addSubview:tap];
+}
+
+- (void)musicStripTapped {
+	TGProfileAudioViewController *audio = [[TGProfileAudioViewController alloc] init];
+	audio.userId = self.userId;
+	audio.subjectTitle = self.name.length ? self.name : @"Profile Audio";
+	audio.autoplay = YES;
+	audio.hidesBottomBarWhenPushed = YES;
+	[self.navigationController pushViewController:audio animated:YES];
+}
+
 - (void)buildHeader {
 	CGFloat width = self.view.bounds.size.width;
 	CGFloat side = TGMetricProfileAvatar;
 	// Header height is the same stack the constants below lay out: picture,
-	// name, status, then the action plate. Asking them keeps a long group
-	// name from being pushed under the tiles.
+	// name, status, then the action plate, then the saved-music strip when
+	// the account has one.
 	CGFloat height = kAvatarTop + side + kActionsTop + kActionTile + TGMetricPadMedium;
+	if (self.firstProfileAudio)
+		height += kMusicStripHeight + TGMetricPad;
 
 	UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0, 0, width, height)];
 	header.backgroundColor = [[TGTheme shared] groupedBackgroundColour];
@@ -157,15 +293,14 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 			CGRectMake(TGCenteredOrigin(width, side), kAvatarTop, side, side)];
 	self.avatarView.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin |
 			UIViewAutoresizingFlexibleRightMargin;
-	self.avatarView.layer.cornerRadius = TGHalf(side);
-	self.avatarView.clipsToBounds = YES;
-	self.avatarView.layer.shouldRasterize = YES;
-	self.avatarView.layer.rasterizationScale = [UIScreen mainScreen].scale;
-	self.avatarView.layer.borderColor = [[TGTheme shared] separatorColour].CGColor;
-	self.avatarView.layer.borderWidth = 1.0f;
+	// The circle is in the bitmap. A corner radius plus clipsToBounds on a
+	// view inside a scrolling table header is a mask the A4 repaints on every
+	// scroll step; TGIcons bakes the same circle once.
 	self.avatarView.contentMode = UIViewContentModeScaleAspectFill;
 	NSString *initials = self.name.length ? [self.name substringToIndex:1] : @"?";
-	self.avatarView.image = [TGIcons avatarWithInitials:initials.uppercaseString
+	// The header is rebuilt on every answer that changes a mark or a tile. Going
+	// back to the initials each time looked like the photo never finished loading.
+	self.avatarView.image = self.avatarImage ?: [TGIcons avatarWithInitials:initials.uppercaseString
 												   size:side
 											   colourId:self.userId ?: self.chatId];
 	[header addSubview:self.avatarView];
@@ -187,6 +322,21 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 	nameLabel.backgroundColor = [UIColor clearColor];
 	nameLabel.textColor = [[TGTheme shared] primaryTextColour];
 	[header addSubview:nameLabel];
+	// The marks sit after the centred name. Both are plain images, never masks.
+	CGFloat markX = TGHalf(width) + TGHalf(MIN([self.name sizeWithFont:TGFontTitle()].width,
+			nameLabel.bounds.size.width)) + TGMetricPadSmall;
+	CGFloat markY = kAvatarTop + side + kNameTop + TGCenteredOrigin(TGMetricLineTitle, kNameBadge);
+	for (UIImage *mark in @[self.isVerified ? [TGIcons verifiedBadge] : [NSNull null],
+							self.emojiStatusImage ?: (id)[NSNull null]]){
+		if (![mark isKindOfClass:UIImage.class])
+			continue;
+		UIImageView *badge = [[UIImageView alloc] initWithFrame:
+				CGRectMake(markX, markY, kNameBadge, kNameBadge)];
+		badge.image = mark;
+		badge.contentMode = UIViewContentModeScaleAspectFit;
+		[header addSubview:badge];
+		markX += kNameBadge + TGMetricPadTiny;
+	}
 
 	self.statusLabel = [[UILabel alloc] initWithFrame:
 			CGRectMake(kHeaderTextInset, kAvatarTop + side + kStatusTop,
@@ -200,16 +350,21 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 
 	[self buildActionsIn:header atY:(kAvatarTop + side + kActionsTop)];
 
+	if (self.firstProfileAudio)
+		[self buildMusicStripIn:header
+						  atY:(kAvatarTop + side + kActionsTop + kActionTile + TGMetricPad)];
+
 	// The status line listens to presence too: a status arriving while the
 	// profile is open refreshes the line (B4).
-	if (self.chatId && self.chatId == [[TGClient shared] savedMessagesChatId]){
+	if ([self showsSavedMessages]){
 		self.statusLabel.text = nil;
 	} else if (self.userId){
 		__weak typeof(self) weakSelf = self;
 		[[TGClient shared] statusForUser:self.userId completion:^(NSString *status){
 			if (!status.length)
 				return;
-			weakSelf.restingStatus = status;
+			if (!weakSelf.isBot)
+				weakSelf.restingStatus = status;
 			[weakSelf statusLabelOwnerChanged:nil];
 		}];
 	} else {
@@ -231,26 +386,33 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 	NSNumber *fileId = self.userId
 			? [[TGClient shared] photoFileIdForUserId:self.userId]
 			: [[TGClient shared] photoFileIdForChat:self.chatId];
-	if (!fileId)
+	if (!fileId || [fileId isEqual:self.avatarFileId])
 		return;
+	self.avatarFileId = fileId;
 	__weak typeof(self) weakSelf = self;
 	[[TGClient shared] downloadFile:fileId.integerValue
 						   priority:TGDownloadPriorityAvatar
 						 completion:^(NSString *path){
-		[TGIcons loadImageAtPath:path into:weakSelf.avatarView];
+		[weakSelf applyAvatarImageAtPath:path];
 	}];
 }
 
 - (void)updateGroupStatus {
 	if (self.userId || self.memberCount <= 0)
 		return;
-	self.restingStatus = [NSString stringWithFormat:@"%ld %@", (long)self.memberCount,
+	NSString *count = [NSString stringWithFormat:@"%ld %@", (long)self.memberCount,
 			self.isChannel ? @"subscribers" : @"members"];
+	self.restingStatus = self.onlineCount > 0 && !self.isChannel
+			? [NSString stringWithFormat:@"%@, %ld online", count, (long)self.onlineCount] : count;
 	[self statusLabelOwnerChanged:nil];
 }
 
 - (BOOL)isOwner {
 	return [self.myStatus isEqualToString:@"owner"];
+}
+
+- (BOOL)isOwnProfile {
+	return self.userId && self.userId == [[TGClient shared].me[@"id"] longLongValue];
 }
 
 /// What this account may do in a group. The profile needs the same answer
@@ -355,20 +517,22 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 				return;
 			me.chatDescription = info[@"description"] ?: @"";
 			me.memberCount = [info[@"members"] integerValue];
+			me.onlineCount = [info[@"online"] integerValue];
+			me.isVerified = [info[@"verified"] boolValue];
 			me.inviteLink = info[@"inviteLink"] ?: @"";
 			[me updateGroupStatus];
 			NSMutableArray *rows = [NSMutableArray array];
 			if ([info[@"description"] length])
-				[rows addObject:@[@"about", info[@"description"]]];
-			if (me.memberCount > 0)
-				[rows addObject:@[me.isChannel ? @"subscribers" : @"members",
-						[NSString stringWithFormat:@"%ld", (long)me.memberCount]]];
+				[rows addObject:@{@"kind" : @"about", @"label" : @"about",
+						@"value" : info[@"description"]}];
 			// No administrator count: the member rows carry an Owner or
 			// Admin badge beside the people who hold that role, which says
 			// who they are instead of only how many there are.
 			if (me.inviteLink.length)
-				[rows addObject:@[@"invite link", me.inviteLink]];
+				[rows addObject:@{@"kind" : @"invite", @"label" : @"invite link",
+						@"value" : me.inviteLink}];
 			me.details = rows;
+			[me buildHeader];
 			[me reloadTableDebounced];
 		}];
 		return;
@@ -377,62 +541,172 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 	__weak typeof(self) weakSelf = self;
 	[[TGClient shared] userInfo:self.userId completion:^(NSDictionary *user){
 		if (!user) return;
-		NSMutableArray *rows = [NSMutableArray array];
-		NSString *phone = user[@"phone_number"];
-		if (phone.length){
-			[rows addObject:@[@"mobile", [@"+" stringByAppendingString:phone]]];
-			weakSelf.phoneNumber = phone;
+		// The marks beside the name and the scam/fake warning all come off
+		// the plain user record; none needs the full-info call.
+		NSDictionary *verification = user[@"verification_status"];
+		weakSelf.isVerified = [verification[@"is_verified"] boolValue];
+		weakSelf.isScam = [verification[@"is_scam"] boolValue];
+		weakSelf.isFake = [verification[@"is_fake"] boolValue];
+		weakSelf.isContact = [user[@"is_contact"] boolValue];
+		// A bot has no presence and cannot be a contact.
+		if ([user[@"type"][@"@type"] isEqualToString:@"userTypeBot"]){
+			weakSelf.isBot = YES;
+			weakSelf.restingStatus = @"bot";
+			[weakSelf statusLabelOwnerChanged:nil];
 		}
-		NSString *username = user[@"usernames"][@"active_usernames"][0];
-		if (username.length)
-			[rows addObject:@[@"username", [@"@" stringByAppendingString:username]]];
-		if ([user[@"is_premium"] boolValue])
-			[rows addObject:@[@"subscription", @"Telegram Premium"]];
-		weakSelf.details = rows;
+		NSDictionary *statusType = user[@"emoji_status"][@"type"];
+		int64_t statusId = [statusType[@"custom_emoji_id"] longLongValue]
+				?: [statusType[@"model_custom_emoji_id"] longLongValue];
+		if (statusId && statusId != weakSelf.emojiStatusId){
+			weakSelf.emojiStatusId = statusId;
+			[weakSelf fetchEmojiStatusImage:statusId];
+		}
+		weakSelf.phoneNumber = user[@"phone_number"] ?: @"";
+		weakSelf.username = TGFirstUsername(user) ?: @"";
+		weakSelf.details = [weakSelf basicDetailsRows];
+		[weakSelf buildHeader];
 		[weakSelf reloadTableDebounced];
 
-		// The bio, the birthday and how many groups you share live in the full
-		// record, which this screen never asked for - so "about" was missing
-		// from a profile that has one.
+		// The bio, the birthday and the channel live in the full record, which
+		// this screen never asked for - so "about" was missing from a profile
+		// that has one. The same call carries the block flag, so isUserBlocked
+		// would send getUserFullInfo a second time.
 		[[TGClient shared] userProfile:weakSelf.userId completion:^(NSDictionary *info){
-			NSMutableArray *more = [rows mutableCopy];
-			if ([info[@"bio"] length])
-				[more insertObject:@[@"about", info[@"bio"]]
-						   atIndex:MIN((NSUInteger)2, more.count)];
-			if ([info[@"birthday"] length])
-				[more addObject:@[@"birthday", info[@"birthday"]]];
-			if ([info[@"commonGroups"] integerValue] > 0)
-				[more addObject:@[@"groups in common",
-						[info[@"commonGroups"] stringValue]]];
-			// The note is this account's own, and the profile is where it is
-			// read back - the same string setUserNote wrote.
+			weakSelf.blocked = [info[@"isBlocked"] boolValue];
+			weakSelf.canCall = [info[@"canCall"] boolValue];
+			weakSelf.canVideoCall = [info[@"canVideoCall"] boolValue];
+			weakSelf.commonGroupCount = [info[@"commonGroups"] integerValue];
+			NSDictionary *firstAudio = [info[@"firstProfileAudio"]
+					isKindOfClass:NSDictionary.class] ? info[@"firstProfileAudio"] : nil;
+			if (![firstAudio isEqual:weakSelf.firstProfileAudio]){
+				weakSelf.firstProfileAudio = firstAudio;
+				[weakSelf buildHeader];
+			}
 			weakSelf.personalNote = info[@"note"] ?: @"";
-			if (weakSelf.personalNote.length)
-				[more addObject:@[@"note", weakSelf.personalNote]];
+			weakSelf.bioEntities = info[@"bioEntities"] ?: @[];
+			weakSelf.noteEntities = info[@"noteEntities"] ?: @[];
+			weakSelf.birthdayToday = [info[@"birthdayToday"] boolValue];
 			weakSelf.hasPersonalPhoto = [info[@"personalPhoto"] longLongValue] != 0;
-			if (weakSelf.hasPersonalPhoto)
-				[more addObject:@[@"personal photo", @"Only you see it"]];
-			if ([info[@"shareTheme"] length])
-				[more addObject:@[@"share theme",
-						[info[@"shareTheme"] isEqualToString:@"profileShareThemeUpgradedGift"]
-								? @"Gift" : @"Custom"]];
-			// The tab this profile opens on is the one Edit Profile set; an
-			// open screen keeps the tab the user has already picked.
-			if (!weakSelf.storedMediaKind.length &&
-					weakSelf.userId == [[TGClient shared].me[@"id"] longLongValue])
-				weakSelf.storedMediaKind = info[@"mainProfileTab"];
-			weakSelf.details = more;
+			weakSelf.details = [weakSelf fullDetailsRowsWithBio:info[@"bio"]
+													  birthday:info[@"birthday"]];
+			// The tab the person chose goes first, and the screen opens on it
+			// unless a tab has already been picked.
+			NSString *mainTab = info[@"mainProfileTab"];
+			if (mainTab.length){
+				weakSelf.mainMediaKind = mainTab;
+				if (!weakSelf.storedMediaKind.length)
+					weakSelf.storedMediaKind = mainTab;
+			}
+			int64_t personalChatId = [info[@"personalChatId"] longLongValue];
+			if (personalChatId > 0)
+				[weakSelf fetchPersonalChannel:personalChatId];
+			[weakSelf buildHeader];
 			[weakSelf reloadTableDebounced];
 		}];
 
 		// updateUser does not always carry a photo; getUser does.
 		NSNumber *photoId = user[@"profile_photo"][@"small"][@"id"];
-		if (photoId)
+		if (photoId && ![photoId isEqual:weakSelf.avatarFileId]){
+			weakSelf.avatarFileId = photoId;
 			[[TGClient shared] downloadFile:photoId.integerValue
 								   priority:TGDownloadPriorityAvatar
 								 completion:^(NSString *path){
-				[TGIcons loadImageAtPath:path into:weakSelf.avatarView];
+				[weakSelf applyAvatarImageAtPath:path];
 			}];
+		}
+	}];
+}
+
+/// The rows the plain user record can answer before full info arrives: just
+/// the phone number and username, which are the parts that never move.
+- (NSArray *)basicDetailsRows {
+	NSMutableArray *rows = [NSMutableArray array];
+	if (self.phoneNumber.length)
+		[rows addObject:@{@"kind" : @"phone", @"label" : @"mobile",
+				@"value" : [@"+" stringByAppendingString:self.phoneNumber]}];
+	if (self.username.length)
+		[rows addObject:@{@"kind" : @"username", @"label" : @"username",
+				@"value" : [@"@" stringByAppendingString:self.username]}];
+	return rows;
+}
+
+/// The whole card, rebuilt once full info answers: phone, username, the bio
+/// (or the scam/fake warning in its place), birthday, note, then the
+/// add-to-contacts row for a stranger.
+- (NSArray *)fullDetailsRowsWithBio:(NSString *)bio birthday:(NSString *)birthday {
+	NSMutableArray *rows = [NSMutableArray array];
+	if (self.phoneNumber.length)
+		[rows addObject:@{@"kind" : @"phone", @"label" : @"mobile",
+				@"value" : [@"+" stringByAppendingString:self.phoneNumber]}];
+	if (self.username.length)
+		[rows addObject:@{@"kind" : @"username", @"label" : @"username",
+				@"value" : [@"@" stringByAppendingString:self.username]}];
+	if (self.isScam || self.isFake){
+		[rows addObject:@{@"kind" : @"warning", @"label" : @"",
+				@"value" : (self.isScam ? @"This account is marked as a scam."
+									   : @"This account is marked as fake.")}];
+	} else if (bio.length){
+		[rows addObject:@{@"kind" : @"bio", @"label" : @"about", @"value" : bio}];
+	}
+	if (birthday.length)
+		[rows addObject:@{@"kind" : @"birthday", @"label" : @"birthday",
+				@"value" : birthday}];
+	if (self.personalNote.length)
+		[rows addObject:@{@"kind" : @"note", @"label" : @"note",
+				@"value" : self.personalNote}];
+	if (!self.isContact && !self.isOwnProfile && !self.isBot)
+		[rows addObject:@{@"kind" : @"addContact", @"label" : @"",
+				@"value" : @"Add to Contacts"}];
+	return rows;
+}
+
+/// The person's personal channel: one getChat, then a row at the top of the
+/// card that opens it like any chat the list holds.
+- (void)fetchEmojiStatusImage:(int64_t)emojiId {
+	__weak typeof(self) weakSelf = self;
+	[[TGClient shared] customEmojiStickersForIds:@[@(emojiId)] completion:^(NSArray *stickers){
+		NSNumber *thumb = stickers.count ? stickers[0][@"thumbId"] : nil;
+		if (![thumb isKindOfClass:NSNumber.class] || !thumb.integerValue)
+			return;
+		[[TGClient shared] downloadFile:thumb.integerValue
+							   priority:TGDownloadPriorityAvatar
+							 completion:^(NSString *path){
+			if (!path.length)
+				return;
+			dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+				UIImage *image = [UIImage imageWithContentsOfFile:path]
+						?: [UIImage convertFromWebP:path compressedData:nil error:nil];
+				dispatch_async(dispatch_get_main_queue(), ^{
+					if (!image)
+						return;
+					weakSelf.emojiStatusImage = image;
+					[weakSelf buildHeader];
+				});
+			});
+		}];
+	}];
+}
+
+- (void)fetchPersonalChannel:(int64_t)chatId {
+	if (self.personalChannel)
+		return;
+	__weak typeof(self) weakSelf = self;
+	[[TGClient shared] chatRecordForChat:chatId completion:^(NSDictionary *chat){
+		TGProfileViewController *me = weakSelf;
+		if (!me || !chat)
+			return;
+		NSString *title = chat[@"title"] ?: @"";
+		NSNumber *photoId = chat[@"photo"][@"small"][@"id"];
+		me.personalChannel = @{
+			@"chatId" : @(chatId),
+			@"title" : title,
+			@"photoFileId" : [photoId isKindOfClass:NSNumber.class] ? photoId : @0,
+		};
+		NSMutableArray *rows = [me.details mutableCopy];
+		[rows insertObject:@{@"kind" : @"channel", @"label" : @"personal channel",
+				@"value" : title} atIndex:0];
+		me.details = rows;
+		[me reloadTableDebounced];
 	}];
 }
 
@@ -447,6 +721,7 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 
 - (void)scrollViewDidScroll:(UIScrollView *)scrollView {
 	if (scrollView != self.tableView) return;
+	[self loadVisibleMediaTabIfNeeded];
 	CGFloat distanceFromBottom = scrollView.contentSize.height - (scrollView.contentOffset.y + scrollView.bounds.size.height);
 	if (distanceFromBottom < 300.0f && !self.isLoadingMoreMedia) {
 		[self loadMoreMediaForCurrentTab];
@@ -468,6 +743,8 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 	if (section == kSectionMembers) return self.members.count;
 
 	if (section == kSectionMedia) {
+		if (![self currentMediaTabs].count)
+			return 0;
 		// Media and Stories each draw into grid rows; the rest are lists.
 		if ([self selectedTabIsGrid]) {
 			NSArray *rows = [self selectedMediaRows];
@@ -499,35 +776,63 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 }
 
 - (UIView *)tableView:(UITableView *)tableView viewForHeaderInSection:(NSInteger)section {
-	if (section == kSectionMedia) {
-		UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0, 0,
-				tableView.bounds.size.width, kMediaTabsRow)];
-		header.backgroundColor = [UIColor clearColor];
-		NSArray *tabs = [self currentMediaTabs];
-		NSMutableArray *titles = [NSMutableArray array];
-		for (NSDictionary *tab in tabs)
-			[titles addObject:tab[@"title"]];
-		UISegmentedControl *segments = [[UISegmentedControl alloc] initWithItems:titles];
-		segments.frame = CGRectMake(TGMetricPadMedium,
-				TGCenteredOrigin(kMediaTabsRow, kMediaTabs),
-				tableView.bounds.size.width - TGDoubled(TGMetricPadMedium), kMediaTabs);
-		// The highlighted segment comes from the stored kind, not a number:
-		// the array behind titles reorders as categories load (B1).
-		NSString *kind = [self selectedMediaKind];
-		NSInteger selected = 0;
-		for (NSInteger i = 0; i < (NSInteger)tabs.count; i++)
-			if ([tabs[i][@"kind"] isEqualToString:kind]){
-				selected = i;
-				break;
-			}
-		segments.selectedSegmentIndex = selected;
-		segments.tintColor = [[TGTheme shared] accentColour];
-		[segments addTarget:self action:@selector(mediaTabChanged:) forControlEvents:UIControlEventValueChanged];
-		[header addSubview:segments];
-		return header;
+	if (section == kSectionMedia && [self currentMediaTabs].count) {
+		return [self mediaTabBarOfWidth:tableView.bounds.size.width];
 	}
 	return nil;
 }
+
+/// More tabs than a phone's width holds, so they scroll. The offset is kept by
+/// hand because the table builds this view again on every reload, and a tab the
+/// finger just reached must not jump back to the start. The selected tab carries
+/// the count of what is in it.
+- (UIView *)mediaTabBarOfWidth:(CGFloat)width {
+	TGTheme *theme = [TGTheme shared];
+	UIScrollView *bar = [[UIScrollView alloc] initWithFrame:CGRectMake(0, 0, width, kMediaTabsRow)];
+	bar.backgroundColor = [theme groupedBackgroundColour];
+	bar.showsHorizontalScrollIndicator = NO;
+	bar.scrollsToTop = NO;
+	NSArray *tabs = [self currentMediaTabs];
+	NSString *selected = [self selectedMediaKind];
+	CGFloat x = TGMetricPadMedium;
+	for (NSUInteger i = 0; i < tabs.count; i++){
+		NSString *kind = tabs[i][@"kind"];
+		BOOL isSelected = [kind isEqualToString:selected];
+		NSInteger count = [self.mediaCounts[kind] integerValue];
+		NSString *title = isSelected && count > 0
+				? [NSString stringWithFormat:@"%@ %ld", tabs[i][@"title"], (long)count]
+				: tabs[i][@"title"];
+		UIFont *font = TGFontCaptionStrong();
+		CGFloat w = ceilf([title sizeWithFont:font].width) + TGDoubled(TGMetricPadMedium);
+		UIButton *tab = [UIButton buttonWithType:UIButtonTypeCustom];
+		tab.frame = CGRectMake(x, 0, w, kMediaTabsRow);
+		tab.titleLabel.font = font;
+		tab.tag = (NSInteger)i;
+		[tab setTitle:title forState:UIControlStateNormal];
+		[tab setTitleColor:isSelected ? [theme accentColour] : [theme secondaryTextColour]
+				  forState:UIControlStateNormal];
+		[tab addTarget:self action:@selector(mediaTabTapped:) forControlEvents:UIControlEventTouchUpInside];
+		[bar addSubview:tab];
+		if (isSelected){
+			UIView *line = [[UIView alloc] initWithFrame:CGRectMake(x + TGMetricPadSmall,
+					kMediaTabsRow - kMediaTabLine, w - TGDoubled(TGMetricPadSmall), kMediaTabLine)];
+			line.backgroundColor = [theme accentColour];
+			[bar addSubview:line];
+		}
+		x += w;
+	}
+	bar.contentSize = CGSizeMake(x + TGMetricPadMedium, kMediaTabsRow);
+	bar.contentOffset = CGPointMake(MIN(self.mediaTabsOffset, MAX(0, bar.contentSize.width - width)), 0);
+	return bar;
+}
+
+- (void)mediaTabTapped:(UIButton *)tab {
+	self.mediaTabsOffset = [(UIScrollView *)tab.superview contentOffset].x;
+	NSArray *tabs = [self currentMediaTabs];
+	if (tab.tag < (NSInteger)tabs.count)
+		[self mediaTabSelected:tabs[(NSUInteger)tab.tag][@"kind"]];
+}
+
 
 
 - (void)tableView:(UITableView *)tableView willDisplayFooterView:(UIView *)view forSection:(NSInteger)section {
@@ -538,12 +843,15 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 }
 
 - (CGFloat)tableView:(UITableView *)tableView heightForHeaderInSection:(NSInteger)section {
-	if (section == kSectionMedia) return TGMetricMediaStripHeader;
+	if (section == kSectionMedia)
+		return [self currentMediaTabs].count ? TGMetricMediaStripHeader : CGFLOAT_MIN;
 	// Stories and Gifts are categories in the bar now and have no rows left.
 	// A grouped table still pads an empty section at both ends, and two of
 	// them in a row opened a gap the size of a screen above the bar.
 	if ([self tableView:tableView numberOfRowsInSection:section] == 0)
 		return CGFLOAT_MIN;
+	// Its title is the member count; the default height cut the text in half.
+	if (section == kSectionMembers) return TGMetricMediaStripHeader;
 	return [super tableView:tableView heightForHeaderInSection:section];
 }
 
@@ -560,9 +868,21 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 		CGFloat side = [[self class] storySideForWidth:tableView.bounds.size.width];
 		return side + kStoryGridGap;
 	}
+	if (indexPath.section == kSectionMedia &&
+			[[self selectedMediaKind] isEqualToString:@"music"])
+		return TGMetricTrackRow;
 	if (indexPath.section == kSectionStories) return TGMetricPersonRow;
 	if (indexPath.section == kSectionMembers) return TGMetricPersonRow;
-	return indexPath.section == kSectionDetails ? TGMetricPersonRow : TGMetricRow;
+	if (indexPath.section == kSectionMedia) return TGMetricPersonRow;
+	if (indexPath.section == kSectionDetails && indexPath.row < (NSInteger)self.details.count){
+		// A bio is several lines; a fixed row clipped it to one.
+		CGFloat textWidth = tableView.bounds.size.width - TGDoubled(kDetailInset);
+		CGFloat text = [self.details[indexPath.row][@"value"] sizeWithFont:TGFontBody()
+				constrainedToSize:CGSizeMake(textWidth, CGFLOAT_MAX)
+					lineBreakMode:NSLineBreakByWordWrapping].height;
+		return MAX(TGMetricPersonRow, ceilf(text) + TGMetricLineCaption + TGDoubled(TGMetricPadSmall));
+	}
+	return TGMetricRow;
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
@@ -592,6 +912,7 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 	}
 
 	UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"row"];
+	cell.detailTextLabel.numberOfLines = 1;
 	if (!cell)
 		cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle
 									  reuseIdentifier:@"row"];
@@ -607,13 +928,24 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 	// it in the accent colour. Theirs reads that way round because the number
 	// matters and the word "mobile" does not.
 	if (indexPath.section == kSectionDetails){
-		NSArray *pair = self.details[indexPath.row];
-		cell.textLabel.text = pair[0];
+		NSDictionary *row = self.details[indexPath.row];
+		NSString *kind = row[@"kind"];
+		TGTheme *theme = [TGTheme shared];
+		// The media lists share this reuse id and leave a chevron and an icon behind.
+		cell.accessoryType = UITableViewCellAccessoryNone;
+		cell.imageView.image = nil;
+		cell.textLabel.text = row[@"label"];
 		cell.textLabel.font = TGFontMeta();
-		cell.textLabel.textColor = [[TGTheme shared] secondaryTextColour];
-		cell.detailTextLabel.text = pair[1];
+		cell.textLabel.textColor = [theme secondaryTextColour];
+		cell.detailTextLabel.text = row[@"value"];
 		cell.detailTextLabel.font = TGFontBody();
-		cell.detailTextLabel.textColor = [[TGTheme shared] accentColour];
+		cell.detailTextLabel.numberOfLines = 0;
+		BOOL plain = [kind isEqualToString:@"bio"] || [kind isEqualToString:@"note"] ||
+				[kind isEqualToString:@"about"];
+		BOOL today = [kind isEqualToString:@"birthday"] && self.birthdayToday;
+		cell.detailTextLabel.textColor = [kind isEqualToString:@"warning"] ? [theme destructiveColour]
+				: (today ? [theme onlineColour]
+				: (plain ? [theme primaryTextColour] : [theme accentColour]));
 		return cell;
 	}
 
@@ -722,23 +1054,71 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 		NSArray *rows = [self selectedMediaRows];
 		if (indexPath.row < (NSInteger)rows.count) {
 			NSDictionary *m = rows[indexPath.row];
+			if ([kind isEqualToString:@"music"]){
+				static NSString *trackReuse = @"profile-track";
+				TGProfileTrackCell *trackCell =
+						[tableView dequeueReusableCellWithIdentifier:trackReuse];
+				if (!trackCell)
+					trackCell = [[TGProfileTrackCell alloc]
+							initWithStyle:UITableViewCellStyleDefault
+						  reuseIdentifier:trackReuse];
+				[[TGTheme shared] styleCell:trackCell];
+				NSString *title = [m[@"audioTitle"] length] ? m[@"audioTitle"]
+						: ([m[@"docName"] length] ? m[@"docName"] : @"Audio");
+				NSString *performer = [m[@"audioPerformer"] length]
+						? m[@"audioPerformer"] : @"Unknown artist";
+				TGMusicPlayer *player = [TGMusicPlayer shared];
+				BOOL current = player.currentMessageId == [m[@"id"] longLongValue];
+				[trackCell configureTitle:title
+								   artist:performer
+								 duration:TGProfileDurationText(m[@"duration"])
+								  current:current
+								  playing:player.playing];
+				[self applyArtworkToTrackCell:trackCell message:m indexPath:indexPath];
+				return trackCell;
+			}
+
+			cell.textLabel.numberOfLines = 1;
+			cell.accessoryType = UITableViewCellAccessoryNone;
 			if ([kind isEqualToString:@"files"]) {
-				cell.textLabel.text = m[@"docName"] ?: @"File";
-				cell.detailTextLabel.text = nil;
+				cell.textLabel.text = [m[@"docName"] length] ? m[@"docName"] : @"File";
+				NSString *size = TGProfileFileSize(m[@"docSize"]);
+				NSString *date = TGProfileShortDate(m[@"date"]);
+				cell.detailTextLabel.text = size.length
+						? (date.length ? [NSString stringWithFormat:@"%@ · %@", size, date] : size)
+						: date;
 				cell.imageView.image = [TGIcons document];
 			} else if ([kind isEqualToString:@"voice"]) {
-				cell.textLabel.text = @"Voice message";
-				cell.detailTextLabel.text = TGProfileShortDate(m[@"date"]);
-				cell.imageView.image = [TGIcons microphone];
+				BOOL videoNote = [m[@"kind"] isEqualToString:@"messageVideoNote"];
+				cell.textLabel.text = videoNote ? @"Video message" : @"Voice message";
+				// The row plays in place, so it has to show which one is sounding.
+				if (self.playingVoiceId == [m[@"id"] longLongValue])
+					cell.textLabel.textColor = [[TGTheme shared] accentColour];
+				NSString *length = TGProfileDurationText(m[@"duration"]);
+				NSString *date = TGProfileShortDate(m[@"date"]);
+				cell.detailTextLabel.text = length.length
+						? (date.length ? [NSString stringWithFormat:@"%@ · %@", length, date] : length)
+						: date;
+				cell.imageView.image = videoNote ? [TGIcons glyphNamed:@"video"
+						colour:[[TGTheme shared] accentColour] side:kLinkGlyph]
+						: [TGIcons microphone];
 			} else if ([kind isEqualToString:@"links"]) {
-				// The link itself is the title; the message it came in is the
-				// detail, which is what makes a list of them readable.
-				cell.textLabel.text = m[@"link"] ?: m[@"text"] ?: @"Link";
-				cell.textLabel.numberOfLines = 2;
-				cell.detailTextLabel.text = TGProfileShortDate(m[@"date"]);
-				cell.imageView.image = [TGIcons glyphNamed:@"copy"
+				NSString *domain = [self linkDomainForMessage:m];
+				NSString *date = TGProfileShortDate(m[@"date"]);
+				BOOL bare = !domain.length || [m[@"text"] hasPrefix:domain] ||
+						[m[@"text"] hasPrefix:@"http"];
+				cell.textLabel.text = bare ? (domain.length ? domain : @"Link") : m[@"text"];
+				cell.detailTextLabel.text = bare || !date.length ? (bare ? date : domain)
+						: [NSString stringWithFormat:@"%@ · %@", domain, date];
+				cell.imageView.image = [TGIcons glyphNamed:@"forward"
 													colour:[[TGTheme shared] secondaryTextColour]
 													  side:kLinkGlyph];
+				cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+			} else if ([kind isEqualToString:@"groups"]) {
+				cell.textLabel.text = [m[@"title"] length] ? m[@"title"] : @"Group";
+				cell.detailTextLabel.text = nil;
+				cell.imageView.image = nil;
+				cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
 			} else if ([kind isEqualToString:@"gifts"]) {
 				NSString *emoji = m[@"emoji"] ?: @"";
 				NSString *message = m[@"message"];
@@ -782,6 +1162,13 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 		return;
 	NSIndexPath *path = [self.tableView indexPathForRowAtPoint:
 			[hold locationInView:self.tableView]];
+	// One recogniser for both, since two on one table would race for the press.
+	// A detail row copies whatever a tap on it would have done.
+	if (path && path.section == kSectionDetails && path.row < (NSInteger)self.details.count){
+		if ([self.details[path.row][@"value"] length])
+			[self copyDetailValue:self.details[path.row][@"value"]];
+		return;
+	}
 	if (!path || path.section != kSectionMembers ||
 			path.row >= (NSInteger)self.members.count)
 		return;
@@ -811,15 +1198,125 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 		return;
 	}
 
-	if (indexPath.section == kSectionMedia)
+	if (indexPath.section == kSectionMedia){
+		[self openMediaRow:indexPath.row];
 		return;
+	}
 
-	// The actions live in the tiles now; a row of the card copies its value,
-	// which is the only thing there is to do with a phone number or a link.
 	if (indexPath.section != kSectionDetails ||
 		indexPath.row >= (NSInteger)self.details.count)
 		return;
-	NSString *value = self.details[indexPath.row][1];
+	NSDictionary *row = self.details[indexPath.row];
+	NSString *kind = row[@"kind"];
+	// Each row does what it says. Copying everything was the only thing a tap
+	// did before, so tapping a bio put the bio on the clipboard.
+	if ([kind isEqualToString:@"channel"]){
+		[self openChat:[self.personalChannel[@"chatId"] longLongValue]
+				 title:self.personalChannel[@"title"] message:0];
+	} else if ([kind isEqualToString:@"addContact"]){
+		[self addToContactsTapped];
+	} else if ([kind isEqualToString:@"bio"]){
+		NSURL *url = TGProfileFirstURL(row[@"value"], self.bioEntities);
+		if (url)
+			[[UIApplication sharedApplication] openURL:url];
+	} else if ([kind isEqualToString:@"phone"] || [kind isEqualToString:@"username"] ||
+			   [kind isEqualToString:@"invite"]){
+		[self copyDetailValue:row[@"value"]];
+	}
+}
+
+- (void)openChat:(int64_t)chatId title:(NSString *)title message:(int64_t)messageId {
+	if (!chatId)
+		return;
+	TGChatViewController *chat = [[TGChatViewController alloc] init];
+	chat.chatId = chatId;
+	chat.chatTitle = title ?: @"";
+	chat.initialMessageId = messageId;
+	chat.hidesBottomBarWhenPushed = YES;
+	[self.navigationController pushViewController:chat animated:YES];
+}
+
+/// A row in the shared lists. Grids have their own tiles; these are the lists,
+/// which used to ignore the tap altogether.
+- (void)openMediaRow:(NSInteger)index {
+	NSArray *rows = [self selectedMediaRows];
+	if (index >= (NSInteger)rows.count)
+		return;
+	NSDictionary *m = rows[(NSUInteger)index];
+	NSString *kind = [self selectedMediaKind];
+	int64_t messageId = [m[@"id"] longLongValue];
+	if ([kind isEqualToString:@"music"]){
+		[[TGMusicPlayer shared] playTracks:rows atIndex:index inChat:self.chatId];
+		[self.tableView reloadData];
+	} else if ([kind isEqualToString:@"links"]){
+		NSURL *url = TGProfileFirstURL(m[@"text"], m[@"entities"]);
+		if (url)
+			[[UIApplication sharedApplication] openURL:url];
+	} else if ([kind isEqualToString:@"groups"]){
+		[self openChat:[m[@"chatId"] longLongValue] title:m[@"title"] message:0];
+	} else if ([kind isEqualToString:@"voice"] &&
+			   ![m[@"kind"] isEqualToString:@"messageVideoNote"]){
+		[self toggleVoiceRow:m];
+	} else if ([kind isEqualToString:@"files"] || [kind isEqualToString:@"voice"]){
+		// The chat already knows how to open every kind of file and play a round
+		// note, so the row goes to the message rather than growing a second way.
+		[self openChat:self.chatId title:self.name message:messageId];
+	}
+}
+
+- (void)toggleVoiceRow:(NSDictionary *)m {
+	int64_t messageId = [m[@"id"] longLongValue];
+	BOOL same = self.voicePlayer && self.playingVoiceId == messageId;
+	[self.voicePlayer stop];
+	self.voicePlayer = nil;
+	self.playingVoiceId = 0;
+	[self.tableView reloadData];
+	NSNumber *docId = m[@"docId"];
+	if (same || ![docId isKindOfClass:NSNumber.class])
+		return;
+	__weak typeof(self) weakSelf = self;
+	[[TGClient shared] downloadFile:docId.integerValue completion:^(NSString *path){
+		dispatch_async(dispatch_get_main_queue(), ^{
+			TGProfileViewController *me = weakSelf;
+			if (!me || !path)
+				return;
+			[[AVAudioSession sharedInstance] setCategory:AVAudioSessionCategoryPlayback error:nil];
+			[[AVAudioSession sharedInstance] setActive:YES error:nil];
+			NSError *err = nil;
+			me.voicePlayer = [[TGStreamingVoicePlayer alloc] initWithPath:path error:&err];
+			if (!me.voicePlayer){
+				NSLog(@"voice playback: %@", err);
+				[TGAlertSheet showMessage:@"This voice message cannot be played on this device."
+									title:@"Voice Message" inView:me.view];
+				return;
+			}
+			me.voicePlayer.delegate = me;
+			me.playingVoiceId = messageId;
+			[me.voicePlayer play];
+			[me.tableView reloadData];
+		});
+	}];
+}
+
+- (void)audioPlayerDidFinishPlaying:(id)player successfully:(BOOL)flag {
+	self.voicePlayer = nil;
+	self.playingVoiceId = 0;
+	[self.tableView reloadData];
+}
+
+- (void)viewDidAppear:(BOOL)animated {
+	[super viewDidAppear:animated];
+	[self loadVisibleMediaTabIfNeeded];
+}
+
+- (void)viewWillDisappear:(BOOL)animated {
+	[super viewWillDisappear:animated];
+	[self.voicePlayer stop];
+	self.voicePlayer = nil;
+	self.playingVoiceId = 0;
+}
+
+- (void)copyDetailValue:(NSString *)value {
 	[UIPasteboard generalPasteboard].string = value;
 
 	UILabel *toast = [[UILabel alloc] initWithFrame:

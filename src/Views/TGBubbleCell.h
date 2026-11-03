@@ -50,6 +50,12 @@
 /// Moves the boundary between the two, 0 to 1. One frame assignment: nothing
 /// is drawn, allocated or rasterized, which is what lets playback tick.
 - (void)setWavePlayed:(CGFloat)played;
+
+/// The turning arc round a sending note's disc. The arc is a shape layer on
+/// the disc itself, so the table never reloads to move it. 0..1.
+- (void)showSendRingWithProgress:(CGFloat)progress;
+- (void)hideSendRing;
+
 @property (nonatomic, strong) UILabel *mediaStamp;
 @property (nonatomic, assign) int64_t voiceMessageId;
 @property (nonatomic, assign) int64_t pollMessageId;

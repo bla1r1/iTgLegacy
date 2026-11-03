@@ -1,6 +1,7 @@
 #import "TGMusicPlayer.h"
 #import "TGClient.h"
 #import "TGIcons.h"
+#import "TGPlaybackQueue.h"
 #import <AVFoundation/AVFoundation.h>
 #import <MediaPlayer/MediaPlayer.h>
 #import <UIKit/UIKit.h>
@@ -10,6 +11,9 @@ NSString *const TGMusicPlayerChangedNotification = @"TGMusicPlayerChanged";
 @interface TGMusicPlayer () <AVAudioPlayerDelegate>
 @property (nonatomic, strong) AVAudioPlayer *player;
 @property (nonatomic, strong) NSArray *tracks;
+/// The track being fetched to play. Skipping on cancels it: TDLib runs a few
+/// downloads at once, and a skipped track held the slot of the wanted one.
+@property (nonatomic, assign) NSInteger pendingFileId;
 @property (nonatomic, assign) NSInteger index;
 @property (nonatomic, assign) int64_t chatId;
 @property (nonatomic, strong) NSDictionary *current;
@@ -65,6 +69,10 @@ NSString *const TGMusicPlayerChangedNotification = @"TGMusicPlayerChanged";
 
 	self.index = index;
 	self.current = self.tracks[index];
+	// The old track stops now, not when the new file has arrived: the cover
+	// changed at once and the sound went on for seconds.
+	[self.player stop];
+	self.player = nil;
 	[self announce];
 
 	NSNumber *docId = self.current[@"docId"];
@@ -73,13 +81,21 @@ NSString *const TGMusicPlayerChangedNotification = @"TGMusicPlayerChanged";
 		return;
 	}
 
+	if (self.pendingFileId && self.pendingFileId != docId.integerValue)
+		[[TGClient shared] cancelDownloadOfFile:self.pendingFileId onlyIfPending:NO];
+	self.pendingFileId = docId.integerValue;
+
 	__weak typeof(self) weakSelf = self;
 	NSInteger wanted = index;
-	[[TGClient shared] downloadFile:docId.integerValue completion:^(NSString *path){
+	CFAbsoluteTime asked = CFAbsoluteTimeGetCurrent();
+	[[TGClient shared] downloadFile:docId.integerValue priority:TGDownloadPriorityAvatar
+						 completion:^(NSString *path){
 		TGMusicPlayer *me = weakSelf;
 		// The user may have skipped on while this was downloading.
 		if (!me || me.index != wanted)
 			return;
+		me.pendingFileId = 0;
+		NSLog(@"music: file ready in %.1f s", CFAbsoluteTimeGetCurrent() - asked);
 		if (!path.length){
 			[me next];
 			return;
@@ -111,6 +127,13 @@ NSString *const TGMusicPlayerChangedNotification = @"TGMusicPlayerChanged";
 	[[UIApplication sharedApplication] beginReceivingRemoteControlEvents];
 	[self holdBackground];
 	[self announce];
+
+	NSNumber *following = TGTrackToPrefetch(self.tracks, self.index, self.shuffle,
+			self.repeatMode == TGMusicRepeatAll);
+	if (following)
+		[[TGClient shared] downloadFile:following.integerValue
+							   priority:TGDownloadPriorityBackground
+							 completion:^(NSString *ignored){}];
 }
 
 #pragma mark - transport

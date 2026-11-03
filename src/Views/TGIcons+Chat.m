@@ -211,4 +211,37 @@ static const CGFloat kTailHeight = TGMetricBubbleTailHeight;
 	return image;
 }
 
++ (UIImage *)clockTicksWhite:(BOOL)white {
+	UIColor *c = white ? [[TGTheme shared] onMediaColour] : [[TGTheme shared] ticksColour];
+	NSString *key = [NSString stringWithFormat:@"clockTicks_%lu",
+			(unsigned long)[c hash]];
+	UIImage *cached = TGIconsGetCached(key);
+	if (cached) return cached;
+
+	// The same 15x9 slot as the ticks, with the clock a round 9 beside them:
+	// the image view's frame is not squared, and a square glyph would stretch.
+	CGSize size = CGSizeMake(TGMetricTicksWidth, TGMetricTicksHeight);
+	UIGraphicsBeginImageContextWithOptions(size, NO, 0);
+	CGContextRef ctx = UIGraphicsGetCurrentContext();
+	CGContextSetStrokeColorWithColor(ctx, c.CGColor);
+	CGContextSetLineWidth(ctx, TGIconStrokeFine);
+	CGContextSetLineCap(ctx, kCGLineCapRound);
+
+	CGFloat d = size.height - TGIconStrokeFine;
+	CGRect circle = CGRectMake(TGHalf(size.width - d), TGHalf(size.height - d), d, d);
+	CGContextStrokeEllipseInRect(ctx, circle);
+
+	CGFloat cx = CGRectGetMidX(circle);
+	CGFloat cy = CGRectGetMidY(circle);
+	CGContextMoveToPoint(ctx, cx, cy - d * 0.30f);
+	CGContextAddLineToPoint(ctx, cx, cy);
+	CGContextAddLineToPoint(ctx, cx + d * 0.22f, cy + d * 0.12f);
+	CGContextStrokePath(ctx);
+
+	UIImage *image = UIGraphicsGetImageFromCurrentImageContext();
+	UIGraphicsEndImageContext();
+	TGIconsSetCached(key, image);
+	return image;
+}
+
 @end

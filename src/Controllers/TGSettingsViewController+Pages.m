@@ -73,8 +73,6 @@ static NSArray *TGCustomResultRows(NSString *result) {
 - (NSArray *)rootSections {
 	__weak typeof(self) weakSelf = self;
 	NSDictionary *me = [TGClient shared].me;
-	BOOL hasPhoto = [[TGClient shared] photoFileIdForUserId:
-			[me[@"id"] longLongValue]] != nil;
 
 	// The values Telegram shows on the right of these rows. They stay nil
 	// until the client answers, so a slow network leaves the row exactly as
@@ -112,9 +110,8 @@ static NSArray *TGCustomResultRows(NSString *result) {
 			([TGClient shared].authState != TGAuthStateReady) ? TGIconRow(@"Log in to Telegram", @"privacy", TGIconTileAzure(), ^{
 				[[AppDelegate sharedDelegate] showLoginUI];
 			}) : TGIconRow(@"Accounts", @"select", TGIconTileAzure(), ^{ [weakSelf showAccountChoices]; }),
-			TGIconRow(hasPhoto ? @"Change Profile Photo" : @"Set Profile Photo", @"react", TGIconTileCoral(), ^{
-				[weakSelf pickProfilePhoto];
-			}),
+			// Their settings keeps one edit entry; the header above is the
+			// My Profile row, so a separate photo row competed with it.
 			TGIconTapRow(@"Edit Profile", username, @"chat", TGIconTileViolet(), ^{
 				UIViewController *edit = [[TGEditProfileViewController alloc] init];
 				edit.hidesBottomBarWhenPushed = YES;

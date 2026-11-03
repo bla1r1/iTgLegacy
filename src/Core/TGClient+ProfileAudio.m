@@ -13,7 +13,7 @@ static NSString *TGProfileAudioError(NSDictionary *result) {
 
 /// One audio object flattened for a row. The player needs the file id and a
 /// title; the row shows the performer and the length as its second line.
-static NSDictionary *TGProfileAudioRow(NSDictionary *audio) {
+NSDictionary *TGProfileAudioRow(NSDictionary *audio) {
 	if (![audio isKindOfClass:NSDictionary.class])
 		return nil;
 	NSNumber *fileId = audio[@"audio"][@"id"];

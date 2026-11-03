@@ -79,6 +79,13 @@ static void TGSetWanted(NSString *key, BOOL wanted) {
 	return [self is64Bit] && [self systemVersion] >= 9.0 && [TGDevice tier] >= TGDeviceTierFull;
 }
 
++ (int)maxVideoSide {
+	// ponytail: the 3GS tops out at 640 and shares the 720p answer here. A file it
+	// refuses then falls to the viewer's failure path.
+	TGDeviceTier tier = [TGDevice tier];
+	return tier >= TGDeviceTierFull ? 3840 : (tier <= TGDeviceTierVintage ? 1280 : 1920);
+}
+
 + (BOOL)canAutoplayGIFs {
 	return [self gifAutoplayWanted];
 }
@@ -182,6 +189,7 @@ static BOOL TGEmojiFontHasGlyphs(CTFontRef font, NSString *s) {
 		@[@"Multiple accounts",       @([self canHoldMultipleAccounts]), @"every device, one active at a time"],
 		@[@"Custom emoji",            @NO,   @"shown as their plain emoji for now"],
 		@[@"Mini apps",               @([self canRunWebApps]),         @"iOS 9 or later"],
+		@[@"H.264 High video",        @([TGDevice tier] > TGDeviceTierVintage), @"Legacy - the A4's decoder stops at Main Profile, 720p, 30 fps"],
 		@[@"Video calls",             @([self canEncodeVideoCall]),    @"Full - 64-bit, iOS 9+, 2GB+"],
 	];
 

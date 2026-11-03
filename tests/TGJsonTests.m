@@ -24,6 +24,10 @@
 	XCTAssertEqualObjects(d[@"truth"], @YES);
 	XCTAssertEqualObjects(d[@"lie"], @NO);
 	XCTAssertEqualObjects(d[@"empty"], [NSNull null]);
+	// A field read as the type it usually is must not crash on the odd null.
+	XCTAssertEqual([d[@"empty"] longLongValue], 0LL);
+	XCTAssertEqual([d[@"empty"] count], (NSUInteger)0);
+	XCTAssertTrue([d[@"empty"] objectForKey:@"x"] == nil);
 }
 
 - (void)testParseNestedStructure {

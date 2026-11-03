@@ -5,6 +5,7 @@
 #import "TGSettingsViewControllerInternal.h"
 #import "TGAlertSheet.h"
 #import "TGBackgroundsViewController.h"
+#import "TGProfileAppearanceViewController.h"
 #import "TGStyle.h"
 
 /// The background type is a td_api object name; "backgroundTypeFill" reads
@@ -32,20 +33,6 @@ static NSString *TGDefaultBackgroundDetail(NSDictionary *state) {
 }
 
 @implementation TGSettingsViewController (AppearancePages)
-
-/// The seven built-in ids have fixed meanings in the schema; anything above
-/// them is a colour Telegram added and the id is the only name it has.
-static NSString *TGAccentColorName(NSInteger colourId) {
-	static NSArray *builtIn = nil;
-	if (!builtIn)
-		builtIn = @[@"Red", @"Orange", @"Purple", @"Green",
-					@"Cyan", @"Blue", @"Pink"];
-	if (colourId >= 0 && colourId < (NSInteger)builtIn.count)
-		return builtIn[(NSUInteger)colourId];
-	if (colourId < 0)
-		return @"None";
-	return [NSString stringWithFormat:@"Colour %ld", (long)colourId];
-}
 
 - (NSArray *)appearanceSections {
 	__weak typeof(self) weakSelf = self;
@@ -103,21 +90,18 @@ static NSString *TGAccentColorName(NSInteger colourId) {
 					^{ [weakSelf showEmojiChatThemes]; }),
 		]),
 
-		TGSection(@"ACCENT COLOR",
-				  @"Telegram draws your name, links and the backgrounds of your "
-				  @"profile photo with this colour. It is stored on the account, "
-				  @"not in this app's theme.",
+		TGSection(@"YOUR COLOR",
+				  @"Telegram draws your name and the background behind your "
+				  @"profile photo with these colours. They are stored on the "
+				  @"account, not in this app's theme.",
 				  @[
-			TGIconTapRow(@"Accent Color",
-					weakSelf.accentColorsLoaded ? TGAccentColorName(weakSelf.accentColorId)
-							: @"...",
-					@"star", TGIconTilePurple(),
-					^{ [weakSelf chooseAccentColorForProfile:NO]; }),
-			TGIconTapRow(@"Profile Accent",
-					weakSelf.accentColorsLoaded
-							? TGAccentColorName(weakSelf.profileAccentColorId) : @"...",
-					@"chat", TGIconTileViolet(),
-					^{ [weakSelf chooseAccentColorForProfile:YES]; }),
+			TGIconTapRow(@"Your Color", @"Name and profile colour",
+					@"star", TGIconTilePurple(), ^{
+				TGProfileAppearanceViewController *colours =
+						[[TGProfileAppearanceViewController alloc] init];
+				colours.hidesBottomBarWhenPushed = YES;
+				[weakSelf.navigationController pushViewController:colours animated:YES];
+			}),
 		]),
 
 		TGSection(@"CHAT BACKGROUNDS",
@@ -249,55 +233,6 @@ static NSString *TGAccentColorName(NSInteger colourId) {
 		[TGAlertSheet showMessage:details
 							title:titles[(NSUInteger)index]
 						   inView:self.view];
-	}];
-}
-
-- (void)chooseAccentColorForProfile:(BOOL)profile {
-	NSArray *ids = profile ? [[TGClient shared] availableProfileAccentColorIds]
-						   : [[TGClient shared] availableAccentColorIds];
-	NSMutableArray *titles = [NSMutableArray array];
-	if (profile)
-		[titles addObject:@"None"];
-	for (NSNumber *colourId in ids)
-		[titles addObject:TGAccentColorName([colourId integerValue])];
-
-	__weak typeof(self) weakSelf = self;
-	[TGAlertSheet showChoices:titles
-						title:(profile ? @"Profile Accent" : @"Accent Colour")
-			 destructiveIndex:-1
-					   inView:self.view
-					 onChoice:^(NSInteger index){
-		NSInteger colourId = 0;
-		if (profile && index == 0)
-			colourId = -1;
-		else {
-			NSUInteger listIndex = profile ? (NSUInteger)index - 1 : (NSUInteger)index;
-			if (listIndex >= ids.count)
-				return;
-			colourId = [ids[listIndex] integerValue];
-		}
-		void (^answer)(BOOL, NSString *) = ^(BOOL ok, NSString *error){
-			if (!ok){
-				[TGAlertSheet showMessage:(error ?: @"Telegram refused that.")
-									title:(profile ? @"Profile Accent" : @"Accent Colour")
-								   inView:weakSelf.view];
-				return;
-			}
-			if (profile)
-				weakSelf.profileAccentColorId = colourId;
-			else
-				weakSelf.accentColorId = colourId;
-			[weakSelf rebuild];
-			[weakSelf toast:@"Accent colour saved."];
-		};
-		if (profile)
-			[[TGClient shared] setAccountProfileAccentColor:colourId
-										  backgroundEmojiId:0
-												 completion:answer];
-		else
-			[[TGClient shared] setAccountAccentColor:colourId
-								   backgroundEmojiId:0
-										  completion:answer];
 	}];
 }
 

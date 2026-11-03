@@ -740,21 +740,33 @@ static NSInteger TGForumTopicColour(NSInteger index) {
 
 - (void)chatProfile:(int64_t)chatId completion:(void (^)(NSDictionary *))completion {
 	__weak typeof(self) weakSelf = self;
+	// The online count only arrives as updateChatOnlineMemberCount and lives
+	// on the cached list row, never on the getChat answer below.
+	NSNumber *online = weakSelf.chatsById[@(chatId)][@"onlineMembers"];
 	[self request:@{@"@type" : @"getChat", @"chat_id" : @(chatId)}
 	   completion:^(NSDictionary *chat){
 		NSString *kind = chat[@"type"][@"@type"];
+		__block BOOL verified = NO;
 		void (^answer)(NSDictionary *) = ^(NSDictionary *full){
 			if (completion) completion(@{
 				@"description" : full[@"description"] ?: @"",
 				@"members"     : full[@"member_count"] ?: @0,
 				@"inviteLink"  : full[@"invite_link"][@"invite_link"] ?: @"",
+				@"online"      : online ?: @0,
+				@"verified"    : @(verified),
 			});
 		};
 
 		if ([kind isEqualToString:@"chatTypeSupergroup"]){
-			[weakSelf request:@{@"@type" : @"getSupergroupFullInfo",
-								@"supergroup_id" : chat[@"type"][@"supergroup_id"]}
-				   completion:answer];
+			NSNumber *supergroupId = chat[@"type"][@"supergroup_id"];
+			// The mark is on the supergroup record, not on its full info.
+			[weakSelf request:@{@"@type" : @"getSupergroup", @"supergroup_id" : supergroupId}
+				   completion:^(NSDictionary *group){
+				verified = [group[@"verification_status"][@"is_verified"] boolValue];
+				[weakSelf request:@{@"@type" : @"getSupergroupFullInfo",
+									@"supergroup_id" : supergroupId}
+					   completion:answer];
+			}];
 		} else if ([kind isEqualToString:@"chatTypeBasicGroup"]){
 			[weakSelf request:@{@"@type" : @"getBasicGroupFullInfo",
 								@"basic_group_id" : chat[@"type"][@"basic_group_id"]}
@@ -1423,16 +1435,45 @@ static NSDictionary *TGFolderObject(NSString *name, NSString *icon,
 	}];
 }
 
+/// setChatNotificationSettings replaces the whole record. Muting therefore
+/// rewrites every field from the chat's current record; sending only the mute
+/// pair reset the custom sound, previews, story flags and mention switches.
+static NSDictionary *TGChatNotificationSettingsRecord(NSDictionary *current, BOOL muted) {
+	if (![current isKindOfClass:NSDictionary.class])
+		current = @{};
+	return @{
+		@"@type"                : @"chatNotificationSettings",
+		@"use_default_mute_for" : @NO,
+		@"mute_for"             : @(muted ? 365 * 24 * 3600 : 0),
+		@"use_default_sound"    : current[@"use_default_sound"] ?: @YES,
+		@"sound_id"             : current[@"sound_id"] ?: @(0),
+		@"use_default_show_preview" : current[@"use_default_show_preview"] ?: @YES,
+		@"show_preview"         : current[@"show_preview"] ?: @YES,
+		@"use_default_mute_stories" : current[@"use_default_mute_stories"] ?: @YES,
+		@"mute_stories"         : current[@"mute_stories"] ?: @NO,
+		@"use_default_story_sound" : current[@"use_default_story_sound"] ?: @YES,
+		@"story_sound_id"       : current[@"story_sound_id"] ?: @(0),
+		@"use_default_show_story_poster" :
+				current[@"use_default_show_story_poster"] ?: @YES,
+		@"show_story_poster"    : current[@"show_story_poster"] ?: @YES,
+		@"use_default_disable_pinned_message_notifications" :
+				current[@"use_default_disable_pinned_message_notifications"] ?: @YES,
+		@"disable_pinned_message_notifications" :
+				current[@"disable_pinned_message_notifications"] ?: @NO,
+		@"use_default_disable_mention_notifications" :
+				current[@"use_default_disable_mention_notifications"] ?: @YES,
+		@"disable_mention_notifications" :
+				current[@"disable_mention_notifications"] ?: @NO,
+	};
+}
+
 - (void)setChat:(int64_t)chatId muted:(BOOL)muted {
-	// A very large mute_for is how TDLib expresses "muted", there is no flag.
+	NSDictionary *current = self.chatsById[@(chatId)][@"notificationSettings"];
 	[self send:@{
 		@"@type" : @"setChatNotificationSettings",
 		@"chat_id" : @(chatId),
-		@"notification_settings" : @{
-			@"@type"                : @"chatNotificationSettings",
-			@"use_default_mute_for" : @NO,
-			@"mute_for"             : @(muted ? 365 * 24 * 3600 : 0),
-		},
+		@"notification_settings" :
+				TGChatNotificationSettingsRecord(current, muted),
 	}];
 }
 
@@ -1585,8 +1626,10 @@ static NSDictionary *TGFolderObject(NSString *name, NSString *icon,
 		info[@"archiveOrder"] = @(TGArchiveOrder(chat[@"positions"]));
 		info[@"isPinned"] = @(TGPinnedInMain(chat[@"positions"]));
 	}
-	if (chat[@"notification_settings"])
+	if (chat[@"notification_settings"]){
+		info[@"notificationSettings"] = chat[@"notification_settings"];
 		info[@"isMuted"] = @([chat[@"notification_settings"][@"mute_for"] integerValue] > 0);
+	}
 	if (chat[@"reply_markup_message_id"])
 		info[@"replyMarkupMessageId"] = chat[@"reply_markup_message_id"];
 
@@ -1705,6 +1748,13 @@ static NSDictionary *TGFolderObject(NSString *name, NSString *icon,
 	// how many of the members are online right now.
 	if ([update[@"permissions"] isKindOfClass:NSDictionary.class])
 		info[@"permissions"] = update[@"permissions"];
+	// The running video chat is an object that a null removes, like the
+	// photo and the badge below: the group settings screen opens the call by
+	// reading this field off the row.
+	if ([update[@"video_chat"] isKindOfClass:NSDictionary.class])
+		info[@"videoChat"] = update[@"video_chat"];
+	else if ([update[@"@type"] isEqualToString:@"updateChatVideoChat"])
+		[info removeObjectForKey:@"videoChat"];
 	if (update[@"message_auto_delete_time"])
 		info[@"autoDeleteTime"] = update[@"message_auto_delete_time"];
 	if (update[@"online_member_count"])
@@ -1784,8 +1834,10 @@ static NSDictionary *TGFolderObject(NSString *name, NSString *icon,
 		info[@"date"] = last[@"date"] ?: @(0);
 	}
 
-	if (update[@"notification_settings"])
+	if ([update[@"notification_settings"] isKindOfClass:NSDictionary.class]){
+		info[@"notificationSettings"] = update[@"notification_settings"];
 		info[@"isMuted"] = @([update[@"notification_settings"][@"mute_for"] integerValue] > 0);
+	}
 	if (update[@"positions"]){
 		info[@"order"] = @(TGMainListOrder(update[@"positions"]));
 		info[@"archiveOrder"] = @(TGArchiveOrder(update[@"positions"]));

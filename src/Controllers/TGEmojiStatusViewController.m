@@ -14,6 +14,13 @@ static const CGFloat kStatusGridGap = TGMetricPadSmall;
 static const CGFloat kStatusGridInset = TGMetricPadMedium;
 static const CGFloat kStatusGridRow = TGMetricEmojiCell + TGMetricPad;
 
+/// The status durations Telegram offers. Forever is 0, which is what TDLib
+/// stores for a status with no end.
+static const NSTimeInterval kStatusHour = 60 * 60;
+static const NSTimeInterval kStatusTwoHours = 2 * kStatusHour;
+static const NSTimeInterval kStatusEightHours = 8 * kStatusHour;
+static const NSTimeInterval kStatusTwoDays = 48 * kStatusHour;
+
 /// A still picture from a downloaded sticker: PNG and JPEG through UIKit,
 /// WebP through the decoder the app carries.
 static UIImage *TGStatusImageAtPath(NSString *path) {
@@ -420,9 +427,28 @@ static UIImage *TGStatusImageAtPath(NSString *path) {
 
 - (void)chooseEmojiId:(int64_t)emojiId {
 	__weak typeof(self) weakSelf = self;
+	NSArray *titles = @[@"1 hour", @"2 hours", @"8 hours", @"2 days", @"Forever"];
+	NSArray *durations = @[@(kStatusHour), @(kStatusTwoHours),
+						   @(kStatusEightHours), @(kStatusTwoDays), @(0)];
+	[TGAlertSheet showChoices:titles
+						title:@"Keep This Status For"
+			 destructiveIndex:-1
+					   inView:self.view
+					 onChoice:^(NSInteger index){
+		if (index < 0 || index >= (NSInteger)durations.count)
+			return;
+		NSTimeInterval seconds = [durations[(NSUInteger)index] doubleValue];
+		int64_t expiration = seconds > 0
+				? (int64_t)([[NSDate date] timeIntervalSince1970] + seconds) : 0;
+		[weakSelf applyEmojiId:emojiId expirationDate:expiration];
+	}];
+}
+
+- (void)applyEmojiId:(int64_t)emojiId expirationDate:(int64_t)expiration {
+	__weak typeof(self) weakSelf = self;
 	NSString *title = self.subjectTitle ?: @"Emoji Status";
 	if (self.target == TGEmojiStatusTargetChat){
-		[[TGClient shared] setChatEmojiStatus:emojiId expirationDate:0
+		[[TGClient shared] setChatEmojiStatus:emojiId expirationDate:expiration
 									  inChat:self.chatId
 								  completion:^(BOOL ok, NSString *error){
 			[weakSelf showResult:ok error:error title:title];
@@ -430,14 +456,14 @@ static UIImage *TGStatusImageAtPath(NSString *path) {
 		return;
 	}
 	if (self.target == TGEmojiStatusTargetUser){
-		[[TGClient shared] setUserEmojiStatus:emojiId expirationDate:0
+		[[TGClient shared] setUserEmojiStatus:emojiId expirationDate:expiration
 									  forUser:self.userId
 								   completion:^(BOOL ok, NSString *error){
 			[weakSelf showResult:ok error:error title:title];
 		}];
 		return;
 	}
-	[[TGClient shared] setEmojiStatus:emojiId expirationDate:0
+	[[TGClient shared] setEmojiStatus:emojiId expirationDate:expiration
 						  completion:^(BOOL ok, NSString *error){
 		[weakSelf showResult:ok error:error title:title];
 	}];

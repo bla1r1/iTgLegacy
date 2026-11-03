@@ -180,6 +180,13 @@ static NSDictionary *plainT2(NSDictionary *d) {
 	XCTAssertTrue(r[@"emoji_status"] == [NSNull null]);
 }
 
+- (void)testSetEmojiStatus_ATimedStatusCarriesItsExpiry {
+	TGClient *c = T2E();
+	[c setEmojiStatus:1234 expirationDate:1767225600 completion:^(BOOL ok, NSString *e){}];
+	NSDictionary *r = lastT2(c, @"setEmojiStatus");
+	XCTAssertEqualObjects(r[@"emoji_status"][@"expiration_date"], @(1767225600));
+}
+
 - (void)testSetUserEmojiStatus_NamesTheUser {
 	TGClient *c = T2E();
 	[c setUserEmojiStatus:55 expirationDate:100 forUser:42
@@ -229,6 +236,14 @@ static NSDictionary *plainT2(NSDictionary *d) {
 	XCTAssertEqualObjects(rows[0][@"title"], @"Nightcall");
 	XCTAssertEqualObjects(rows[0][@"performer"], @"Kavinsky");
 	XCTAssertEqualObjects(rows[0][@"albumCoverId"], @(601));
+}
+
+- (void)testProfileAudios_SecondPageAsksForTheOffsetItHas {
+	TGClient *c = T2E();
+	[c profileAudiosForUser:42 offset:100 limit:100 completion:^(NSArray *a, NSInteger n, NSString *e){}];
+	NSDictionary *r = lastT2(c, @"getUserProfileAudios");
+	XCTAssertEqualObjects(r[@"offset"], @(100));
+	XCTAssertEqualObjects(r[@"limit"], @(100));
 }
 
 - (void)testAddProfileAudio_SendsALocalInputAudio {

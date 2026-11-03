@@ -75,6 +75,14 @@
 					thread:(int64_t)threadId
 				completion:(void (^)(NSInteger count))completion;
 
+/// How many messages a chat carries under one SearchMessagesFilter, which is
+/// the number a profile tab shows in its subtitle. `filterType` is a TDLib
+/// filter name ("searchMessagesFilterPhotoAndVideo", ...); nil means the
+/// whole chat.
+- (void)messageCountInChat:(int64_t)chatId
+					filter:(NSString *)filterType
+				completion:(void (^)(NSInteger count))completion;
+
 - (void)calendarJumpForChat:(int64_t)chatId
 					 endDate:(NSInteger)end
 				  completion:(void (^)(int64_t messageId, NSInteger total))completion;

@@ -290,6 +290,16 @@ NSUInteger TGStoryRowProbeLimit(TGDeviceTier tier);
 							 limit:(NSInteger)limit
 						completion:(void (^)(NSDictionary *page, NSString *error))completion;
 
+#pragma mark - story state
+
+/// How many chats Telegram says have stories in "main" or "archive", from
+/// updateStoryListChatCount. Zero when that list has not reported yet.
+- (NSInteger)storyListChatCountForList:(NSString *)list;
+
+/// The stealth window Telegram last reported, as "activeUntilDate" and
+/// "cooldownUntilDate" (Unix seconds). Nil until updateStoryStealthMode.
+- (NSDictionary *)storyStealthMode;
+
 #pragma mark - stealth
 
 /// Hides this account's views for the past and next stealth window. Premium

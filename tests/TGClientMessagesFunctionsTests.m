@@ -184,7 +184,7 @@ static NSDictionary *plain(NSDictionary *d) {
 
 // ─── the three supergroup switches ───────────────────────────────────────────
 
-- (void)testSupergroupFlags_FullInfoCarriesBothSwitches {
+- (void)testSupergroupFlags_TheRecordCarriesBothSwitches {
 	TGClient *c = M();
 	__block BOOL sign = NO, join = NO, all = NO, ok = NO;
 	[c supergroupFlagsForChat:77 completion:^(BOOL s, BOOL j, BOOL a, BOOL o){
@@ -194,10 +194,13 @@ static NSDictionary *plain(NSDictionary *d) {
 	XCTAssertEqual([chat[@"chat_id"] longLongValue], 77LL);
 	answerM(c, @{@"@type" : @"chat",
 				 @"type" : @{@"@type" : @"chatTypeSupergroup", @"supergroup_id" : @"9001"}});
+	NSDictionary *group = lastM(c, @"getSupergroup");
+	XCTAssertEqualObjects(group[@"supergroup_id"], @(9001));
+	answerM(c, @{@"@type" : @"supergroup",
+				 @"sign_messages" : @YES, @"join_to_send_messages" : @NO});
 	NSDictionary *full = lastM(c, @"getSupergroupFullInfo");
 	XCTAssertEqualObjects(full[@"supergroup_id"], @(9001));
 	answerM(c, @{@"@type" : @"supergroupFullInfo",
-				 @"sign_messages" : @YES, @"join_to_send" : @NO,
 				 @"is_all_history_available" : @YES});
 	XCTAssertTrue(ok);
 	XCTAssertTrue(sign);
@@ -227,7 +230,7 @@ static NSDictionary *plain(NSDictionary *d) {
 	XCTAssertFalse([r[@"is_all_history_available"] boolValue]);
 }
 
-- (void)testSignMessages_TheToggleNamesTheSupergroupNotTheChat {
+- (void)testSignMessages_TheToggleNamesTheSupergroupAndKeepsSenderLine {
 	TGClient *c = M();
 	[c setChatSignMessages:77 on:YES completion:nil];
 
@@ -237,9 +240,16 @@ static NSDictionary *plain(NSDictionary *d) {
 	XCTAssertNotNil(chat);
 	answerM(c, @{@"@type" : @"chat",
 				 @"type" : @{@"@type" : @"chatTypeSupergroup", @"supergroup_id" : @"9001"}});
+	NSDictionary *group = lastM(c, @"getSupergroup");
+	XCTAssertEqualObjects(group[@"supergroup_id"], @(9001));
+	answerM(c, @{@"@type" : @"supergroup",
+				 @"sign_messages" : @NO, @"show_message_sender" : @YES});
 	NSDictionary *r = lastM(c, @"toggleSupergroupSignMessages");
 	XCTAssertEqualObjects(r[@"supergroup_id"], @(9001));
 	XCTAssertTrue([r[@"sign_messages"] boolValue]);
+	// The required second field is the supergroup's current value, not a
+	// default that would switch author profiles off.
+	XCTAssertTrue([r[@"show_message_sender"] boolValue]);
 }
 
 - (void)testJoinToSend_CachedRowKeyServesWhenTheTypeIsGone {
@@ -251,7 +261,8 @@ static NSDictionary *plain(NSDictionary *d) {
 				 @"type" : @{@"@type" : @"chatTypeBasicGroup", @"basic_group_id" : @"17"}});
 	NSDictionary *r = lastM(c, @"toggleSupergroupJoinToSendMessages");
 	XCTAssertEqualObjects(r[@"supergroup_id"], @(9001));
-	XCTAssertTrue([r[@"join_to_send"] boolValue]);
+	XCTAssertTrue([r[@"join_to_send_messages"] boolValue]);
+	XCTAssertNil(r[@"join_to_send"]);
 }
 
 - (void)testSignMessages_RefusalsSaidNotPassedThrough {
@@ -260,6 +271,8 @@ static NSDictionary *plain(NSDictionary *d) {
 	[c setChatSignMessages:77 on:YES completion:^(BOOL done){ ok = done; }];
 	answerM(c, @{@"@type" : @"chat",
 				 @"type" : @{@"@type" : @"chatTypeSupergroup", @"supergroup_id" : @"9001"}});
+	answerM(c, @{@"@type" : @"supergroup", @"sign_messages" : @NO,
+				 @"show_message_sender" : @NO});
 	answerM(c, @{@"@type" : @"error", @"code" : @(400),
 				 @"message" : @"PREMIUM_ACCOUNTS_REQUIRED"});
 	XCTAssertFalse(ok);
@@ -277,8 +290,9 @@ static NSDictionary *plain(NSDictionary *d) {
 	}];
 	NSDictionary *r = lastM(c, @"getChatMessageCalendar");
 	XCTAssertEqual([r[@"chat_id"] longLongValue], 31LL);
-	// A plain chat asks the main topic: one topic at a time.
-	XCTAssertEqualObjects(r[@"topic_id"][@"@type"], @"messageTopicMain");
+	// A plain chat sends no topic: td_api.tl has no "main" topic type, and the
+	// server refused the request while one was sent (B26).
+	XCTAssertNil(r[@"topic_id"]);
 	// int53 arrives as a string; both spellings stand for the same answer.
 	NSDictionary *answer = @{@"@type" : @"messageCalendar",
 							 @"last_message_id" : @"5551",
@@ -296,13 +310,77 @@ static NSDictionary *plain(NSDictionary *d) {
 	XCTAssertEqual(total, 120);
 }
 
+static NSDictionary *altV(int side, NSString *codec, int fileId) {
+	return @{@"width" : @(side), @"height" : @(side / 2), @"codec" : codec,
+			 @"video" : @{@"id" : @(fileId)}};
+}
+
+- (void)testPlayableVideo_TooBigForTheDecoderTakesTheLargestCopyThatFits {
+	NSDictionary *video = @{@"width" : @(1920), @"height" : @(1080), @"video" : @{@"id" : @(1)}};
+	NSArray *copies = @[altV(1920, @"h264", 2), altV(1280, @"h265", 3),
+						altV(1280, @"h264", 4), altV(640, @"h264", 5)];
+	NSNumber *fallback = nil;
+	// The A4 stops at 720p; a 1080p original played a black screen (B29).
+	XCTAssertEqualObjects(TGPlayableVideoFileId(video, copies, 1280, &fallback), @(4));
+	XCTAssertEqualObjects(fallback, @(5));
+}
+
+- (void)testPlayableVideo_ASquareIsMeasuredOnItsShortSideToo {
+	// Telegram's own clips: 1080x1080, with a 480x480 copy. Downloading the
+	// original cost 3.9 MB only to be refused on an A4.
+	NSDictionary *video = @{@"width" : @(1080), @"height" : @(1080), @"video" : @{@"id" : @(1)}};
+	NSDictionary *copy = @{@"width" : @(480), @"height" : @(480), @"codec" : @"h264",
+						   @"video" : @{@"id" : @(2)}};
+	XCTAssertEqualObjects(TGPlayableVideoFileId(video, @[copy], 1280, nil), @(2));
+	XCTAssertEqualObjects(TGPlayableVideoFileId(video, @[copy], 1920, nil), @(1));
+}
+
+- (void)testPlayableVideo_AnOriginalThatFitsIsKeptWithACopyInReserve {
+	NSDictionary *video = @{@"width" : @(1280), @"height" : @(720), @"video" : @{@"id" : @(1)}};
+	NSNumber *fallback = nil;
+	XCTAssertEqualObjects(TGPlayableVideoFileId(video, @[altV(640, @"h264", 5)], 1280, &fallback), @(1));
+	XCTAssertEqualObjects(fallback, @(5));
+}
+
+- (void)testPlayableVideo_NoUsableCopyMeansTheOriginal {
+	NSDictionary *video = @{@"width" : @(3840), @"height" : @(2160), @"video" : @{@"id" : @(1)}};
+	NSNumber *fallback = nil;
+	XCTAssertEqualObjects(TGPlayableVideoFileId(video, @[altV(640, @"av1", 5)], 1280, &fallback), @(1));
+	XCTAssertNil(fallback);
+	XCTAssertEqualObjects(TGPlayableVideoFileId(video, nil, 1280, &fallback), @(1));
+}
+
+- (void)testPlayableVideo_TheOnlyCopyIsNotItsOwnFallback {
+	NSDictionary *video = @{@"width" : @(1920), @"height" : @(1080), @"video" : @{@"id" : @(1)}};
+	NSNumber *fallback = nil;
+	XCTAssertEqualObjects(TGPlayableVideoFileId(video, @[altV(640, @"h264", 5)], 1280, &fallback), @(5));
+	XCTAssertNil(fallback);
+}
+
+- (void)testHistoryAroundMessage_PutsTheTargetInsideThePage {
+	TGClient *c = M();
+	__block NSArray *got = nil;
+	[c historyForChat:32 aroundMessageId:500 limit:40 completion:^(NSArray *rows){ got = rows; }];
+	NSDictionary *r = lastM(c, @"getChatHistory");
+	XCTAssertEqual([r[@"from_message_id"] longLongValue], 500LL);
+	// Offset 0 would leave message 500 out of its own page (B28).
+	XCTAssertEqual([r[@"offset"] integerValue], -20);
+	XCTAssertEqual([r[@"limit"] integerValue], 40);
+	answerM(c, @{@"@type" : @"messages", @"messages" : @[
+		@{@"@type" : @"message", @"id" : @(501), @"content" : @{@"@type" : @"messageText"}},
+		@{@"@type" : @"message", @"id" : @(500), @"content" : @{@"@type" : @"messageText"}}]});
+	XCTAssertEqual([got.firstObject[@"id"] longLongValue], 500LL, @"oldest first");
+	XCTAssertEqual([got.lastObject[@"id"] longLongValue], 501LL);
+}
+
 - (void)testMessageCount_TopicOrWholeChat {
 	TGClient *c = M();
 	__block NSInteger count = -1;
 	[c messageCountInChat:32 thread:77 completion:^(NSInteger got){ count = got; }];
 	NSDictionary *r = lastM(c, @"getChatMessageCount");
 	// The thread selects the topic it counts; zero means the whole chat.
-	XCTAssertTrue([r[@"topic_id"][@"messageThread_id"] longLongValue] == 77LL);
+	XCTAssertEqualObjects(r[@"topic_id"][@"@type"], @"messageTopicThread");
+	XCTAssertTrue([r[@"topic_id"][@"message_thread_id"] longLongValue] == 77LL);
 	answerM(c, @{@"@type" : @"count", @"count" : @(42)});
 	XCTAssertEqual(count, 42);
 }

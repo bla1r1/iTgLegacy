@@ -14,12 +14,33 @@
 #import "TGVideoNoteRecorder.h"
 #import "TGDevice.h"
 #import <AVFoundation/AVFoundation.h>
+#import <UIKit/UIKit.h>
 
-static const CGFloat kVideoNoteSide = 480.0f;
-/// Long enough for the overlay's entrance to play before startRunning holds the
-/// main thread: what is already animating keeps moving, what is not yet committed
-/// would not start until the camera is up.
-static const NSTimeInterval kSessionStartDelay = 0.35;
+/// The largest square Telegram accepts for a video note. A camera with less
+/// keeps what it has: nothing is scaled up.
+static const CGFloat kVideoNoteSide = 640.0f;
+/// The receiver's placeholder: 240 is what the schema asks a note thumbnail to
+/// be, and 0.7 keeps the JPEG small enough to upload alongside the note.
+static const CGFloat kVideoNoteThumbnailSide = 240.0f;
+static const CGFloat kVideoNoteThumbnailQuality = 0.7f;
+/// Bits per second for each pixel of the square. The export presets offer 0.7 Mbit/s,
+/// which turns a moving face into blocks, or 3.5, which makes a minute 26 MB for
+/// everyone who receives it.
+static const NSInteger kVideoNoteBitsPerPixel = 8;
+static const NSInteger kVideoNoteBitRateMax = 2500000;
+static const NSInteger kVideoNoteKeyFrameInterval = 30;
+static const NSInteger kVideoNoteAudioRate = 44100;
+static const NSInteger kVideoNoteAudioBitRate = 64000;
+/// Long enough for the overlay's entrance to be committed before startRunning holds
+/// the main thread: what is already animating keeps moving in the render server,
+/// what is not yet committed would not start until the camera is up.
+static const NSTimeInterval kSessionStartDelay = 0.08;
+/// startRecording in the same breath as startRunning killed the note on iOS 6: the
+/// output gave up before the first frame found a connection.
+static const NSTimeInterval kFileOpenDelay = 0.15;
+/// Five progress calls a second is as much as a small ring can show, and on the
+/// A4 every main-queue wake is paid for by the transcode.
+static const NSTimeInterval kExportProgressStep = 1.0 / 5.0;
 
 @interface TGVideoNoteRecorder () <AVCaptureFileOutputRecordingDelegate>
 @property (nonatomic, strong) AVCaptureSession *session;
@@ -27,6 +48,7 @@ static const NSTimeInterval kSessionStartDelay = 0.35;
 @property (nonatomic, strong) NSDate *startedAt;
 @property (nonatomic, copy) NSString *rawPath;
 @property (nonatomic, copy) NSString *finalPath;
+@property (nonatomic, copy, readwrite) NSString *thumbnailPath;
 @property (nonatomic, copy) void (^completion)(NSString *, NSTimeInterval);
 @property (nonatomic, assign) NSTimeInterval recordedDuration;
 @property (nonatomic, assign) BOOL isRecordingFlag;
@@ -52,6 +74,11 @@ static const NSTimeInterval kSessionStartDelay = 0.35;
 /// Set by a stop that landed while a pause was closing its segment; the
 /// delegate finishes the job instead of stashing again.
 @property (nonatomic, assign) BOOL pendingStop;
+/// Which square the transcode is writing, out of how many. The pump reads
+/// these once per sample, so the progress line counts finished segments
+/// without keeping any state of its own on the export queue.
+@property (nonatomic, assign) NSUInteger exportSegmentIndex;
+@property (nonatomic, assign) NSUInteger exportSegmentCount;
 @end
 
 @implementation TGVideoNoteRecorder
@@ -147,11 +174,13 @@ static const NSTimeInterval kSessionStartDelay = 0.35;
 	}
 
 	AVCaptureSession *session = [[AVCaptureSession alloc] init];
-	// The A4 encodes, previews and exports on one core. 480x360 cuts the raw
-	// file from about 5 Mbit/s to a fraction of it and leaves the note's 360 pt
-	// square as sharp as a 178 pt circle can show.
-	session.sessionPreset = [TGDevice tier] == TGDeviceTierVintage
-			? AVCaptureSessionPresetMedium : AVCaptureSessionPreset640x480;
+	// The hardware encoder does the work, so this costs the A4 little. The Medium
+	// preset saved disk and then fed the export an already blocky picture, which
+	// the second encode made worse. 720p gives the 640 square Telegram allows, on
+	// the devices whose front camera has it.
+	session.sessionPreset = ([TGDevice tier] >= TGDeviceTierModern &&
+			[session canSetSessionPreset:AVCaptureSessionPreset1280x720])
+			? AVCaptureSessionPreset1280x720 : AVCaptureSessionPreset640x480;
 
 	AVCaptureDevice *camera = [AVCaptureDevice defaultDeviceWithMediaType:AVMediaTypeVideo];
 	for (AVCaptureDevice *candidate in [AVCaptureDevice devicesWithMediaType:AVMediaTypeVideo])
@@ -193,6 +222,7 @@ static const NSTimeInterval kSessionStartDelay = 0.35;
 	self.finalPath = [NSTemporaryDirectory() stringByAppendingPathComponent:
 			@"video-note.mov"];
 	[[NSFileManager defaultManager] removeItemAtPath:self.finalPath error:nil];
+	self.thumbnailPath = nil;
 	self.recordedDuration = 0;
 	self.expectedSegments = 0;
 	self.pendingStop = NO;
@@ -234,13 +264,9 @@ static const NSTimeInterval kSessionStartDelay = 0.35;
 	NSLog(@"TGVideoNoteRecorder: session running=%d (file pending)", session.isRunning);
 	if (self.onSession)
 		self.onSession(session);
-	// The file opens half a second after the frames exist. Starting recording
-	// in the same breath as startRunning is what killed the note on iOS 6: the
-	// output gave up before the first frame found a connection.
-	double when = 0.5;
 	__weak typeof(self) weakSelf = self;
 	dispatch_after(dispatch_time(DISPATCH_TIME_NOW,
-			(int64_t)(when * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+			(int64_t)(kFileOpenDelay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
 		TGVideoNoteRecorder *later = weakSelf;
 		if (!later || later.warmupToken != sessionToken || later.session != session)
 			return;
@@ -343,9 +369,13 @@ static const NSTimeInterval kSessionStartDelay = 0.35;
 - (void)cancel {
 	self.completion = nil;
 	self.flipCompletion = nil;
+	self.onExportProgress = nil;
+	self.thumbnailPath = nil;
 	self.pendingStop = NO;
 	self.isRecordingFlag = NO;
 	self.isStartingFlag = NO;
+	self.exportSegmentIndex = 0;
+	self.exportSegmentCount = 0;
 	self.warmupToken++;    // any warm-up callback still in flight stops now
 	// The delegate can answer inside stopRecording, before anything below has
 	// run, and would export a note nobody wants on the way out.
@@ -422,6 +452,8 @@ static const NSTimeInterval kSessionStartDelay = 0.35;
 
 - (void)exportSquaresFrom:(NSArray *)paths duration:(NSTimeInterval)duration {
 	NSMutableArray *squares = [[NSMutableArray alloc] init];
+	self.exportSegmentCount = paths.count;
+	self.exportSegmentIndex = 0;
 	__weak typeof(self) weakSelf = self;
 	[self exportSegment:0 of:paths squares:squares duration:duration done:^{
 		[weakSelf joinSquares:squares duration:duration];
@@ -491,21 +523,179 @@ static const NSTimeInterval kSessionStartDelay = 0.35;
 	composition.frameDuration = CMTimeMake(1, 30);
 	composition.instructions = @[instruction];
 
-	[[NSFileManager defaultManager] removeItemAtPath:outPath error:nil];
-	AVAssetExportSession *export = [[AVAssetExportSession alloc]
-			initWithAsset:asset presetName:AVAssetExportPresetMediumQuality];
-	export.outputURL = [NSURL fileURLWithPath:outPath];
-	export.outputFileType = AVFileTypeQuickTimeMovie;
-	export.videoComposition = composition;
-	export.shouldOptimizeForNetworkUse = YES;
-
-	[export exportAsynchronouslyWithCompletionHandler:^{
-		if (export.status == AVAssetExportSessionStatusCompleted)
+	void (^finished)(BOOL) = ^(BOOL written){
+		if (written)
 			[squares addObject:outPath];
 		[[NSFileManager defaultManager] removeItemAtPath:inPath error:nil];
 		[weakSelf exportSegment:index + 1 of:paths squares:squares
 					   duration:duration done:done];
+	};
+	[[NSFileManager defaultManager] removeItemAtPath:outPath error:nil];
+	NSDate *began = [NSDate date];
+	// The pump reads these while this segment is being written; nothing else
+	// touches them until it has finished.
+	self.exportSegmentIndex = index;
+	self.exportSegmentCount = paths.count;
+	[self transcodeAsset:asset videoTrack:track composition:composition side:renderSide
+				  toPath:outPath completion:^(BOOL written){
+		NSLog(@"TGVideoNoteRecorder: transcode %@ in %.1f s", written ? @"done" : @"failed",
+				-[began timeIntervalSinceNow]);
+		if (written){
+			finished(YES);
+			return;
+		}
+		// A note at the preset's rate beats no note at all.
+		[[NSFileManager defaultManager] removeItemAtPath:outPath error:nil];
+		AVAssetExportSession *export = [[AVAssetExportSession alloc]
+				initWithAsset:asset presetName:AVAssetExportPresetMediumQuality];
+		export.outputURL = [NSURL fileURLWithPath:outPath];
+		export.outputFileType = AVFileTypeQuickTimeMovie;
+		export.videoComposition = composition;
+		export.shouldOptimizeForNetworkUse = YES;
+		[export exportAsynchronouslyWithCompletionHandler:^{
+			finished(export.status == AVAssetExportSessionStatusCompleted);
+		}];
 	}];
+}
+
+/// AVAssetReader into AVAssetWriter, because only a writer can name the bit rate.
+/// Each track feeds its input from its own queue until the reader runs dry.
+- (void)transcodeAsset:(AVAsset *)asset
+			videoTrack:(AVAssetTrack *)track
+		   composition:(AVVideoComposition *)composition
+				  side:(CGFloat)side
+				toPath:(NSString *)path
+			completion:(void (^)(BOOL))completion {
+	NSError *error = nil;
+	AVAssetReader *reader = [AVAssetReader assetReaderWithAsset:asset error:&error];
+	AVAssetWriter *writer = [AVAssetWriter assetWriterWithURL:[NSURL fileURLWithPath:path]
+													 fileType:AVFileTypeQuickTimeMovie error:&error];
+	if (!reader || !writer){
+		NSLog(@"TGVideoNoteRecorder: transcode setup: %@", error);
+		completion(NO);
+		return;
+	}
+	writer.shouldOptimizeForNetworkUse = YES;
+
+	AVAssetReaderVideoCompositionOutput *videoOut = [AVAssetReaderVideoCompositionOutput
+			assetReaderVideoCompositionOutputWithVideoTracks:@[track]
+											   videoSettings:@{(id)kCVPixelBufferPixelFormatTypeKey :
+													   @(kCVPixelFormatType_32BGRA)}];
+	videoOut.videoComposition = composition;
+	AVAssetWriterInput *videoIn = [AVAssetWriterInput assetWriterInputWithMediaType:AVMediaTypeVideo
+			outputSettings:@{
+		AVVideoCodecKey : AVVideoCodecH264,
+		AVVideoWidthKey : @(side),
+		AVVideoHeightKey : @(side),
+		AVVideoCompressionPropertiesKey : @{
+			AVVideoAverageBitRateKey : @(MIN((NSInteger)(side * side) * kVideoNoteBitsPerPixel,
+					kVideoNoteBitRateMax)),
+			AVVideoMaxKeyFrameIntervalKey : @(kVideoNoteKeyFrameInterval),
+			AVVideoProfileLevelKey : AVVideoProfileLevelH264Baseline31,
+		},
+	}];
+	if (![reader canAddOutput:videoOut] || ![writer canAddInput:videoIn]){
+		completion(NO);
+		return;
+	}
+	[reader addOutput:videoOut];
+	[writer addInput:videoIn];
+
+	AVAssetReaderTrackOutput *audioOut = nil;
+	AVAssetWriterInput *audioIn = nil;
+	AVAssetTrack *audioTrack = [[asset tracksWithMediaType:AVMediaTypeAudio] firstObject];
+	if (audioTrack){
+		AudioChannelLayout layout = {0};
+		layout.mChannelLayoutTag = kAudioChannelLayoutTag_Mono;
+		audioOut = [AVAssetReaderTrackOutput assetReaderTrackOutputWithTrack:audioTrack
+				outputSettings:@{AVFormatIDKey : @(kAudioFormatLinearPCM)}];
+		audioIn = [AVAssetWriterInput assetWriterInputWithMediaType:AVMediaTypeAudio outputSettings:@{
+			AVFormatIDKey : @(kAudioFormatMPEG4AAC),
+			AVNumberOfChannelsKey : @1,
+			AVSampleRateKey : @(kVideoNoteAudioRate),
+			AVEncoderBitRateKey : @(kVideoNoteAudioBitRate),
+			AVChannelLayoutKey : [NSData dataWithBytes:&layout length:sizeof(layout)],
+		}];
+		if ([reader canAddOutput:audioOut] && [writer canAddInput:audioIn]){
+			[reader addOutput:audioOut];
+			[writer addInput:audioIn];
+		} else {
+			audioOut = nil;
+			audioIn = nil;
+		}
+	}
+
+	if (![reader startReading] || ![writer startWriting]){
+		NSLog(@"TGVideoNoteRecorder: transcode start: %@ %@", reader.error, writer.error);
+		completion(NO);
+		return;
+	}
+	[writer startSessionAtSourceTime:kCMTimeZero];
+
+	dispatch_group_t tracks = dispatch_group_create();
+	// The pump is shared with audio, and only the video samples say where the
+	// note has got to. Reports are throttled to five a second so a thirty-frame
+	// second costs five main-queue wakes, not thirty; nothing is allocated for
+	// the frames between them.
+	NSUInteger segmentIndex = self.exportSegmentIndex;
+	NSUInteger segmentCount = self.exportSegmentCount;
+	NSTimeInterval segmentSeconds = CMTimeGetSeconds(asset.duration);
+	__weak typeof(self) weakSelf = self;
+	void (^pump)(AVAssetWriterInput *, AVAssetReaderOutput *, const char *, BOOL) =
+			^(AVAssetWriterInput *input, AVAssetReaderOutput *output, const char *name,
+					BOOL reportsProgress){
+		dispatch_group_enter(tracks);
+		__block BOOL over = NO;
+		__block CFAbsoluteTime nextReport = 0;
+		[input requestMediaDataWhenReadyOnQueue:dispatch_queue_create(name, NULL) usingBlock:^{
+			while (!over && input.readyForMoreMediaData){
+				CMSampleBufferRef sample = [output copyNextSampleBuffer];
+				if (sample && reportsProgress && segmentCount > 0 && segmentSeconds > 0){
+					// Wall clock, not the sample's own time: the callback budget
+					// is calls per second of the A4's work, wherever the encode
+					// happens to be relative to real time.
+					CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
+					if (now >= nextReport){
+						nextReport = now + kExportProgressStep;
+						NSTimeInterval at = CMTimeGetSeconds(
+								CMSampleBufferGetPresentationTimeStamp(sample));
+						CGFloat into = (CGFloat)(MIN(MAX(at, 0), segmentSeconds) /
+								segmentSeconds);
+						CGFloat fraction = ((CGFloat)segmentIndex + into) /
+								(CGFloat)segmentCount;
+						dispatch_async(dispatch_get_main_queue(), ^{
+							TGVideoNoteRecorder *me = weakSelf;
+							if (me.onExportProgress)
+								me.onExportProgress(fraction);
+						});
+					}
+				}
+				BOOL appended = sample && [input appendSampleBuffer:sample];
+				if (sample)
+					CFRelease(sample);
+				if (!appended){
+					over = YES;
+					[input markAsFinished];
+					dispatch_group_leave(tracks);
+				}
+			}
+		}];
+	};
+	pump(videoIn, videoOut, "org.legacy.itg.note.video", YES);
+	if (audioIn)
+		pump(audioIn, audioOut, "org.legacy.itg.note.audio", NO);
+
+	dispatch_group_notify(tracks, dispatch_get_main_queue(), ^{
+		BOOL readAll = reader.status == AVAssetReaderStatusCompleted;
+		[writer finishWritingWithCompletionHandler:^{
+			BOOL written = readAll && writer.status == AVAssetWriterStatusCompleted;
+			if (!written)
+				NSLog(@"TGVideoNoteRecorder: transcode ended: %@ %@", reader.error, writer.error);
+			dispatch_async(dispatch_get_main_queue(), ^{
+				completion(written);
+			});
+		}];
+	});
 }
 
 - (NSString *)squarePathForIndex:(NSUInteger)index {
@@ -514,9 +704,65 @@ static const NSTimeInterval kSessionStartDelay = 0.35;
 					(unsigned long)index]];
 }
 
+/// Reads the note's first frame into a JPEG. The export has finished by then;
+/// this runs on a low-priority queue because decoding one frame and encoding
+/// it is tens of milliseconds on an A4, which the main thread cannot spare
+/// while the chat is already showing the new row.
+- (NSString *)writeThumbnailAtPath:(NSString *)path {
+	if (!path.length)
+		return nil;
+	NSString *out = [NSTemporaryDirectory() stringByAppendingPathComponent:
+			@"video-note-thumb.jpg"];
+	[[NSFileManager defaultManager] removeItemAtPath:out error:nil];
+
+	AVURLAsset *asset = [AVURLAsset URLAssetWithURL:[NSURL fileURLWithPath:path]
+											options:nil];
+	AVAssetImageGenerator *generator = [[AVAssetImageGenerator alloc] initWithAsset:asset];
+	generator.appliesPreferredTrackTransform = YES;
+	generator.maximumSize = CGSizeMake(kVideoNoteThumbnailSide,
+			kVideoNoteThumbnailSide);
+	NSError *error = nil;
+	CGImageRef frame = [generator copyCGImageAtTime:kCMTimeZero
+										 actualTime:NULL error:&error];
+	if (!frame){
+		NSLog(@"TGVideoNoteRecorder: thumbnail failed: %@", error);
+		return nil;
+	}
+	UIImage *image = [UIImage imageWithCGImage:frame];
+	CGImageRelease(frame);
+	NSData *jpeg = UIImageJPEGRepresentation(image, kVideoNoteThumbnailQuality);
+	if (!jpeg || ![jpeg writeToFile:out atomically:YES])
+		return nil;
+	return out;
+}
+
+/// The note is finished; the thumbnail is the last thing before its completion
+/// so the caller never sends a note whose preview is still being written.
+- (void)finishNoteAtPath:(NSString *)path duration:(NSTimeInterval)duration
+					done:(void (^)(NSString *, NSTimeInterval))done {
+	if (!done)
+		return;
+	if (!path){
+		self.thumbnailPath = nil;
+		done(nil, duration);
+		return;
+	}
+	__weak typeof(self) weakSelf = self;
+	dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_LOW, 0), ^{
+		TGVideoNoteRecorder *me = weakSelf;
+		NSString *thumbnail = [me writeThumbnailAtPath:path];
+		dispatch_async(dispatch_get_main_queue(), ^{
+			TGVideoNoteRecorder *strong = weakSelf;
+			if (strong)
+				strong.thumbnailPath = thumbnail;
+			done(path, duration);
+		});
+	});
+}
+
 /// One square per segment becomes one note: the tracks are laid end to end and
-/// the reel is re-exported once. The pieces were cropped on their own way in,
-/// so no second video composition is needed.
+/// the reel is written out once, untouched. The pieces were cropped and encoded on
+/// their own way in, and a third encode is where a paused note would lose detail.
 - (void)joinSquares:(NSArray *)squares duration:(NSTimeInterval)duration {
 	void (^done)(NSString *, NSTimeInterval) = self.completion;
 	self.completion = nil;
@@ -528,6 +774,7 @@ static const NSTimeInterval kSessionStartDelay = 0.35;
 			@"video-note-joined.mov"];
 
 	if (squares.count == 0){
+		self.thumbnailPath = nil;
 		done(nil, 0);
 		return;
 	}
@@ -565,7 +812,7 @@ static const NSTimeInterval kSessionStartDelay = 0.35;
 			[[NSFileManager defaultManager] removeItemAtPath:joinedPath error:nil];
 			AVAssetExportSession *export = [[AVAssetExportSession alloc]
 					initWithAsset:composition
-						presetName:AVAssetExportPresetMediumQuality];
+						presetName:AVAssetExportPresetPassthrough];
 			export.outputURL = [NSURL fileURLWithPath:joinedPath];
 			export.outputFileType = AVFileTypeQuickTimeMovie;
 			export.shouldOptimizeForNetworkUse = YES;
@@ -573,15 +820,13 @@ static const NSTimeInterval kSessionStartDelay = 0.35;
 			[export exportAsynchronouslyWithCompletionHandler:^{
 				NSString *finalAnswer = export.status ==
 						AVAssetExportSessionStatusCompleted ? thisAnswer : nil;
-				dispatch_async(dispatch_get_main_queue(), ^{
-					done(finalAnswer, duration);
-				});
+				[self finishNoteAtPath:finalAnswer duration:duration done:done];
 			}];
 			return;
 		}
 	}
 
-	done(answer, duration);
+	[self finishNoteAtPath:answer duration:duration done:done];
 }
 
 @end

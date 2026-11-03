@@ -430,6 +430,85 @@ static NSArray *TGStoryFlattenStoryList(NSDictionary *result) {
 	}
 }
 
+/// A story changed in place, for an open viewer. The strip's row is kept by
+/// updateChatActiveStories; asking for the row here as well would be one request
+/// per story, and loading a list of stories can bring many of these at once.
+- (void)applyStoryUpdate:(NSDictionary *)update {
+	NSDictionary *story = [update[@"story"] isKindOfClass:NSDictionary.class]
+			? update[@"story"] : nil;
+	int64_t chatId = [story[@"poster_chat_id"] longLongValue];
+	if (!chatId)
+		return;
+	[[NSNotificationCenter defaultCenter]
+			postNotificationName:TGStoriesChangedNotification object:self
+						userInfo:@{@"chatId" : @(chatId), @"story" : TGStoryFlatten(story)}];
+}
+
+/// The story is gone, for an open viewer, which drops it by id.
+- (void)applyStoryDeletedUpdate:(NSDictionary *)update {
+	int64_t chatId = [update[@"story_poster_chat_id"] longLongValue];
+	if (!chatId)
+		return;
+	[[NSNotificationCenter defaultCenter]
+			postNotificationName:TGStoriesChangedNotification object:self
+						userInfo:@{@"chatId" : @(chatId),
+								   @"deletedStoryId" : @([update[@"story_id"] intValue])}];
+}
+
+/// postStory answers with a story that is still being posted; this is the
+/// server saying it finished, or why it did not. One notification because the
+/// composer only has to clear its button and say one sentence.
+- (void)applyStoryPostUpdate:(NSDictionary *)update {
+	BOOL ok = [update[@"@type"] isEqualToString:@"updateStoryPostSucceeded"];
+	NSDictionary *story = [update[@"story"] isKindOfClass:NSDictionary.class]
+			? update[@"story"] : nil;
+	NSNumber *chatId = story[@"poster_chat_id"] ?: update[@"story_poster_chat_id"] ?: @(0);
+	NSNumber *storyId = story[@"id"] ?: update[@"story_id"] ?: update[@"old_story_id"] ?: @(0);
+	NSMutableDictionary *info = [@{
+		@"ok"      : @(ok),
+		@"chatId"  : chatId,
+		@"storyId" : storyId,
+	} mutableCopy];
+	if (story)
+		info[@"story"] = TGStoryFlatten(story);
+	if (!ok){
+		NSDictionary *error = [update[@"error"] isKindOfClass:NSDictionary.class]
+				? update[@"error"] : @{};
+		NSString *message = [error[@"message"] isKindOfClass:NSString.class]
+				? error[@"message"] : @"Telegram could not post the story.";
+		info[@"error"] = message;
+	}
+	[[NSNotificationCenter defaultCenter]
+			postNotificationName:TGStoryPostFinishedNotification object:self
+						userInfo:info];
+}
+
+- (void)applyStoryListChatCountUpdate:(NSDictionary *)update {
+	NSString *listType = TGStoryDict(update[@"story_list"])[@"@type"];
+	NSInteger count = [update[@"chat_count"] integerValue];
+	if ([listType isEqualToString:@"storyListArchive"])
+		self.storyArchiveListChatCount = count;
+	else if ([listType isEqualToString:@"storyListMain"])
+		self.storyMainListChatCount = count;
+}
+
+- (NSInteger)storyListChatCountForList:(NSString *)list {
+	if ([list isEqualToString:@"archive"])
+		return self.storyArchiveListChatCount;
+	return self.storyMainListChatCount;
+}
+
+- (void)applyStoryStealthModeUpdate:(NSDictionary *)update {
+	self.storyStealthModeValue = @{
+		@"activeUntilDate"   : update[@"active_until_date"] ?: @(0),
+		@"cooldownUntilDate" : update[@"cooldown_until_date"] ?: @(0),
+	};
+}
+
+- (NSDictionary *)storyStealthMode {
+	return self.storyStealthModeValue;
+}
+
 - (void)activeStoryRowForChat:(int64_t)chatId
 				   completion:(void (^)(NSDictionary *))completion {
 	if (!chatId){

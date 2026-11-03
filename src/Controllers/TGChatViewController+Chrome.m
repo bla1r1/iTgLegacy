@@ -621,8 +621,12 @@ static UIImage *TGJumpChevron(UIColor *colour) {
 }
 
 - (void)scrollViewDidEndDragging:(UIScrollView *)scrollView willDecelerate:(BOOL)decelerate {
-	if (scrollView == self.table && !decelerate)
+	if (scrollView == self.table && !decelerate){
 		[self chromeDidStopScrolling];
+		// A finger held still and lifted sends no scroll event, and the timer
+		// set by the last one found the table still dragging and gave up.
+		[self resumeGifAutoplayAfterScrolling];
+	}
 }
 
 - (void)scrollViewDidEndDecelerating:(UIScrollView *)scrollView {

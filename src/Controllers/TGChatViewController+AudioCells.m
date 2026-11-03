@@ -146,21 +146,27 @@
 
 		cell.disc.hidden = NO;
 		cell.disc.userInteractionEnabled = YES;
-		cell.disc.image = [TGIcons mediaDiscOfSide:disc playing:isPlaying];
+		BOOL sending = [m[@"sending"] boolValue];
+		cell.disc.image = sending ? [TGIcons cancelDiscOfSide:disc]
+				: [TGIcons mediaDiscOfSide:disc playing:isPlaying];
 		cell.disc.frame = CGRectMake(kPadH, fwd + TGCenteredOrigin(layout.bubbleFrame.size.height - fwd, disc), disc, disc);
+		if (sending)
+			[cell showSendRingWithProgress:[self ringProgressForMessage:m]];
+		else
+			[cell hideSendRing];
 		if (!cell.disc.gestureRecognizers.count) {
 			[cell.disc addGestureRecognizer:[[UITapGestureRecognizer alloc]
 					initWithTarget:self action:@selector(voiceDiscTapped:)]];
 		}
 
-		BOOL unplayed = !mine && [m[@"unplayed"] boolValue];
+		BOOL unplayed = [self showsUnplayedMarkFor:m];
 
 		cell.wave.hidden = NO;
 		CGSize waveSize = CGSizeMake(layout.bubbleFrame.size.width - left - kPadH, kVoiceWaveHeight);
 		[cell setWaveform:m[@"waveform"] size:waveSize
 				   colour:[voiceTheme accentColour]];
 		[cell setWavePlayed:(isPlaying ? [self playedFraction]
-									   : (unplayed ? 1.0f : 0))];
+									   : (unplayed && !mine ? 1.0f : 0))];
 		cell.wave.frame = CGRectMake(left, fwd + kVoiceWaveTop, waveSize.width, waveSize.height);
 		cell.wave.userInteractionEnabled = YES;
 		if (!cell.wave.gestureRecognizers.count) {

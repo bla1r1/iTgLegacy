@@ -27,6 +27,17 @@ static NSString *TGFolderTitle(NSDictionary *f){
 	return answer;
 }
 
+/// An account can have no active username at all. Subscripting [0] on that
+/// empty vector throws, which took the profile down; firstObject is the safe
+/// spelling and also survives TDLib sending null.
+static NSString *TGFirstActiveUsername(NSDictionary *user){
+	id usernames = user[@"usernames"];
+	if (![usernames isKindOfClass:NSDictionary.class])
+		return nil;
+	id names = usernames[@"active_usernames"];
+	return [names isKindOfClass:NSArray.class] ? [names firstObject] : nil;
+}
+
 /// Effect ids arrive as a vector<int64>; over JSON that is either a number or
 /// a decimal string. Both are reduced to NSNumber here so every reader can
 /// pass one straight back to getMessageEffect.
@@ -76,6 +87,9 @@ NSString *const TGAutosaveSettingsChangedNotification = @"TGAutosaveSettingsChan
 NSString *const TGLanguagePackStringsChangedNotification = @"TGLanguagePackStringsChangedNotification";
 NSString *const TGCommunitiesChangedNotification = @"TGCommunitiesChangedNotification";
 NSString *const TGStoriesChangedNotification = @"TGStoriesChangedNotification";
+NSString *const TGStoryPostFinishedNotification = @"TGStoryPostFinishedNotification";
+NSString *const TGChatRevenueChangedNotification = @"TGChatRevenueChangedNotification";
+NSString *const TGStarRevenueChangedNotification = @"TGStarRevenueChangedNotification";
 NSString *const TGQuickRepliesChangedNotification = @"TGQuickRepliesChangedNotification";
 NSString *const TGSuggestedActionsChangedNotification = @"TGSuggestedActionsChangedNotification";
 
@@ -549,7 +563,8 @@ NSDictionary *TGFormattedText(NSString *text) {
 		self.me = @{
 			@"id"         : obj[@"id"] ?: @(0),
 			@"first_name" : obj[@"first_name"] ?: @"",
-			@"username"   : obj[@"usernames"][@"active_usernames"][0] ?: (obj[@"username"] ?: @""),
+			@"last_name"  : obj[@"last_name"] ?: @"",
+			@"username"   : TGFirstActiveUsername(obj) ?: (obj[@"username"] ?: @""),
 			@"phone"      : obj[@"phone_number"] ?: @"",
 		};
 		// getMe is the first moment the active account's title and phone are
@@ -576,7 +591,7 @@ NSDictionary *TGFormattedText(NSString *text) {
 				u[@"first_name"] ?: @"", u[@"last_name"] ?: @""]
 				stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
 		if (!name.length)
-			name = u[@"usernames"][@"active_usernames"][0] ?: @"";
+			name = TGFirstActiveUsername(u) ?: @"";
 		if (u[@"id"] && name.length)
 			self.usersById[u[@"id"]] = name;
 		[self cacheProfilePhoto:u];
@@ -601,10 +616,11 @@ NSDictionary *TGFormattedText(NSString *text) {
 		// request about it (reply, delete, read) names an id that is gone.
 		// A failed send keeps the old id and comes back with the failed flag.
 		NSDictionary *m = obj[@"message"];
+		int64_t oldId  = [obj[@"old_message_id"] longLongValue];
+		[self noteSendFinished:oldId sent:[obj[@"@type"] isEqualToString:@"updateMessageSendSucceeded"]];
 		if (!self.onMessage || !m)
 			return;
 		int64_t chatId = [m[@"chat_id"] longLongValue];
-		int64_t oldId  = [obj[@"old_message_id"] longLongValue];
 		if (oldId)
 			self.onMessage(chatId, nil, oldId);
 		self.onMessage(chatId, TGFlattenMessage(m), 0);
@@ -619,8 +635,12 @@ NSDictionary *TGFormattedText(NSString *text) {
 	case TGUpdateDeleteMessages: {
 		if ([obj[@"is_permanent"] boolValue] && self.onMessage){
 			int64_t chatId = [obj[@"chat_id"] longLongValue];
-			for (NSNumber *mid in obj[@"message_ids"])
+			for (NSNumber *mid in obj[@"message_ids"]){
+				// Deleted while uploading: nothing left to wait for, and the
+				// sender did it, so it is not a failure to report.
+				[self noteSendFinished:[mid longLongValue] sent:YES];
 				self.onMessage(chatId, nil, [mid longLongValue]);
+			}
 		}
 		return;
 	}
@@ -665,7 +685,8 @@ NSDictionary *TGFormattedText(NSString *text) {
 	}
 	case TGUpdateChatPermissions:
 	case TGUpdateChatMessageAutoDeleteTime:
-	case TGUpdateChatOnlineMemberCount: {
+	case TGUpdateChatOnlineMemberCount:
+	case TGUpdateChatVideoChat: {
 		// Group-level facts the profile shows. They are chat fields, not full
 		// info, so they are merged here and the screen is told the same way a
 		// full record tells it.
@@ -853,10 +874,13 @@ NSDictionary *TGFormattedText(NSString *text) {
 	}
 	case TGUpdateAccentColors: {
 		// Appearance offers these as the account's accent; the ids are what
-		// setAccentColor takes, and 0-6 stay implicit per the schema.
+		// setAccentColor takes, and 0-6 stay implicit per the schema. The
+		// colour records ride along so a swatch shows the real palette.
 		NSArray *ids = obj[@"available_accent_color_ids"];
 		if ([ids isKindOfClass:NSArray.class])
 			self.accentColorIds = ids;
+		if ([obj[@"colors"] isKindOfClass:NSArray.class])
+			self.accentColors = obj[@"colors"];
 		[[NSNotificationCenter defaultCenter]
 				postNotificationName:TGAccentColorsChangedNotification object:self];
 		return;
@@ -865,6 +889,8 @@ NSDictionary *TGFormattedText(NSString *text) {
 		NSArray *ids = obj[@"available_accent_color_ids"];
 		if ([ids isKindOfClass:NSArray.class])
 			self.profileAccentColorIds = ids;
+		if ([obj[@"colors"] isKindOfClass:NSArray.class])
+			self.profileAccentColors = obj[@"colors"];
 		[[NSNotificationCenter defaultCenter]
 				postNotificationName:TGAccentColorsChangedNotification object:self];
 		return;
@@ -1053,6 +1079,31 @@ NSDictionary *TGFormattedText(NSString *text) {
 		[self applyChatActiveStoriesUpdate:obj];
 		return;
 	}
+	case TGUpdateStory:
+		[self applyStoryUpdate:obj];
+		return;
+	case TGUpdateStoryDeleted:
+		[self applyStoryDeletedUpdate:obj];
+		return;
+	case TGUpdateStoryPostSucceeded:
+	case TGUpdateStoryPostFailed:
+		[self applyStoryPostUpdate:obj];
+		return;
+	case TGUpdateStoryListChatCount:
+		[self applyStoryListChatCountUpdate:obj];
+		return;
+	case TGUpdateStoryStealthMode:
+		[self applyStoryStealthModeUpdate:obj];
+		return;
+	case TGUpdateOwnedStarCount:
+		[self applyOwnedStarCountUpdate:obj];
+		return;
+	case TGUpdateChatRevenueAmount:
+		[self applyChatRevenueAmountUpdate:obj];
+		return;
+	case TGUpdateStarRevenueStatus:
+		[self applyStarRevenueStatusUpdate:obj];
+		return;
 	case TGUpdateVideoPublished: {
 		// A scheduled video went live. It is a message change plus a chat-list
 		// change (the preview and order move), so both windows are nudged; the
@@ -1176,6 +1227,16 @@ NSDictionary *TGFormattedText(NSString *text) {
 		// An edit date, a pin flag, a played voice note: the fields are on
 		// the message, so the open chat re-reads it the way a content change
 		// already does. Nothing to merge into the chat row.
+		if (self.onMessage)
+			self.onMessage([obj[@"chat_id"] longLongValue], nil, 0);
+		return;
+	}
+	case TGUpdateMessageFactCheck:
+	case TGUpdateMessageEphemeralContent:
+	case TGUpdateMessageSuggestedPostInfo: {
+		// A fact check, a bot's ephemeral half or a suggested-post offer is
+		// another field on the message. The open chat re-reads that message;
+		// the tools sheet then sees the same flags the server just changed.
 		if (self.onMessage)
 			self.onMessage([obj[@"chat_id"] longLongValue], nil, 0);
 		return;
@@ -1348,6 +1409,8 @@ NSDictionary *TGFormattedText(NSString *text) {
 			if (self.onFileUploadProgress && expected > 0)
 				self.onFileUploadProgress(fid, (float)(uploaded / expected));
 			[self handleFileUploadProgress:fid file:file];
+			if (expected > 0)
+				[self noteUploadProgress:fid fraction:(float)(uploaded / expected)];
 		}
 		BOOL done = [local[@"is_downloading_completed"] boolValue];
 		NSString *path = local[@"path"];

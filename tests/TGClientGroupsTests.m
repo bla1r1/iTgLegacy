@@ -791,16 +791,20 @@ static void answerG(TGClient *c, NSDictionary *answer) {
 }
 
 /// Sixteen booleans TDLib gives no default to, spelled out of one word:
-/// "all" opens everything, "read" closes even the plain text, and "text" is
-/// the middle - messages, previews and invites without the media.
+/// "all" opens every posting right, "read" closes even the plain text, and
+/// "text" is the middle - messages, previews and invites without the media.
 - (void)testChatPermissions_ThePresetsSpellTheSixteenBooleans {
 	NSDictionary *all = [TGClient chatPermissionsForPreset:@"all"];
-	NSMutableArray *shut = [NSMutableArray array];
+	NSArray *adminLike = @[@"can_change_info", @"can_pin_messages",
+						   @"can_create_topics", @"can_edit_tag"];
 	[all enumerateKeysAndObjectsUsingBlock:^(NSString *key, id value, BOOL *stop){
-		if (![key isEqualToString:@"@type"] && ![value boolValue])
-			[shut addObject:key];
+		if ([key isEqualToString:@"@type"])
+			return;
+		if ([adminLike containsObject:key])
+			XCTAssertFalse([value boolValue], @"%@ is not a message right", key);
+		else
+			XCTAssertTrue([value boolValue], @"%@ closed in the all preset", key);
 	}];
-	XCTAssertEqual(shut.count, (NSUInteger)0, @"%@ closed in the all preset", shut);
 	XCTAssertEqual(all.count, (NSUInteger)17, @"the type word plus sixteen booleans");
 
 	NSDictionary *text = [TGClient chatPermissionsForPreset:@"text"];
@@ -823,11 +827,34 @@ static void answerG(TGClient *c, NSDictionary *answer) {
 
 - (void)testSetChatPermissions_ThePresetRidesAsThePermissionsField {
 	TGClient *c = G();
+	[c.chatsById removeObjectForKey:@(-70)];
 	[c setChatPermissionsFromPreset:@"read" inChat:-70 completion:nil];
 	NSDictionary *r = lastG(c, @"setChatPermissions");
 	XCTAssertEqual([r[@"chat_id"] longLongValue], -70LL);
 	XCTAssertEqualObjects(r[@"permissions"][@"@type"], @"chatPermissions");
 	XCTAssertFalse([r[@"permissions"][@"can_send_basic_messages"] boolValue]);
+}
+
+/// A posting preset must not change rights that are about running the group.
+/// The chat's current admin-like flags ride back unchanged.
+- (void)testSetChatPermissions_KeepsTheChatsAdminLikeFlags {
+	TGClient *c = G();
+	c.chatsById[@(-70)] = [@{
+		@"id" : @(-70),
+		@"permissions" : @{
+			@"can_change_info" : @YES,
+			@"can_pin_messages" : @NO,
+			@"can_create_topics" : @YES,
+			@"can_edit_tag" : @NO,
+		},
+	} mutableCopy];
+	[c setChatPermissionsFromPreset:@"all" inChat:-70 completion:nil];
+	NSDictionary *permissions = lastG(c, @"setChatPermissions")[@"permissions"];
+	XCTAssertTrue([permissions[@"can_send_photos"] boolValue]);
+	XCTAssertTrue([permissions[@"can_change_info"] boolValue]);
+	XCTAssertFalse([permissions[@"can_pin_messages"] boolValue]);
+	XCTAssertTrue([permissions[@"can_create_topics"] boolValue]);
+	XCTAssertFalse([permissions[@"can_edit_tag"] boolValue]);
 }
 
 /// Handover carries the password two-factor asks for; the chat id and the

@@ -797,6 +797,159 @@ static void answerA(TGClient *c, NSDictionary *answer) {
 	XCTAssertEqual(countA(c, @"getUser"), (NSUInteger)0);
 }
 
+#pragma mark - the signed-in record
+
+/// getMe is what fills Edit Profile. Without last_name the field opens empty
+/// and Save erases the real name; an empty username list must not throw.
+- (void)testMe_KeepsTheLastNameAndSurvivesNoUsername {
+	TGClient *c = A();
+	[c handleUpdate:@{
+		@"@type" : @"user",
+		@"id" : @(42),
+		@"first_name" : @"Ada",
+		@"last_name" : @"Lovelace",
+		@"phone_number" : @"15550001111",
+		@"usernames" : @{@"@type" : @"usernames",
+						 @"active_usernames" : @[]},
+	}];
+	XCTAssertEqualObjects(c.me[@"last_name"], @"Lovelace");
+	XCTAssertEqualObjects(c.me[@"username"], @"");
+	XCTAssertEqualObjects(c.me[@"phone"], @"15550001111");
+}
+
+- (void)testHasSignedInAccount_TracksGetMe {
+	TGClient *c = A();
+	c.me = nil;
+	XCTAssertFalse([c hasSignedInAccount]);
+	c.me = @{@"id" : @(1001)};
+	XCTAssertTrue([c hasSignedInAccount]);
+}
+
+#pragma mark - account settings
+
+/// setScopeNotificationSettings replaces the whole record. Changing the mute
+/// must carry the story flags and the sound back or they reset.
+- (void)testScopeNotifications_KeepEveryFieldTheyDidNotChange {
+	TGClient *c = A();
+	[c setScope:@"private" muted:YES];
+	answerA(c, @{@"@type" : @"scopeNotificationSettings",
+				 @"mute_for" : @(0),
+				 @"sound_id" : @(77),
+				 @"show_preview" : @NO,
+				 @"use_default_mute_stories" : @NO,
+				 @"mute_stories" : @YES,
+				 @"story_sound_id" : @(88),
+				 @"show_story_poster" : @NO,
+				 @"disable_pinned_message_notifications" : @YES,
+				 @"disable_mention_notifications" : @YES});
+	NSDictionary *r = lastA(c, @"setScopeNotificationSettings");
+	NSDictionary *next = r[@"notification_settings"];
+	XCTAssertEqualObjects(next[@"sound_id"], @(77));
+	XCTAssertEqualObjects(next[@"show_preview"], @NO);
+	XCTAssertEqualObjects(next[@"mute_stories"], @YES);
+	XCTAssertEqualObjects(next[@"story_sound_id"], @(88));
+	XCTAssertEqualObjects(next[@"show_story_poster"], @NO);
+	XCTAssertEqualObjects(next[@"disable_pinned_message_notifications"], @YES);
+	XCTAssertEqualObjects(next[@"disable_mention_notifications"], @YES);
+	XCTAssertEqualObjects(next[@"mute_for"], @(365 * 24 * 3600));
+}
+
+/// setProfilePhoto must say which photo it is changing; TDLib refuses the
+/// call without is_public.
+- (void)testSetProfilePhoto_IsTheMainPhotoNotThePublicOne {
+	TGClient *c = A();
+	[c setProfilePhotoAtPath:@"/tmp/me.jpg" completion:nil];
+	NSDictionary *r = lastA(c, @"setProfilePhoto");
+	XCTAssertEqualObjects(r[@"is_public"], @NO);
+	XCTAssertEqualObjects(r[@"photo"][@"photo"][@"path"], @"/tmp/me.jpg");
+}
+
+#pragma mark - privacy and blocked senders
+
+/// The rules are ordered most-specific first; the catch-all is last. Reading
+/// the first one showed "Nobody" whenever a Premium rule came first.
+- (void)testPrivacyRule_ReadsTheCatchAllNotTheFirstException {
+	TGClient *c = A();
+	__block NSString *value = nil;
+	[c privacyRule:@"ShowPhoneNumber" completion:^(NSString *rule){ value = rule; }];
+	answerA(c, @{@"@type" : @"userPrivacySettingRules",
+				 @"rules" : @[
+					 @{@"@type" : @"userPrivacySettingRuleAllowPremiumUsers"},
+					 @{@"@type" : @"userPrivacySettingRuleAllowAll"}]});
+	XCTAssertEqualObjects(value, @"everybody");
+}
+
+- (void)testBlockedUsers_KeepChatsAsWellAsPeople {
+	TGClient *c = A();
+	__block NSArray *blocked = nil;
+	[c blockedUsersWithCompletion:^(NSArray *users){ blocked = users; }];
+	answerA(c, @{@"@type" : @"messageSenders",
+				 @"senders" : @[
+					 @{@"@type" : @"messageSenderUser", @"user_id" : @(7)},
+					 @{@"@type" : @"messageSenderChat", @"chat_id" : @(-500)}],
+				 @"total_count" : @(2)});
+	XCTAssertEqual(blocked.count, (NSUInteger)2);
+	XCTAssertEqualObjects(blocked[1][@"id"], @(-500));
+
+	[c setUser:-500 blocked:NO];
+	NSDictionary *request = lastA(c, @"setMessageSenderBlockList");
+	XCTAssertEqualObjects(request[@"sender_id"][@"@type"], @"messageSenderChat");
+	XCTAssertEqualObjects(request[@"sender_id"][@"chat_id"], @(-500));
+}
+
+#pragma mark - editing the profile
+
+- (void)testSetName_AnswersTheRefusalSoTheFormCanStay {
+	TGClient *c = A();
+	__block BOOL ok = YES;
+	__block NSString *said = nil;
+	[c setName:@"Ada" last:@"Lovelace" completion:^(BOOL good, NSString *error){
+		ok = good; said = error;
+	}];
+	NSDictionary *r = lastA(c, @"setName");
+	XCTAssertEqualObjects(r[@"first_name"], @"Ada");
+	XCTAssertEqualObjects(r[@"last_name"], @"Lovelace");
+	answerA(c, @{@"@type" : @"error", @"code" : @(400),
+				  @"message" : @"FIRSTNAME_INVALID"});
+	XCTAssertFalse(ok);
+	XCTAssertEqualObjects(said, @"FIRSTNAME_INVALID");
+}
+
+- (void)testSetBio_AnswersTheRefusalSoTheFormCanStay {
+	TGClient *c = A();
+	__block BOOL ok = NO;
+	[c setBio:@"Hello" completion:^(BOOL good, NSString *error){ ok = good; }];
+	XCTAssertEqualObjects(lastA(c, @"setBio")[@"bio"], @"Hello");
+	answerA(c, @{@"@type" : @"ok"});
+	XCTAssertTrue(ok);
+}
+
+- (void)testSetBirthday_YearZeroIsLeftOut {
+	TGClient *c = A();
+	[c setBirthdayDay:5 month:3 year:0 completion:nil];
+	NSDictionary *r = lastA(c, @"setBirthdate");
+	XCTAssertEqualObjects(r[@"birthdate"][@"day"], @(5));
+	XCTAssertEqualObjects(r[@"birthdate"][@"month"], @(3));
+	XCTAssertNil(r[@"birthdate"][@"year"]);
+}
+
+- (void)testSetBirthday_DayZeroIsHowItIsRemoved {
+	TGClient *c = A();
+	[c setBirthdayDay:0 month:0 year:0 completion:nil];
+	XCTAssertTrue(lastA(c, @"setBirthdate")[@"birthdate"] == [NSNull null]);
+}
+
+- (void)testBioLengthMax_ReadsTheIntegerOutOfTheOption {
+	TGClient *c = A();
+	__block NSInteger max = 0;
+	[c bioLengthMaxWithCompletion:^(NSInteger m){ max = m; }];
+	// The real shape: the first version read one level too deep and crashed the
+	// Edit Profile screen on the iPod as it opened.
+	answerA(c, @{@"@type" : @"optionValueInteger", @"value" : @"70"});
+	XCTAssertEqual(max, 70);
+}
+
+
 @end
 
 // vim:ft=objc

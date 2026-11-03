@@ -5,11 +5,20 @@
 #import "TGTheme.h"
 #import "TGStyle.h"
 #import "TGSnackbar.h"
+#import "TGIcons.h"
+#import "TGProfileTrackCell.h"
+
+/// One page of the saved-music list. The old screen asked for 100 once and
+/// showed the total above it, so anything past the first 100 never appeared.
+static const NSInteger kProfileAudioPage = 100;
 
 @interface TGProfileAudioViewController ()
 @property (nonatomic, strong) NSArray *audios;
 @property (nonatomic, assign) NSInteger total;
 @property (nonatomic, assign) BOOL loading;
+@property (nonatomic, assign) BOOL loadingMore;
+@property (nonatomic, strong) NSMutableDictionary *covers;
+@property (nonatomic, strong) NSMutableSet *coversRequested;
 @end
 
 @implementation TGProfileAudioViewController
@@ -28,7 +37,9 @@
 		self.edgesForExtendedLayout = UIRectEdgeNone;
 	self.title = self.subjectTitle.length ? self.subjectTitle : @"Profile Audio";
 	self.audios = @[];
-	self.tableView.rowHeight = TGMetricPersonRow;
+	self.covers = [NSMutableDictionary dictionary];
+	self.coversRequested = [NSMutableSet set];
+	self.tableView.rowHeight = TGMetricTrackRow;
 	[self applyTheme];
 	if ([self isOwnProfile])
 		self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc]
@@ -41,6 +52,8 @@
 	[self.tableView addGestureRecognizer:hold];
 	[self load];
 	[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(applyTheme) name:TGThemeChangedNotification object:nil];
+	[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(playerChanged)
+												 name:TGMusicPlayerChangedNotification object:nil];
 }
 
 - (void)dealloc {
@@ -64,7 +77,7 @@
 		return;
 	self.loading = YES;
 	__weak typeof(self) weakSelf = self;
-	[[TGClient shared] profileAudiosForUser:self.userId offset:0 limit:100
+	[[TGClient shared] profileAudiosForUser:self.userId offset:0 limit:kProfileAudioPage
 								 completion:^(NSArray *audios, NSInteger total,
 											  NSString *error){
 		TGProfileAudioViewController *me = weakSelf;
@@ -76,9 +89,48 @@
 			return;
 		}
 		me.audios = audios;
-		me.total = total;
+		me.total = total ?: (NSInteger)audios.count;
+		[me.tableView reloadData];
+		if (me.autoplay && me.audios.count){
+			me.autoplay = NO;
+			[me playAtIndex:0];
+		}
+	}];
+}
+
+/// The list is paged by the same offset the first request starts at, so the
+/// total above it and the rows below it finally agree.
+- (void)loadMore {
+	if (self.loading || self.loadingMore || !self.audios.count)
+		return;
+	if (self.total > 0 && (NSInteger)self.audios.count >= self.total)
+		return;
+	self.loadingMore = YES;
+	__weak typeof(self) weakSelf = self;
+	[[TGClient shared] profileAudiosForUser:self.userId
+									 offset:(NSInteger)self.audios.count
+									  limit:kProfileAudioPage
+								 completion:^(NSArray *audios, NSInteger total,
+											  NSString *error){
+		TGProfileAudioViewController *me = weakSelf;
+		if (!me)
+			return;
+		me.loadingMore = NO;
+		if (error.length || !audios.count){
+			if (total > 0)
+				me.total = total;
+			return;
+		}
+		me.total = total ?: (NSInteger)(me.audios.count + audios.count);
+		me.audios = [me.audios arrayByAddingObjectsFromArray:audios];
 		[me.tableView reloadData];
 	}];
+}
+
+- (void)playerChanged {
+	// The current row wears a pause glyph and the accent title. The player
+	// holds one queue, so any of its state changes can be the row's.
+	[self.tableView reloadData];
 }
 
 - (NSString *)durationText:(NSNumber *)seconds {
@@ -102,37 +154,73 @@
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
 	if (!self.audios.count)
 		return nil;
-	return [NSString stringWithFormat:@"%ld tracks", (long)self.total];
+	NSInteger count = self.total > 0 ? self.total : (NSInteger)self.audios.count;
+	return [NSString stringWithFormat:@"%ld %@", (long)count, count == 1 ? @"track" : @"tracks"];
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
+	// Only the owner can reorder; a visitor's hold offers nothing of the kind.
 	if (self.audios.count)
-		return @"Tap to play through the music player. Hold a row to reorder it "
-			   @"or take it off the profile.";
+		return [self isOwnProfile]
+				? @"Tap to play through the music player. Hold a row to reorder it "
+				  @"or take it off the profile."
+				: @"Tap to play through the music player.";
 	return @"No audio on this profile. Telegram keeps the list empty until "
 		   @"the owner adds a track.";
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-	UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"audio"];
+	static NSString *reuse = @"audio-track";
+	TGProfileTrackCell *cell = [tableView dequeueReusableCellWithIdentifier:reuse];
 	if (!cell)
-		cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle
-									  reuseIdentifier:@"audio"];
+		cell = [[TGProfileTrackCell alloc] initWithStyle:UITableViewCellStyleDefault
+										 reuseIdentifier:reuse];
 	[[TGTheme shared] styleCell:cell];
 	NSDictionary *audio = self.audios[indexPath.row];
-	cell.textLabel.text = [audio[@"title"] length] ? audio[@"title"]
+	NSString *title = [audio[@"title"] length] ? audio[@"title"]
 			: ([audio[@"fileName"] length] ? audio[@"fileName"] : @"Audio");
-	cell.textLabel.font = TGFontBody();
-	cell.textLabel.textColor = [[TGTheme shared] primaryTextColour];
 	NSString *performer = [audio[@"performer"] length] ? audio[@"performer"]
 			: @"Unknown artist";
-	NSString *length = [self durationText:audio[@"duration"]];
-	cell.detailTextLabel.text = length.length
-			? [NSString stringWithFormat:@"%@ · %@", performer, length]
-			: performer;
-	cell.detailTextLabel.font = TGFontSubhead();
-	cell.detailTextLabel.textColor = [[TGTheme shared] secondaryTextColour];
-	cell.accessoryType = UITableViewCellAccessoryNone;
+	NSInteger messageId = [audio[@"fileId"] longLongValue];
+	TGMusicPlayer *player = [TGMusicPlayer shared];
+	BOOL current = player.currentMessageId == messageId;
+	[cell configureTitle:title
+				  artist:performer
+				duration:[self durationText:audio[@"duration"]]
+				 current:current
+				 playing:player.playing];
+
+	NSNumber *coverId = [audio[@"albumCoverId"] isKindOfClass:NSNumber.class]
+			? audio[@"albumCoverId"] : nil;
+	UIImage *cover = coverId ? self.covers[coverId] : nil;
+	[cell setArtworkImage:cover];
+	if (coverId && !cover && ![self.coversRequested containsObject:coverId]){
+		[self.coversRequested addObject:coverId];
+		__weak typeof(self) weakSelf = self;
+		[[TGClient shared] downloadFile:coverId.integerValue
+							   priority:TGDownloadPriorityOnScreen
+							 completion:^(NSString *path){
+			if (!path.length)
+				return;
+			UIImage *image = [TGIcons decodedImageAtPath:path
+											fittingSize:CGSizeMake(TGMetricTrackArt,
+																   TGMetricTrackArt)
+												   fill:YES
+												  scale:[UIScreen mainScreen].scale];
+			UIImage *rounded = [TGIcons roundedImage:image
+											 size:CGSizeMake(TGMetricTrackArt, TGMetricTrackArt)
+										   radius:TGMetricCornerSmall
+										  corners:UIRectCornerAllCorners];
+			if (!rounded)
+				return;
+			TGProfileAudioViewController *me = weakSelf;
+			if (!me)
+				return;
+			me.covers[coverId] = rounded;
+			[me.tableView reloadRowsAtIndexPaths:@[indexPath]
+								withRowAnimation:UITableViewRowAnimationNone];
+		}];
+	}
 	return cell;
 }
 
@@ -141,17 +229,29 @@
 	[self playAtIndex:indexPath.row];
 }
 
+- (void)scrollViewDidScroll:(UIScrollView *)scrollView {
+	CGFloat distance = scrollView.contentSize.height -
+			(scrollView.contentOffset.y + scrollView.bounds.size.height);
+	if (distance < TGMetricTrackRow * 3.0f)
+		[self loadMore];
+}
+
 - (void)playAtIndex:(NSInteger)index {
 	if (index < 0 || index >= (NSInteger)self.audios.count)
 		return;
 	NSMutableArray *tracks = [NSMutableArray array];
 	for (NSDictionary *audio in self.audios){
+		NSNumber *fileId = audio[@"fileId"] ?: @(0);
 		[tracks addObject:@{
 			@"kind" : @"messageAudio",
-			@"docId" : audio[@"fileId"] ?: @(0),
+			// The player marks the current row by message id. Saved tracks
+			// have no message, so their file id is the stable stand-in.
+			@"id" : fileId,
+			@"docId" : fileId,
 			@"audioTitle" : audio[@"title"] ?: @"",
 			@"audioPerformer" : audio[@"performer"] ?: @"",
 			@"duration" : audio[@"duration"] ?: @(0),
+			@"albumCoverId" : audio[@"albumCoverId"] ?: [NSNull null],
 		}];
 	}
 	[[TGMusicPlayer shared] playTracks:tracks atIndex:index inChat:0];

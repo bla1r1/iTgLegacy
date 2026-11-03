@@ -48,6 +48,13 @@ FOUNDATION_EXPORT dispatch_semaphore_t TGIconsDecodeGate(void);
 /// a white glyph, scaled to whatever side is asked for.
 + (UIImage *)mediaDiscOfSide:(CGFloat)side playing:(BOOL)playing;
 
+/// The same blue disc carrying an X instead of play: the control on a message
+/// that is still going out.
++ (UIImage *)cancelDiscOfSide:(CGFloat)side;
+
+/// The clock that stands in place of the ticks while a message is sending.
++ (UIImage *)clockTicksWhite:(BOOL)white;
+
 /// `image` cropped to fill `size` with `corners` rounded by `radius`, drawn
 /// once and kept on the source image for the next appearance. A layer's
 /// cornerRadius plus clipsToBounds costs an offscreen pass every frame, and

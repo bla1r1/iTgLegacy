@@ -7,7 +7,67 @@
 //
 #import "TGClientInternal.h"
 
+@interface TGClient (MessagesSendWaiters)
+/// Both sends end here, so the waiter shape and the file id extraction exist
+/// once rather than in two copies that can drift.
+- (void)registerSendWaiterForMessage:(int64_t)messageId
+							  fileId:(NSInteger)fileId
+							progress:(void (^)(CGFloat))progress
+						  completion:(void (^)(BOOL))completion;
+@end
+
 @implementation TGClient (Messages)
+
+#pragma mark - a round note on its way
+
+/// A handful of waiters at most, so walking them costs less than an index by
+/// file id that has to stay in step with the completions.
+- (void)noteUploadProgress:(NSInteger)fileId fraction:(float)fraction {
+	for (NSNumber *key in self.noteSendWaiters){
+		NSMutableDictionary *waiter = self.noteSendWaiters[key];
+		if ([waiter[@"fileId"] integerValue] != fileId)
+			continue;
+		CGFloat value = MAX(0.0f, MIN(1.0f, fraction));
+		waiter[@"fraction"] = @(value);
+		void (^progress)(CGFloat) = waiter[@"progress"];
+		if (progress)
+			progress(value);
+	}
+}
+
+- (CGFloat)sendProgressForMessage:(int64_t)messageId {
+	NSDictionary *waiter = self.noteSendWaiters[@(messageId)];
+	return waiter ? [waiter[@"fraction"] doubleValue] : 0;
+}
+
+- (void)registerSendWaiterForMessage:(int64_t)messageId
+							  fileId:(NSInteger)fileId
+							progress:(void (^)(CGFloat))progress
+						  completion:(void (^)(BOOL))completion {
+	if (!progress && !completion)
+		return;
+	if (!self.noteSendWaiters)
+		self.noteSendWaiters = [NSMutableDictionary dictionary];
+	NSMutableDictionary *waiter = [NSMutableDictionary dictionary];
+	waiter[@"fileId"] = @(fileId);
+	waiter[@"fraction"] = @0;
+	if (progress)
+		waiter[@"progress"] = [progress copy];
+	if (completion)
+		waiter[@"completion"] = [completion copy];
+	self.noteSendWaiters[@(messageId)] = waiter;
+}
+
+- (void)noteSendFinished:(int64_t)messageId sent:(BOOL)sent {
+	NSDictionary *waiter = self.noteSendWaiters[@(messageId)];
+	if (!waiter)
+		return;
+	void (^completion)(BOOL) = waiter[@"completion"];
+	// Out before the call: a repeated update must not answer twice.
+	[self.noteSendWaiters removeObjectForKey:@(messageId)];
+	if (completion)
+		completion(sent);
+}
 
 #pragma mark - messages
 
@@ -253,6 +313,16 @@
                  limit:(NSInteger)limit
             completion:(void (^)(NSArray *))completion {
 	[self historyForChat:chatId fromMessageId:fromMessageId offset:0 limit:limit completion:completion];
+}
+
+- (void)historyForChat:(int64_t)chatId
+       aroundMessageId:(int64_t)messageId
+                 limit:(NSInteger)limit
+            completion:(void (^)(NSArray *))completion {
+	// Offset 0 starts just before from_message_id and leaves it out, so a jump
+	// fetched the page next to its target and then could not find it (B28).
+	[self historyForChat:chatId fromMessageId:messageId offset:-(limit / 2) limit:limit
+			  completion:completion];
 }
 
 - (void)newerHistoryForChat:(int64_t)chatId
@@ -602,8 +672,21 @@
 - (void)sendVoiceAtPath:(NSString *)path duration:(NSInteger)seconds
 				 toChat:(int64_t)chatId thread:(int64_t)threadId
 			   viewOnce:(BOOL)viewOnce {
-	if (!path.length)
+	[self sendVoiceAtPath:path duration:seconds toChat:chatId thread:threadId
+				 viewOnce:viewOnce progress:nil accepted:nil completion:nil];
+}
+
+- (void)sendVoiceAtPath:(NSString *)path duration:(NSInteger)seconds
+				 toChat:(int64_t)chatId thread:(int64_t)threadId
+			   viewOnce:(BOOL)viewOnce
+			   progress:(void (^)(CGFloat))progress
+			   accepted:(void (^)(int64_t))accepted
+			 completion:(void (^)(BOOL))completion {
+	if (!path.length){
+		if (completion)
+			completion(NO);
 		return;
+	}
 
 	NSDictionary *attributes = [[NSFileManager defaultManager]
 			attributesOfItemAtPath:path error:nil];
@@ -635,11 +718,31 @@
 			@"self_destruct_type" : destruct,
 		},
 	} completion:^(NSDictionary *result){
-		if ([result[@"@type"] isEqualToString:@"error"])
+		if ([result[@"@type"] isEqualToString:@"error"]){
 			NSLog(@"TGClient: voice rejected: %@ %@",
 					result[@"code"], result[@"message"]);
-		else
-			NSLog(@"TGClient: voice accepted, message %@", result[@"id"]);
+			if (completion)
+				completion(NO);
+			return;
+		}
+		NSLog(@"TGClient: voice accepted, message %@", result[@"id"]);
+		int64_t messageId = [result[@"id"] longLongValue];
+		if (messageId <= 0){
+			if (completion)
+				completion(NO);
+			return;
+		}
+		if (accepted)
+			accepted(messageId);
+		NSDictionary *content = [result[@"content"] isKindOfClass:NSDictionary.class]
+				? result[@"content"] : nil;
+		NSDictionary *note = [content[@"voice_note"] isKindOfClass:NSDictionary.class]
+				? content[@"voice_note"] : nil;
+		NSDictionary *voice = [note[@"voice"] isKindOfClass:NSDictionary.class]
+				? note[@"voice"] : nil;
+		[self registerSendWaiterForMessage:messageId
+									fileId:(voice ? [voice[@"id"] integerValue] : 0)
+								  progress:progress completion:completion];
 	}];
 }
 
@@ -647,11 +750,49 @@
 					 length:(NSInteger)length
 					 toChat:(int64_t)chatId thread:(int64_t)threadId
 				   viewOnce:(BOOL)viewOnce {
-	if (!path.length)
+	// The fire-and-forget shape the older callers and their tests use.
+	[self sendVideoNoteAtPath:path duration:seconds length:length toChat:chatId
+					   thread:threadId viewOnce:viewOnce progress:nil completion:nil];
+}
+
+- (void)sendVideoNoteAtPath:(NSString *)path duration:(NSInteger)seconds
+					 length:(NSInteger)length
+					 toChat:(int64_t)chatId thread:(int64_t)threadId
+				   viewOnce:(BOOL)viewOnce
+				   progress:(void (^)(CGFloat))progress
+				 completion:(void (^)(BOOL))completion {
+	[self sendVideoNoteAtPath:path duration:seconds length:length toChat:chatId
+					   thread:threadId viewOnce:viewOnce thumbnail:nil
+					 progress:progress accepted:nil completion:completion];
+}
+
+- (void)sendVideoNoteAtPath:(NSString *)path duration:(NSInteger)seconds
+					 length:(NSInteger)length
+					 toChat:(int64_t)chatId thread:(int64_t)threadId
+				   viewOnce:(BOOL)viewOnce
+				thumbnail:(NSString *)thumbnailPath
+				   progress:(void (^)(CGFloat))progress
+				   accepted:(void (^)(int64_t))accepted
+				 completion:(void (^)(BOOL))completion {
+	if (!path.length){
+		if (completion)
+			completion(NO);
 		return;
+	}
 	id destruct = viewOnce
 			? @{@"@type" : @"messageSelfDestructTypeImmediately"}
 			: [NSNull null];
+	// A note with no thumbnail is a black circle to everyone who receives it;
+	// null is what the schema takes when the recorder could not make one.
+	id thumbnail = [NSNull null];
+	if (thumbnailPath.length){
+		thumbnail = @{
+			@"@type"     : @"inputThumbnail",
+			@"thumbnail" : @{@"@type" : @"inputFileLocal", @"path" : thumbnailPath},
+			@"width"     : @240,
+			@"height"    : @240,
+		};
+	}
 	[self request:@{
 		@"@type"                : @"sendMessage",
 		@"chat_id"              : @(chatId),
@@ -663,16 +804,50 @@
 				@"video_note" : @{@"@type" : @"inputFileLocal", @"path" : path},
 				@"duration" : @(seconds),
 				@"length" : @(length),
+				@"thumbnail" : thumbnail,
 			},
 			@"self_destruct_type" : destruct,
 		},
 	} completion:^(NSDictionary *result){
-		if ([result[@"@type"] isEqualToString:@"error"])
+		if ([result[@"@type"] isEqualToString:@"error"]){
 			NSLog(@"TGClient: video note rejected: %@ %@",
 					result[@"code"], result[@"message"]);
-		else
-			NSLog(@"TGClient: video note accepted, message %@", result[@"id"]);
+			if (completion)
+				completion(NO);
+			return;
+		}
+		NSLog(@"TGClient: video note accepted, message %@", result[@"id"]);
+		int64_t messageId = [result[@"id"] longLongValue];
+		if (messageId <= 0){
+			// Without the pending id there is no update that could ever say
+			// how the send ended.
+			if (completion)
+				completion(NO);
+			return;
+		}
+		// The result is the whole message; its video note names the local
+		// file TDLib will upload, which is what updateFile reports progress on.
+		NSDictionary *content = [result[@"content"] isKindOfClass:NSDictionary.class]
+				? result[@"content"] : nil;
+		NSDictionary *note = [content[@"video_note"] isKindOfClass:NSDictionary.class]
+				? content[@"video_note"] : nil;
+		NSDictionary *video = [note[@"video"] isKindOfClass:NSDictionary.class]
+				? note[@"video"] : nil;
+		if (accepted)
+			accepted(messageId);
+		[self registerSendWaiterForMessage:messageId
+									fileId:(video ? [video[@"id"] integerValue] : 0)
+								  progress:progress completion:completion];
 	}];
+}
+
+- (void)cancelSendingMessage:(int64_t)messageId inChat:(int64_t)chatId {
+	if (!messageId)
+		return;
+	[self deleteMessages:@[@(messageId)] inChat:chatId revoke:YES];
+	// Nothing is left to wait for: the person took the message back, so the
+	// waiter answers YES and the chat can drop its sending row.
+	[self noteSendFinished:messageId sent:YES];
 }
 
 - (void)sendVideoAtPath:(NSString *)path toChat:(int64_t)chatId {

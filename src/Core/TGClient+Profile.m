@@ -252,6 +252,44 @@ static NSArray *TGAccentIdsOrDefault(NSArray *ids) {
 	}];
 }
 
+- (void)myAccentColoursWithCompletion:(void (^)(NSInteger, NSInteger, int64_t, int64_t))completion {
+	[self request:@{@"@type" : @"getMe"} completion:^(NSDictionary *me){
+		if (completion)
+			completion([me[@"accent_color_id"] integerValue],
+					   [me[@"profile_accent_color_id"] integerValue],
+					   [me[@"background_custom_emoji_id"] longLongValue],
+					   [me[@"profile_background_custom_emoji_id"] longLongValue]);
+	}];
+}
+
+/// TDLib's colours are one int each, 0xRRGGBB, and the first is the colour a
+/// swatch shows. Ids 0 to 6 are not in the list at all: the schema leaves them to
+/// the app, so these are the same seven the initials avatars use. The palette
+/// belongs to the account rather than the theme, so it is mapped here.
+static UIColor *TGColourFromRGB(int32_t rgb) {
+	return [UIColor colorWithRed:((rgb >> 16) & 0xFF) / 255.0f
+						   green:((rgb >> 8) & 0xFF) / 255.0f
+							blue:(rgb & 0xFF) / 255.0f
+						   alpha:1.0f];
+}
+
+- (UIColor *)accentColourForId:(NSInteger)colourId profile:(BOOL)profile {
+	for (NSDictionary *record in (profile ? self.profileAccentColors : self.accentColors) ?: @[]){
+		if (![record isKindOfClass:NSDictionary.class] || [record[@"id"] integerValue] != colourId)
+			continue;
+		id colours = record[@"light_theme_colors"];
+		if (profile)
+			colours = [colours isKindOfClass:NSDictionary.class] ? colours[@"palette_colors"] : nil;
+		if (![colours isKindOfClass:NSArray.class] || ![colours count])
+			return nil;
+		return TGColourFromRGB([colours[0] intValue]);
+	}
+	static const int32_t builtIn[] = {0xE17076, 0xEDA86C, 0xA695E7, 0x7BC862, 0x6EC9CB, 0x65AADD, 0xEE7AAE};
+	if (!profile && colourId >= 0 && colourId <= 6)
+		return TGColourFromRGB(builtIn[colourId]);
+	return nil;
+}
+
 - (void)setAccountAccentColor:(NSInteger)accentId
 		   backgroundEmojiId:(int64_t)emojiId
 				  completion:(void (^)(BOOL, NSString *))completion {
@@ -275,6 +313,25 @@ static NSArray *TGAccentIdsOrDefault(NSArray *ids) {
 	} completion:^(NSDictionary *result){
 		if (completion)
 			completion(TGProfileError(result) == nil, TGProfileError(result));
+	}];
+}
+
+- (void)setAccountAccentColorPreservingBackgroundEmoji:(NSInteger)accentId
+											completion:(void (^)(BOOL, NSString *))completion {
+	[self myAccentColoursWithCompletion:^(NSInteger ignoredAccent, NSInteger ignoredProfile,
+										  int64_t backgroundEmojiId, int64_t ignoredProfileEmoji){
+		[self setAccountAccentColor:accentId backgroundEmojiId:backgroundEmojiId
+						 completion:completion];
+	}];
+}
+
+- (void)setAccountProfileAccentColorPreservingBackgroundEmoji:(NSInteger)accentId
+												   completion:(void (^)(BOOL, NSString *))completion {
+	[self myAccentColoursWithCompletion:^(NSInteger ignoredAccent, NSInteger ignoredProfile,
+										  int64_t ignoredEmoji, int64_t profileBackgroundEmojiId){
+		[self setAccountProfileAccentColor:accentId
+						 backgroundEmojiId:profileBackgroundEmojiId
+								completion:completion];
 	}];
 }
 

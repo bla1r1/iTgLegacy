@@ -290,14 +290,30 @@
 - (void)messageCountInChat:(int64_t)chatId
 					thread:(int64_t)threadId
 				completion:(void (^)(NSInteger count))completion {
-	NSDictionary *topic = threadId
-		? @{@"@type" : @"messageTopicMessageThread",
-			@"messageThread_id" : @(threadId)}
-		: @{@"@type" : @"messageTopicMain"};
+	NSMutableDictionary *ask = [@{@"@type" : @"getChatMessageCount",
+								  @"chat_id" : @(chatId),
+								  @"filter" : @{@"@type" : @"searchMessagesFilterEmpty"},
+								  @"return_local" : @NO} mutableCopy];
+	// The whole chat is no topic at all: td_api.tl has no "main" topic type.
+	if (threadId)
+		ask[@"topic_id"] = @{@"@type" : @"messageTopicThread", @"message_thread_id" : @(threadId)};
+	[self request:ask
+	   completion:^(NSDictionary *result){
+		if (!completion)
+			return;
+		if ([result[@"@type"] isEqualToString:@"count"])
+			completion([result[@"count"] integerValue]);
+		else
+			completion(0);
+	}];
+}
+
+- (void)messageCountInChat:(int64_t)chatId
+					filter:(NSString *)filterType
+				completion:(void (^)(NSInteger count))completion {
 	[self request:@{@"@type" : @"getChatMessageCount",
 					@"chat_id" : @(chatId),
-					@"topic_id" : topic,
-					@"filter" : @{@"@type" : @"searchMessagesFilterEmpty"},
+					@"filter" : @{@"@type" : filterType ?: @"searchMessagesFilterEmpty"},
 					@"return_local" : @NO}
 	   completion:^(NSDictionary *result){
 		if (!completion)
@@ -322,7 +338,6 @@
 				  completion:(void (^)(int64_t messageId, NSInteger total))completion {
 	[self request:@{@"@type"   : @"getChatMessageCalendar",
 					@"chat_id" : @(chatId),
-					@"topic_id" : @{@"@type" : @"messageTopicMain"},
 					@"filter"  : @{@"@type" : @"searchMessagesFilterEmpty"},
 					@"from_message_id" : @(0)}
 	   completion:^(NSDictionary *result){

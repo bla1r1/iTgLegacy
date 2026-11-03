@@ -86,6 +86,21 @@
 @property (nonatomic, strong) NSDate *recordBeganAt;
 @property (nonatomic, assign) BOOL videoNoteOverlayActive;
 @property (nonatomic, strong) TGVideoNoteViewController *videoNoteOverlay;
+/// The local row a round note shows while it is still being transcoded, and
+/// the pending message id TDLib gives it once sendMessage answers.
+@property (nonatomic, assign) int64_t pendingNoteRowId;
+@property (nonatomic, assign) int64_t pendingNoteRealId;
+/// The same line the ring draws: transcode is the first half, upload the
+/// second. Voice has no transcode, so its fraction is used as it is.
+@property (nonatomic, assign) CGFloat pendingNoteProgress;
+/// Set when the local row is cancelled while the transcode has already ended
+/// and sendMessage is in flight; the answer is deleted instead of sent.
+@property (nonatomic, assign) BOOL pendingNoteCancelled;
+- (NSArray *)groupedMessagesFromMessages:(NSArray *)messages;
+- (void)resumeGifAutoplayAfterScrolling;
+- (void)refreshSendRings;
+- (CGFloat)ringProgressForMessage:(NSDictionary *)m;
+- (void)cancelSendingRow:(NSDictionary *)m;
 // The bar over a chat nobody has spoken to: report spam, add to contacts.
 @property (nonatomic, strong) UIView *actionBarView;
 @property (nonatomic, strong) UILabel *actionBarLabel;
@@ -122,6 +137,8 @@
 @property (nonatomic, strong) UIView *playerProgress;   // its line
 @property (nonatomic, strong) UIButton *playerToggle;
 @property (nonatomic, strong) UIButton *playerSpeed;
+/// The speed chosen on the strip. It carries over to the next note in the queue.
+@property (nonatomic, assign) float playbackRate;
 @property (nonatomic, strong) UIButton *musicPrevious;
 @property (nonatomic, strong) UIButton *musicNext;
 @property (nonatomic, strong) UILabel *playerLabel;
@@ -267,8 +284,11 @@
 - (void)pinnedBannerTapped;
 - (void)stopPlayback;
 - (void)stopVideoNote;
+- (BOOL)showsUnplayedMarkFor:(NSDictionary *)m;
+- (void)playVideoNoteForMessage:(NSDictionary *)m atRow:(NSInteger)row;
 - (void)playVideoNoteAtPath:(NSString *)path row:(NSInteger)row;
 - (void)togglePlayback;
+- (void)cyclePlaybackSpeed;
 - (void)showMusicBar;
 - (void)playVoiceNoteForMessage:(NSDictionary *)m atRow:(NSInteger)row;
 - (void)updatePlayerBar;
@@ -291,6 +311,9 @@
 - (void)toggleRecordMode;
 - (void)recordStart;
 - (void)recordFinish;
+- (void)sendRecordedNoteOnce:(BOOL)once;
+- (void)removeLocalNoteRow;
+- (void)removeLocalNoteRowWithId:(int64_t)rowId;
 - (void)recordPauseToggled;
 - (void)toggleRecordOnce;
 - (void)recordCancel;

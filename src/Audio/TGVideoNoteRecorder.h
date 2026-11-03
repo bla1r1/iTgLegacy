@@ -26,8 +26,16 @@
 @property (nonatomic, copy) void (^onReady)(void);
 /// The lens changed; a preview must ask for portrait again (main queue).
 @property (nonatomic, copy) void (^onCameraSwitched)(void);
+/// The export's share of the note, 0..1 across every segment, on the main
+/// queue. Fires at most five times a second and only while a note is being
+/// written; nil when nobody is waiting on it.
+@property (nonatomic, copy) void (^onExportProgress)(CGFloat progress);
 /// The side of the square a finished note was exported at.
 @property (nonatomic, readonly) NSInteger noteSide;
+/// The note's first frame as a JPEG, made after the transcode; nil when it
+/// could not be read. The send puts it in the payload so the receiver sees the
+/// face instead of a black circle while the note downloads.
+@property (nonatomic, readonly) NSString *thumbnailPath;
 
 - (BOOL)start;
 - (void)pause;

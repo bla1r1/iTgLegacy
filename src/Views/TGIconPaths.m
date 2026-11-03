@@ -57,6 +57,7 @@ static const TGIconPath kPaths[] = {
 	{"verifiedBadge", 24, 24, 0, "M23,12L20.56,9.22L20.9,5.54L17.29,4.72L15.4,1.54L12,3L8.6,1.54L6.71,4.72L3.1,5.53L3.44,9.21L1,12L3.44,14.78L3.1,18.47L6.71,19.29L8.6,22.47L12,21L15.4,22.46L17.29,19.28L20.9,18.46L20.56,14.78L23,12M10,17L6,13L7.41,11.59L10,14.17L16.59,7.58L18,9L10,17Z"},   // mdi mdiCheckDecagram
 	{"video", 24, 24, 0, "M17,10.5V7A1,1 0 0,0 16,6H4A1,1 0 0,0 3,7V17A1,1 0 0,0 4,18H16A1,1 0 0,0 17,17V13.5L21,17.5V6.5L17,10.5Z"},   // mdi mdiVideo
 	{"flash", 24, 24, 0, "M7,2V13H10V22L17,10H14L17,2H7Z"},   // mdi mdiFlash
+	{"music", 24, 24, 0, "M12,3V13.55A4,4 0 1,0 14,17V7H18V3H12Z"},   // mdi mdiMusicNote
 };
 
 const TGIconPath *TGIconPathNamed(const char *name) {

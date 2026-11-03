@@ -181,8 +181,63 @@ static NSString *TGStoryRelativeTime(NSTimeInterval timestamp) {
 	[self.view bringSubviewToFront:menu];
 	[self.view bringSubviewToFront:_infoButton];
 
+	// A story edited or deleted on another client arrives while this viewer
+	// is open. The row handles its own copy; here the story id decides
+	// whether the picture on screen or the count behind it moved.
+	__weak typeof(self) weakSelf = self;
+	[[NSNotificationCenter defaultCenter] addObserverForName:TGStoriesChangedNotification
+			object:nil queue:[NSOperationQueue mainQueue]
+		usingBlock:^(NSNotification *note){
+		TGStoryViewerViewController *me = weakSelf;
+		if (!me || me.closed)
+			return;
+		if ([note.userInfo[@"chatId"] longLongValue] != me.chatId)
+			return;
+		NSDictionary *story = note.userInfo[@"story"];
+		if ([story isKindOfClass:NSDictionary.class]){
+			NSInteger at = [me indexOfStoryId:[story[@"storyId"] intValue]];
+			if (at < 0){
+				[me.stories addObject:story];
+				at = (NSInteger)me.stories.count - 1;
+			} else {
+				me.stories[at] = story;
+			}
+			if (at == me.index)
+				[me showCurrentStory];
+			return;
+		}
+		NSNumber *deleted = note.userInfo[@"deletedStoryId"];
+		if (![deleted isKindOfClass:NSNumber.class])
+			return;
+		NSInteger at = [me indexOfStoryId:deleted.intValue];
+		if (at < 0)
+			return;
+		[me.stories removeObjectAtIndex:at];
+		if (!me.stories.count){
+			[me finish];
+			return;
+		}
+		if (at < me.index)
+			me.index--;
+		else if (at == me.index)
+			me.index = MIN(me.index, (NSInteger)me.stories.count - 1);
+		[me showCurrentStory];
+	}];
+
 	[self loadReactions];
 	[self showCurrentStory];
+}
+
+- (NSInteger)indexOfStoryId:(int32_t)storyId {
+	for (NSInteger i = 0; i < (NSInteger)self.stories.count; i++){
+		id entry = self.stories[i];
+		if ([entry isKindOfClass:NSDictionary.class] &&
+			[entry[@"storyId"] intValue] == storyId)
+			return i;
+		if ([entry isKindOfClass:NSNumber.class] && [entry intValue] == storyId)
+			return i;
+	}
+	return -1;
 }
 
 - (UIView *)shadeViewFromTop:(BOOL)top {

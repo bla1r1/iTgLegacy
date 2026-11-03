@@ -4,89 +4,191 @@
 #import "TGStyle.h"
 #import "TGAlertSheet.h"
 #import "TGStoryViewerViewController.h"
+#import "TGProfileTrackCell.h"
+#import "TGClientInternal.h"
+#import "TGIcons.h"
+
+/// The address a piece of text links to: a text link's own URL, or the first URL
+/// typed in it. Nil when it has none.
+NSURL *TGProfileFirstURL(NSString *text, NSArray *entities) {
+	if (![entities isKindOfClass:NSArray.class])
+		return nil;
+	for (NSDictionary *entity in entities){
+		NSDictionary *type = entity[@"type"];
+		NSString *name = [type isKindOfClass:NSDictionary.class] ? type[@"@type"] : nil;
+		NSString *url = nil;
+		if ([name isEqualToString:@"textEntityTypeTextUrl"])
+			url = type[@"url"];
+		else if ([name isEqualToString:@"textEntityTypeUrl"]){
+			NSInteger offset = [entity[@"offset"] integerValue], length = [entity[@"length"] integerValue];
+			if (length > 0 && (NSUInteger)(offset + length) <= text.length)
+				url = [text substringWithRange:NSMakeRange((NSUInteger)offset, (NSUInteger)length)];
+		}
+		if (!url.length)
+			continue;
+		NSURL *parsed = [NSURL URLWithString:url];
+		return parsed.scheme.length ? parsed
+				: [NSURL URLWithString:[@"http://" stringByAppendingString:url]];
+	}
+	return nil;
+}
 
 @implementation TGProfileViewController (Media)
 
 - (void)loadMedia {
-	__weak typeof(self) weakSelf = self;
-	if (self.userId){
-		[[TGClient shared] giftsForUser:self.userId completion:^(NSArray *gifts){
-			weakSelf.gifts = gifts;
-			[weakSelf reloadTableDebounced];
-		}];
-		[[TGClient shared] isUserBlocked:self.userId completion:^(BOOL blocked){
-			weakSelf.blocked = blocked;
-			[weakSelf reloadTableDebounced];
-		}];
-	}
-
-	// Stories sit on a profile the way shared media does, and this screen had
-	// a "Posts" row standing in for them that always said there were none.
-	[[TGClient shared] storiesForChat:self.chatId completion:^(NSArray *stories){
-		BOOL gainedTile = stories.count && !weakSelf.stories.count;
-		weakSelf.stories = stories;
-		// A fresh set means the cached grid cell still shows the old tiles.
-		weakSelf.storyGridCellCache = nil;
-		if (gainedTile)
-			[weakSelf buildHeader];      // the tile row is one shorter without it
-		[weakSelf reloadTableDebounced];
-	}];
-
-	[[TGClient shared] mediaInChat:self.chatId
-							filter:@"searchMessagesFilterPhotoAndVideo"
-						completion:^(NSArray *messages){
-		weakSelf.photos = messages;
-		// Same for the grid: without this, late-arriving media is invisible
-		// until the user pokes another tab (B1's cache family).
-		weakSelf.storyGridCellCache = nil;
-		weakSelf.mediaGridCacheContent = nil;
-		[weakSelf reloadTableDebounced];
-	}];
-	[[TGClient shared] mediaInChat:self.chatId
-							filter:@"searchMessagesFilterDocument"
-						completion:^(NSArray *messages){
-		weakSelf.files = messages;
-		[weakSelf reloadTableDebounced];
-	}];
-	// Voice and Links were tabs that always came back empty because nothing
-	// ever asked for them.
-	[[TGClient shared] mediaInChat:self.chatId
-							filter:@"searchMessagesFilterVoiceAndVideoNote"
-						completion:^(NSArray *messages){
-		weakSelf.voice = messages;
-		[weakSelf reloadTableDebounced];
-	}];
-	[[TGClient shared] mediaInChat:self.chatId
-							filter:@"searchMessagesFilterUrl"
-						completion:^(NSArray *messages){
-		weakSelf.links = messages;
-		[weakSelf reloadTableDebounced];
-	}];
+	// The two panes that decide whether their tabs exist at all. Everything
+	// else waits for its tab: the old screen fired four searchChatMessages
+	// calls at open, before the first frame, on a one-core device.
+	[self fetchMediaForKind:@"stories"];
+	[self fetchMediaForKind:@"gifts"];
 }
 
-/// The bar across the top of the shared section, in their order: what the
-/// profile has to show comes first, then the message categories. A category
-/// with nothing in it is left out rather than offered as an empty tab.
+/// One pane's first page. A kind is fetched once and re-used until the
+/// profile is reopened; switching tabs does not send the same search again.
+- (void)fetchMediaForKind:(NSString *)kind {
+	if (!kind.length)
+		return;
+	if ([self.loadedMediaKinds containsObject:kind] ||
+			[self.loadingMediaKinds containsObject:kind])
+		return;
+	if ([kind isEqualToString:@"groups"] && !self.userId)
+		return;
+	[self.loadingMediaKinds addObject:kind];
+
+	NSDictionary *filters = @{@"media" : @"searchMessagesFilterPhotoAndVideo",
+							  @"files" : @"searchMessagesFilterDocument",
+							  @"music" : @"searchMessagesFilterAudio",
+							  @"voice" : @"searchMessagesFilterVoiceAndVideoNote",
+							  @"links" : @"searchMessagesFilterUrl"};
+	NSString *filterForCount = filters[kind];
+	__weak typeof(self) weakSelf = self;
+	void (^done)(NSArray *) = ^(NSArray *rows){
+		TGProfileViewController *me = weakSelf;
+		if (!me)
+			return;
+		[me.loadingMediaKinds removeObject:kind];
+		[me.loadedMediaKinds addObject:kind];
+		NSArray *safe = rows ?: @[];
+		if ([kind isEqualToString:@"media"])
+			me.photos = safe;
+		else if ([kind isEqualToString:@"files"])
+			me.files = safe;
+		else if ([kind isEqualToString:@"music"])
+			me.music = safe;
+		else if ([kind isEqualToString:@"voice"])
+			me.voice = safe;
+		else if ([kind isEqualToString:@"links"])
+			me.links = safe;
+		else if ([kind isEqualToString:@"groups"])
+			me.groupsInCommon = safe;
+		else if ([kind isEqualToString:@"stories"])
+			me.stories = safe;
+		else if ([kind isEqualToString:@"gifts"])
+			me.gifts = safe;
+		// A search answers one page, so its total is asked for separately. The
+		// other kinds arrive whole.
+		if (filterForCount)
+			[[TGClient shared] messageCountInChat:me.chatId filter:filterForCount
+									   completion:^(NSInteger count){
+				me.mediaCounts[kind] = @(count);
+				[me reloadTableDebounced];
+			}];
+		else
+			me.mediaCounts[kind] = @(safe.count);
+		if ([kind isEqualToString:@"media"] || [kind isEqualToString:@"stories"] ||
+				[kind isEqualToString:@"gifts"]){
+			me.storyGridCellCache = nil;
+			me.mediaGridCacheContent = nil;
+		}
+		[me reloadTableDebounced];
+	};
+
+	if ([kind isEqualToString:@"stories"]){
+		[[TGClient shared] storiesForChat:self.chatId completion:done];
+	} else if ([kind isEqualToString:@"gifts"]){
+		if (self.userId)
+			[[TGClient shared] giftsForUser:self.userId completion:done];
+		else
+			done(@[]);
+	} else if ([kind isEqualToString:@"groups"]){
+		[[TGClient shared] groupsInCommonWithUser:self.userId completion:done];
+	} else {
+		if (!filterForCount){
+			[self.loadingMediaKinds removeObject:kind];
+			return;
+		}
+		[[TGClient shared] mediaInChat:self.chatId filter:filterForCount completion:done];
+	}
+}
+
+/// A tab only loads when its section is on screen; the details card stays the
+/// first thing an open profile costs.
+- (void)loadVisibleMediaTabIfNeeded {
+	CGRect section = [self.tableView rectForSection:kSectionMedia];
+	if (!CGRectIntersectsRect(section, self.tableView.bounds))
+		return;
+	NSString *kind = [self selectedMediaKind];
+	if (kind)
+		[self fetchMediaForKind:kind];
+}
+
+/// The bar across the top of the shared section, in their order: Media,
+/// Files, Music, Voice, Links, Groups, then Stories and Gifts when they have
+/// something to show. The category a profile was set to open on moves first.
 - (NSArray *)currentMediaTabs {
 	NSMutableArray *out = [NSMutableArray array];
-	// The bar reads left-to-right the way the official profile does. The
-	// order is fixed: stories and gifts keep their slots at the end whether
-	// they have content yet or not, so a category that loads late cannot
-	// slide the user's selected tab out from under their finger - holding
-	// reorderable positions was the whole "the grids simply swapped" bug
-	// family (B1).
-	[out addObject:@{@"title" : @"Media",   @"kind" : @"media"}];
-	if (self.files.count)
+	// Your own user id is also your Saved Messages chat. Those tabs belong to that
+	// chat's profile; the one others see has only what you publish.
+	if (!self.isOwnProfile || [self showsSavedMessages]){
+		[out addObject:@{@"title" : @"Media", @"kind" : @"media"}];
 		[out addObject:@{@"title" : @"Files", @"kind" : @"files"}];
-	if (self.voice.count)
+		[out addObject:@{@"title" : @"Music", @"kind" : @"music"}];
 		[out addObject:@{@"title" : @"Voice", @"kind" : @"voice"}];
-	if (self.links.count)
 		[out addObject:@{@"title" : @"Links", @"kind" : @"links"}];
+	}
+	if (self.commonGroupCount > 0)
+		[out addObject:@{@"title" : @"Groups", @"kind" : @"groups"}];
 	if (self.stories.count)
 		[out addObject:@{@"title" : @"Stories", @"kind" : @"stories"}];
 	if (self.gifts.count)
-		[out addObject:@{@"title" : @"Gifts",   @"kind" : @"gifts"}];
+		[out addObject:@{@"title" : @"Gifts", @"kind" : @"gifts"}];
+
+	// main_profile_tab moves the chosen pane to the front. "posts" and "gifs"
+	// have no pane of their own here; both read as Media.
+	// It is not the selected tab: tabs do not change places when tapped.
+	NSString *chosen = self.mainMediaKind;
+	if ([chosen isEqualToString:@"posts"] || [chosen isEqualToString:@"gifs"])
+		chosen = @"media";
+	for (NSUInteger i = 0; i < out.count; i++){
+		if ([out[i][@"kind"] isEqualToString:chosen]){
+			if (i > 0)
+				[out exchangeObjectAtIndex:0 withObjectAtIndex:i];
+			break;
+		}
+	}
 	return out;
+}
+
+/// A tab tap: the pane's first page is fetched now, not when the profile was
+/// opened. The grid caches are per kind, so they are dropped with the switch.
+- (void)mediaTabSelected:(NSString *)kind {
+	if (!kind.length)
+		return;
+	self.storedMediaKind = kind;
+	self.storyGridCellCache = nil;
+	self.mediaGridCacheContent = nil;
+	[self.thumbnailsRequested removeAllObjects];
+	[self fetchMediaForKind:kind];
+	CGPoint offset = self.tableView.contentOffset;
+	CGFloat mediaTop = [self.tableView rectForHeaderInSection:kSectionMedia].origin.y;
+	[self.tableView reloadData];
+	CGFloat maxY = self.tableView.contentSize.height - self.tableView.bounds.size.height;
+	maxY = MAX(0, maxY);
+	if (offset.y > maxY + TGMetricHairline ||
+			offset.y < mediaTop - self.tableView.bounds.size.height)
+		offset.y = mediaTop;
+	offset.y = MIN(MAX(offset.y, 0), maxY);
+	[self.tableView setContentOffset:offset animated:NO];
 }
 
 /// Media is a strip you push sideways; Stories is a grid that wraps, the way
@@ -387,17 +489,76 @@ static const CGFloat kVideoMarkInset = TGMetricPadWide;
 	return cell;
 }
 
+/// The cover is downloaded once per file id and kept with the other profile
+/// pictures. A 44 pt row asks for the same thumbnail the chat's track bubble
+/// uses, not a 300 px render.
+- (void)applyArtworkToTrackCell:(UITableViewCell *)cell
+						message:(NSDictionary *)message
+					  indexPath:(NSIndexPath *)indexPath {
+	TGProfileTrackCell *trackCell = (TGProfileTrackCell *)cell;
+	NSNumber *coverId = [message[@"albumCoverId"] isKindOfClass:NSNumber.class]
+			? message[@"albumCoverId"] : nil;
+	if (!coverId){
+		[trackCell setArtworkImage:nil];
+		return;
+	}
+	UIImage *cover = self.coverImages[coverId];
+	[trackCell setArtworkImage:cover];
+	if (cover || [self.thumbnailsRequested containsObject:coverId])
+		return;
+	[self.thumbnailsRequested addObject:coverId];
+	__weak typeof(self) weakSelf = self;
+	[[TGClient shared] downloadFile:coverId.integerValue
+						   priority:TGDownloadPriorityOnScreen
+						 completion:^(NSString *path){
+		if (!path.length)
+			return;
+		UIImage *image = [TGIcons decodedImageAtPath:path
+										fittingSize:CGSizeMake(TGMetricTrackArt, TGMetricTrackArt)
+											   fill:YES
+											  scale:[UIScreen mainScreen].scale];
+		UIImage *rounded = [TGIcons roundedImage:image
+										 size:CGSizeMake(TGMetricTrackArt, TGMetricTrackArt)
+									   radius:TGMetricCornerSmall
+									  corners:UIRectCornerAllCorners];
+		TGProfileViewController *me = weakSelf;
+		if (!rounded || !me)
+			return;
+		me.coverImages[coverId] = rounded;
+		[me.tableView reloadRowsAtIndexPaths:@[indexPath]
+							withRowAnimation:UITableViewRowAnimationNone];
+	}];
+}
+
+/// The host of the first URL entity in a message, or nil. The profile's Links
+/// tab shows where a link goes, not the paragraph it arrived in.
+- (NSString *)linkDomainForMessage:(NSDictionary *)message {
+	return TGProfileFirstURL(message[@"text"], message[@"entities"]).host.lowercaseString;
+}
+
 /// What the selected tab shows; nil for the photo strip, which is not a list.
 - (NSString *)selectedMediaKind {
 	NSString *kind = self.storedMediaKind;
+	// Edit Profile still offers "posts" and "gifs"; there is no pane for
+	// either here, so both open the media grid rather than a dead kind.
+	if ([kind isEqualToString:@"posts"] || [kind isEqualToString:@"gifs"])
+		kind = @"media";
 	// The answer is only valid while that kind still has a tab: stories end,
 	// gifts empty out, and holding a dead kind would render a toolbar
 	// selection that no longer matches. Falling back to the photo strip is
 	// what the official clients do.
-	for (NSDictionary *tab in [self currentMediaTabs])
+	NSArray *tabs = [self currentMediaTabs];
+	for (NSDictionary *tab in tabs)
 		if ([tab[@"kind"] isEqualToString:kind])
 			return kind;
-	return @"media";
+	return tabs.firstObject[@"kind"];
+}
+
+/// Saved Messages' own profile: the chat opened it, and the chat passes a search.
+/// Settings' My Profile reaches the same id without one.
+- (BOOL)showsSavedMessages {
+	return self.chatId && self.chatId == [[TGClient shared] savedMessagesChatId] &&
+			self.onSearchTapped != nil;
 }
 
 /// The rows behind the selected tab, for the list-shaped categories.
@@ -405,8 +566,10 @@ static const CGFloat kVideoMarkInset = TGMetricPadWide;
 	NSString *kind = [self selectedMediaKind];
 	if ([kind isEqualToString:@"media"])   return self.photos ?: @[];
 	if ([kind isEqualToString:@"files"])   return self.files ?: @[];
+	if ([kind isEqualToString:@"music"])   return self.music ?: @[];
 	if ([kind isEqualToString:@"voice"])   return self.voice ?: @[];
 	if ([kind isEqualToString:@"links"])   return self.links ?: @[];
+	if ([kind isEqualToString:@"groups"])  return self.groupsInCommon ?: @[];
 	if ([kind isEqualToString:@"stories"]) return self.stories ?: @[];
 	if ([kind isEqualToString:@"gifts"])   return self.gifts ?: @[];
 	return @[];
@@ -427,39 +590,6 @@ static const CGFloat kVideoMarkInset = TGMetricPadWide;
 	if (index < 0 || index >= (NSInteger)rows.count)
 		return;
 	[TGGiftViewer showGift:rows[index] inView:self.view];
-}
-
-- (void)mediaTabChanged:(UISegmentedControl *)sender {
-	NSArray *tabs = [self currentMediaTabs];
-	NSInteger index = MIN(MAX(0, sender.selectedSegmentIndex), (NSInteger)tabs.count - 1);
-	// The kind is resolved here, at tap time. The tab array can reorder as
-	// categories load (gifts before media, stories before both); holding a
-	// number instead made the selection follow the array's rows, and the
-	// profile's media grid turned into whatever moved into that position
-	// (B1 - "the grids simply swapped").
-	self.storedMediaKind = tabs[index][@"kind"];
-	// The grid is cached per kind, and the next tab wants different tiles.
-	self.storyGridCellCache = nil;
-	self.mediaGridCacheContent = nil;
-	[self.thumbnailsRequested removeAllObjects];
-	// Switching a tab is not a change of content to be animated. Even with no
-	// row animation, reloading the one section slid the outgoing rows up out
-	// of the way; reloading the table swaps them in place.
-	//
-	// The offset is preserved rather than reset: the sections above the media
-	// one do not change height, so keeping the offset holds the same part of
-	// the media section on screen. When the new tab is shorter than the
-	// current scroll position falls off it, land back on the section header
-	// instead of letting the table clamp the offset into the footer.
-	CGPoint offset = self.tableView.contentOffset;
-	CGFloat mediaTop = [self.tableView rectForHeaderInSection:kSectionMedia].origin.y;
-	[self.tableView reloadData];
-	CGFloat maxY = self.tableView.contentSize.height - self.tableView.bounds.size.height;
-	maxY = MAX(0, maxY);
-	if (offset.y > maxY + TGMetricHairline || offset.y < mediaTop - self.tableView.bounds.size.height)
-		offset.y = mediaTop;
-	offset.y = MIN(MAX(offset.y, 0), maxY);
-	[self.tableView setContentOffset:offset animated:NO];
 }
 
 /// Displays full-screen view for the selected story.
@@ -495,6 +625,9 @@ static const CGFloat kVideoMarkInset = TGMetricPadWide;
 	} else if ([kind isEqualToString:@"files"]) {
 		filter = @"searchMessagesFilterDocument";
 		currentList = self.files;
+	} else if ([kind isEqualToString:@"music"]) {
+		filter = @"searchMessagesFilterAudio";
+		currentList = self.music;
 	} else if ([kind isEqualToString:@"voice"]) {
 		filter = @"searchMessagesFilterVoiceAndVideoNote";
 		currentList = self.voice;
@@ -518,15 +651,17 @@ static const CGFloat kVideoMarkInset = TGMetricPadWide;
 			if (!more.count) return;
 
 			if ([kind isEqualToString:@"media"]) {
-				me.photos = [me.photos arrayByAddingObjectsFromArray:more];
+				me.photos = TGMediaPageAppending(me.photos, more);
 				me.storyGridCellCache = nil;
 				me.mediaGridCacheContent = nil;
 			} else if ([kind isEqualToString:@"files"]) {
-				me.files = [me.files arrayByAddingObjectsFromArray:more];
+				me.files = TGMediaPageAppending(me.files, more);
+			} else if ([kind isEqualToString:@"music"]) {
+				me.music = TGMediaPageAppending(me.music, more);
 			} else if ([kind isEqualToString:@"voice"]) {
-				me.voice = [me.voice arrayByAddingObjectsFromArray:more];
+				me.voice = TGMediaPageAppending(me.voice, more);
 			} else if ([kind isEqualToString:@"links"]) {
-				me.links = [me.links arrayByAddingObjectsFromArray:more];
+				me.links = TGMediaPageAppending(me.links, more);
 			}
 			[me reloadTableDebounced];
 		});

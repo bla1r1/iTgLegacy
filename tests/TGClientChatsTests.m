@@ -686,4 +686,61 @@ static int64_t orderOf(NSArray *chats, int64_t id_) {
 			@"and all five collapse into one rebuild");
 }
 
+/// setChatNotificationSettings replaces the whole record. Muting used to send
+/// only the mute pair, which reset the sound, previews and story switches.
+- (void)testMutingAChat_KeepsTheRestOfItsNotificationSettings {
+	TGClient *c = T();
+	knownChat(c, 77)[@"notificationSettings"] = @{
+		@"@type" : @"chatNotificationSettings",
+		@"use_default_mute_for" : @YES,
+		@"mute_for" : @(0),
+		@"use_default_sound" : @NO,
+		@"sound_id" : @(9),
+		@"use_default_show_preview" : @NO,
+		@"show_preview" : @NO,
+		@"use_default_mute_stories" : @NO,
+		@"mute_stories" : @YES,
+		@"use_default_story_sound" : @NO,
+		@"story_sound_id" : @(10),
+		@"use_default_show_story_poster" : @NO,
+		@"show_story_poster" : @NO,
+		@"use_default_disable_pinned_message_notifications" : @NO,
+		@"disable_pinned_message_notifications" : @YES,
+		@"use_default_disable_mention_notifications" : @NO,
+		@"disable_mention_notifications" : @YES,
+	};
+	[c setChat:77 muted:YES];
+	NSDictionary *request = nil;
+	for (NSData *d in c.outbox){
+		NSString *json = [[NSString alloc] initWithData:d encoding:NSUTF8StringEncoding];
+		NSString *trimmed = [json componentsSeparatedByString:@"\0"][0];
+		NSDictionary *row = [NSJSONSerialization JSONObjectWithData:
+				[trimmed dataUsingEncoding:NSUTF8StringEncoding] options:0 error:nil];
+		if ([row[@"@type"] isEqualToString:@"setChatNotificationSettings"])
+			request = row;
+	}
+	NSDictionary *settings = request[@"notification_settings"];
+	XCTAssertEqualObjects(settings[@"sound_id"], @(9));
+	XCTAssertEqualObjects(settings[@"show_preview"], @NO);
+	XCTAssertEqualObjects(settings[@"mute_stories"], @YES);
+	XCTAssertEqualObjects(settings[@"story_sound_id"], @(10));
+	XCTAssertEqualObjects(settings[@"show_story_poster"], @NO);
+	XCTAssertEqualObjects(settings[@"disable_mention_notifications"], @YES);
+	XCTAssertEqualObjects(settings[@"mute_for"], @(365 * 24 * 3600));
+}
+
+/// The row must carry the whole record, not just the mute flag, or the next
+/// mute has nothing to preserve.
+- (void)testChatNotificationUpdate_KeepsTheRecordOnTheRow {
+	TGClient *c = T();
+	NSDictionary *settings = @{
+		@"@type" : @"chatNotificationSettings",
+		@"mute_for" : @(60), @"sound_id" : @(12), @"show_preview" : @NO};
+	[c applyChatUpdate:@{@"@type" : @"updateChatNotificationSettings",
+						 @"chat_id" : @(77),
+						 @"notification_settings" : settings}];
+	XCTAssertEqualObjects(c.chatsById[@(77)][@"notificationSettings"], settings);
+	XCTAssertTrue([c.chatsById[@(77)][@"isMuted"] boolValue]);
+}
+
 @end

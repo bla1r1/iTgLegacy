@@ -25,6 +25,8 @@ void TGIconsClearSettingsIconCache(void) {
 				@"devices", @"language", @"faq", @"policy",
 				// the profile's action tiles
 				@"call", @"video", @"search", @"more",
+				// the profile's saved-music strip
+				@"music",
 				// the call screen
 				@"endcall", @"recent", @"star", @"speakerOn",
 				// the stories strip's add bubble

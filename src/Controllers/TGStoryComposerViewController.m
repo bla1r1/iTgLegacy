@@ -112,6 +112,29 @@ static BOOL sStoryFlowOpening = NO;
 		 usingBlock:^(NSNotification *note){
 		[weakSelf.tableView reloadData];
 	}];
+	// postStory returns while the upload is still running, so the server's
+	// final word arrives here. Only the post this screen started matters;
+	// once the request has already answered the completion below has said it.
+	[[NSNotificationCenter defaultCenter] addObserverForName:TGStoryPostFinishedNotification
+			object:nil queue:[NSOperationQueue mainQueue]
+		 usingBlock:^(NSNotification *note){
+		TGStoryComposerViewController *me = weakSelf;
+		if (!me || !me.posting)
+			return;
+		if ([note.userInfo[@"chatId"] longLongValue] != me.targetChatId)
+			return;
+		me.posting = NO;
+		[me.tableView reloadData];
+		if ([note.userInfo[@"ok"] boolValue]){
+			if (me.onPosted)
+				me.onPosted();
+			[me closeFlow];
+		} else {
+			[TGAlertSheet showMessage:note.userInfo[@"error"]
+								?: @"Telegram could not post the story."
+								title:@"New Story" inView:me.view];
+		}
+	}];
 	[self loadPostChats];
 }
 
@@ -441,7 +464,7 @@ static BOOL sStoryFlowOpening = NO;
 	[[TGClient shared] canPostStoryInChat:self.targetChatId
 							   completion:^(NSDictionary *answer){
 		TGStoryComposerViewController *me = weakSelf;
-		if (!me)
+		if (!me || !me.posting)
 			return;
 		if (![answer[@"ok"] boolValue]){
 			me.posting = NO;
@@ -462,6 +485,8 @@ static BOOL sStoryFlowOpening = NO;
 							protectContent:me.protectContent
 								  albumIds:me.albumIds
 								completion:^(NSDictionary *story, NSString *error){
+			if (!me.posting)
+				return;
 			me.posting = NO;
 			[me.tableView reloadData];
 			if (!story){

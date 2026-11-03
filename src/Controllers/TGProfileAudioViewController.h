@@ -10,5 +10,8 @@
 
 @property (nonatomic, assign) int64_t userId;
 @property (nonatomic, copy)   NSString *subjectTitle;
+/// The strip under a profile header opens this screen to start the list; the
+/// first page plays as soon as it answers.
+@property (nonatomic, assign) BOOL autoplay;
 
 @end

@@ -282,6 +282,10 @@ static char kTGReactionChipInfoKey;
 #pragma mark - ticks
 
 - (UIImage *)ticksForMessage:(NSDictionary *)m white:(BOOL)white {
+	// Until Telegram has the message there is nothing to tick: their clients
+	// put a clock in the same place, on notes and voice alike.
+	if ([m[@"sending"] boolValue])
+		return [TGIcons clockTicksWhite:white];
 	NSString *state = m[@"state"];
 	if ([state isEqualToString:@"read"]) {
 		return white ? [TGIcons ticksWhite:YES] : [TGIcons ticksColour:[[TGTheme shared] ticksColour] read:YES];

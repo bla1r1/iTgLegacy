@@ -5,6 +5,12 @@
 #import "TGIconsInternal.h"
 #import <objc/runtime.h>
 
+/// The X on a cancel disc is cut out of the same circle the play glyph is:
+/// arms start a third of the way in and the stroke is its own weight, not the
+/// circle's.
+static const CGFloat kCancelGlyphInset  = 0.32f;
+static const CGFloat kCancelGlyphStroke = 0.075f;
+
 /// Rounded copies already made of one image, most recent first. A picture
 /// is usually shown at one size, but the same file can sit in a collage tile
 /// and a single bubble at once; with one slot those two evicted each other
@@ -345,6 +351,48 @@ static char kAwaitedKey;
 	CGContextDrawLinearGradient(ctx, grad, CGPointMake(0, 0), CGPointMake(0, side), 0);
 	CGGradientRelease(grad);
 	CGColorSpaceRelease(cs);
+
+	UIImage *image = UIGraphicsGetImageFromCurrentImageContext();
+	UIGraphicsEndImageContext();
+	TGIconsSetCached(key, image);
+	return image;
+}
+
+/// The same disc and the same gradient. The circle is the media disc's own
+/// 20-of-24 path expanded to the image, so the X is the only thing that
+/// differs: it is drawn clear, which leaves the bubble showing through it the
+/// way the play triangle does.
++ (UIImage *)cancelDiscOfSide:(CGFloat)side {
+	NSString *key = [NSString stringWithFormat:@"cancelDisc_%.0f", side];
+	UIImage *cached = TGIconsGetCached(key);
+	if (cached) return cached;
+
+	UIGraphicsBeginImageContextWithOptions(CGSizeMake(side, side), NO, 0);
+	CGContextRef ctx = UIGraphicsGetCurrentContext();
+
+	CGContextAddEllipseInRect(ctx, CGRectMake(0, 0, side, side));
+	CGContextClip(ctx);
+	CGFloat colors[8] = {
+		0.52f, 0.78f, 0.96f, 1.0f,
+		0.28f, 0.54f, 0.78f, 1.0f
+	};
+	CGFloat locs[2] = {0.0f, 1.0f};
+	CGColorSpaceRef cs = CGColorSpaceCreateDeviceRGB();
+	CGGradientRef grad = CGGradientCreateWithColorComponents(cs, colors, locs, 2);
+	CGContextDrawLinearGradient(ctx, grad, CGPointMake(0, 0), CGPointMake(0, side), 0);
+	CGGradientRelease(grad);
+	CGColorSpaceRelease(cs);
+
+	CGFloat inset = side * kCancelGlyphInset;
+	CGFloat stroke = side * kCancelGlyphStroke;
+	CGContextSetBlendMode(ctx, kCGBlendModeClear);
+	CGContextSetLineWidth(ctx, stroke);
+	CGContextSetLineCap(ctx, kCGLineCapRound);
+	CGContextMoveToPoint(ctx, inset, inset);
+	CGContextAddLineToPoint(ctx, side - inset, side - inset);
+	CGContextMoveToPoint(ctx, side - inset, inset);
+	CGContextAddLineToPoint(ctx, inset, side - inset);
+	CGContextStrokePath(ctx);
 
 	UIImage *image = UIGraphicsGetImageFromCurrentImageContext();
 	UIGraphicsEndImageContext();

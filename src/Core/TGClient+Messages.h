@@ -2,6 +2,7 @@
 // TGClient+Messages.h - the client surface for the message wire: history, sending, editing, deleting, searching.
 //
 #import "TGClient+Base.h"
+#import <CoreGraphics/CoreGraphics.h>
 
 @interface TGClient (Messages)
 
@@ -23,6 +24,12 @@
 - (void)historyForChat:(int64_t)chatId
          fromMessageId:(int64_t)fromMessageId
                 offset:(NSInteger)offset
+                 limit:(NSInteger)limit
+            completion:(void (^)(NSArray *messages))completion;
+
+/// A page with the message itself in the middle, for jumping to it.
+- (void)historyForChat:(int64_t)chatId
+       aroundMessageId:(int64_t)messageId
                  limit:(NSInteger)limit
             completion:(void (^)(NSArray *messages))completion;
 
@@ -133,11 +140,49 @@
 				 toChat:(int64_t)chatId thread:(int64_t)threadId
 			   viewOnce:(BOOL)viewOnce;
 
+/// A voice note with its upload reported. There is no transcode, so
+/// `progress` is the whole line. `accepted` gets the pending message id as
+/// soon as sendMessage answers, before the waiter is usable.
+- (void)sendVoiceAtPath:(NSString *)path duration:(NSInteger)seconds
+				 toChat:(int64_t)chatId thread:(int64_t)threadId
+			   viewOnce:(BOOL)viewOnce
+			   progress:(void (^)(CGFloat progress))progress
+			   accepted:(void (^)(int64_t messageId))accepted
+			 completion:(void (^)(BOOL sent))completion;
+
 /// A square video note recorded on this device.
 - (void)sendVideoNoteAtPath:(NSString *)path duration:(NSInteger)seconds
 					 length:(NSInteger)length
 					 toChat:(int64_t)chatId thread:(int64_t)threadId
 				   viewOnce:(BOOL)viewOnce;
+
+/// The same send with the note's life reported: `progress` runs on the main
+/// queue with the upload's share, 0..1, and `completion` once TDLib has
+/// confirmed the message (YES) or refused it (NO). Both may be nil.
+- (void)sendVideoNoteAtPath:(NSString *)path duration:(NSInteger)seconds
+					 length:(NSInteger)length
+					 toChat:(int64_t)chatId thread:(int64_t)threadId
+				   viewOnce:(BOOL)viewOnce
+				   progress:(void (^)(CGFloat progress))progress
+				 completion:(void (^)(BOOL sent))completion;
+
+/// The full note send. `thumbnailPath` is the first-frame JPEG the recorder
+/// made, or nil; `accepted` receives the pending id before the waiter exists.
+- (void)sendVideoNoteAtPath:(NSString *)path duration:(NSInteger)seconds
+					 length:(NSInteger)length
+					 toChat:(int64_t)chatId thread:(int64_t)threadId
+				   viewOnce:(BOOL)viewOnce
+				thumbnail:(NSString *)thumbnailPath
+				   progress:(void (^)(CGFloat progress))progress
+				   accepted:(void (^)(int64_t messageId))accepted
+				 completion:(void (^)(BOOL sent))completion;
+
+/// The upload's last reported fraction for a send, or 0 when it is unknown.
+- (CGFloat)sendProgressForMessage:(int64_t)messageId;
+
+/// Cancels a pending send the way their clients do: delete it and revoke it.
+/// The waiter is answered as a success, because the person asked for it.
+- (void)cancelSendingMessage:(int64_t)messageId inChat:(int64_t)chatId;
 
 /// Send a video file from the library.
 - (void)sendVideoAtPath:(NSString *)path toChat:(int64_t)chatId;

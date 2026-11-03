@@ -114,6 +114,7 @@ static const CGFloat kThumbStripH   = 54.0f;
 /// currentPlaybackTime that seeks to the nearest keyframe, so dragging the
 /// scrubber jumped in half-second steps. A layer plays where it is put.
 @property (nonatomic, strong) AVPlayer *player;
+@property (nonatomic, assign) BOOL triedMovieCopy;
 @property (nonatomic, strong) AVPlayerLayer *playerLayer;
 @property (nonatomic, strong) TGPlayerView *playerView;
 @property (nonatomic, assign) NSInteger moviePage;
@@ -1264,6 +1265,7 @@ static CGAffineTransform TGTransformOnto(CGRect resting, CGRect target) {
 	if (!fileId)
 		return;
 
+	self.triedMovieCopy = NO;
 	self.timeLabel.text = @"...";
 	__weak typeof(self) weakSelf = self;
 	NSInteger fetchingPage = self.index;
@@ -1343,7 +1345,36 @@ static CGAffineTransform TGTransformOnto(CGRect resting, CGRect target) {
 	return CMTIME_IS_VALID(now) ? CMTimeGetSeconds(now) : 0;
 }
 
+/// AVPlayer says nothing on its own when it cannot decode a file: the picture
+/// stays black and the clock never moves. One smaller copy is tried, then the
+/// viewer says so.
+- (void)movieFailed {
+	NSLog(@"video playback: %@", self.player.currentItem.error);
+	NSNumber *copy = self.items[self.index][@"videoFallbackId"];
+	[self stopMovie];
+	self.timeLabel.text = @"--:--";
+	if (self.triedMovieCopy || ![copy isKindOfClass:NSNumber.class]){
+		[TGAlertSheet showMessage:@"This video's format cannot be played on this device."
+							title:@"Video" inView:self.backdrop];
+		return;
+	}
+	self.triedMovieCopy = YES;
+	self.timeLabel.text = @"...";
+	__weak typeof(self) weakSelf = self;
+	NSInteger page = self.index;
+	[self beginLoadingPage:page];
+	[[TGMediaStore shared] downloadFile:copy.integerValue completion:^(NSString *path){
+		[weakSelf endLoadingPage:page];
+		if (path.length && weakSelf.index == page)
+			[weakSelf startMovieAtPath:path];
+	}];
+}
+
 - (void)movieTicked {
+	if (self.player.currentItem.status == AVPlayerItemStatusFailed){
+		[self movieFailed];
+		return;
+	}
 	NSTimeInterval duration = [self movieDuration];
 	if (duration <= 0)
 		return;

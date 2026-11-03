@@ -4,6 +4,7 @@
 // birthdays, the sharing theme, and the account's own accent colours.
 //
 #import "TGClient+Base.h"
+#import <UIKit/UIKit.h>
 
 @interface TGClient (Profile)
 
@@ -74,6 +75,19 @@
 - (void)myAccentColorsWithCompletion:(void (^)(NSInteger accentId,
 											  NSInteger profileAccentId))completion;
 
+/// The same two ids plus the two background-emoji ids. Setting a colour has to
+/// hand these back to TDLib untouched, otherwise a colour change erases the
+/// emoji pattern already on the account.
+- (void)myAccentColoursWithCompletion:(void (^)(NSInteger accentId,
+											   NSInteger profileAccentId,
+											   int64_t backgroundEmojiId,
+											   int64_t profileBackgroundEmojiId))completion;
+
+/// The server's colour for one accent id, from the updateAccentColors record.
+/// Nil when the record has not arrived for that id yet; callers draw a neutral
+/// tile until it does.
+- (UIColor *)accentColourForId:(NSInteger)colourId profile:(BOOL)profile;
+
 - (void)setAccountAccentColor:(NSInteger)accentId
 	   backgroundEmojiId:(int64_t)emojiId
 			  completion:(void (^)(BOOL ok, NSString *error))completion;
@@ -81,6 +95,16 @@
 - (void)setAccountProfileAccentColor:(NSInteger)accentId
 				 backgroundEmojiId:(int64_t)emojiId
 						completion:(void (^)(BOOL ok, NSString *error))completion;
+
+/// Picking a colour must keep the background emoji the account already has.
+/// These read the current ids first and pass them through, so a caller cannot
+/// send 0 by forgetting them.
+- (void)setAccountAccentColorPreservingBackgroundEmoji:(NSInteger)accentId
+											completion:(void (^)(BOOL ok,
+																 NSString *error))completion;
+- (void)setAccountProfileAccentColorPreservingBackgroundEmoji:(NSInteger)accentId
+												   completion:(void (^)(BOOL ok,
+																		 NSString *error))completion;
 
 /// Backgrounds the sharing screen can use: each is a dictionary with "id",
 /// "name" and "colors". A refusal carries the server's sentence.

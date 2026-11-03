@@ -141,9 +141,23 @@ extern NSString *const TGChatVideoPublishedNotification;
 /// community list and the open detail screen re-read the client's cache.
 extern NSString *const TGCommunitiesChangedNotification;
 
-/// updateChatActiveStories: one chat gained, changed or lost its active
-/// stories. userInfo carries the rebuilt strip row ("row") for the main list.
+/// updateChatActiveStories, updateStory or updateStoryDeleted: one chat's
+/// strip row changed, or a story in it did. userInfo carries "chatId" and a
+/// rebuilt "row", "remove", a flattened "story" or a "deletedStoryId"; the
+/// strip reads the row and an open viewer reads the story.
 extern NSString *const TGStoriesChangedNotification;
+
+/// A story post finished on the server. userInfo carries "ok", "chatId",
+/// "storyId", "story" on success and "error" on failure.
+extern NSString *const TGStoryPostFinishedNotification;
+
+/// One chat's revenue amount changed. userInfo carries "chatId"; the Stars
+/// screen re-reads getChatRevenueStatistics for that chat.
+extern NSString *const TGChatRevenueChangedNotification;
+
+/// An owner's Star revenue status changed. userInfo carries "ownerKind" and
+/// "ownerId"; the Stars screen re-reads getStarRevenueStatistics.
+extern NSString *const TGStarRevenueChangedNotification;
 
 /// A quick-reply shortcut or one of its messages changed. No payload; the
 /// manager and the open shortcut re-read the cache.

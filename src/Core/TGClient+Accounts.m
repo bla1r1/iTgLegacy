@@ -197,6 +197,8 @@ NSString *TGAccountDefaultsKey(NSString *base) {
 	// Account facts the settings and profile pages read from the client.
 	self.accentColorIds = @[];
 	self.profileAccentColorIds = @[];
+	self.accentColors = @[];
+	self.profileAccentColors = @[];
 	self.contactCloseBirthdays = @[];
 	self.freezeStateValue = nil;
 	self.ageVerificationParametersValue = nil;
@@ -208,6 +210,14 @@ NSString *TGAccountDefaultsKey(NSString *base) {
 	self.emojiChatThemesValue = @[];
 	self.stoppedMessageDraftValue = nil;
 	self.publishedVideoValue = nil;
+	for (NSNumber *pending in [self.noteSendWaiters allKeys])
+		[self noteSendFinished:pending.longLongValue sent:NO];
+	self.storyMainListChatCount = 0;
+	self.storyArchiveListChatCount = 0;
+	self.storyStealthModeValue = nil;
+	self.ownedStarCountValue = 0;
+	[self.chatRevenueAmountByChat removeAllObjects];
+	[self.starRevenueStatusByOwner removeAllObjects];
 	self.reactionDefaultEmoji = nil;
 	self.reactionNotificationSettingsValue = nil;
 	self.gifSearchProvider = nil;

@@ -541,7 +541,7 @@ static NSString *TGNotificationGroupLabel(NSString *type) {
 				[weakSelf showLoginEmailFlow];
 			}),
 			TGIconTapRow(@"Phone Number",
-					[TGClient shared].me[@"phone_number"] ?: nil,
+					[TGClient shared].me[@"phone"] ?: nil,
 					@"call", TGIconTileGreen(), ^{
 				[weakSelf showChangePhoneFlow];
 			}),

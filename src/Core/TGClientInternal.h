@@ -20,6 +20,29 @@ extern "C" {
 /// A TDLib sticker in the shape the panel uses; nil without a file.
 NSDictionary *TGStickerInfo(NSDictionary *sticker);
 
+/// One profileAudio object flattened for a row: "fileId", "title",
+/// "performer", "duration", "fileName", "mimeType", "albumCoverId". Nil when
+/// the object names no audio file. Shared by the profile list and the header
+/// strip so both draw the same shape from `first_profile_audio`.
+NSDictionary *TGProfileAudioRow(NSDictionary *audio);
+
+/// The birthday a profile row shows, or nil for none. "Birthday today" when
+/// `now` lands on the day and month, otherwise "March 5" or, with a year,
+/// "March 5, 1990 (34 years old)". `now` is a parameter so a host test can
+/// pin today instead of depending on the wall clock.
+NSString *TGProfileBirthdayText(NSInteger day, NSInteger month, NSInteger year, NSDate *now);
+BOOL TGProfileBirthdayIsToday(NSInteger day, NSInteger month, NSDate *now);
+
+/// The first active username of a raw TDLib user, or nil. TDLib sends an
+/// empty active_usernames array for an account with no username, so a bare
+/// `[0]` subscript raises and must never be written at a call site.
+NSString *TGFirstUsername(NSDictionary *user);
+
+/// Appends one search page to an existing list, dropping a message id that is
+/// already there. TDLib starts a search at the message named in
+/// from_message_id, so the last row of the current page comes back first.
+NSArray *TGMediaPageAppending(NSArray *existing, NSArray *more);
+
 #ifdef __cplusplus
 }
 #endif
@@ -101,6 +124,11 @@ NSDictionary *TGStickerInfo(NSDictionary *sticker);
 /// the same rule.
 @property (nonatomic, strong) NSArray *accentColorIds;
 @property (nonatomic, strong) NSArray *profileAccentColorIds;
+/// The full accentColor / profileAccentColor records (id plus the light/dark
+/// RGB arrays) behind those ids, so a swatch can be drawn from the server's
+/// colours instead of a name list.
+@property (nonatomic, strong) NSArray *accentColors;
+@property (nonatomic, strong) NSArray *profileAccentColors;
 /// Contacts with a birthday nearby, from updateContactCloseBirthdays. The
 /// privacy page shows the count and hideContactCloseBirthdays empties it.
 @property (nonatomic, strong) NSArray *contactCloseBirthdays;
@@ -126,6 +154,22 @@ NSDictionary *TGStickerInfo(NSDictionary *sticker);
 /// that opens after the notification can still say what happened.
 @property (nonatomic, copy) NSDictionary *stoppedMessageDraftValue;
 @property (nonatomic, copy) NSDictionary *publishedVideoValue;
+/// Voice and round notes being sent, by pending message id: the file being
+/// uploaded, the last fraction, and the blocks waiting to hear about it.
+@property (nonatomic, strong) NSMutableDictionary *noteSendWaiters;
+- (void)noteUploadProgress:(NSInteger)fileId fraction:(float)fraction;
+- (void)noteSendFinished:(int64_t)messageId sent:(BOOL)sent;
+/// The story strip's chat counts per list, and the stealth window Telegram
+/// last reported. The stories menu reads both from the client.
+@property (nonatomic, assign) NSInteger storyMainListChatCount;
+@property (nonatomic, assign) NSInteger storyArchiveListChatCount;
+@property (nonatomic, copy) NSDictionary *storyStealthModeValue;
+/// Star facts that only arrive as updates: the account's own balance, one
+/// chat's revenue amount and one owner's revenue status. The revenue screens
+/// ask for the same numbers, so each keeps its own notification.
+@property (nonatomic, assign) int64_t ownedStarCountValue;
+@property (nonatomic, strong) NSMutableDictionary *chatRevenueAmountByChat;
+@property (nonatomic, strong) NSMutableDictionary *starRevenueStatusByOwner;
 /// Text composition styles arrive whole in updateTextCompositionStyles and
 /// change only through the seven calls in TGClient+TextStyles. The manager
 /// and the composer read this one list.
@@ -246,6 +290,19 @@ extern double TGFileWaiterTimeoutSeconds;
 /// updateChatActiveStories: the strip row for one chat. Kept in
 /// TGClient+Stories beside the per-chat read it replaces.
 - (void)applyChatActiveStoriesUpdate:(NSDictionary *)update;
+/// The story updates: one story changed or went away, a post finished, the
+/// strip count moved, and the stealth window changed. Kept in
+/// TGClient+Stories so the row and viewer notifications use one shape.
+- (void)applyStoryUpdate:(NSDictionary *)update;
+- (void)applyStoryDeletedUpdate:(NSDictionary *)update;
+- (void)applyStoryPostUpdate:(NSDictionary *)update;
+- (void)applyStoryListChatCountUpdate:(NSDictionary *)update;
+- (void)applyStoryStealthModeUpdate:(NSDictionary *)update;
+/// Star balances and revenue. Kept in TGClient+Tier3 beside the requests the
+/// Stars screen already makes for the same numbers.
+- (void)applyOwnedStarCountUpdate:(NSDictionary *)update;
+- (void)applyChatRevenueAmountUpdate:(NSDictionary *)update;
+- (void)applyStarRevenueStatusUpdate:(NSDictionary *)update;
 /// One field on one chat row changed, so the list is stale but nothing is
 /// waiting on it this instant. Updates that arrive in floods - a typing
 /// storm, the presence burst at login, a forum flag landing on twenty chats
@@ -268,6 +325,8 @@ extern "C" {
 
 // Common helpers shared between TGClient and categories
 NSDictionary *TGFlattenMessage(NSDictionary *m);
+NSNumber *TGPlayableVideoFileId(NSDictionary *video, NSArray *alternatives, int maxSide,
+								NSNumber **fallback);
 NSDictionary *TGFlattenReplyMarkup(NSDictionary *markup);
 NSString *TGMessagePreview(NSDictionary *message);
 NSString *TGKnownMessagePreview(NSDictionary *message);

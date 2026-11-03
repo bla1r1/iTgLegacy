@@ -105,7 +105,7 @@ FRAMEWORKS := -framework UIKit -framework Accelerate -framework Foundation -fram
               -framework SystemConfiguration -framework CoreGraphics \
               -framework QuartzCore -framework MediaPlayer \
               -framework AVFoundation -framework AudioToolbox \
-              -framework CoreMedia -framework AddressBook \
+              -framework CoreMedia -framework CoreVideo -framework AddressBook \
               -framework AddressBookUI -framework MobileCoreServices \
               -framework CoreLocation -framework MapKit \
               -framework CoreTelephony -framework CoreImage \
@@ -297,8 +297,11 @@ APP_SRC_M := \
 	src/Controllers/TGChatListViewController+Search.m \
 	src/Views/TGChatCell.m \
 	src/Views/TGRecordBar.m \
+	src/Views/TGProfileTrackCell.m \
 	src/Core/TGGhostMode.m \
+	src/Core/TGPlaybackQueue.m \
 	src/Controllers/TGStoryCameraViewController.m \
+	src/Controllers/TGProfileAppearanceViewController.m \
 	src/Views/TGChatListRowGeometry.m \
 	src/Views/TGStoriesCell.m \
 	src/Views/TGEmojiData.m \

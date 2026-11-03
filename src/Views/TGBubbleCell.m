@@ -10,6 +10,12 @@
 
 /// How visible the part of a voice note nobody has heard yet is.
 static const CGFloat kWaveUnplayedAlpha = TGAlphaHighlight;
+/// A sending arc is a thin line just inside the disc, the same weight as the
+/// recorder's own progress ring.
+static const CGFloat kSendRingLineWidth = 2.0f;
+/// Telegram keeps a sliver of the ring visible before any progress arrives, so
+/// a send that has not started does not look like a disc with no control.
+static const CGFloat kSendRingMinimum = 0.2f;
 
 @interface TGBubbleCell () {
 	CTFrameRef _textFrame;          // the laid-out body text, for hit-testing
@@ -26,6 +32,7 @@ static const CGFloat kWaveUnplayedAlpha = TGAlphaHighlight;
 @property (nonatomic, strong) CALayer *wavePlayedClip;
 @property (nonatomic, strong) CAShapeLayer *wavePlayedLayer;
 @property (nonatomic, strong) NSData *waveformPathData;
+@property (nonatomic, strong) CAShapeLayer *sendRing;
 @property (nonatomic, strong) AVPlayer *loopPlayer;
 @property (nonatomic, strong) AVPlayerLayer *loopLayer;
 @property (nonatomic, copy) NSString *loopingPath;
@@ -427,6 +434,70 @@ static const CGFloat kWaveUnplayedAlpha = TGAlphaHighlight;
 										   _waveSize.height);
 }
 
+#pragma mark - sending ring
+
+- (void)showSendRingWithProgress:(CGFloat)progress {
+	CGRect bounds = self.disc.bounds;
+	if (bounds.size.width <= 0 || bounds.size.height <= 0)
+		return;
+
+	if (!self.sendRing){
+		self.sendRing = [CAShapeLayer layer];
+		self.sendRing.fillColor = [UIColor clearColor].CGColor;
+		// The media disc's glyph is the theme's over-media white, so the arc
+		// reads as the same control rather than a second blue ring.
+		self.sendRing.strokeColor = [[TGTheme shared] onMediaColour].CGColor;
+		self.sendRing.lineWidth = kSendRingLineWidth;
+		self.sendRing.lineCap = kCALineCapRound;
+		// Progress lands several times a second. Without this every value
+		// would fade in over the default quarter second.
+		self.sendRing.actions = @{@"path"      : [NSNull null],
+								  @"bounds"    : [NSNull null],
+								  @"position"  : [NSNull null],
+								  @"strokeEnd" : [NSNull null],
+								  @"transform" : [NSNull null]};
+		[self.disc.layer addSublayer:self.sendRing];
+	}
+
+	if (!CGSizeEqualToSize(self.sendRing.bounds.size, bounds.size)){
+		self.sendRing.frame = bounds;
+		CGFloat radius = TGHalf(MIN(bounds.size.width, bounds.size.height)) -
+				TGHalf(kSendRingLineWidth);
+		UIBezierPath *circle = [UIBezierPath bezierPathWithArcCenter:
+				CGPointMake(TGHalf(bounds.size.width), TGHalf(bounds.size.height))
+				radius:radius startAngle:(CGFloat)-M_PI_2
+				endAngle:(CGFloat)(M_PI + M_PI_2) clockwise:YES];
+		self.sendRing.path = circle.CGPath;
+	}
+
+	if (progress < kSendRingMinimum)
+		progress = kSendRingMinimum;
+	if (progress > 1)
+		progress = 1;
+	self.sendRing.strokeEnd = progress;
+
+	// The render server drops an animation when its layer leaves the tree, so
+	// a cell scrolled back in has to ask for the turn again. The disc is
+	// already drawn; only the arc moves.
+	if (![self.sendRing animationForKey:@"sendSpin"]){
+		CABasicAnimation *spin = [CABasicAnimation animationWithKeyPath:@"transform.rotation"];
+		spin.fromValue = @(0);
+		spin.toValue = @((CGFloat)(M_PI * 2));
+		spin.duration = TGAnimationDurationSlow * 4;
+		spin.repeatCount = HUGE_VALF;
+		spin.timingFunction = [CAMediaTimingFunction functionWithName:
+				kCAMediaTimingFunctionLinear];
+		[self.sendRing addAnimation:spin forKey:@"sendSpin"];
+	}
+}
+
+- (void)hideSendRing {
+	if (!self.sendRing)
+		return;
+	[self.sendRing removeFromSuperlayer];
+	self.sendRing = nil;
+}
+
 #pragma mark - looping GIF
 
 - (BOOL)isPlayingLoop {
@@ -525,9 +596,15 @@ static const CGFloat kWaveUnplayedAlpha = TGAlphaHighlight;
 	[_parkedParents removeAllObjects];
 }
 
+- (void)prepareForReuse {
+	[super prepareForReuse];
+	[self hideSendRing];
+}
+
 - (void)resetForReuse {
 	[self unparkViews];
 	[self stopLoopingVideo];
+	[self hideSendRing];
 	self.icon.hidden = YES;
 	self.subtitle.hidden = YES;
 	self.subtitle.text = nil;

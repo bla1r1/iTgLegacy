@@ -105,6 +105,11 @@ comm -23 "$TMP/upd_all" "$TMP/upd_used" > "$TMP/upd_gap"
 # feature this client will not draw belongs in the skip pattern.
 SKIP='[Tt]on[CW]|TonConnect|updateActiveEmojiReactions|updateMessageSendAcknowledged|updatePendingMessage|TonCenter|TonTransaction|tonWallet|[Ww]allet|Stor(y|ies)|[Bb]usiness|[Bb]ot|WebApp|[Ww]ebApp|webBrowser|BrowserSettings|[Pp]assport|[Pp]remium|[Bb]oost|[Gg]iveaway|[Aa]ffiliate|[Ss]tar[A-Z]|[Ss]tars|[Pp]aidMedia|[Pp]aidMessage|[Gg]ift|[Cc]hecklist|[Cc]ommunity|[Cc]ommunities|[Gg]roupCall|[Vv]ideoChat|[Ll]iveStory|LiveStream|[Ss]creenSharing|Rtmp|[Aa]i$|WithAi|[Oo]nRamp|[Pp]ayment|[Ii]nvoice|[Gg]ame[A-Z]|[Gg]ameHigh|InlineGame|[Ss]ponsored|[Aa]dvertisement|[Aa]dAccount|[Ll]og[A-Z]|[Jj]son|[Dd]ice|[Aa]larm|[Cc]ollectible|[Ee]phemeral|[Pp]asskey|[Oo]auth|[Ss]uggestedAction|[Ff]actCheck|[Aa]ntiSpam|[Ss]upportInfo|[Ss]upportName|[Tt]imeZone|[Cc]urrentWeather|CurrencyExchange|[Nn]ft|^test[A-Z]|^testNetwork|answerCallbackQuery|answerInlineQuery|answerPreCheckoutQuery|answerShippingQuery|answerCustomQuery|answerGuestQuery|[Rr]evenue|[Ww]ithdrawal|[Gg]ram[A-Z]|[Ss]uggestedPost|[Ss]ummarize|[Rr]ichMessage|[Ss]peech|listenToAudio|[Qq]uickReply|[Ww]ebProxyCarrier|StoreTransaction|PurchaseFromStore|[Mm]enuButton|[Cc]ommands$|^deleteCommands|^setCommands|^getCommands|^updateNew(Callback|Chosen|Custom|Guest|Inline|PreCheckout|Shipping)|[Pp]aidReaction|^updatePoll$|^updatePollAnswer$'
 
+# The story, message, chat and Star updates below are handled now, but their
+# area patterns still say "not this client". If a branch is removed they must
+# be reported as a wanted update, not hidden in the out-of-scope pile.
+WANTED_UPDATES='^updateStory$|^updateStoryDeleted$|^updateStoryPostSucceeded$|^updateStoryPostFailed$|^updateStoryListChatCount$|^updateStoryStealthMode$|^updateMessageFactCheck$|^updateMessageEphemeralContent$|^updateMessageSuggestedPostInfo$|^updateChatVideoChat$|^updateOwnedStarCount$|^updateChatRevenueAmount$|^updateStarRevenueStatus$'
+
 case "${1:-}" in
     --list)     cat "$TMP/gap"; exit 0 ;;
     --used)     cat "$TMP/used"; exit 0 ;;
@@ -112,7 +117,8 @@ case "${1:-}" in
     --skipped)  grep -E  "$SKIP" "$TMP/gap"; exit 0 ;;
     --wired)    python3 "$ROOT/scripts/tdlib_wired.py" --wired; exit 0 ;;
     --bare)     python3 "$ROOT/scripts/tdlib_wired.py" --bare; exit 0 ;;
-    --updates)  grep -vE "$SKIP" "$TMP/upd_gap"; exit 0 ;;
+    --updates)  { grep -vE "$SKIP" "$TMP/upd_gap"; \
+                  grep -E "$WANTED_UPDATES" "$TMP/upd_gap"; } | sort -u; exit 0 ;;
     --ignored)  cat "$TMP/upd_ignored"; exit 0 ;;
 esac
 
@@ -135,6 +141,7 @@ upd_used=$(wc -l < "$TMP/upd_used" | tr -d ' ')
 upd_read=$(wc -l < "$TMP/upd_read" | tr -d ' ')
 upd_ignored=$(wc -l < "$TMP/upd_ignored" | tr -d ' ')
 upd_rel=$(grep -vcE "$SKIP" "$TMP/upd_gap")
+upd_rel=$((upd_rel + $(grep -cE "$WANTED_UPDATES" "$TMP/upd_gap" || true)))
 printf 'td_api updates:    %s\n' "$upd_total"
 printf 'let through:       %s (%s%%)\n' "$upd_used" "$((upd_used * 100 / upd_total))"
 printf '  acted on:        %s   (a branch changes state or tells a screen)\n' "$upd_read"

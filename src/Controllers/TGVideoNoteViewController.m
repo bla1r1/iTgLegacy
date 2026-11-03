@@ -1,7 +1,6 @@
 #import "TGVideoNoteViewController.h"
 #import "TGVideoNoteRecorder.h"
 #import "TGRecordBar.h"
-#import "TGClient.h"
 #import "TGTheme.h"
 #import "TGStyle.h"
 #import "TGIcons.h"
@@ -21,9 +20,6 @@ static const CGFloat kRingWidth  = 3.0f;
 static const CGFloat kStageScaleHidden = 0.7f;
 /// How far past its size the circle goes before settling.
 static const CGFloat kStageScaleOver = 1.03f;
-static const CGFloat kPendingWidth = 196.0f;
-static const CGFloat kPendingHeight = 30.0f;
-static const CGFloat kPendingTop = 72.0f;
 
 @interface TGVideoNoteViewController ()
 @property (nonatomic, assign) int64_t chatId;
@@ -72,15 +68,19 @@ static const CGFloat kPendingTop = 72.0f;
 - (void)attachPreviewWithSession:(AVCaptureSession *)session {
 	if (self.preview || !session)
 		return;
-	// From here the picture is live, and rounding it would cost a frame's worth
-	// of offscreen drawing every frame. See the note on the cover.
-	self.previewHost.clipsToBounds = NO;
-	self.circleCover.hidden = NO;
 	self.preview = [AVCaptureVideoPreviewLayer layerWithSession:session];
 	self.preview.videoGravity = AVLayerVideoGravityResizeAspectFill;
 	self.preview.frame = self.previewHost.bounds;
 	[self applyPreviewOrientation];
 	[self.previewHost.layer addSublayer:self.preview];
+}
+
+/// From here the picture is live, and rounding it would cost a frame's worth of
+/// offscreen drawing every frame. See the note on the cover.
+- (void)cameraIsLive {
+	self.previewHost.clipsToBounds = NO;
+	self.circleCover.hidden = NO;
+	[self applyPreviewOrientation];
 }
 
 /// The front camera hands its frames over sideways on this hardware: the preview
@@ -201,10 +201,13 @@ static const CGFloat kPendingTop = 72.0f;
 
 	__weak typeof(self) weakSelf = self;
 	TGVideoNoteRecorder *recorder = [TGVideoNoteRecorder shared];
+	// Before startRunning, not after: a preview layer added to a running session
+	// reconfigures it, which held the main thread for another 1.5 s on the A4.
+	[self attachPreviewWithSession:recorder.session];
 	if (recorder.session.isRunning)
-		[self attachPreviewWithSession:recorder.session];
+		[self cameraIsLive];
 	recorder.onSession = ^(AVCaptureSession *session){
-		[weakSelf attachPreviewWithSession:session];
+		[weakSelf cameraIsLive];
 	};
 	recorder.onReady = ^{
 		[weakSelf recordingBecameReady];
@@ -316,6 +319,9 @@ static const CGFloat kPendingTop = 72.0f;
 	recorder.onSession = nil;
 	recorder.onReady = nil;
 	recorder.onCameraSwitched = nil;
+	self.onSend = nil;
+	// onExportProgress stays: the export outlives this screen, and its
+	// completion is what clears it.
 	[self.timer invalidate];
 	self.timer = nil;
 	[self restoreBrightness];
@@ -497,53 +503,13 @@ static const CGFloat kPendingTop = 72.0f;
 		return;
 	self.sending = YES;
 	BOOL once = self.onceOn;
-	int64_t chatId = self.chatId;
-	int64_t threadId = self.threadId;
-	// The export takes most of the note's length on the A4. The chat comes back
-	// at once with a line saying what is happening; nothing waits on the camera.
-	UIView *pending = [self pendingPlateOn:self.view.superview];
-	[[TGVideoNoteRecorder shared] stopWithCompletion:^(NSString *path, NSTimeInterval seconds){
-		[UIView animateWithDuration:TGAnimationDurationNormal animations:^{
-			pending.alpha = TGAlphaTransparent;
-		} completion:^(BOOL finished){
-			[pending removeFromSuperview];
-		}];
-		if (path && seconds >= 0.5)
-			[[TGClient shared] sendVideoNoteAtPath:path
-										  duration:MIN(kNoteLimitShown, (NSInteger)ceil(seconds))
-											length:[TGVideoNoteRecorder shared].noteSide
-											toChat:chatId
-											thread:threadId
-										  viewOnce:once];
-	}];
-	[self dismiss];
-}
 
-- (UIView *)pendingPlateOn:(UIView *)host {
-	UIView *plate = [[UIView alloc] initWithFrame:CGRectMake(
-			TGCenteredOrigin(host.bounds.size.width, kPendingWidth), kPendingTop,
-			kPendingWidth, kPendingHeight)];
-	plate.backgroundColor = [[TGTheme shared] mediaOverlayColour];
-	plate.layer.cornerRadius = TGHalf(kPendingHeight);
-	plate.userInteractionEnabled = NO;
-	UIActivityIndicatorView *spinner = [[UIActivityIndicatorView alloc]
-			initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleWhite];
-	spinner.center = CGPointMake(TGHalf(kPendingHeight), TGHalf(kPendingHeight));
-	[spinner startAnimating];
-	[plate addSubview:spinner];
-	UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(kPendingHeight, 0,
-			kPendingWidth - kPendingHeight, kPendingHeight)];
-	label.text = @"Preparing video note…";
-	label.font = TGFontCaption();
-	label.textColor = [[TGTheme shared] onMediaColour];
-	label.backgroundColor = [UIColor clearColor];
-	[plate addSubview:label];
-	plate.alpha = TGAlphaTransparent;
-	[host addSubview:plate];
-	[UIView animateWithDuration:TGAnimationDurationNormal animations:^{
-		plate.alpha = TGAlphaOpaque;
-	}];
-	return plate;
+	// The chat is already behind this screen, and it is where the note belongs
+	// from the first tap. It stops the recorder and takes the send over, so the
+	// note still goes out if this screen leaves first.
+	if (self.onSend)
+		self.onSend(once);
+	[self dismiss];
 }
 
 - (void)cancelTapped {

@@ -3,12 +3,16 @@
 //
 #import "TGStreamingVoicePlayer.h"
 #import <AudioToolbox/AudioToolbox.h>
+#import <AVFoundation/AVFoundation.h>
 #include "opusfile/opusfile.h"
 
 static const int kNumBuffers = 3;
 static const int kBufferSamples = 4096; // 4096 frames = ~85.3ms at 48kHz stereo
 
-@interface TGStreamingVoicePlayer () {
+@interface TGStreamingVoicePlayer () <AVAudioPlayerDelegate> {
+	// A voice note is not always Ogg Opus: bots and channels post MP3 and M4A
+	// as voice, and the system decoder handles those. Set instead of the queue.
+	AVAudioPlayer *_plain;
 	OggOpusFile *_opusFile;
 	AudioQueueRef _audioQueue;
 	AudioQueueBufferRef _buffers[kNumBuffers];
@@ -50,6 +54,14 @@ static void TGStreamingAudioQueueOutputCallback(void *inUserData, AudioQueueRef 
 
 		int err = 0;
 		_opusFile = op_open_file(path.UTF8String, &err);
+		if (!_opusFile && err == OP_ENOTFORMAT){
+			_plain = [[AVAudioPlayer alloc] initWithContentsOfURL:[NSURL fileURLWithPath:path] error:nil];
+			_plain.delegate = self;
+			_plain.enableRate = YES;
+			[_plain prepareToPlay];
+			if (_plain)
+				return self;
+		}
 		if (!_opusFile){
 			if (outError)
 				*outError = [NSError errorWithDomain:@"TGStreamingVoicePlayer" code:err
@@ -153,7 +165,17 @@ static void TGStreamingAudioQueueOutputCallback(void *inUserData, AudioQueueRef 
 	[_lock unlock];
 }
 
+- (void)audioPlayerDidFinishPlaying:(AVAudioPlayer *)player successfully:(BOOL)flag {
+	id<TGStreamingVoicePlayerDelegate> del = self.delegate;
+	if ([del respondsToSelector:@selector(audioPlayerDidFinishPlaying:successfully:)])
+		[del audioPlayerDidFinishPlaying:(id)self successfully:flag];
+}
+
 - (BOOL)play {
+	if (_plain){
+		_plain.rate = _rate;
+		return [_plain play];
+	}
 	[_lock lock];
 	if (!_audioQueue || !_opusFile){
 		[_lock unlock];
@@ -183,6 +205,7 @@ static void TGStreamingAudioQueueOutputCallback(void *inUserData, AudioQueueRef 
 }
 
 - (void)pause {
+	[_plain pause];
 	[_lock lock];
 	if (_audioQueue && _playing){
 		AudioQueuePause(_audioQueue);
@@ -199,6 +222,9 @@ static void TGStreamingAudioQueueOutputCallback(void *inUserData, AudioQueueRef 
 	_eof = NO;
 	_buffersInFlight = 0;
 	self.delegate = nil;
+	_plain.delegate = nil;
+	[_plain stop];
+	_plain = nil;
 
 	AudioQueueRef aq = _audioQueue;
 	_audioQueue = NULL;
@@ -216,18 +242,20 @@ static void TGStreamingAudioQueueOutputCallback(void *inUserData, AudioQueueRef 
 }
 
 - (BOOL)isPlaying {
-	return _playing;
+	return _plain ? _plain.playing : _playing;
 }
 
 - (BOOL)playing {
-	return _playing;
+	return _plain ? _plain.playing : _playing;
 }
 
 - (NSTimeInterval)duration {
-	return _duration;
+	return _plain ? _plain.duration : _duration;
 }
 
 - (NSTimeInterval)currentTime {
+	if (_plain)
+		return _plain.currentTime;
 	[_lock lock];
 	if (!_opusFile){
 		[_lock unlock];
@@ -239,6 +267,10 @@ static void TGStreamingAudioQueueOutputCallback(void *inUserData, AudioQueueRef 
 }
 
 - (void)setCurrentTime:(NSTimeInterval)currentTime {
+	if (_plain){
+		_plain.currentTime = currentTime;
+		return;
+	}
 	[_lock lock];
 	if (!_opusFile || !_audioQueue){
 		[_lock unlock];
@@ -272,6 +304,7 @@ static void TGStreamingAudioQueueOutputCallback(void *inUserData, AudioQueueRef 
 
 - (void)setRate:(float)rate {
 	_rate = rate;
+	_plain.rate = rate;
 	[self applyRate];
 }
 

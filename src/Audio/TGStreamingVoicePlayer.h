@@ -1,5 +1,6 @@
 //
-// TGStreamingVoicePlayer.h - Low-footprint streaming audio player for Ogg Opus voice notes.
+// TGStreamingVoicePlayer.h - Low-footprint streaming audio player for Ogg Opus voice notes,
+// handing anything else (a voice note can be MP3 or M4A) to the system decoder.
 // Streams PCM directly into CoreAudio AudioQueue without disk-based WAV decompression.
 //
 #import <Foundation/Foundation.h>
