@@ -10,6 +10,10 @@
 
 + (instancetype)shared;
 
+/// Drops the cached category list, so the next account asks TDLib afresh
+/// instead of showing the previous account's emoji categories.
+- (void)reset;
+
 /// Telegram's categories, cached after the first non-empty answer so reopening
 /// the panel draws the strip before the round trip. The entries are the shape
 /// TGClient's -emojiCategoriesWithCompletion: documents.

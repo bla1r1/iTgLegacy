@@ -43,6 +43,11 @@ typedef NS_ENUM(NSInteger, TGCallState) {
 - (void)hangUp;
 - (void)setMuted:(BOOL)muted;
 
+/// Tears the call down locally and clears the call id, peer and key without
+/// sending a discard - used when the account changes, because TDLib is already
+/// closed and a discard would name a call that no longer exists.
+- (void)reset;
+
 /// Sends a rating (1..5) with optional comment and problem list to TDLib for the call.
 - (void)sendRating:(int)rating comment:(NSString *)comment problems:(NSArray *)problems;
 

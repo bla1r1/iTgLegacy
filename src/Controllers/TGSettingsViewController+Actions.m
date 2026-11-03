@@ -19,19 +19,48 @@
 	[self.navigationController pushViewController:profile animated:YES];
 }
 
-/// Explains device memory constraints when attempting to add another account.
-- (void)explainAddAccount {
-	if ([TGCapabilities canHoldMultipleAccounts]){
-		[self toast:@"Multiple accounts are not wired up yet on this build."];
-		return;
+/// The account switcher: each account's title with the active one marked,
+/// then Add Account while fewer than three are in use. Picking an account
+/// switches to it; Add Account makes a new slot and switches straight over,
+/// so an empty slot lands on the login screen.
+- (void)showAccountChoices {
+	__weak typeof(self) weakSelf = self;
+	NSArray *slots = [TGClient accountSlots];
+	NSInteger active = [TGClient activeAccountSlot];
+
+	NSMutableArray *choices = [NSMutableArray arrayWithCapacity:slots.count + 1];
+	NSMutableArray *choiceSlots = [NSMutableArray arrayWithCapacity:slots.count];
+	for (NSDictionary *entry in slots){
+		NSInteger slot = [entry[@"slot"] integerValue];
+		NSString *title = [entry[@"title"] length] ? entry[@"title"]
+				: ([entry[@"phone"] length] ? entry[@"phone"] : @"Account");
+		[choiceSlots addObject:@(slot)];
+		[choices addObject:slot == active
+				? [NSString stringWithFormat:@"%@ ✓", title] : title];
 	}
-	[TGAlertSheet showMessage:[NSString stringWithFormat:
-					@"A second account needs a second TDLib client and a second "
-					@"copy of the cache. This is a %@ device with %lu MB, and "
-					@"that needs the Full tier - 2 GB or more.",
-					[TGDevice tierName] ?: @"Legacy",
-					(unsigned long)[TGCapabilities memoryMB]]
-						title:@"Add Account" inView:self.view];
+	if (slots.count < 3)
+		[choices addObject:@"Add Account"];
+
+	[TGAlertSheet showChoices:choices
+						title:@"Accounts"
+					  message:@"Accounts other than the active one receive no notifications."
+			 destructiveIndex:-1
+					   inView:self.view
+					 onChoice:^(NSInteger index){
+		TGSettingsViewController *me = weakSelf;
+		if (!me)
+			return;
+		if (index < (NSInteger)choiceSlots.count){
+			NSInteger slot = [choiceSlots[index] integerValue];
+			if (slot != active)
+				[[TGClient shared] switchToAccountSlot:slot];
+			return;
+		}
+		// The one row after the accounts is Add Account.
+		NSInteger newSlot = [TGClient addAccount];
+		if (newSlot >= 0)
+			[[TGClient shared] switchToAccountSlot:newSlot];
+	}];
 }
 
 - (void)pickProfilePhoto {

@@ -120,6 +120,9 @@ static const CGFloat kActionBarCloseSide = TGMetricButtonLargeH;
 /// the removeChatActionBar request.
 - (void)refreshActionBar {
 	NSString *kind = [self actionBarRow][@"actionBarKind"] ?: @"";
+	// Only a bar coming up from hidden fades; an update to one already on
+	// screen must not flash.
+	BOOL reveal = !self.actionBarView || self.actionBarView.hidden;
 	if (!kind.length){
 		if (self.actionBarView && !self.actionBarView.hidden){
 			self.actionBarView.hidden = YES;
@@ -218,9 +221,15 @@ static const CGFloat kActionBarCloseSide = TGMetricButtonLargeH;
 	}
 
 	self.actionBarLabel.text = say;
+	if (reveal)
+		self.actionBarView.alpha = TGAlphaTransparent;
 	self.actionBarView.hidden = NO;
 	[self positionActionBarButtons:primary secondary:secondary];
 	[self layoutChrome];
+	if (reveal)
+		[UIView animateWithDuration:TGAnimationDurationFast animations:^{
+			self.actionBarView.alpha = TGAlphaOpaque;
+		}];
 }
 
 /// The buttons hang from the right, the X outermost; the label keeps what is
@@ -474,11 +483,11 @@ static UIImage *TGJumpChevron(UIColor *colour) {
 	// strip rides directly on the composer, so it has to be placed here rather
 	// than where it was built: the keyboard moves the bar out from under it.
 	CGFloat bottom = CGRectGetMaxY(table);
-	if (self.composeBanner && !self.composeBanner.hidden){
+	if (self.composeBanner && !self.composeBanner.hidden &&
+		CGAffineTransformIsIdentity(self.composeBanner.transform)){
 		self.composeBanner.frame = CGRectMake(0,
 				CGRectGetMinY(self.inputBar.frame) - kComposeBannerHeight,
 				self.view.bounds.size.width, kComposeBannerHeight);
-		[self.view bringSubviewToFront:self.composeBanner];
 		bottom = MIN(bottom, CGRectGetMinY(self.composeBanner.frame));
 	}
 	self.jumpButton.frame = CGRectMake(CGRectGetMaxX(table) - kJumpSide - TGMetricJumpMarginRight,
@@ -507,28 +516,62 @@ static UIImage *TGJumpChevron(UIColor *colour) {
 
 - (void)updateJumpButton {
 	BOOL show = ![self isNearBottom] && self.messages.count > 0;
-	if (show == !self.jumpButton.hidden)
-		return;
 	if (show){
+		// Mid-fade counts as hidden, so an unread landing during the fade in
+		// starts it again instead of being swallowed by the early return.
+		if (!self.jumpButton.hidden && self.jumpButton.alpha > TGAlphaEpsilon)
+			return;
+		BOOL wasHidden = self.jumpButton.hidden;
 		self.jumpButton.hidden = NO;
-		self.jumpButton.alpha = 0;
-	}
-	[UIView animateWithDuration:TGAnimationDurationFast animations:^{
-		self.jumpButton.alpha = show ? 1 : 0;
-	} completion:^(BOOL finished){
-		if (!show){
-			self.jumpButton.hidden = YES;
-			self.newWhileAway = 0;
-			self.jumpBadge.hidden = YES;
+		if (wasHidden){
+			self.jumpButton.alpha = TGAlphaTransparent;
+			self.jumpButton.transform = CGAffineTransformMakeScale(
+					TGTransformScaleMenuInitial, TGTransformScaleMenuInitial);
 		}
+		[UIView animateWithDuration:TGAnimationDurationFast animations:^{
+			self.jumpButton.alpha = TGAlphaOpaque;
+			self.jumpButton.transform = CGAffineTransformIdentity;
+		}];
+		return;
+	}
+
+	// Already fading out: a second animation per scrolled row would stack up.
+	if (self.jumpButton.hidden || self.jumpButton.alpha < TGAlphaEpsilon)
+		return;
+	__weak typeof(self) weakSelf = self;
+	[UIView animateWithDuration:TGAnimationDurationFast animations:^{
+		self.jumpButton.alpha = TGAlphaTransparent;
+		self.jumpButton.transform = CGAffineTransformMakeScale(
+				TGTransformScaleMenuInitial, TGTransformScaleMenuInitial);
+	} completion:^(BOOL finished){
+		TGChatViewController *me = weakSelf;
+		// The button came back while this ran; its own animation owns it now.
+		if (!me || me.jumpButton.alpha > TGAlphaEpsilon)
+			return;
+		me.jumpButton.hidden = YES;
+		me.jumpButton.transform = CGAffineTransformIdentity;
+		me.newWhileAway = 0;
+		me.jumpBadge.hidden = YES;
 	}];
 }
 
 - (void)noteArrivedWhileAway {
+	BOOL first = self.jumpBadge.hidden;
 	self.newWhileAway++;
 	self.jumpBadge.text = [NSString stringWithFormat:@"%ld", (long)self.newWhileAway];
 	self.jumpBadge.hidden = NO;
 	[self layoutChrome];
+
+	// Only the first count gets the pop; later increments would make the
+	// badge twitch on every message while the list sits away.
+	if (!first)
+		return;
+	CAKeyframeAnimation *pop = [CAKeyframeAnimation animationWithKeyPath:@"transform.scale"];
+	pop.values = @[ @(TGTransformScaleMenuInitial), @(TGTransformScalePillActive), @(1.0) ];
+	pop.keyTimes = @[ @0.0, @0.5, @1.0 ];
+	pop.duration = TGAnimationDurationFast;
+	pop.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseOut];
+	[self.jumpBadge.layer addAnimation:pop forKey:@"badgePop"];
 }
 
 - (void)jumpTapped {

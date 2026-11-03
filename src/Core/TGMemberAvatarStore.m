@@ -85,6 +85,11 @@ static NSNumber *TGMemberAvatarKey(int64_t userId, CGFloat side) {
 	return [self.photos objectForKey:TGMemberAvatarKey(userId, side)];
 }
 
+- (void)reset {
+	[self.photos removeAllObjects];
+	[self.waiting removeAllObjects];
+}
+
 - (void)loadAvatarForUser:(int64_t)userId
 					 side:(CGFloat)side
 			   completion:(void (^)(UIImage *))completion {

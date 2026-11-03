@@ -125,6 +125,7 @@ CLIENT_OBJC_SRCS := \
     $(SRC)/Core/TGClient+Downloads.m \
     $(SRC)/Core/TGClient+Secret.m \
     $(SRC)/Core/TGClient+Account.m \
+    $(SRC)/Core/TGClient+Accounts.m \
     $(SRC)/Core/TGClient+Appearance.m \
     $(SRC)/Core/TGClient+Diagnostics.m \
     $(SRC)/Core/TGDatabaseKey.m \
@@ -179,6 +180,8 @@ CLIENT_TEST_SRCS := \
     $(TESTS)/TGClientFilesTests.m \
     $(TESTS)/TGStatusTextTests.m \
     $(TESTS)/TGClientDraftsTests.m \
+    $(TESTS)/TGClientReceiveLoopTests.m \
+    $(TESTS)/TGClientAccountSlotsTests.m \
     $(TESTS)/TGClientFoldersTests.m \
     $(TESTS)/TGClientGroupsTests.m \
     $(TESTS)/TGClientMessagesFunctionsTests.m \

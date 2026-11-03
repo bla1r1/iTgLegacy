@@ -569,6 +569,18 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V8";
 	self.state = TGCallStateEnded;
 }
 
+- (void)reset {
+	// teardown keeps the last call id so a rating can still name the call it
+	// is about; that call belongs to the account being left, so it is dropped.
+	[self teardown];
+	self.lastCallId = 0;
+	self.peerUserId = 0;
+	self.outgoing = NO;
+	self.muted = NO;
+	self.endReason = nil;
+	self.state = TGCallStateNone;
+}
+
 - (void)sendRating:(int)rating comment:(NSString *)comment problems:(NSArray *)problems {
 	// The screen asks after it has closed, when the live id is already zero;
 	// the one the call wore is what the rating is about.

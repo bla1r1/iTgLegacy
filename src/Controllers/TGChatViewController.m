@@ -39,6 +39,8 @@
 /// The pin in the strip under the bar, and where its two lines begin after it.
 static const CGFloat kPinnedGlyph = 14.0f;
 static const CGFloat kPinnedTextX = TGMetricPadLarge + kPinnedGlyph + TGMetricPadSmall;
+/// Finds the message line when the strip already exists and only its text changes.
+static const NSInteger kPinnedBodyTag = 0x9010;
 
 #pragma mark - controller
 
@@ -1117,21 +1119,56 @@ static const CGFloat kPinnedTextX = TGMetricPadLarge + kPinnedGlyph + TGMetricPa
 /// Takes the strip away and gives the list back the room it had. Reached
 /// when the pinned message is unpinned from the message menu.
 - (void)hidePinnedBanner {
-	if (!self.pinnedBannerView)
+	UIView *banner = self.pinnedBannerView;
+	if (!banner)
 		return;
-	[self.pinnedBannerView removeFromSuperview];
-	self.pinnedBannerView = nil;
-	self.pinnedBannerHair = nil;
 
-	UIEdgeInsets insets = self.table.contentInset;
-	insets.top = MAX(0, insets.top - kPinnedBanner);
-	self.table.contentInset = insets;
-	self.table.scrollIndicatorInsets = insets;
+	// A show bumps the tag, so even a hide that finishes late can tell that
+	// a newer pin has taken the strip back over.
+	NSInteger generation = banner.tag;
+	[UIView animateWithDuration:TGAnimationDurationNormal animations:^{
+		banner.alpha = TGAlphaTransparent;
+		banner.transform = CGAffineTransformMakeTranslation(0, -kPinnedBanner);
+	} completion:^(BOOL finished){
+		// A show that overtook this hide keeps the banner and restores it;
+		// only the hide that still owns it may take it down and give the
+		// table its room back.
+		if (self.pinnedBannerView != banner || banner.tag != generation)
+			return;
+		[banner removeFromSuperview];
+		self.pinnedBannerView = nil;
+		self.pinnedBannerHair = nil;
+
+		UIEdgeInsets insets = self.table.contentInset;
+		insets.top = MAX(0, insets.top - kPinnedBanner);
+		self.table.contentInset = insets;
+		self.table.scrollIndicatorInsets = insets;
+	}];
 }
 
 - (void)showPinnedBanner:(NSString *)text {
-	// One strip at a time: pinning a second message replaces the first.
-	[self hidePinnedBanner];
+	// A second pin updates the strip in place: recreating it would blink the
+	// whole banner and churn the table inset.
+	if (self.pinnedBannerView) {
+		self.pinnedBannerView.tag++;
+		UILabel *body = (UILabel *)[self.pinnedBannerView viewWithTag:kPinnedBodyTag];
+		if ([body isKindOfClass:UILabel.class] && ![body.text isEqualToString:text]) {
+			CATransition *fade = [CATransition animation];
+			fade.type = kCATransitionFade;
+			fade.duration = TGAnimationDurationFast;
+			[body.layer addAnimation:fade forKey:@"pinnedTextFade"];
+			body.text = text;
+		}
+		// This pin may have arrived while the strip was sliding away. A fresh
+		// animation on the same two properties cancels that hide and puts the
+		// strip back, even when the hide had not started yet.
+		[UIView animateWithDuration:TGAnimationDurationNormal animations:^{
+			self.pinnedBannerView.alpha = TGAlphaOpaque;
+			self.pinnedBannerView.transform = CGAffineTransformIdentity;
+		}];
+		return;
+	}
+
 	CGRect b = self.view.bounds;
 	TGTheme *theme = [TGTheme shared];
 	UIView *banner = [[UIView alloc] initWithFrame:CGRectMake(0, 0, b.size.width,
@@ -1165,6 +1202,7 @@ static const CGFloat kPinnedTextX = TGMetricPadLarge + kPinnedGlyph + TGMetricPa
 
 	UILabel *body = [[UILabel alloc] initWithFrame:CGRectMake(kPinnedTextX, TGMetricPadTiny + TGMetricLineMicro,
 			b.size.width - kPinnedTextX - TGMetricPad, TGMetricLineCaption)];
+	body.tag = kPinnedBodyTag;
 	body.text = text;
 	body.font = TGFontCaption();
 	body.textColor = [theme primaryTextColour];
@@ -1178,6 +1216,10 @@ static const CGFloat kPinnedTextX = TGMetricPadLarge + kPinnedGlyph + TGMetricPa
 	hair.autoresizingMask = UIViewAutoresizingFlexibleWidth;
 	[banner addSubview:hair];
 
+	// It starts under the bar and slides down into place; only transform and
+	// alpha move, because the frame is the table's business.
+	banner.alpha = TGAlphaTransparent;
+	banner.transform = CGAffineTransformMakeTranslation(0, -kPinnedBanner);
 	[self.view addSubview:banner];
 	// Tapping the strip goes to what is pinned, which is the whole reason a
 	// client shows it. It had no tap handler at all.
@@ -1195,6 +1237,11 @@ static const CGFloat kPinnedTextX = TGMetricPadLarge + kPinnedGlyph + TGMetricPa
 	insets.top += kPinnedBanner;
 	self.table.contentInset = insets;
 	self.table.scrollIndicatorInsets = insets;
+
+	[UIView animateWithDuration:TGAnimationDurationNormal animations:^{
+		banner.alpha = TGAlphaOpaque;
+		banner.transform = CGAffineTransformIdentity;
+	}];
 }
 
 #pragma mark - taps
@@ -1439,6 +1486,67 @@ static const CGFloat kPinnedTextX = TGMetricPadLarge + kPinnedGlyph + TGMetricPa
 
 #pragma mark - pagination & scroll
 
+/// The stop callbacks live in TGChatViewController+Chrome; this file only sees
+/// the scroll events. Debouncing here means the check runs once the table has
+/// actually settled, whether it stopped after a drag or after deceleration.
+- (void)scheduleGifAutoplayAfterScrolling {
+	if ([TGDevice tier] != TGDeviceTierVintage)
+		return;
+	[NSObject cancelPreviousPerformRequestsWithTarget:self
+			selector:@selector(resumeGifAutoplayAfterScrolling) object:nil];
+	[self performSelector:@selector(resumeGifAutoplayAfterScrolling)
+			withObject:nil afterDelay:TGAnimationDurationNormal];
+}
+
+/// One GIF at most on Vintage, and only the row nearest the middle of the
+/// table. Everything else stops so the one core is not decoding two videos.
+- (void)resumeGifAutoplayAfterScrolling {
+	if ([TGDevice tier] != TGDeviceTierVintage)
+		return;
+	if (self.table.isDragging || self.table.isDecelerating)
+		return;
+
+	NSArray *visible = [self.table indexPathsForVisibleRows];
+	NSIndexPath *nearest = nil;
+	CGFloat best = CGFLOAT_MAX;
+	CGFloat middle = CGRectGetMidY(self.table.bounds);
+	for (NSIndexPath *path in visible) {
+		if (path.row >= (NSInteger)self.messages.count)
+			continue;
+		CGRect row = [self.table rectForRowAtIndexPath:path];
+		CGFloat distance = fabs(CGRectGetMidY(row) - middle);
+		if (!nearest || distance < best) {
+			nearest = path;
+			best = distance;
+		}
+	}
+	if (!nearest)
+		return;
+
+	TGBubbleCell *target = (TGBubbleCell *)[self.table cellForRowAtIndexPath:nearest];
+	if (![target isKindOfClass:TGBubbleCell.class])
+		return;
+
+	for (UITableViewCell *visibleCell in self.table.visibleCells) {
+		if (![visibleCell isKindOfClass:TGBubbleCell.class] || visibleCell == target)
+			continue;
+		TGBubbleCell *bubble = (TGBubbleCell *)visibleCell;
+		if (!bubble.isPlayingLoop)
+			continue;
+		[bubble stopLoopingVideo];
+		NSIndexPath *path = [self.table indexPathForCell:bubble];
+		if (!path || path.row >= (NSInteger)self.messages.count)
+			continue;
+		// A stopped GIF goes back to showing its play mark.
+		if ([self.messages[path.row][@"kind"] isEqualToString:@"messageAnimation"]) {
+			bubble.disc.hidden = NO;
+			bubble.disc.image = [TGIcons mediaDiscOfSide:kGifDisc playing:NO];
+		}
+	}
+
+	[self startGifIfWantedIn:target message:self.messages[nearest.row]];
+}
+
 - (void)tableTapped:(UITapGestureRecognizer *)gesture {
 	[self hideStickerPanel];
 	[self.input resignFirstResponder];
@@ -1452,8 +1560,10 @@ static const CGFloat kPinnedTextX = TGMetricPadLarge + kPinnedGlyph + TGMetricPa
 }
 
 - (void)scrollViewDidScroll:(UIScrollView *)scrollView {
-    if (scrollView == self.table)
+    if (scrollView == self.table) {
         [self chromeDidScroll];
+        [self scheduleGifAutoplayAfterScrolling];
+    }
     if (scrollView != self.table || !self.messages.count)
         return;
     

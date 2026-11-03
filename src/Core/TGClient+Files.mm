@@ -5,6 +5,11 @@
 #include <unordered_map>
 #include <vector>
 
+/// One pending generation, keyed by its original path. File-scope so the
+/// reset on account switch (see -removeAllPendingGenerations) can reach it
+/// before the preliminary-upload half of this file declares it again.
+static NSMutableDictionary *gPendingGenerations;
+
 // Note: this file is shared with the host test suite (tests/Makefile compiles
 // it into TGClientTests); nothing device-only lives here.
 
@@ -134,6 +139,10 @@ std::unordered_map<int32_t, int32_t> gPriorities;
 	std::lock_guard<std::mutex> lock(gWaitersMutex);
 	gWaiters.clear();
 	gPriorities.clear();
+}
+
+- (void)removeAllPendingGenerations {
+	[gPendingGenerations removeAllObjects];
 }
 
 /// How many waiters a file still has. Zero means no record at all.
@@ -578,7 +587,6 @@ static NSDictionary *TGFlattenFileRecord(NSDictionary *file) {
 /// One pending generation, keyed by its original path. Every field is filled
 /// by whichever answer arrives first, and finishGenerationIfReady is what
 /// makes the completion run exactly once after both have.
-static NSMutableDictionary *gPendingGenerations = nil;
 static const NSUInteger TGGenerationChunk = 32 * 1024;
 
 static NSError *TGGenerationError(NSString *reason) {

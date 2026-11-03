@@ -289,6 +289,11 @@ static NSDictionary *TGGCFlattenMessage(TGClient *client, NSDictionary *message)
 
 #pragma mark - calls and participation
 
+- (void)resetGroupCallState {
+	objc_setAssociatedObject(self, &TGGroupCallStateKey, nil,
+			OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
 - (void)groupCall:(int32_t)groupCallId
 	   completion:(void (^)(NSDictionary *, NSString *))completion {
 	if (!groupCallId){

@@ -3,6 +3,10 @@
 #import "TGAlertSheet.h"
 #import "TGStyle.h"
 
+/// A flick that never reached half the buttons' width still opens the row.
+/// Below this the pan reads as a slow drag and the half-way rule decides.
+static const CGFloat kSwipeFlickVelocity = 500.0f;
+
 @implementation TGChatListViewController (Actions)
 
 /// Folders are a filter over the same chats, offered as a choice.
@@ -246,8 +250,8 @@
 #pragma mark - swipe actions
 
 /// Swipe a row left for Mute, Archive and Delete, the way their iOS client
-/// does. The API for more than a single Delete arrived in iOS 8; before that
-/// rows are not swiped at all and holding one opens the same choices.
+/// does. The API for more than a single Delete arrived in iOS 8; this is the
+/// system path, and the older one lives in the section below.
 - (BOOL)tableView:(UITableView *)tableView canEditRowAtIndexPath:(NSIndexPath *)indexPath {
 	if (![TGCapabilities canSwipeRowActions] || self.searchResults)
 		return NO;
@@ -305,6 +309,221 @@
 	[read setBackgroundColor:[[TGTheme shared] archiveActionColour]];
 	// Right to left: Delete sits at the edge.
 	return @[delete, archive, mute, pin, read];
+}
+
+#pragma mark - swipe actions before iOS 8
+
+/// The cell that is actually open. A reload can leave the weak pointer aimed
+/// at a cell already back in the reuse pool; that cell has closed itself and
+/// must not swallow the next tap on the list.
+- (TGChatCell *)openSwipeCell {
+	TGChatCell *cell = self.swipeActionsCell;
+	if (!cell || !cell.swipeActionsOpen){
+		self.swipeActionsCell = nil;
+		self.swipeActionsChat = nil;
+		return nil;
+	}
+	return cell;
+}
+
+/// The same rows - and the same exclusion of search and table editing - that
+/// canEditRowAtIndexPath: answers for the system's own actions above iOS 8.
+- (BOOL)swipeActionsCanStartAtPath:(NSIndexPath *)path {
+	if (!path || self.searchResults || self.editingChats || self.tableView.editing)
+		return NO;
+	NSInteger index = path.row - (NSInteger)[self headerRows].count;
+	return index >= 0 && index < (NSInteger)[self visibleChats].count;
+}
+
+- (void)installLegacySwipeActions {
+	// UITableViewRowAction owns the swipe from iOS 8; do not put a second
+	// recognizer in its way there.
+	if ([TGCapabilities canSwipeRowActions])
+		return;
+
+	UIPanGestureRecognizer *pan = [[UIPanGestureRecognizer alloc]
+			initWithTarget:self action:@selector(swipeActionsPan:)];
+	pan.delegate = self;
+	[self.tableView addGestureRecognizer:pan];
+	self.swipeActionsPan = pan;
+	// Vertical drags have to scroll at once; this pan decides in a few points
+	// whether it is horizontal and fails itself otherwise.
+	if ([self.tableView respondsToSelector:@selector(panGestureRecognizer)])
+		[self.tableView.panGestureRecognizer requireGestureRecognizerToFail:pan];
+
+	// The tap only exists to close an open row. Its delegate refuses touches
+	// while no row is open, so ordinary row selection is untouched.
+	UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc]
+			initWithTarget:self action:@selector(swipeActionsTableTapped:)];
+	tap.delegate = self;
+	tap.cancelsTouchesInView = YES;
+	[self.tableView addGestureRecognizer:tap];
+}
+
+- (BOOL)gestureRecognizerShouldBegin:(UIGestureRecognizer *)gesture {
+	if (gesture != self.swipeActionsPan)
+		return YES;
+
+	UIPanGestureRecognizer *pan = (UIPanGestureRecognizer *)gesture;
+	CGPoint delta = [pan translationInView:self.tableView];
+	// Leftward and flatter than it is tall: a vertical drag belongs to the
+	// table, and a rightward drag has no row to uncover.
+	if (delta.x >= 0 || fabs(delta.x) <= fabs(delta.y))
+		return NO;
+
+	NSIndexPath *path = [self.tableView indexPathForRowAtPoint:
+			[pan locationInView:self.tableView]];
+	return [self swipeActionsCanStartAtPath:path];
+}
+
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gesture shouldReceiveTouch:(UITouch *)touch {
+	if (![gesture isKindOfClass:UITapGestureRecognizer.class])
+		return YES;
+	if (![self openSwipeCell])
+		return NO;
+
+	// The three action buttons sit directly under the swiped row. Taking
+	// their touches would close the row before the button could run.
+	TGChatCell *cell = self.swipeActionsCell;
+	UIView *view = touch.view;
+	return !([view isKindOfClass:UIButton.class] && [view isDescendantOfView:cell] &&
+			![view isDescendantOfView:cell.contentView]);
+}
+
+- (void)swipeActionsTableTapped:(UITapGestureRecognizer *)tap {
+	if (tap.state != UIGestureRecognizerStateEnded)
+		return;
+	// The table may still deliver the touch after the recognizer closes the
+	// row; selection has to stay cancelled for that one tap.
+	self.swipeActionsSuppressSelection = YES;
+	[self closeSwipeActionsAnimated:YES];
+	__weak typeof(self) weakSelf = self;
+	dispatch_async(dispatch_get_main_queue(), ^{
+		weakSelf.swipeActionsSuppressSelection = NO;
+	});
+}
+
+- (NSIndexPath *)tableView:(UITableView *)tableView willSelectRowAtIndexPath:(NSIndexPath *)indexPath {
+	if (self.swipeActionsCell || self.swipeActionsSuppressSelection){
+		[self closeSwipeActionsAnimated:NO];
+		return nil;
+	}
+	return indexPath;
+}
+
+- (BOOL)beginSwipeActionsAtPath:(NSIndexPath *)path {
+	if (![self swipeActionsCanStartAtPath:path])
+		return NO;
+
+	NSInteger index = path.row - (NSInteger)[self headerRows].count;
+	NSDictionary *chat = [self visibleChats][(NSUInteger)index];
+	TGChatCell *cell = (TGChatCell *)[self.tableView cellForRowAtIndexPath:path];
+	if (![cell isKindOfClass:TGChatCell.class])
+		return NO;
+
+	// Two rows open at once would leave two chat previews half hidden.
+	[self closeSwipeActionsAnimated:NO];
+	self.swipeActionsCell = cell;
+	self.swipeActionsChat = chat;
+
+	BOOL muted = [chat[@"isMuted"] boolValue];
+	BOOL isGroup = [chat[@"isGroup"] boolValue];
+	NSArray *titles = @[
+		muted ? @"Unmute" : @"Mute",
+		self.showsArchive ? @"Unarchive" : @"Archive",
+		isGroup ? @"Leave" : @"Delete",
+	];
+	NSArray *colours = @[
+		[[TGTheme shared] muteActionColour],
+		[[TGTheme shared] archiveActionColour],
+		[[TGTheme shared] destructiveColour],
+	];
+	[cell revealSwipeActionsWithTitles:titles colours:colours target:self
+								action:@selector(swipeActionButtonTapped:)];
+	return YES;
+}
+
+/// A row opened by itglegacy://swiperow: a pan cannot be sent over SSH on iOS 6.
+- (void)openSwipeActionsAtRow:(NSInteger)row {
+	NSIndexPath *path = [NSIndexPath indexPathForRow:row + (NSInteger)[self headerRows].count
+										   inSection:0];
+	if ([self beginSwipeActionsAtPath:path])
+		[self.swipeActionsCell openSwipeActionsAnimated:YES];
+}
+
+- (void)swipeActionsPan:(UIPanGestureRecognizer *)pan {
+	if (pan.state == UIGestureRecognizerStateBegan){
+		NSIndexPath *path = [self.tableView indexPathForRowAtPoint:
+				[pan locationInView:self.tableView]];
+		if ([self beginSwipeActionsAtPath:path])
+			[self.swipeActionsCell setSwipeActionsOffset:[pan translationInView:self.tableView].x];
+		return;
+	}
+
+	TGChatCell *cell = self.swipeActionsCell;
+	if (!cell)
+		return;
+
+	if (pan.state == UIGestureRecognizerStateChanged){
+		[cell setSwipeActionsOffset:[pan translationInView:self.tableView].x];
+		return;
+	}
+
+	CGFloat dx = [pan translationInView:self.tableView].x;
+	CGPoint velocity = [pan velocityInView:self.tableView];
+	BOOL open = pan.state == UIGestureRecognizerStateEnded &&
+			(dx <= -TGHalf(cell.swipeActionsWidth) ||
+			 velocity.x <= -kSwipeFlickVelocity);
+	if (open){
+		[cell openSwipeActionsAnimated:YES];
+	} else {
+		[self closeSwipeActionsAnimated:YES];
+	}
+}
+
+/// Buttons say Unmute, Unarchive and Leave; the action names stay Mute,
+/// Archive and Delete, exactly the words the iOS 8 row actions pass on.
+- (void)swipeActionButtonTapped:(UIButton *)button {
+	NSDictionary *chat = self.swipeActionsChat;
+	TGChatCell *cell = self.swipeActionsCell;
+	NSString *title = button.titleLabel.text;
+	if (!chat)
+		return;
+
+	if ([title isEqualToString:@"Unmute"])
+		title = @"Mute";
+	else if ([title isEqualToString:@"Unarchive"])
+		title = @"Archive";
+	else if ([title isEqualToString:@"Leave"])
+		title = @"Delete";
+
+	self.actionChat = chat;
+	[self runChatAction:title];
+	[cell closeSwipeActionsAnimated:YES];
+	self.swipeActionsCell = nil;
+	self.swipeActionsChat = nil;
+}
+
+- (void)closeSwipeActionsAnimated:(BOOL)animated {
+	TGChatCell *cell = self.swipeActionsCell;
+	self.swipeActionsCell = nil;
+	self.swipeActionsChat = nil;
+	[cell closeSwipeActionsAnimated:animated];
+}
+
+/// A scroll of any kind - the user's drag, or a programmatic move - leaves
+/// no row open.
+- (void)scrollViewWillBeginDragging:(UIScrollView *)scrollView {
+	if (scrollView == self.tableView)
+		[self closeSwipeActionsAnimated:YES];
+}
+
+/// reloadData builds or reuses cells for every visible row. Closing here is
+/// what makes a reload close a swiped row even when its cell is reused.
+- (void)tableView:(UITableView *)tableView willDisplayCell:(UITableViewCell *)cell
+		forRowAtIndexPath:(NSIndexPath *)indexPath {
+	if (self.swipeActionsCell)
+		[self closeSwipeActionsAnimated:NO];
 }
 
 @end

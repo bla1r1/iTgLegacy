@@ -44,6 +44,9 @@ static NSString *TGPlayerFormatTime(NSTimeInterval seconds) {
 	UIView *_progressTrack;
 	UIView *_progressBar;
 	NSTimer *_timer;
+	/// The track whose title is currently on screen, so only a real track
+	/// change gets the crossfade.
+	NSDictionary *_shownTrack;
 }
 
 + (instancetype)miniBarWithFrame:(CGRect)frame {
@@ -168,13 +171,29 @@ static NSString *TGPlayerFormatTime(NSTimeInterval seconds) {
 - (void)updateState {
 	TGMusicPlayer *player = [TGMusicPlayer shared];
 	if (!player.current) {
+		_shownTrack = nil;
 		self.hidden = YES;
 		return;
 	}
 	self.hidden = NO;
 
-	_titleLabel.text = [player titleForTrack:player.current];
+	NSString *title = [player titleForTrack:player.current];
+	BOOL hadTrack = _shownTrack != nil;
+	BOOL trackChanged = (_shownTrack != player.current);
+	_shownTrack = player.current;
 	_artistLabel.text = [player performerForTrack:player.current];
+
+	if (trackChanged && hadTrack) {
+		UILabel *titleLabel = _titleLabel;
+		[UIView transitionWithView:titleLabel
+						  duration:TGAnimationDurationFast
+						   options:UIViewAnimationOptionTransitionCrossDissolve
+						animations:^{
+			titleLabel.text = title;
+		} completion:nil];
+	} else {
+		_titleLabel.text = title;
+	}
 
 	if (player.currentArtwork) {
 		_artworkView.image = player.currentArtwork;

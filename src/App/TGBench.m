@@ -5,6 +5,7 @@
 #import "TGPerf.h"
 #import "TGSampler.h"
 #import <QuartzCore/QuartzCore.h>
+#import <dlfcn.h>
 #include <stdlib.h>
 
 /// A thumb flick on a 3.5" screen moves content about this fast; slower hides
@@ -103,7 +104,23 @@ static NSString *cachesPath(NSString *name) {
 	if ([mode isEqualToString:@"pref"] && args.count > 2) {
 		// A/B a setting without a rebuild: bench/pref/TGWantAnimatedStickers/0
 		[[NSUserDefaults standardUserDefaults] setBool:[args[2] boolValue] forKey:num];
+		// A run usually ends in killall, which beats the periodic write.
+		[[NSUserDefaults standardUserDefaults] synchronize];
 		NSLog(@"[bench] pref %@ = %@", num, args[2]);
+		return;
+	}
+	if ([mode isEqualToString:@"slow"]) {
+		// bench/slow/0.25: every animation in the window at a quarter speed.
+		window.layer.speed = num.length ? [num floatValue] : 1.0f;
+		return;
+	}
+	if ([mode isEqualToString:@"record"]) {
+		// bench/record/<seconds>: what an animation really does on screen. The
+		// framebuffer is the only place that shows it, because render-server
+		// animations never touch the app's own layers. Frames go to Caches/cap.
+		double seconds = num.length ? [num doubleValue] : 3.0;
+		[NSThread detachNewThreadSelector:@selector(recordFramesFor:) toTarget:self
+							   withObject:@(seconds)];
 		return;
 	}
 	// The iPod auto-locks after a minute, and with the screen off
@@ -128,6 +145,36 @@ static NSString *cachesPath(NSString *name) {
 		b.duration = num.length ? [num doubleValue] : 8.0;
 		[b scrollIn:window];
 	}
+}
+
++ (void)recordFramesFor:(NSNumber *)seconds {
+	CGImageRef (*grab)(void) = (CGImageRef (*)(void))dlsym(RTLD_DEFAULT, "UIGetScreenImage");
+	NSString *dir = [[NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES)
+			objectAtIndex:0] stringByAppendingPathComponent:@"cap"];
+	NSFileManager *files = [NSFileManager defaultManager];
+	[files removeItemAtPath:dir error:nil];
+	[files createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil];
+
+	// Held raw and encoded afterwards: a JPEG takes 250 ms on an A4, longer than
+	// most of the animations this exists to look at. 2.4 MB each, hence the cap.
+	NSMutableArray *held = [NSMutableArray array];
+	NSDate *end = [NSDate dateWithTimeIntervalSinceNow:seconds.doubleValue];
+	while (grab && [end timeIntervalSinceNow] > 0 && held.count < 30) {
+		CGImageRef screen = grab();
+		if (!screen)
+			break;
+		[held addObject:[UIImage imageWithCGImage:screen]];
+		CGImageRelease(screen);
+		[NSThread sleepForTimeInterval:MAX(0.02, seconds.doubleValue / 30.0 - 0.06)];
+	}
+	NSInteger frame = 0;
+	for (UIImage *image in held) {
+		@autoreleasepool {
+			[UIImageJPEGRepresentation(image, 0.6f) writeToFile:[dir stringByAppendingPathComponent:
+					[NSString stringWithFormat:@"frame_%04ld.jpg", (long)frame++]] atomically:NO];
+		}
+	}
+	NSLog(@"[bench] record %ld frames in %.1f s", (long)frame, seconds.doubleValue);
 }
 
 - (void)begin {

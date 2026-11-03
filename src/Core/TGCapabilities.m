@@ -41,7 +41,14 @@ static void TGSetWanted(NSString *key, BOOL wanted) {
 + (void)setAnimatedStickersWanted:(BOOL)wanted {
 	TGSetWanted(@"TGWantAnimatedStickers", wanted);
 }
-+ (BOOL)wallpaperWanted { return TGWanted(@"TGWantWallpaper"); }
+/// Off until asked for on the oldest tier: a texture under every bubble is paid
+/// for on each scrolled frame there, and the choice should be the user's.
++ (BOOL)wallpaperWanted {
+	NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+	if (![defaults objectForKey:@"TGWantWallpaper"])
+		return [TGDevice tier] >= TGDeviceTierLegacy;
+	return [defaults boolForKey:@"TGWantWallpaper"];
+}
 + (void)setWallpaperWanted:(BOOL)wanted {
 	TGSetWanted(@"TGWantWallpaper", wanted);
 }
@@ -57,15 +64,13 @@ static void TGSetWanted(NSString *key, BOOL wanted) {
 }
 
 + (BOOL)canShowWallpaper {
-	return [TGDevice tier] >= TGDeviceTierLegacy && [self wallpaperWanted];
+	return [self wallpaperWanted];
 }
 
-+ (BOOL)canAnimateInline {
-	return [TGDevice tier] >= TGDeviceTierModern;
-}
-
+/// One TDLib client runs at a time and each account keeps its own database, so
+/// a second account costs disk, not memory.
 + (BOOL)canHoldMultipleAccounts {
-	return [TGDevice tier] >= TGDeviceTierFull;
+	return YES;
 }
 
 + (BOOL)canEncodeVideoCall {
@@ -75,12 +80,12 @@ static void TGSetWanted(NSString *key, BOOL wanted) {
 }
 
 + (BOOL)canAutoplayGIFs {
-	return [TGDevice tier] >= TGDeviceTierLegacy && [self gifAutoplayWanted];
+	return [self gifAutoplayWanted];
 }
 
 + (NSUInteger)maxConcurrentGIFs {
 	switch ([TGDevice tier]){
-		case TGDeviceTierVintage: return 0;
+		case TGDeviceTierVintage: return 1;
 		case TGDeviceTierLegacy:  return 2;
 		case TGDeviceTierModern:  return 3;
 		case TGDeviceTierFull:    return 4;
@@ -88,12 +93,9 @@ static void TGSetWanted(NSString *key, BOOL wanted) {
 	return 2;
 }
 
+/// The system's own row actions. Below iOS 8 the chat list swipes with its own.
 + (BOOL)canSwipeRowActions {
 	return NSClassFromString(@"UITableViewRowAction") != nil;
-}
-
-+ (BOOL)canShowRecentPhotos {
-	return [TGDevice tier] >= TGDeviceTierLegacy;
 }
 
 /// iOS 7's typesetter segfaults outright when it meets a character the emoji
@@ -172,14 +174,14 @@ static BOOL TGEmojiFontHasGlyphs(CTFontRef font, NSString *s) {
 		@[@"Messages, media, groups", @YES,  @"every device"],
 		@[@"WebP stickers",           @YES,  @"every device"],
 		@[@"Voice notes",             @YES,  @"every device"],
-		@[@"Chat wallpaper",          @([self canShowWallpaper]),      @"Legacy - 512MB or more"],
-		@[@"Animated stickers",       @([self canPlayAnimatedStickers]), @"Legacy - 512MB or more"],
-		@[@"GIF autoplay",            @([self canAutoplayGIFs]),       @"Legacy - an A5 or later"],
-		@[@"Recent photos in attach", @([self canShowRecentPhotos]),   @"Legacy - 512MB or more"],
-		@[@"Swipe actions in chats",  @([self canSwipeRowActions]),    @"iOS 8 or later"],
-		@[@"Custom emoji",            @([self canAnimateInline]),      @"Modern - a 64-bit chip"],
+		@[@"Animated stickers",       @([self canPlayAnimatedStickers]), @"every device, 12 fps on an A4"],
+		@[@"Recent photos in attach", @YES,  @"every device"],
+		@[@"Swipe actions in chats",  @YES,  @"every device"],
+		@[@"Chat wallpaper",          @([self canShowWallpaper]),      @"every device, off by default on the oldest"],
+		@[@"GIF autoplay",            @([self canAutoplayGIFs]),       @"every device, one at a time on the oldest"],
+		@[@"Multiple accounts",       @([self canHoldMultipleAccounts]), @"every device, one active at a time"],
+		@[@"Custom emoji",            @NO,   @"shown as their plain emoji for now"],
 		@[@"Mini apps",               @([self canRunWebApps]),         @"iOS 9 or later"],
-		@[@"Multiple accounts",       @([self canHoldMultipleAccounts]), @"Full - 2GB or more"],
 		@[@"Video calls",             @([self canEncodeVideoCall]),    @"Full - 64-bit, iOS 9+, 2GB+"],
 	];
 

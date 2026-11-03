@@ -97,6 +97,26 @@ static const CGFloat kIconDumpSide = 52.0f;
 		return YES;
 	}
 
+	// itglegacy://swiperow/<row> - a chat row open on its swipe actions.
+	if ([host isEqualToString:@"swiperow"]){
+		dispatch_async(dispatch_get_main_queue(), ^{
+			UITabBarController *tabs = [self activeTabBarController];
+			UINavigationController *nc = tabs.viewControllers[0];
+			if ([nc.topViewController isKindOfClass:[TGChatListViewController class]])
+				[(id)nc.topViewController openSwipeActionsAtRow:[arg integerValue]];
+		});
+		return YES;
+	}
+
+	// itglegacy://account/<slot> - switch account without the sheet, for checking
+	// that a client closes and reopens on another database.
+	if ([host isEqualToString:@"account"] && arg.length){
+		dispatch_async(dispatch_get_main_queue(), ^{
+			[[TGClient shared] switchToAccountSlot:[arg integerValue]];
+		});
+		return YES;
+	}
+
 	if ([host isEqualToString:@"debug_auth"]){
 		NSString *info = [NSString stringWithFormat:@"authState=%ld, chats=%lu, loginVC=%@, rootVC=%@, winRoot=%@",
 			(long)[TGClient shared].authState,

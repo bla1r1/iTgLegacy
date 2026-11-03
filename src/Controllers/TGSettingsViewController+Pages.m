@@ -111,7 +111,7 @@ static NSArray *TGCustomResultRows(NSString *result) {
 			// different list that had lost its margin.
 			([TGClient shared].authState != TGAuthStateReady) ? TGIconRow(@"Log in to Telegram", @"privacy", TGIconTileAzure(), ^{
 				[[AppDelegate sharedDelegate] showLoginUI];
-			}) : TGIconRow(@"Add Account", @"select", TGIconTileAzure(), ^{ [weakSelf explainAddAccount]; }),
+			}) : TGIconRow(@"Accounts", @"select", TGIconTileAzure(), ^{ [weakSelf showAccountChoices]; }),
 			TGIconRow(hasPhoto ? @"Change Profile Photo" : @"Set Profile Photo", @"react", TGIconTileCoral(), ^{
 				[weakSelf pickProfilePhoto];
 			}),

@@ -45,6 +45,35 @@ static const CGFloat kFolderPillGap = 6.0f;
 /// A 3.5" screen shows six rows of 76 pt; this is two screens.
 static const NSUInteger kAvatarWindowRows = 14;
 
+/// One pill's two states. The strip rebuilds on every switch, so the old and
+/// new chosen pills are repainted here after the new header is on screen.
+static void TGPaintFolderPill(UIButton *pill, BOOL active) {
+	TGTheme *theme = [TGTheme shared];
+	if (active){
+		[pill setBackgroundColor:[theme accentColour]];
+		[pill setTitleColor:[theme onAccentColour] forState:UIControlStateNormal];
+		pill.layer.borderWidth = TGMetricBorderNone;
+	} else {
+		[pill setBackgroundColor:[theme cardBackgroundColour]];
+		[pill setTitleColor:[theme primaryTextColour] forState:UIControlStateNormal];
+		pill.layer.borderWidth = TGMetricHairline;
+		pill.layer.borderColor = [theme separatorColour].CGColor;
+	}
+}
+
+@interface TGChatListViewController ()
+/// A folder pill was tapped. The strip repaints its highlight once, and the
+/// list fades only when that folder's chats have actually arrived.
+@property (nonatomic, assign) BOOL folderHighlightPending;
+@property (nonatomic, assign) NSInteger folderHighlightPreviousId;
+@property (nonatomic, assign) BOOL folderListFadePending;
+/// The stories strip was just pulled out or walked away; the next header
+/// rebuild fades instead of replacing the strip in one frame.
+@property (nonatomic, assign) BOOL storiesFadePending;
+- (void)applyFolderListFadeIfNeeded;
+- (void)hideEditBarAnimated;
+@end
+
 @implementation TGChatListViewController
 
 /// The first frame after a launch used to be an empty table until TDLib
@@ -54,7 +83,14 @@ static const NSUInteger kAvatarWindowRows = 14;
 static NSString *TGChatSnapshotPath(void) {
 	NSString *dir = [NSSearchPathForDirectoriesInDomains(
 			NSCachesDirectory, NSUserDomainMask, YES) objectAtIndex:0];
-	return [dir stringByAppendingPathComponent:@"chat-list-snapshot.plist"];
+	// The snapshot is one account's list. Slot 0 keeps the pre-accounts name
+	// so an update does not discard the last list it saved; later slots get
+	// their own file so switching never shows another account's rows.
+	NSInteger slot = [TGClient activeAccountSlot];
+	NSString *name = slot > 0
+			? [NSString stringWithFormat:@"chat-list-snapshot-%ld.plist", (long)slot]
+			: @"chat-list-snapshot.plist";
+	return [dir stringByAppendingPathComponent:name];
 }
 
 /// Only primitive fields go to the plist. chatsById also holds TDLib records
@@ -111,6 +147,21 @@ static NSDictionary *TGChatSnapshotRow(NSDictionary *chat) {
 	});
 }
 
+/// The first search result replaces the chats with a different list. The
+/// category sets this property just before reloadData, so a transition on the
+/// table's layer makes those rows dissolve over the old list instead of
+/// swapping in one frame.
+- (void)setSearchResults:(NSArray *)searchResults {
+	BOOL wasSearching = self.searchResults != nil;
+	_searchResults = searchResults;
+	if (!wasSearching && searchResults != nil && self.tableView.window){
+		CATransition *fade = [CATransition animation];
+		fade.type = kCATransitionFade;
+		fade.duration = TGAnimationDurationFast;
+		[self.tableView.layer addAnimation:fade forKey:@"tg.searchResults"];
+	}
+}
+
 - (void)willAnimateRotationToInterfaceOrientation:(UIInterfaceOrientation)toInterfaceOrientation
 							  duration:(NSTimeInterval)duration {
 	[super willAnimateRotationToInterfaceOrientation:toInterfaceOrientation duration:duration];
@@ -147,6 +198,7 @@ static NSDictionary *TGChatSnapshotRow(NSDictionary *chat) {
 	UILongPressGestureRecognizer *hold = [[UILongPressGestureRecognizer alloc]
 			initWithTarget:self action:@selector(rowHeld:)];
 	[self.tableView addGestureRecognizer:hold];
+	[self installLegacySwipeActions];
 
 	self.tableView.rowHeight = kRowHeight;
 	// Each row draws its own hairline from under the text; see TGChatCell.
@@ -311,7 +363,20 @@ static NSDictionary *TGChatSnapshotRow(NSDictionary *chat) {
 	BOOL hasLine = self.connectionLine.length > 0;
 	self.title = name;
 	self.listTitleLabel.text = name;
-	self.listSubtitleLabel.text = hasLine ? self.connectionLine : @"";
+	NSString *line = hasLine ? self.connectionLine : @"";
+	// "Connecting" and "Updating" are different sentences under the same
+	// title; replacing one with the other read as a blink. Only a visible
+	// line changing needs the fade - a first appearance is the label's own
+	// hidden flag.
+	if (hasLine && self.listSubtitleLabel.text.length &&
+			![self.listSubtitleLabel.text isEqualToString:line] &&
+			self.listSubtitleLabel.window){
+		CATransition *fade = [CATransition animation];
+		fade.type = kCATransitionFade;
+		fade.duration = TGAnimationDurationFast;
+		[self.listSubtitleLabel.layer addAnimation:fade forKey:@"tg.connection"];
+	}
+	self.listSubtitleLabel.text = line;
 	self.listSubtitleLabel.hidden = !hasLine;
 	// One line centres itself in the bar; two share it, the name on top and
 	// the network beneath, which is the same stack the chat header uses.
@@ -394,6 +459,7 @@ static NSDictionary *TGChatSnapshotRow(NSDictionary *chat) {
 	if (![self collapsedStoryRow])
 		return;
 	self.storiesExpanded = YES;
+	self.storiesFadePending = YES;
 	[self rebuildTableHeader];
 	[self.tableView reloadData];
 }
@@ -471,8 +537,7 @@ static NSDictionary *TGChatSnapshotRow(NSDictionary *chat) {
 	self.navigationItem.rightBarButtonItem.customView.hidden = self.editingChats;
 
 	if (!self.editingChats){
-		[self.editBar removeFromSuperview];
-		self.editBar = nil;
+		[self hideEditBarAnimated];
 		return;
 	}
 	if (!self.editBar){
@@ -486,8 +551,36 @@ static NSDictionary *TGChatSnapshotRow(NSDictionary *chat) {
 		self.editBar.autoresizingMask = UIViewAutoresizingFlexibleWidth |
 				UIViewAutoresizingFlexibleTopMargin;
 		[host addSubview:self.editBar];
+		// Start below the tab bar, then slide up: the bar arriving in place
+		// on one frame is the part that looked unfinished.
+		self.editBar.transform = CGAffineTransformMakeTranslation(0, h);
 	}
+	// A bar that was already on screen is at identity, so this only moves
+	// one that is arriving or reversing a hide that was still running.
+	[UIView animateWithDuration:TGAnimationDurationFast animations:^{
+		self.editBar.transform = CGAffineTransformIdentity;
+	}];
 	[self refreshEditToolbar];
+}
+
+/// Slide the toolbar under the tab bar. Edit can be turned back on while the
+/// slide is running, in which case the bar must stay where the new press put
+/// it rather than disappear with the old slide.
+- (void)hideEditBarAnimated {
+	UIToolbar *bar = self.editBar;
+	if (!bar)
+		return;
+	CGFloat h = bar.bounds.size.height;
+	__weak typeof(self) weakSelf = self;
+	[UIView animateWithDuration:TGAnimationDurationFast animations:^{
+		bar.transform = CGAffineTransformMakeTranslation(0, h);
+	} completion:^(BOOL finished){
+		TGChatListViewController *me = weakSelf;
+		if (!me || me.editingChats || me.editBar != bar)
+			return;
+		[bar removeFromSuperview];
+		me.editBar = nil;
+	}];
 }
 
 /// The toolbar follows the selection: Mute reads Unmute when every selected
@@ -612,8 +705,7 @@ static NSDictionary *TGChatSnapshotRow(NSDictionary *chat) {
 	[self.tableView setEditing:NO animated:YES];
 	[self.editButton setTitle:@"Edit" forState:UIControlStateNormal];
 	self.navigationItem.rightBarButtonItem.customView.hidden = NO;
-	[self.editBar removeFromSuperview];
-	self.editBar = nil;
+	[self hideEditBarAnimated];
 	[self reload];
 }
 
@@ -667,6 +759,17 @@ static NSDictionary *TGChatSnapshotRow(NSDictionary *chat) {
 		BOOL active = (i == 0 && self.folderId == 0) ||
 				(i > 0 && [folders[i - 1] isKindOfClass:NSDictionary.class] &&
 				 [folders[i - 1][@"id"] integerValue] == self.folderId);
+		// The strip is rebuilt during a switch. Paint the pill that was
+		// active with its old colour first, then fade it and the new active
+		// pill to their new colours, so the highlight slides rather than
+		// jumping from one pill to another in a single frame.
+		BOOL shownActive = active;
+		if (self.folderHighlightPending){
+			shownActive = (i == 0 && self.folderHighlightPreviousId == 0) ||
+					(i > 0 && [folders[i - 1] isKindOfClass:NSDictionary.class] &&
+					 [folders[i - 1][@"id"] integerValue] ==
+							self.folderHighlightPreviousId);
+		}
 		CGFloat w = MIN([label sizeWithFont:font].width + kFolderPillPad, kFolderPillMax);
 		UIButton *pill = [UIButton buttonWithType:UIButtonTypeCustom];
 		// One expression for the height, used again for the radius below: a
@@ -678,16 +781,7 @@ static NSDictionary *TGChatSnapshotRow(NSDictionary *chat) {
 		pill.titleLabel.font = font;
 		pill.titleLabel.lineBreakMode = NSLineBreakByTruncatingTail;
 		pill.layer.cornerRadius = TGHalf(pillHeight);
-		if (active){
-			[pill setBackgroundColor:[[TGTheme shared] accentColour]];
-			[pill setTitleColor:[[TGTheme shared] onAccentColour] forState:UIControlStateNormal];
-		} else {
-			[pill setBackgroundColor:[[TGTheme shared] cardBackgroundColour]];
-			[pill setTitleColor:[[TGTheme shared] primaryTextColour]
-					   forState:UIControlStateNormal];
-			pill.layer.borderWidth = TGMetricHairline;
-			pill.layer.borderColor = [[TGTheme shared] separatorColour].CGColor;
-		}
+		TGPaintFolderPill(pill, shownActive);
 		[pill addTarget:self action:@selector(folderTabTapped:)
 			  forControlEvents:UIControlEventTouchUpInside];
 		if (i > 0){
@@ -742,7 +836,22 @@ static NSDictionary *TGChatSnapshotRow(NSDictionary *chat) {
 	}
 	NSLog(@"TGClient: B3 pill tag=%ld folders=%lu", (long)pill.tag,
 			(unsigned long)[TGClient shared].folders.count);
-	[self runFolderChoice:pill.tag - 100];
+	NSInteger choice = pill.tag - 100;
+	NSArray *folders = [TGClient shared].folders;
+	NSInteger target = 0;
+	if (choice > 0 && choice - 1 < (NSInteger)folders.count &&
+			[folders[choice - 1] isKindOfClass:NSDictionary.class])
+		target = [folders[choice - 1][@"id"] integerValue];
+	if (target == self.folderId)
+		return;
+	// The strip is rebuilt during the choice, so remember which pill was lit
+	// to let the old and new highlights trade places through one fade. The
+	// list waits for its own answer: fading an empty table before a folder's
+	// chats arrive would flash.
+	self.folderHighlightPending = YES;
+	self.folderHighlightPreviousId = self.folderId;
+	self.folderListFadePending = YES;
+	[self runFolderChoice:choice];
 }
 
 /// A held pill follows the finger; where it drops is its new slot among the
@@ -843,6 +952,8 @@ static NSDictionary *TGChatSnapshotRow(NSDictionary *chat) {
 }
 
 - (void)rebuildTableHeader {
+	BOOL fadeStories = self.storiesFadePending;
+	self.storiesFadePending = NO;
 	// Telegram stacks the header in this order: the expanded story row,
 	// the search field, then the folder pills. The story row is a pull-down
 	// sheet that is normally collapsed into the title avatar.
@@ -875,7 +986,56 @@ static NSDictionary *TGChatSnapshotRow(NSDictionary *chat) {
 		[self buildFolderTabsInto:header atY:(storyH + searchH) width:width
 				folders:[TGClient shared].folders];
 
+	if (fadeStories && !hasStories){
+		CATransition *fade = [CATransition animation];
+		fade.type = kCATransitionFade;
+		fade.duration = TGAnimationDurationFast;
+		// Collapsing removes the strip and changes the header height; the
+		// rows below move by that height in one frame, which the table fade
+		// covers.
+		[self.tableView.layer addAnimation:fade forKey:@"tg.stories"];
+	}
+
 	self.tableView.tableHeaderView = header;
+	if (fadeStories && hasStories){
+		// Expanding adds the strip as a new row. Fading its content in is
+		// enough - the space for it is already part of the new header.
+		UIView *content = self.headerStoriesCell.contentView;
+		content.alpha = TGAlphaTransparent;
+		[UIView animateWithDuration:TGAnimationDurationFast animations:^{
+			content.alpha = TGAlphaOpaque;
+		}];
+	}
+	if (self.folderHighlightPending){
+		NSArray *folders = [TGClient shared].folders;
+		NSInteger oldTag = 0, newTag = 0;
+		for (NSInteger i = 0; i <= (NSInteger)folders.count; i++){
+			NSInteger folderId = 0;
+			if (i > 0 && [folders[i - 1] isKindOfClass:NSDictionary.class])
+				folderId = [folders[i - 1][@"id"] integerValue];
+			if (folderId == self.folderHighlightPreviousId)
+				oldTag = 100 + i;
+			if (folderId == self.folderId)
+				newTag = 100 + i;
+		}
+		void (^fadePill)(NSInteger, BOOL) = ^(NSInteger tag, BOOL active){
+			UIButton *pill = (UIButton *)[header viewWithTag:tag];
+			if (![pill isKindOfClass:UIButton.class])
+				return;
+			CATransition *fade = [CATransition animation];
+			fade.type = kCATransitionFade;
+			fade.duration = TGAnimationDurationFast;
+			[pill.layer addAnimation:fade forKey:@"tg.folderHighlight"];
+			TGPaintFolderPill(pill, active);
+		};
+		// The old and new chosen pills are already in the header; only their
+		// colours change, so one fade covers both halves of the move.
+		if (oldTag && oldTag != newTag)
+			fadePill(oldTag, NO);
+		if (newTag && newTag != oldTag)
+			fadePill(newTag, YES);
+		self.folderHighlightPending = NO;
+	}
 	self.headerHeight = height;
 	self.parkOffset = TGMetricZero;
 	[self refreshListTitleView];
@@ -1043,11 +1203,13 @@ static NSDictionary *TGChatSnapshotRow(NSDictionary *chat) {
 	if (!self.storiesExpanded && scrollView.contentOffset.y < -TGMetricRow &&
 			[self collapsedStoryRow]){
 		self.storiesExpanded = YES;
+		self.storiesFadePending = YES;
 		[self rebuildTableHeader];
 		return;
 	}
 	if (self.storiesExpanded && scrollView.contentOffset.y > TGMetricStoryStripRow){
 		self.storiesExpanded = NO;
+		self.storiesFadePending = YES;
 		[self rebuildTableHeader];
 		return;
 	}
@@ -1243,6 +1405,19 @@ static NSDictionary *TGChatSnapshotRow(NSDictionary *chat) {
 	}];
 }
 
+/// A pill switch arms this before asking the folder for its chats; the answer
+/// replaces the whole table, and that one swap fades. Spending the flag here
+/// is what keeps the periodic reloads from crossfading the list too.
+- (void)applyFolderListFadeIfNeeded {
+	if (!self.folderListFadePending)
+		return;
+	self.folderListFadePending = NO;
+	CATransition *fade = [CATransition animation];
+	fade.type = kCATransitionFade;
+	fade.duration = TGAnimationDurationFast;
+	[self.tableView.layer addAnimation:fade forKey:@"tg.folderList"];
+}
+
 - (void)reload {
 	if (self.showsArchive){
 		self.chats = [TGClient shared].archivedChats;
@@ -1252,9 +1427,14 @@ static NSDictionary *TGChatSnapshotRow(NSDictionary *chat) {
 	}
 
 	if (self.folderId != 0){
+		NSInteger folder = self.folderId;
 		__weak typeof(self) weakSelf = self;
-		[[TGClient shared] chatsInFolder:self.folderId completion:^(NSArray *chats){
+		[[TGClient shared] chatsInFolder:folder completion:^(NSArray *chats){
 			weakSelf.chats = chats;
+			// An answer for a folder the user already left must not spend
+			// the next switch's fade.
+			if (weakSelf.folderId == folder)
+				[weakSelf applyFolderListFadeIfNeeded];
 			[weakSelf.tableView reloadData];
 			[weakSelf fetchMissingAvatars];
 		}];
@@ -1285,6 +1465,7 @@ static NSDictionary *TGChatSnapshotRow(NSDictionary *chat) {
 	[list addObjectsFromArray:baseChats];
 	self.chats = list;
 	[self reloadStoriesIfNeeded];
+	[self applyFolderListFadeIfNeeded];
 	[self.tableView reloadData];
 	[self rebuildTableHeader];
 	// The search field is a pull-down: Telegram opens on the stories row,
@@ -1365,8 +1546,12 @@ static NSDictionary *TGChatSnapshotRow(NSDictionary *chat) {
 				[merged addObject:row];
 		}
 		me.storyRows = merged;
-		if (![me collapsedStoryRow])
+		if (me.storiesExpanded && ![me collapsedStoryRow]){
+			// The last story expired while the strip was open; fold it away
+			// with the same fade as a scroll collapse.
 			me.storiesExpanded = NO;
+			me.storiesFadePending = YES;
+		}
 		// An empty answer often means the chat list had not loaded yet, not
 		// that nobody has a story. Only a real answer earns the cooldown;
 		// otherwise the strip stayed empty for thirty seconds after launch.

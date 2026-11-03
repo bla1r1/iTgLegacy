@@ -96,6 +96,11 @@
 @property (nonatomic, strong) NSArray *messagesBeforeSearch;
 @property (nonatomic, strong) NSTimer *recordTimer;
 @property (nonatomic, strong) TGRecordBar *recordPanel;      // shown while holding
+/// Bumped on every show, so a hide still sliding knows it has been overtaken.
+/// Not the views' tags: the banner finds its labels with viewWithTag:, which
+/// also looks at the banner itself.
+@property (nonatomic, assign) NSUInteger composeBannerShows;
+@property (nonatomic, assign) NSUInteger stickerPanelShows;
 @property (nonatomic, strong) UIView *recordLockView;
 @property (nonatomic, strong) UIButton *recordCancelButton;
 @property (nonatomic, strong) UIButton *recordSendButton;

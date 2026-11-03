@@ -165,8 +165,7 @@ static NSString *TGFirstLinkIn(NSString *text) {
 	if (!link.length){
 		if (self.previewedLink.length){
 			self.previewedLink = nil;
-			self.composeBanner.hidden = YES;
-			[self layoutChrome];
+			[self hideComposeBannerAnimated];
 		}
 		return;
 	}
@@ -181,8 +180,7 @@ static NSString *TGFirstLinkIn(NSString *text) {
 		if (!me || ![TGFirstLinkIn(me.input.text ?: @"") isEqualToString:link])
 			return;      // the text moved on while the answer was in flight
 		if (!preview){
-			me.composeBanner.hidden = YES;
-			[me layoutChrome];
+			[me hideComposeBannerAnimated];
 			return;
 		}
 		NSString *title = [preview[@"title"] length] ? preview[@"title"]
@@ -217,9 +215,33 @@ static NSString *TGFirstLinkIn(NSString *text) {
 	self.editingId = 0;
 	self.editingIsCaption = NO;
 	self.previewedLink = nil;
-	self.composeBanner.hidden = YES;
+	[self hideComposeBannerAnimated];
 	[self inputChanged];
-	[self layoutChrome];
+}
+
+/// The strip drops back behind the composer instead of blinking out. A banner
+/// shown again while this slide runs has a newer generation and must stay.
+- (void)hideComposeBannerAnimated {
+	UIView *banner = self.composeBanner;
+	if (!banner || banner.hidden){
+		[self layoutChrome];
+		return;
+	}
+	NSUInteger shown = self.composeBannerShows;
+	__weak typeof(self) weakSelf = self;
+	[UIView animateWithDuration:TGAnimationDurationFast animations:^{
+		banner.transform = CGAffineTransformMakeTranslation(0, kComposeBannerHeight);
+		banner.alpha = TGAlphaTransparent;
+	} completion:^(BOOL finished){
+		TGChatViewController *me = weakSelf;
+		if (!me || me.composeBanner != banner || me.composeBannerShows != shown)
+			return;
+		banner.hidden = YES;
+		banner.transform = CGAffineTransformIdentity;
+		banner.alpha = TGAlphaOpaque;
+		// The space the strip held is only given back once it is gone.
+		[me layoutChrome];
+	}];
 }
 
 /// A strip above the composer saying what the next message will be: a reply,
@@ -242,6 +264,9 @@ static const NSInteger kBannerSubtitleTag = 72;
 				CGRectMake(0, CGRectGetMinY(self.inputBar.frame) - kComposeBannerHeight,
 						   width, kComposeBannerHeight)];
 		self.composeBanner.backgroundColor = [[TGTheme shared] inputBarColour];
+		// Born hidden so the first show goes through the same slide-in as
+		// every later one.
+		self.composeBanner.hidden = YES;
 		self.composeBanner.autoresizingMask = UIViewAutoresizingFlexibleWidth |
 											  UIViewAutoresizingFlexibleTopMargin;
 
@@ -282,7 +307,7 @@ static const NSInteger kBannerSubtitleTag = 72;
 		 forControlEvents:UIControlEventTouchUpInside];
 		[self.composeBanner addSubview:cancel];
 
-		[self.view addSubview:self.composeBanner];
+		[self.view insertSubview:self.composeBanner belowSubview:self.inputBar];
 	}
 
 	UILabel *title   = (UILabel *)[self.composeBanner viewWithTag:kBannerTitleTag];
@@ -297,8 +322,24 @@ static const NSInteger kBannerSubtitleTag = 72;
 							 self.composeBanner.bounds.size.width - TGMetricComposeBannerTextMarginRight,
 							 TGMetricLineSubhead);
 
+	BOOL wasHidden = self.composeBanner.hidden;
+	BOOL reveal = wasHidden || self.composeBanner.alpha < TGAlphaOpaque;
 	self.composeBanner.hidden = NO;
+	self.composeBannerShows++;
 	[self layoutChrome];
+	// Slide up from behind the composer. The strip sits below the bar in the
+	// view order, so a downward translation hides it fully while it travels.
+	// The frame is placed first, while it is untransformed.
+	if (reveal){
+		if (wasHidden){
+			self.composeBanner.transform = CGAffineTransformMakeTranslation(0, kComposeBannerHeight);
+			self.composeBanner.alpha = TGAlphaTransparent;
+		}
+		[UIView animateWithDuration:TGAnimationDurationFast animations:^{
+			self.composeBanner.transform = CGAffineTransformIdentity;
+			self.composeBanner.alpha = TGAlphaOpaque;
+		}];
+	}
 }
 
 #pragma mark - sending
@@ -493,19 +534,28 @@ static const NSInteger kBannerSubtitleTag = 72;
 #pragma mark - emoji, stickers, GIFs
 
 - (BOOL)stickerPanelShown {
-	return self.stickerPanel && !self.stickerPanel.hidden;
+	// A panel on its way down no longer owns the spot; the tap has to be able
+	// to bring it back instead of being read as "already open".
+	return self.stickerPanel && !self.stickerPanel.hidden &&
+		   CGAffineTransformIsIdentity(self.stickerPanel.transform);
 }
 
 - (void)hideStickerPanel {
 	if (![self stickerPanelShown])
 		return;
-	CGRect b = self.view.bounds;
-	[UIView animateWithDuration:TGAnimationDurationNormal animations:^{
-		CGRect f = self.stickerPanel.frame;
-		f.origin.y = b.size.height;
-		self.stickerPanel.frame = f;
-	} completion:^(BOOL finished) {
-		self.stickerPanel.hidden = YES;
+	TGEmojiPanel *panel = self.stickerPanel;
+	CGFloat height = panel.bounds.size.height;
+	NSUInteger shown = self.stickerPanelShows;
+	__weak typeof(self) weakSelf = self;
+	[UIView animateWithDuration:TGAnimationDurationMedium animations:^{
+		panel.transform = CGAffineTransformMakeTranslation(0, height);
+	} completion:^(BOOL finished){
+		TGChatViewController *me = weakSelf;
+		// Reopened while sliding: the panel stays up, with a new generation.
+		if (!me || me.stickerPanel != panel || me.stickerPanelShows != shown)
+			return;
+		panel.hidden = YES;
+		panel.transform = CGAffineTransformIdentity;
 	}];
 	// The keyboard may be on its way up in place of the panel; it moves the
 	// bar itself then.
@@ -528,6 +578,9 @@ static const NSInteger kBannerSubtitleTag = 72;
 		TGEmojiPanel *panel = [[TGEmojiPanel alloc] initWithFrame:
 				CGRectMake(0, b.size.height, b.size.width, height)];
 		panel.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleTopMargin;
+		// Born off screen so the first tap gets the same slide as every later
+		// one instead of the panel appearing in place.
+		panel.hidden = YES;
 		panel.delegate = self;
 		panel.chatId = self.chatId;
 		[self.view addSubview:panel];
@@ -538,11 +591,20 @@ static const NSInteger kBannerSubtitleTag = 72;
 		[self.input resignFirstResponder];
 	[self hideBotKeyboard];
 
-	self.stickerPanel.frame = CGRectMake(0, b.size.height, b.size.width, height);
-	self.stickerPanel.hidden = NO;
-	[self.view bringSubviewToFront:self.stickerPanel];
-	[UIView animateWithDuration:TGAnimationDurationMedium animations:^{
+	BOOL wasHidden = self.stickerPanel.hidden;
+	if (wasHidden){
+		// Place the frame before the transform: frame means nothing on a
+		// view that is already mid-slide.
 		self.stickerPanel.frame = CGRectMake(0, b.size.height - height, b.size.width, height);
+		self.stickerPanel.transform = CGAffineTransformMakeTranslation(0, height);
+	}
+	self.stickerPanel.hidden = NO;
+	self.stickerPanelShows++;
+	[self.view bringSubviewToFront:self.stickerPanel];
+	// Transform only: the panel is full width, so moving its frame would
+	// redraw the keyboard-sized surface on every step on an A4.
+	[UIView animateWithDuration:TGAnimationDurationMedium animations:^{
+		self.stickerPanel.transform = CGAffineTransformIdentity;
 	}];
 	[self shiftForKeyboardHeight:height];
 }

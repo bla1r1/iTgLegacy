@@ -28,22 +28,52 @@
 @property (nonatomic, strong) NSTimer *timer;
 @end
 
-@implementation TGCallMiniBar
+@implementation TGCallMiniBar {
+	/// Bumped on every show and hide so a completion from an older slide
+	/// cannot hide a bar that a newer call has just shown.
+	NSUInteger _showHideGeneration;
+}
 
 + (instancetype)shared {
 	static TGCallMiniBar *bar = nil;
 	static dispatch_once_t once;
-	dispatch_once(&once, ^{ bar = [[TGCallMiniBar alloc] init]; });
+	dispatch_once(&once, ^{
+		bar = [[TGCallMiniBar alloc] init];
+		// The bar names the peer of the running call. When the account changes
+		// that call is gone, so hide it rather than leaving the old account's
+		// name up where a tap would reopen a dead user id.
+		[[NSNotificationCenter defaultCenter]
+				addObserverForName:TGAccountDidSwitchNotification
+							object:nil queue:[NSOperationQueue mainQueue]
+					 usingBlock:^(NSNotification *note){
+			[bar hide];
+		}];
+	});
 	return bar;
 }
 
 - (void)showForUserId:(int64_t)userId name:(NSString *)name {
 	self.userId = userId;
 	self.peerName = name ?: @"";
+	BOOL wasVisible = (self.window != nil && !self.window.hidden);
 	if (!self.window)
 		[self buildWindow];
+	// A hide still in flight belongs to the old call; it must not remove the
+	// bar that is being shown now.
+	_showHideGeneration++;
 	[self updateTitle];
+	if (!wasVisible)
+		self.window.transform = CGAffineTransformMakeTranslation(0, -self.window.bounds.size.height);
 	self.window.hidden = NO;
+	if (!wasVisible || !CGAffineTransformIsIdentity(self.window.transform)) {
+		UIWindow *window = self.window;
+		[UIView animateWithDuration:TGAnimationDurationNormal
+							  delay:0
+							options:UIViewAnimationOptionBeginFromCurrentState
+						 animations:^{
+			window.transform = CGAffineTransformIdentity;
+		} completion:nil];
+	}
 	[self.timer invalidate];
 	self.timer = [NSTimer scheduledTimerWithTimeInterval:1.0 target:self
 			selector:@selector(tick:) userInfo:nil repeats:YES];
@@ -128,11 +158,31 @@
 - (void)hide {
 	[self.timer invalidate];
 	self.timer = nil;
-	self.window.hidden = YES;
-	self.window = nil;
-	self.button = nil;
-	self.peerName = nil;
-	self.userId = 0;
+	if (!self.window) {
+		self.peerName = nil;
+		self.userId = 0;
+		return;
+	}
+	_showHideGeneration++;
+	NSUInteger generation = _showHideGeneration;
+	UIWindow *window = self.window;
+	__weak typeof(self) weakSelf = self;
+	[UIView animateWithDuration:TGAnimationDurationNormal
+						  delay:0
+						options:UIViewAnimationOptionBeginFromCurrentState
+					 animations:^{
+		window.transform = CGAffineTransformMakeTranslation(0, -window.bounds.size.height);
+	} completion:^(BOOL finished) {
+		TGCallMiniBar *me = weakSelf;
+		if (!me || me->_showHideGeneration != generation)
+			return;
+		window.hidden = YES;
+		window.transform = CGAffineTransformIdentity;
+		me.window = nil;
+		me.button = nil;
+		me.peerName = nil;
+		me.userId = 0;
+	}];
 }
 
 @end
@@ -594,7 +644,7 @@ static NSArray *TGCallGradient(NSArray *colours) {
 
 - (void)acceptCall {
     [[TGCall shared] accept];
-    self.statusLabel.text = @"Connecting...";
+    [self setStatusText:@"Connecting..."];
     [self updateLayoutForCallActive:YES];
 }
 
@@ -640,17 +690,33 @@ static NSArray *TGCallGradient(NSArray *colours) {
 
 #pragma mark - state
 
+- (void)setStatusText:(NSString *)text {
+    if (!self.view.window || [self.statusLabel.text isEqualToString:text]) {
+        self.statusLabel.text = text;
+        return;
+    }
+    // Ringing, connecting and the end reason share this one line; a crossfade
+    // marks the change without moving anything around it.
+    __weak typeof(self) weakSelf = self;
+    [UIView transitionWithView:self.statusLabel
+                      duration:TGAnimationDurationFast
+                       options:UIViewAnimationOptionTransitionCrossDissolve
+                    animations:^{
+        weakSelf.statusLabel.text = text;
+    } completion:nil];
+}
+
 - (void)applyState:(TGCallState)state {
     BOOL isRinging = (!self.outgoing && state == TGCallStatePending);
     [self updateLayoutForCallActive:!isRinging];
     switch (state){
         case TGCallStatePending:
-            self.statusLabel.text = self.outgoing ? @"Ringing..." : @"Incoming call";
+            [self setStatusText:(self.outgoing ? @"Ringing..." : @"Incoming call")];
             [self setStatusPulsing:YES];
             break;
         case TGCallStateExchangingKeys:
         case TGCallStateConnecting:
-            self.statusLabel.text = @"Connecting...";
+            [self setStatusText:@"Connecting..."];
             [self setStatusPulsing:NO];
             [self setupEmojis];
             break;
@@ -661,15 +727,16 @@ static NSArray *TGCallGradient(NSArray *colours) {
                         -[[TGCall shared] duration]];
             self.bgLayer.colors = TGCallGradient([[TGTheme shared] callGradientColoursConnected]);
             [self setupEmojis];
+            [self setStatusText:TGUIFormatCallDuration([[TGCall shared] duration])];
             [self tick];
             break;
         case TGCallStateFailed:
-            self.statusLabel.text = [TGCall shared].endReason ?: @"Call failed";
+            [self setStatusText:([TGCall shared].endReason ?: @"Call failed")];
             [self windDown];
             [self dismissShortly];
             break;
         case TGCallStateEnded:
-            self.statusLabel.text = [TGCall shared].endReason ?: @"Call ended";
+            [self setStatusText:([TGCall shared].endReason ?: @"Call ended")];
             [self windDown];
             [self dismissShortly];
             break;
@@ -931,7 +998,7 @@ static NSArray *TGCallGradient(NSArray *colours) {
 - (void)end {
     // Hanging up takes a moment to come back from the network; without this
     // the screen just sits there and the tap looks like it was missed.
-    self.statusLabel.text = @"Ending...";
+    [self setStatusText:@"Ending..."];
     [self setStatusPulsing:NO];
     [UIView animateWithDuration:TGAnimationDurationFast animations:^{
         self.endBtn.transform = CGAffineTransformMakeScale(TGTransformScaleButtonActive, TGTransformScaleButtonActive);

@@ -195,6 +195,7 @@ static BOOL TGVerboseClientLog(void) {
 		s.outbox = [NSMutableArray array];
 		s.pendingRequests = [NSMutableDictionary dictionary];
 		s.outboxLock = [[NSLock alloc] init];
+		s.outboxSignal = dispatch_semaphore_create(0);
 		s.updateCoalescer = [[TGUpdateCoalescer alloc] initWithIntervalMs:100];
 		__weak TGClient *weakClient = s;
 		[s.updateCoalescer setFlushHandler:^(NSSet *dirtyChatIds, NSSet *dirtyUserIds, BOOL orderChanged) {
@@ -282,14 +283,30 @@ static BOOL TGVerboseClientLog(void) {
 	return YES;
 }
 
+/// How long the receive thread rests when TDLib has nothing: 20 ms.
+static const int64_t kIdlePollNanoseconds = 20 * NSEC_PER_MSEC;
+
 - (void)receiveLoop {
 	while (self.running){
 		@autoreleasepool {
 			[self drainOutbox];
 
-			const char *res = self.td_recv(self.client, 1.0);
-			if (!res)
+			// The single-threaded client ignores this timeout and comes back at
+			// once, so without the wait this thread spins on the only core. Poll
+			// at 50 Hz: a send cuts the wait short, and a socket is read on the
+			// next round, which is too soon for anyone to notice. The threaded
+			// client on arm64 does block here, and for as long as it blocks the
+			// outbox is not read, so the timeout stays this short for it too.
+			const char *res = self.td_recv(self.client, 0.02);
+			if (!res){
+				// A burst of sends leaves its signals counted up, and each one
+				// would be a round without a rest. A send racing this waits 20 ms.
+				while (dispatch_semaphore_wait(self.outboxSignal, DISPATCH_TIME_NOW) == 0)
+					;
+				dispatch_semaphore_wait(self.outboxSignal,
+						dispatch_time(DISPATCH_TIME_NOW, kIdlePollNanoseconds));
 				continue;
+			}
 
 			NSMutableArray *batch = [NSMutableArray arrayWithCapacity:32];
 
@@ -406,6 +423,7 @@ static BOOL TGVerboseClientLog(void) {
 	[self.outboxLock lock];
 	[self.outbox addObject:z];
 	[self.outboxLock unlock];
+	dispatch_semaphore_signal(self.outboxSignal);
 }
 
 /// Runs on the receive thread only.
@@ -534,6 +552,10 @@ NSDictionary *TGFormattedText(NSString *text) {
 			@"username"   : obj[@"usernames"][@"active_usernames"][0] ?: (obj[@"username"] ?: @""),
 			@"phone"      : obj[@"phone_number"] ?: @"",
 		};
+		// getMe is the first moment the active account's title and phone are
+		// both known; the slot list has to carry them so the switcher can
+		// name each account.
+		[self recordActiveAccountFromMe:self.me];
 		NSLog(@"TGClient: signed in as +%@", self.me[@"phone"]);
 		return;
 	}
@@ -1593,7 +1615,9 @@ NSDictionary *TGFormattedText(NSString *text) {
 - (void)sendTdlibParameters {
 	NSString *docs = [NSSearchPathForDirectoriesInDomains(
 			NSDocumentDirectory, NSUserDomainMask, YES) objectAtIndex:0];
-	NSString *db = [docs stringByAppendingPathComponent:@"tdlib"];
+	// Each account's database lives in its own directory so switching never
+	// opens another account's files; slot 0 keeps the pre-accounts path.
+	NSString *db = TGAccountDatabaseDirectory(docs, [TGClient activeAccountSlot]);
 
 	int SETUP_API_ID(apiId)
 	char * SETUP_API_HASH(apiHash)

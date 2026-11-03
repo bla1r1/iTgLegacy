@@ -149,9 +149,9 @@ Device tiers — a feature asks for a tier, not an iOS version. `Settings > This
 
 | Feature | Gate |
 |---|---|
-| Custom/animated emoji | `canAnimateInline` — 64-bit (A7+) only |
+| Custom emoji in message text | not built on any device; shown as the plain emoji |
 | Mini apps, web apps | `canRunWebApps` — iOS 9+, WKWebView JS |
-| Multiple accounts | `canHoldMultipleAccounts` — ≥ 1 GB RAM |
+| Multiple accounts | Every device, one active at a time; each has its own TDLib directory |
 | Video calls | `canEncodeVideoCall` — blocked: tgcalls is WebRTC/C++17, no armv7 build, iOS 7 has no VideoToolbox encoder |
 | Voice calls | **built, but the other end refuses.** libtgvoip compiles and rings — modern Telegram iOS rejects with "cannot accept this call with this version". Works between two peers that still accept 2.4.4 |
 

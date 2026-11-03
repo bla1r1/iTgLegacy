@@ -16,6 +16,19 @@ static const CGFloat kMuteGlyph     = 16.0f;
 static const CGFloat kMuteRoom      = 20.0f;
 static const CGFloat kPinGlyph      = 16.0f;
 static const CGFloat kBadgePad      = TGMetricPadMedium + TGMetricPadTiny;
+/// Three of these fit beside a 320 pt row. A fourth would cover the preview,
+/// so Pin and Read stay in the hold menu.
+static const CGFloat kSwipeActionWidth = 76.0f;
+
+@interface TGChatCell ()
+@property (nonatomic, strong) NSMutableArray *swipeActionButtons;
+@property (nonatomic, assign) BOOL swipeActionsOpen;
+@property (nonatomic, assign) CGFloat swipeActionsWidth;
+/// A close animation must not strip the buttons of a row that was swiped
+/// again before the first animation finished.
+@property (nonatomic, assign) NSUInteger swipeActionsGeneration;
+- (void)removeSwipeActionButtons;
+@end
 
 static CGSize TGChatCellTextSize(NSString *text, UIFont *font) {
 	return TGLineTextSize(text, font);
@@ -149,6 +162,13 @@ static UIFont *TGChatCellTitleFont(void) {
 }
 
 - (void)layoutSubviews {
+	// UIKit sets the content view's frame in here, and a frame set under a
+	// transform lands somewhere else: the swiped row ended up 228 pt to the right
+	// of where it was slid to, covering the buttons it had just uncovered.
+	CGAffineTransform slid = self.contentView.transform;
+	BOOL isSlid = !CGAffineTransformIsIdentity(slid);
+	if (isSlid)
+		self.contentView.transform = CGAffineTransformIdentity;
 	[super layoutSubviews];
 	CGFloat w = self.contentView.bounds.size.width;
 	CGFloat h = self.contentView.bounds.size.height;
@@ -203,6 +223,17 @@ static UIFont *TGChatCellTitleFont(void) {
 
 	CGFloat hair = TGMetricHairline;
 	self.separator.frame = CGRectMake(kTextLeft, h - hair, w - kTextLeft, hair);
+
+	// Only a swiped row has these; closed rows keep no views to lay out.
+	if (self.swipeActionButtons.count){
+		CGFloat x = self.bounds.size.width - self.swipeActionsWidth;
+		for (UIButton *button in self.swipeActionButtons){
+			button.frame = CGRectMake(x, 0, kSwipeActionWidth, self.bounds.size.height);
+			x += kSwipeActionWidth;
+		}
+	}
+	if (isSlid)
+		self.contentView.transform = slid;
 }
 
 - (void)applyTheme {
@@ -218,13 +249,108 @@ static UIFont *TGChatCellTitleFont(void) {
 	self.separator.backgroundColor = [theme separatorColour];
 }
 
+- (void)revealSwipeActionsWithTitles:(NSArray *)titles
+                             colours:(NSArray *)colours
+                              target:(id)target
+                              action:(SEL)action {
+	self.swipeActionsGeneration++;
+	if (!self.swipeActionButtons.count){
+		self.swipeActionButtons = [NSMutableArray arrayWithCapacity:titles.count];
+		for (NSUInteger i = 0; i < titles.count; i++){
+			UIButton *button = [UIButton buttonWithType:UIButtonTypeCustom];
+			button.titleLabel.font = TGFontCaptionStrong();
+			[button setTitleColor:[[TGTheme shared] onAccentColour]
+						 forState:UIControlStateNormal];
+			[button addTarget:target action:action
+			 forControlEvents:UIControlEventTouchUpInside];
+			[button setTitle:i < titles.count ? titles[i] : @""
+					forState:UIControlStateNormal];
+			if (i < colours.count)
+				button.backgroundColor = colours[i];
+			// Behind the content view: the row slides left and exposes them. On
+			// iOS 7 the content view sits in a private scroll view, not the cell.
+			[self.contentView.superview insertSubview:button belowSubview:self.contentView];
+			[self.swipeActionButtons addObject:button];
+		}
+		self.swipeActionsWidth = (CGFloat)titles.count * kSwipeActionWidth;
+		self.clipsToBounds = YES;
+		[self setNeedsLayout];
+	} else {
+		for (NSUInteger i = 0; i < self.swipeActionButtons.count; i++){
+			UIButton *button = self.swipeActionButtons[i];
+			[button setTitle:i < titles.count ? titles[i] : @""
+					forState:UIControlStateNormal];
+			if (i < colours.count)
+				button.backgroundColor = colours[i];
+		}
+	}
+	self.swipeActionsOpen = NO;
+	self.contentView.transform = CGAffineTransformIdentity;
+}
+
+- (void)setSwipeActionsOffset:(CGFloat)offset {
+	CGFloat width = self.swipeActionsWidth;
+	if (width <= 0)
+		return;
+	if (offset > 0)
+		offset = 0;
+	if (offset < -width)
+		offset = -width;
+	self.contentView.transform = CGAffineTransformMakeTranslation(offset, 0);
+}
+
+- (void)openSwipeActionsAnimated:(BOOL)animated {
+	CGFloat width = self.swipeActionsWidth;
+	if (width <= 0)
+		return;
+	self.swipeActionsOpen = YES;
+	if (!animated){
+		self.contentView.transform = CGAffineTransformMakeTranslation(-width, 0);
+		return;
+	}
+	[UIView animateWithDuration:TGAnimationDurationFast animations:^{
+		self.contentView.transform = CGAffineTransformMakeTranslation(-width, 0);
+	}];
+}
+
+- (void)closeSwipeActionsAnimated:(BOOL)animated {
+	self.swipeActionsOpen = NO;
+	NSUInteger generation = ++self.swipeActionsGeneration;
+	void (^finish)(void) = ^{
+		if (self.swipeActionsGeneration != generation)
+			return;
+		[self removeSwipeActionButtons];
+	};
+	if (!animated || !self.swipeActionButtons.count){
+		self.contentView.transform = CGAffineTransformIdentity;
+		finish();
+		return;
+	}
+	[UIView animateWithDuration:TGAnimationDurationFast animations:^{
+		self.contentView.transform = CGAffineTransformIdentity;
+	} completion:^(BOOL finished){
+		finish();
+	}];
+}
+
+- (void)removeSwipeActionButtons {
+	for (UIButton *button in self.swipeActionButtons)
+		[button removeFromSuperview];
+	self.swipeActionButtons = nil;
+	self.swipeActionsWidth = 0;
+}
+
 - (void)setEditing:(BOOL)editing animated:(BOOL)animated {
 	[super setEditing:editing animated:animated];
+	if (editing)
+		[self closeSwipeActionsAnimated:NO];
 	[self updateEditCheck];
 }
 
 - (void)setSelected:(BOOL)selected animated:(BOOL)animated {
 	[super setSelected:selected animated:animated];
+	if (selected)
+		[self closeSwipeActionsAnimated:NO];
 	[self updateEditCheck];
 }
 
@@ -236,6 +362,7 @@ static UIFont *TGChatCellTitleFont(void) {
 
 - (void)prepareForReuse {
 	[super prepareForReuse];
+	[self closeSwipeActionsAnimated:NO];
 	self.editCheck.hidden = YES;
 	self.dateLabel.hidden = NO;
 }

@@ -116,4 +116,35 @@ static const CGFloat kEmptyBtnW     = 160.0f;
 	}
 }
 
+- (void)didMoveToWindow {
+	[super didMoveToWindow];
+	// The factory finishes configuring before the view joins a window, so that
+	// is the first moment the fade can actually be seen.
+	if (self.window && !self.hidden)
+		[self fadeIn];
+}
+
+- (void)setHidden:(BOOL)hidden {
+	if (hidden == self.hidden) {
+		[super setHidden:hidden];
+		return;
+	}
+	if (!hidden) {
+		[super setHidden:NO];
+		[self fadeIn];
+	} else {
+		[super setHidden:YES];
+		// Reset so the next show starts its fade from clear.
+		self.alpha = TGAlphaOpaque;
+	}
+}
+
+- (void)fadeIn {
+	self.alpha = TGAlphaTransparent;
+	__weak typeof(self) weakSelf = self;
+	[UIView animateWithDuration:TGAnimationDurationNormal animations:^{
+		weakSelf.alpha = TGAlphaOpaque;
+	}];
+}
+
 @end

@@ -944,7 +944,7 @@ static NSString *TGNotificationGroupLabel(NSString *type) {
 				}
 				me.personalChatId = chatId;
 				[NSUserDefaults.standardUserDefaults setObject:@(chatId)
-													   forKey:@"TGPersonalChatId"];
+													   forKey:TGAccountDefaultsKey(@"TGPersonalChatId")];
 				[me rebuild];
 			}];
 		}];

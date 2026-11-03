@@ -513,7 +513,8 @@
 			[weakSelf rebuild];
 		}];
 		NSNumber *savedPersonal =
-				[NSUserDefaults.standardUserDefaults objectForKey:@"TGPersonalChatId"];
+				[NSUserDefaults.standardUserDefaults objectForKey:
+						TGAccountDefaultsKey(@"TGPersonalChatId")];
 		if (savedPersonal)
 			weakSelf.personalChatId = savedPersonal.longLongValue;
 		// TDLib stores the negative, so the row and the option are opposites.

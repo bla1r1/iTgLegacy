@@ -31,6 +31,16 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
                         height, width, gutter);
 }
 
+/// The whole form is the scroll view, so a step swap made its fields, links
+/// and title blink from one arrangement to the next. The fade is run by the
+/// render server, which leaves the one core free for the next request.
+static void TGCrossFadeStepChange(UIScrollView *scrollView) {
+    CATransition *fade = [CATransition animation];
+    fade.type = kCATransitionFade;
+    fade.duration = TGAnimationDurationNormal;
+    [scrollView.layer addAnimation:fade forKey:@"tg.stepChange"];
+}
+
 @implementation TGLoginViewController (Steps)
 
 #pragma mark - step geometry
@@ -182,6 +192,7 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
 }
 
 - (void)showPhoneStep {
+    TGCrossFadeStepChange(self.scrollView);
     [self clearStepLinks];
     [self.resendTimer invalidate];
     self.resendTimer = nil;
@@ -289,6 +300,7 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
 }
 
 - (void)showQRCodeStepWithLink:(NSString *)link {
+    TGCrossFadeStepChange(self.scrollView);
     [self clearStepLinks];
     [self setBusy:NO];
     self.errorLabel.text = nil;
@@ -336,7 +348,19 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
     }
     self.qrImageView.layer.borderColor = [[TGTheme shared] separatorColour].CGColor;
     self.qrImageView.hidden = NO;
-    self.qrImageView.image = [self generateQRCodeForString:link size:qrSize];
+    UIImage *qrImage = [self generateQRCodeForString:link size:qrSize];
+    self.qrImageView.image = qrImage;
+    if (qrImage) {
+        // The code comes back from a round trip; fading it in makes the wait
+        // read as finished instead of the picture blinking into place.
+        self.qrImageView.alpha = TGAlphaTransparent;
+        __weak typeof(self) weakSelf = self;
+        [UIView animateWithDuration:TGAnimationDurationNormal animations:^{
+            weakSelf.qrImageView.alpha = TGAlphaOpaque;
+        }];
+    } else {
+        self.qrImageView.alpha = TGAlphaOpaque;
+    }
 
     // The other direction: the other device shows the code and this one
     // confirms the link, which is what their "scan a QR" does with a camera
@@ -370,7 +394,10 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
     size_t height = (size_t)(CGRectGetHeight(extent) * scale);
     CGColorSpaceRef cs = CGColorSpaceCreateDeviceGray();
     CGContextRef bitmapRef = CGBitmapContextCreate(nil, width, height, 8, 0, cs, (CGBitmapInfo)kCGImageAlphaNone);
-    CIContext *context = [CIContext contextWithOptions:nil];
+    // The software renderer: a GPU-backed CIContext is what faulted in the hold
+    // blur on the A4, and a QR code is a few hundred black squares.
+    CIContext *context = [CIContext contextWithOptions:
+            @{kCIContextUseSoftwareRenderer : @YES}];
     CGImageRef bitmapImage = [context createCGImage:ciImage fromRect:extent];
     CGContextSetInterpolationQuality(bitmapRef, kCGInterpolationNone);
     CGContextScaleCTM(bitmapRef, scale, scale);
@@ -385,6 +412,7 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
 }
 
 - (void)showCodeStepWithPhoneNumber:(NSString *)phoneNumber {
+    TGCrossFadeStepChange(self.scrollView);
     [self clearStepLinks];
     [self setBusy:NO];
     self.errorLabel.text = nil;
@@ -510,6 +538,7 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
 /// does not require one, so the single field this screen has asks for the
 /// first and the rest is left for Edit Profile.
 - (void)showRegisterStep {
+    TGCrossFadeStepChange(self.scrollView);
     [self clearStepLinks];
     [self setBusy:NO];
     self.currentStep = TGLoginStepRegister;
@@ -781,6 +810,7 @@ static CGFloat TGStackPlaceGroup(UIView *view, CGFloat y, CGFloat height,
 - (void)showFieldStep:(TGLoginStep)step title:(NSString *)title subtitle:(NSString *)subtitle
           placeholder:(NSString *)placeholder secure:(BOOL)secure
              keyboard:(UIKeyboardType)keyboard button:(NSString *)button {
+    TGCrossFadeStepChange(self.scrollView);
     [self setBusy:NO];
     self.errorLabel.text = nil;
     self.errorLabel.hidden = YES;

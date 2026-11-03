@@ -90,6 +90,8 @@ NSDictionary *TGStickerInfo(NSDictionary *sticker);
 @property (nonatomic, strong) TGUpdateCoalescer *updateCoalescer;
 @property (nonatomic, strong) NSMutableArray *outbox;   // JSON strings awaiting send
 @property (nonatomic, strong) NSLock *outboxLock;
+/// Wakes the idle receive thread as soon as there is something to send.
+@property (nonatomic, strong) dispatch_semaphore_t outboxSignal;
 @property (nonatomic, assign) NSUInteger chatsAtLastLoad;
 @property (nonatomic, assign) BOOL chatListComplete;
 @property (nonatomic, assign) NSUInteger loadChatsAttempts;
@@ -176,6 +178,9 @@ NSDictionary *TGStickerInfo(NSDictionary *sticker);
 - (void)sweepFileWaiters:(NSInteger)fileId;
 - (void)releaseFileWaiters:(NSInteger)fileId;
 - (void)removeAllFileWaiters;
+/// The preliminary-upload/generation records keyed by original path. Cleared
+/// on an account switch: the file ids they track belong to the old client.
+- (void)removeAllPendingGenerations;
 - (NSUInteger)fileWaiterCount:(NSInteger)fileId;
 - (BOOL)hasFileWaiterRecord:(NSInteger)fileId;
 - (NSInteger)fileWaiterPriority:(NSInteger)fileId;
@@ -220,6 +225,10 @@ extern double TGFileWaiterTimeoutSeconds;
 /// new message, a deletion, and a send failure. Kept in TGClient+GroupCalls
 /// beside the flattening the call screens read.
 - (void)applyGroupCallUpdate:(NSDictionary *)update;
+/// Drops every group call, participant and message the client cached. Called
+/// on an account switch so the next account's call screens do not read the
+/// previous account's call ids and senders.
+- (void)resetGroupCallState;
 - (void)applyGroupCallParticipantUpdate:(NSDictionary *)update;
 - (void)applyGroupCallParticipantsUpdate:(NSDictionary *)update;
 - (void)applyNewGroupCallMessage:(NSDictionary *)update;

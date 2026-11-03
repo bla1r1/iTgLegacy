@@ -123,7 +123,7 @@ static NSString *TGPublicPostText(NSDictionary *message) {
 	self.avatarsRequested = [NSMutableSet set];
 	self.scope = TGSearchScopeAll;
 	self.recentQueries = [[NSUserDefaults standardUserDefaults]
-			arrayForKey:kRecentQueriesKey] ?: @[];
+			arrayForKey:TGAccountDefaultsKey(kRecentQueriesKey)] ?: @[];
 	self.tableView.rowHeight = TGMetricPersonRow;
 	if ([self.tableView respondsToSelector:@selector(setKeyboardDismissMode:)])
 		self.tableView.keyboardDismissMode = UIScrollViewKeyboardDismissModeOnDrag;
@@ -335,12 +335,12 @@ static NSString *TGPublicPostText(NSDictionary *message) {
 			[fresh addObject:old];
 	self.recentQueries = fresh;
 	[[NSUserDefaults standardUserDefaults] setObject:fresh
-											  forKey:kRecentQueriesKey];
+											  forKey:TGAccountDefaultsKey(kRecentQueriesKey)];
 }
 
 - (void)clearRecentQueries {
 	self.recentQueries = @[];
-	[[NSUserDefaults standardUserDefaults] removeObjectForKey:kRecentQueriesKey];
+	[[NSUserDefaults standardUserDefaults] removeObjectForKey:TGAccountDefaultsKey(kRecentQueriesKey)];
 	[self.tableView reloadData];
 }
 
@@ -458,7 +458,7 @@ static NSString *TGPublicPostText(NSDictionary *message) {
 		[rest removeObject:query];
 		self.recentQueries = rest;
 		[[NSUserDefaults standardUserDefaults] setObject:rest
-												  forKey:kRecentQueriesKey];
+												  forKey:TGAccountDefaultsKey(kRecentQueriesKey)];
 		[self.tableView reloadData];
 		return;
 	}

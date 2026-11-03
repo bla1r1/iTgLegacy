@@ -25,11 +25,7 @@
 /// arrived in iOS 8, and its JavaScript is only usable from about iOS 9.
 + (BOOL)canRunWebApps;
 
-/// Animated stickers and custom emoji: one Lottie frame per message is more
-/// than an A5 has to spare.
-+ (BOOL)canAnimateInline;
-
-/// A second TDLib client for another account. Each costs tens of megabytes.
+/// One TDLib client runs at a time, so a second account costs disk, not memory.
 + (BOOL)canHoldMultipleAccounts;
 
 /// Video calls need a hardware H.264 encoder driven in real time, which
@@ -50,13 +46,9 @@
 /// How many GIFs may play at once on this device.
 + (NSUInteger)maxConcurrentGIFs;
 
-/// Swiping a chat row for Mute / Pin / Delete. The API for more than one
-/// button on a swiped row arrived in iOS 8; before that a row is held.
+/// The system's row actions for a swiped chat row, from iOS 8. Earlier systems
+/// get the chat list's own swipe.
 + (BOOL)canSwipeRowActions;
-
-/// The strip of recent photos in the attach sheet: a few dozen thumbnails
-/// decoded on open, too much for 256MB.
-+ (BOOL)canShowRecentPhotos;
 
 /// Emoji the system font can draw. Each iOS knows a later Unicode, and one
 /// it does not know renders as nothing at all, so lists are filtered by it.

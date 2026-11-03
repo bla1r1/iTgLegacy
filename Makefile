@@ -215,6 +215,7 @@ APP_SRC_M := \
 	src/Core/TGBase64.m \
 	src/Controllers/TGNavController.m \
 	src/Core/TGClient+Account.m \
+	src/Core/TGClient+Accounts.m \
 	src/Core/TGClient+Appearance.m \
 	src/Core/TGClient+Diagnostics.m \
 	src/Core/TGDatabaseKey.m \

@@ -5,6 +5,7 @@
 #import "TGIcons.h"
 #import "TGPopupMenu.h"
 #import "TGStickerStore.h"
+#import "TGClientNotifications.h"
 #import "UIImage+WebP.h"
 #import <QuartzCore/QuartzCore.h>
 #import "TGStyle.h"
@@ -166,6 +167,21 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 @end
 
 @implementation TGEmojiPanel
+
++ (void)initialize {
+	if (self != [TGEmojiPanel class])
+		return;
+	// The decoded-thumbnail cache is keyed by TDLib file id, so one id names a
+	// different picture after an account switch. The cache is a file-scope
+	// static shared by every panel, so it is emptied when the account changes
+	// instead of drawing the previous account's sticker under a new one.
+	[[NSNotificationCenter defaultCenter]
+			addObserverForName:TGAccountDidSwitchNotification
+						object:nil queue:[NSOperationQueue mainQueue]
+				 usingBlock:^(NSNotification *note){
+		[TGPanelImageCache() removeAllObjects];
+	}];
+}
 
 + (CGFloat)preferredHeight {
 	return TGMetricEmojiPanelHeight;

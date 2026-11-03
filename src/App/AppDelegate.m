@@ -10,6 +10,11 @@
 #import "TGClient.h"
 #import "TGTheme.h"
 #import "TGCall.h"
+#import "TGMemberAvatarStore.h"
+#import "TGEmojiStore.h"
+#import "TGMusicPlayer.h"
+#import "TGVoiceRecorder.h"
+#import "TGVideoNoteRecorder.h"
 #import "TGCallViewController.h"
 #import "TGLoginViewController.h"
 #import "TGTermsViewController.h"
@@ -35,6 +40,17 @@ static void TGWatchForIncomingCalls(void) {
 										  outgoing:NO];
 		});
 	};
+}
+
+/// The per-slot "this account has signed in" flag. Slot 0 keeps the original
+/// key so an existing install's YES survives the update; later slots get their
+/// own so switching never reads another account's answer.
+static void TGSetAuthorizedSession(BOOL authorized) {
+	NSInteger slot = [TGClient activeAccountSlot];
+	NSString *key = slot > 0
+			? [NSString stringWithFormat:@"hasAuthorizedSession-%ld", (long)slot]
+			: @"hasAuthorizedSession";
+	[[NSUserDefaults standardUserDefaults] setBool:authorized forKey:key];
 }
 
 static void TGDevCommandNotifyCallback(CFNotificationCenterRef center, void *observer, CFStringRef name, const void *object, CFDictionaryRef userInfo) {
@@ -113,6 +129,30 @@ static void TGDevCommandNotifyCallback(CFNotificationCenterRef center, void *obs
 		});
 	}];
 
+	// Switching accounts drops the old account's screens; the resumed client's
+	// next auth state is what decides login versus the chat list.
+	[[NSNotificationCenter defaultCenter]
+			addObserverForName:TGAccountDidSwitchNotification
+						object:nil queue:nil
+			usingBlock:^(NSNotification *n){
+		dispatch_async(dispatch_get_main_queue(), ^{
+			AppDelegate *me = weakSelf;
+			if (!me)
+				return;
+			// Keyed by this account's user ids, or playing its media.
+			[[TGMemberAvatarStore shared] reset];
+			[[TGEmojiStore shared] reset];
+			[[TGMusicPlayer shared] stop];
+			[[TGVoiceRecorder shared] cancel];
+			[[TGVideoNoteRecorder shared] cancel];
+			[[TGCall shared] reset];
+			me.rootViewController = nil;
+			me.loginVC = nil;
+			me.currentPhoneNumber = nil;
+			[me showLoadingUI];
+		});
+	}];
+
 	[fm changeCurrentDirectoryPath:[[NSBundle mainBundle] bundlePath]];
 
 	self.window = [[UIWindow alloc] initWithFrame:[[UIScreen mainScreen] bounds]];
@@ -158,14 +198,14 @@ static void TGDevCommandNotifyCallback(CFNotificationCenterRef center, void *obs
 
 			switch (state){
 				case TGAuthStateWaitPhoneNumber:
-					[[NSUserDefaults standardUserDefaults] setBool:NO forKey:@"hasAuthorizedSession"];
+					TGSetAuthorizedSession(NO);
 					[me.loginVC setBusy:NO];
 					[me.loginVC showPhoneStep];
 					// In dev builds, keep Main UI active so showcase chats are instantly accessible
 					[me showMainUI];
 					break;
 				case TGAuthStateWaitCode: {
-					[[NSUserDefaults standardUserDefaults] setBool:NO forKey:@"hasAuthorizedSession"];
+					TGSetAuthorizedSession(NO);
 					NSString *phone = me.currentPhoneNumber;
 					if (!phone.length) {
 						phone = [[TGClient shared].codeInfo objectForKey:@"phone_number"];
@@ -180,27 +220,27 @@ static void TGDevCommandNotifyCallback(CFNotificationCenterRef center, void *obs
 					break;
 				}
 				case TGAuthStateWaitPassword:
-					[[NSUserDefaults standardUserDefaults] setBool:NO forKey:@"hasAuthorizedSession"];
+					TGSetAuthorizedSession(NO);
 					[me.loginVC showPasswordStep];
 					if (me.loginVC) [me showLoginUI]; else [me showMainUI];
 					break;
 				case TGAuthStateWaitEmailAddress:
-					[[NSUserDefaults standardUserDefaults] setBool:NO forKey:@"hasAuthorizedSession"];
+					TGSetAuthorizedSession(NO);
 					[me.loginVC showEmailStep];
 					if (me.loginVC) [me showLoginUI]; else [me showMainUI];
 					break;
 				case TGAuthStateWaitEmailCode:
-					[[NSUserDefaults standardUserDefaults] setBool:NO forKey:@"hasAuthorizedSession"];
+					TGSetAuthorizedSession(NO);
 					[me.loginVC showEmailCodeStep];
 					if (me.loginVC) [me showLoginUI]; else [me showMainUI];
 					break;
 				case TGAuthStateWaitRegistration:
-					[[NSUserDefaults standardUserDefaults] setBool:NO forKey:@"hasAuthorizedSession"];
+					TGSetAuthorizedSession(NO);
 					[me.loginVC showRegisterStep];
 					if (me.loginVC) [me showLoginUI]; else [me showMainUI];
 					break;
 				case TGAuthStateWaitOtherDeviceConfirmation:
-					[[NSUserDefaults standardUserDefaults] setBool:NO forKey:@"hasAuthorizedSession"];
+					TGSetAuthorizedSession(NO);
 					[me.loginVC showQRCodeStepWithLink:[TGClient shared].qrCodeLink];
 					if (me.loginVC) [me showLoginUI]; else [me showMainUI];
 					break;
@@ -208,13 +248,13 @@ static void TGDevCommandNotifyCallback(CFNotificationCenterRef center, void *obs
 					// Telegram only takes a token for a signed-in account, so
 					// the ask waits until there is one.
 					[me askForPushToken];
-					[[NSUserDefaults standardUserDefaults] setBool:YES forKey:@"hasAuthorizedSession"];
+					TGSetAuthorizedSession(YES);
 					[me.loginVC setBusy:NO];
 					[me showMainUI];
 					break;
 				case TGAuthStateClosed:
 				case TGAuthStateLoggingOut:
-					[[NSUserDefaults standardUserDefaults] setBool:NO forKey:@"hasAuthorizedSession"];
+					TGSetAuthorizedSession(NO);
 					[me showMainUI];
 					break;
 				default:

@@ -15,6 +15,11 @@
 /// The picture if it has already been decoded at this size.
 - (UIImage *)cachedAvatarForUser:(int64_t)userId side:(CGFloat)side;
 
+/// Empties the decoded-photo cache and the in-flight downloads. Called when
+/// the running account changes: a user id means a different user after a
+/// switch, so a cached avatar must not be drawn for the wrong account.
+- (void)reset;
+
 /// Asks for the user's profile photo, scaled to a square `side`. The
 /// completion runs on the main queue and is called once per request; a
 /// second row for the same user waits on the first download instead of

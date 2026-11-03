@@ -17,7 +17,7 @@
 #import "TGImageLruCache.h"
 #import <QuartzCore/QuartzCore.h>
 
-@interface TGChatListViewController () <UISearchBarDelegate>
+@interface TGChatListViewController () <UISearchBarDelegate, UIGestureRecognizerDelegate>
 
 @property (nonatomic, strong) TGEmptyView *emptyView;
 @property (nonatomic, strong) NSArray *chats;
@@ -50,6 +50,13 @@
 - (void)refreshListTitleView;
 @property (nonatomic, strong) NSArray *searchResults;   // nil = not searching
 @property (nonatomic, strong) NSDictionary *actionChat; // long-pressed row
+/// On iOS below 8 the table cannot draw row actions, so this screen swipes
+/// one row itself. The cell is weak: the reuse pool may outlive a reload.
+@property (nonatomic, weak) TGChatCell *swipeActionsCell;
+@property (nonatomic, strong) NSDictionary *swipeActionsChat;
+@property (nonatomic, strong) UIPanGestureRecognizer *swipeActionsPan;
+/// The tap that closed a row must not also select the row and open the chat.
+@property (nonatomic, assign) BOOL swipeActionsSuppressSelection;
 @property (nonatomic, assign) int64_t chatPendingDeletion;
 @property (nonatomic, assign) CGFloat headerHeight;
 @property (nonatomic, assign) CGFloat parkOffset;  // scroll that hides search + archive strip
@@ -97,6 +104,9 @@
 - (void)showActionsForRow:(NSInteger)row;
 - (void)runChatAction:(NSString *)action;
 - (void)confirmDeleteChat:(int64_t)chatId;
+- (void)installLegacySwipeActions;
+- (void)closeSwipeActionsAnimated:(BOOL)animated;
+- (void)openSwipeActionsAtRow:(NSInteger)row;
 
 @end
 

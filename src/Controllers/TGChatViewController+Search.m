@@ -20,24 +20,45 @@
 	self.chatSearchBar.delegate = self;
 	self.chatSearchBar.placeholder = @"Search in chat";
 	self.chatSearchBar.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+	self.chatSearchBar.alpha = TGAlphaTransparent;
 	[self.view addSubview:self.chatSearchBar];
 	[self.chatSearchBar setShowsCancelButton:YES animated:NO];
 	[self.chatSearchBar becomeFirstResponder];
 
 	self.messagesBeforeSearch = self.messages;
+
+	// The bar fades over the header. The table stays put: the keyboard is moving
+	// its frame at this moment, and a frame set under a transform comes out wrong.
+	__weak typeof(self) weakSelf = self;
+	[UIView animateWithDuration:TGAnimationDurationNormal animations:^{
+		weakSelf.chatSearchBar.alpha = TGAlphaOpaque;
+	}];
 }
 
 - (void)endChatSearch {
-	[self.chatSearchBar resignFirstResponder];
-	[self.chatSearchBar removeFromSuperview];
+	UISearchBar *bar = self.chatSearchBar;
+	if (!bar)
+		return;
 	self.chatSearchBar = nil;
+	[bar resignFirstResponder];
 
+	// Restore at once rather than in the completion below: a second search
+	// opened during the slide would otherwise capture the old results as the
+	// list it has to return to.
 	if (self.messagesBeforeSearch){
 		self.messages = self.messagesBeforeSearch;
 		self.messagesBeforeSearch = nil;
 		[self.table reloadData];
 		[self scrollToBottomAnimated:NO];
 	}
+
+	// The old bar is removed by its own pointer, so a new search opened during
+	// the fade keeps its bar.
+	[UIView animateWithDuration:TGAnimationDurationNormal animations:^{
+		bar.alpha = TGAlphaTransparent;
+	} completion:^(BOOL finished){
+		[bar removeFromSuperview];
+	}];
 }
 
 - (void)searchBarCancelButtonClicked:(id)searchBar {

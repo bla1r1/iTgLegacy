@@ -30,13 +30,13 @@ static NSString *const TGBusinessConnectionDefaultsKey = @"TGBusinessConnectionI
 
 NSString *TGBusinessStoredConnectionId(void) {
 	NSString *value = [[NSUserDefaults standardUserDefaults]
-			stringForKey:TGBusinessConnectionDefaultsKey];
+			stringForKey:TGAccountDefaultsKey(TGBusinessConnectionDefaultsKey)];
 	return [value isKindOfClass:NSString.class] ? value : @"";
 }
 
 void TGBusinessStoreConnectionId(NSString *connectionId) {
 	[[NSUserDefaults standardUserDefaults] setObject:(connectionId ?: @"")
-											  forKey:TGBusinessConnectionDefaultsKey];
+											  forKey:TGAccountDefaultsKey(TGBusinessConnectionDefaultsKey)];
 }
 
 /// The names Telegram's Business page uses for the feature type names the

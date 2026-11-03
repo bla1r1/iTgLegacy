@@ -8,6 +8,8 @@
 //   itglegacy://bench/pref/<key>/<0|1>          flip a user default, for A/B runs
 //   itglegacy://bench/mem/<label>                resident memory by VM tag
 //   itglegacy://bench/memwarn                    post a memory warning
+//   itglegacy://bench/record/<seconds>           framebuffer frames into Caches/cap
+//   itglegacy://bench/slow/<speed>               all animations at this speed
 //
 // Every run ends with one "[bench] ..." line; with /prof the main thread is
 // also sampled into Library/Caches/bench-<what>.txt for scripts/bench.sh.

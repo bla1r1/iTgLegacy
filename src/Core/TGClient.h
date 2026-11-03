@@ -11,6 +11,7 @@
 #import "TGDownloadPriority.h"
 #import "TGClient+Base.h"
 #import "TGClient+Account.h"
+#import "TGClient+Accounts.h"
 #import "TGClient+Appearance.h"
 #import "TGClient+Affiliate.h"
 #import "TGClient+Auth.h"

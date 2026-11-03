@@ -370,6 +370,30 @@ if [ -n "$hits" ]; then
     echo "$hits"
 fi
 
+# ── 26. a setter that assigns to its own property ───────────────────
+# self.busy = busy inside setBusy: calls setBusy: again until the stack runs out.
+# Every sign-in step went through it, so both the phone and the QR login crashed
+# on the iPod touch 4 as soon as they were tapped.
+hits=$(find src -name '*.m' -o -name '*.mm' | xargs awk '
+    /^- *\(void\) *set[A-Z][A-Za-z0-9_]*:\([^:]*$/ {
+        name = $0
+        sub(/^- *\(void\) *set/, "", name)
+        sub(/:.*/, "", name)
+        name = tolower(substr(name, 1, 1)) substr(name, 2)
+        inside = 1
+        next
+    }
+    /^}/ { inside = 0 }
+    inside && index($0, "self." name " =") && !index($0, "self." name " ==") {
+        print FILENAME ":" FNR ":" $0
+    }
+')
+if [ -n "$hits" ]; then
+    report "A setter assigns to its own property, which recurses until the stack is gone:" \
+            "assign the ivar instead"
+    echo "$hits"
+fi
+
 if [ "$status" -eq 0 ]; then
     echo "  design tokens: clean"
 fi

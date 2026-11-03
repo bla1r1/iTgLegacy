@@ -2,6 +2,7 @@
 #import "TGTheme.h"
 #import "TGIcons.h"
 #import "TGTextDraw.h"
+#import "TGAlertSheet.h"
 #import <AssetsLibrary/AssetsLibrary.h>
 #import <QuartzCore/QuartzCore.h>
 #import "TGStyle.h"
@@ -14,14 +15,9 @@ static const CGFloat kRow          = TGMetricRow;
 /// Two thirds of the screen: tall enough for two rows of tiles on a 480 pt
 /// iPod, short enough that the chat still shows behind it.
 static const CGFloat kSheetShare   = 2.0f / 3.0f;
-static const CGFloat kCancelWidth  = 80.0f;
 static const CGFloat kGridGap      = 1.0f;
 static const CGFloat kGridColumns  = 3.0f;
 static const CGFloat kCameraGlyph  = 32.0f;
-static const CGFloat kStripHeight  = 76.0f;
-static const CGFloat kStripTile    = 44.0f;
-static const CGFloat kStripItem    = 72.0f;
-static const CGFloat kStripTileTop = TGMetricPad;
 /// About two screens of thumbnails. Anything older is read from its asset
 /// again, which costs less than the memory on a 256 MB device.
 static const NSUInteger kThumbCacheLimit = 24;
@@ -112,8 +108,10 @@ static NSString *const kTileIdentifier = @"tile";
 
 @interface TGAttachSheet () <UICollectionViewDataSource, UICollectionViewDelegate>
 @property (nonatomic, strong) UICollectionView *grid;
-@property (nonatomic, strong) UIScrollView *strip;
-@property (nonatomic, strong) UIButton *sendButton;
+@property (nonatomic, strong) UINavigationItem *header;
+@property (nonatomic, strong) UIToolbar *toolbar;
+@property (nonatomic, strong) NSArray *choiceItems;
+@property (nonatomic, strong) UIBarButtonItem *sendItem;
 @property (nonatomic, strong) UILabel *message;
 /// Holds the assets alive: an ALAsset is only valid while its library is.
 @property (nonatomic, strong) ALAssetsLibrary *library;
@@ -154,7 +152,6 @@ static NSString *const kTileIdentifier = @"tile";
 	self = [super initWithFrame:frame];
 	if (!self)
 		return nil;
-	TGTheme *theme = [TGTheme shared];
 	self.thumbs = [[NSCache alloc] init];
 	self.thumbs.countLimit = kThumbCacheLimit;
 	self.ticks = [NSMutableArray arrayWithCapacity:(NSUInteger)kMaxPhotos + 1];
@@ -169,46 +166,26 @@ static NSString *const kTileIdentifier = @"tile";
 
 	_tile = floorf((w - TGDoubled(kGridGap)) / kGridColumns);
 	_gridTop = kRow;
-	_gridHeight = cardH - kRow - kStripHeight;
+	_gridHeight = cardH - TGDoubled(kRow);
 	[self addGridToCard:card width:w];
 
-	CGFloat stripY = cardH - kStripHeight;
-	UIView *hair = [[UIView alloc] initWithFrame:CGRectMake(0, stripY, w, TGMetricHairline)];
-	hair.backgroundColor = [theme separatorColour];
-	[card addSubview:hair];
-	[self addStripToCard:card frame:CGRectMake(0, stripY, w, kStripHeight)];
+	[self addToolbarToCard:card frame:CGRectMake(0, cardH - kRow, w, kRow)];
 	return self;
 }
 
 #pragma mark - building
 
+/// The system's own bars, top and bottom: they are glass on iOS 6 and flat from
+/// iOS 7 with nothing here having to know which.
 - (void)addHeaderToCard:(UIView *)card width:(CGFloat)w {
-	TGTheme *theme = [TGTheme shared];
-	UIButton *cancel = [UIButton buttonWithType:UIButtonTypeCustom];
-	cancel.frame = CGRectMake(0, 0, kCancelWidth, kRow);
-	cancel.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeft;
-	cancel.contentEdgeInsets = UIEdgeInsetsMake(0, TGMetricPadLarge, 0, 0);
-	cancel.titleLabel.font = TGFontInput();
-	[cancel setTitle:@"Cancel" forState:UIControlStateNormal];
-	[cancel setTitleColor:[theme accentColour] forState:UIControlStateNormal];
-	[cancel setTitleColor:[theme secondaryTextColour] forState:UIControlStateHighlighted];
-	[cancel addTarget:self action:@selector(dismiss) forControlEvents:UIControlEventTouchUpInside];
-	[card addSubview:cancel];
-
-	// Same margin both sides, so the title stays on the centre line whatever
-	// Cancel's width.
-	UILabel *title = [[UILabel alloc] initWithFrame:CGRectMake(kCancelWidth, 0,
-			w - TGDoubled(kCancelWidth), kRow)];
-	title.text = @"Recent";
-	title.textAlignment = NSTextAlignmentCenter;
-	title.font = TGFontHeader();
-	title.textColor = [theme primaryTextColour];
-	title.backgroundColor = [UIColor clearColor];
-	[card addSubview:title];
-
-	UIView *hair = [[UIView alloc] initWithFrame:CGRectMake(0, kRow - TGMetricHairline, w, TGMetricHairline)];
-	hair.backgroundColor = [theme separatorColour];
-	[card addSubview:hair];
+	UINavigationBar *bar = [[UINavigationBar alloc] initWithFrame:CGRectMake(0, 0, w, kRow)];
+	[[TGTheme shared] styleNavigationBar:bar];
+	self.header = [[UINavigationItem alloc] initWithTitle:@"Recent"];
+	self.header.leftBarButtonItem = [[UIBarButtonItem alloc]
+			initWithBarButtonSystemItem:UIBarButtonSystemItemCancel
+								 target:self action:@selector(dismiss)];
+	bar.items = @[self.header];
+	[card addSubview:bar];
 }
 
 - (void)addGridToCard:(UIView *)card width:(CGFloat)w {
@@ -233,108 +210,78 @@ static NSString *const kTileIdentifier = @"tile";
 									  side:kCameraGlyph];
 }
 
-- (void)addStripToCard:(UIView *)card frame:(CGRect)frame {
-	TGTheme *theme = [TGTheme shared];
-	self.strip = [[UIScrollView alloc] initWithFrame:frame];
-	self.strip.showsHorizontalScrollIndicator = NO;
-	self.strip.alwaysBounceHorizontal = YES;
-	self.strip.scrollsToTop = NO;
-	[card addSubview:self.strip];
+- (UIBarButtonItem *)itemWithGlyph:(NSString *)glyph choice:(TGAttachChoice)choice label:(NSString *)label {
+	UIBarButtonItem *item = [[UIBarButtonItem alloc]
+			initWithImage:[TGIcons glyphNamed:glyph
+									   colour:[[TGTheme shared] barButtonColour]
+										 side:TGMetricMenuGlyph]
+					style:UIBarButtonItemStylePlain
+				   target:self action:@selector(choiceTapped:)];
+	item.tag = (NSInteger)choice;
+	item.accessibilityLabel = label;
+	return item;
+}
 
-	// Index is the TGAttachChoice the tile reports.
-	NSArray *titles = @[@"Gallery", @"Location", @"Contact", @"Checklist",
-						@"Quick Reply", @"Dice", @"Ephemeral"];
-	NSArray *glyphs = @[@"folder", @"pin", @"call", @"select", @"reply",
-						@"star", @"recent"];
-	NSArray *hues = @[TGIconTileAzure(), TGIconTileGreen(), TGIconTileAmber(),
-					  TGIconTileCyan(), TGIconTileViolet(), TGIconTileCoral(),
-					  TGIconTileSlate()];
-
-	CGFloat x = TGMetricPad;
-	for (NSUInteger i = 0; i < titles.count; i++){
-		UIButton *item = [UIButton buttonWithType:UIButtonTypeCustom];
-		item.frame = CGRectMake(x, 0, kStripItem, kStripHeight);
-		item.tag = (NSInteger)i;
-		item.accessibilityLabel = titles[i];
-		// The tile is the button's own image so the stock dimming on touch
-		// comes with it; the insets drop it to the top, above the label.
-		item.contentVerticalAlignment = UIControlContentVerticalAlignmentTop;
-		item.imageEdgeInsets = UIEdgeInsetsMake(kStripTileTop, 0, 0, 0);
-		[item setImage:[self stripTileWithGlyph:glyphs[i] hue:hues[i]]
-			  forState:UIControlStateNormal];
-		[item addTarget:self action:@selector(choiceTapped:) forControlEvents:UIControlEventTouchUpInside];
-
-		UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(0,
-				kStripTileTop + kStripTile + TGMetricPadSmall, kStripItem, TGMetricLineMicro)];
-		label.text = titles[i];
-		label.textAlignment = NSTextAlignmentCenter;
-		label.font = TGFontMicro();
-		label.textColor = [theme secondaryTextColour];
-		label.backgroundColor = [UIColor clearColor];
-		label.userInteractionEnabled = NO;
-		[item addSubview:label];
-
-		[self.strip addSubview:item];
-		x += kStripItem;
+- (void)addToolbarToCard:(UIView *)card frame:(CGRect)frame {
+	self.toolbar = [[UIToolbar alloc] initWithFrame:frame];
+	if ([self.toolbar respondsToSelector:@selector(setBarTintColor:)]){
+		self.toolbar.barTintColor = [[TGTheme shared] barColour];
+		self.toolbar.translucent = NO;
+		self.toolbar.tintColor = [[TGTheme shared] barButtonColour];
 	}
-	self.strip.contentSize = CGSizeMake(x + TGMetricPad, frame.size.height);
-
-	// Same slot as the strip, so the button slides over it without a relayout,
-	// which happens under a finger.
-	self.sendButton = [UIButton buttonWithType:UIButtonTypeCustom];
-	self.sendButton.frame = frame;
-	self.sendButton.hidden = YES;
-	self.sendButton.backgroundColor = [theme accentColour];
-	self.sendButton.titleLabel.font = TGFontHeader();
-	[self.sendButton setTitleColor:[theme onAccentColour] forState:UIControlStateNormal];
-	self.sendButton.showsTouchWhenHighlighted = YES;
-	[self.sendButton addTarget:self action:@selector(sendSelected)
-			  forControlEvents:UIControlEventTouchUpInside];
-	[card addSubview:self.sendButton];
+	UIBarButtonItem *(^gap)(void) = ^{
+		return [[UIBarButtonItem alloc]
+				initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace
+									 target:nil action:nil];
+	};
+	UIBarButtonItem *more = [[UIBarButtonItem alloc]
+			initWithImage:[TGIcons glyphNamed:@"more"
+									   colour:[[TGTheme shared] barButtonColour]
+										 side:TGMetricMenuGlyph]
+					style:UIBarButtonItemStylePlain
+				   target:self action:@selector(moreTapped)];
+	more.accessibilityLabel = @"More";
+	self.choiceItems = @[gap(),
+			[self itemWithGlyph:@"folder" choice:TGAttachChoiceGallery label:@"Gallery"], gap(),
+			[self itemWithGlyph:@"pin" choice:TGAttachChoiceLocation label:@"Location"], gap(),
+			[self itemWithGlyph:@"call" choice:TGAttachChoiceContact label:@"Contact"], gap(),
+			more, gap()];
+	self.sendItem = [[UIBarButtonItem alloc] initWithTitle:@"Send"
+													 style:UIBarButtonItemStyleDone
+													target:self action:@selector(sendSelected)];
+	self.toolbar.items = self.choiceItems;
+	[card addSubview:self.toolbar];
 }
 
-/// The send button covers the strip once there is something to send. Both
-/// slides are transforms, so the strip stays under it and is revealed again
-/// as the button leaves.
-- (void)showSendButton {
-	self.sendButton.hidden = NO;
-	self.sendButton.transform = CGAffineTransformMakeTranslation(0, kStripHeight);
-	[UIView animateWithDuration:TGAnimationDurationFast animations:^{
-		self.sendButton.transform = CGAffineTransformIdentity;
+/// The rest of the choices, in the system's own list.
+- (void)moreTapped {
+	UIView *host = self.superview;
+	void (^onChoice)(TGAttachChoice) = self.onChoice;
+	static const TGAttachChoice rest[] = {TGAttachChoiceChecklist, TGAttachChoiceQuickReply,
+			TGAttachChoiceDice, TGAttachChoiceEphemeral};
+	[self dismiss];
+	[TGAlertSheet showChoices:@[@"Checklist", @"Quick Reply", @"Stake Dice", @"Ephemeral Message"]
+						title:nil destructiveIndex:-1 inView:host onChoice:^(NSInteger choice){
+		if (onChoice && choice >= 0 && choice < 4)
+			onChoice(rest[choice]);
 	}];
 }
 
-- (void)hideSendButton {
-	__weak TGAttachSheet *weakSheet = self;
-	[UIView animateWithDuration:TGAnimationDurationFast animations:^{
-		weakSheet.sendButton.transform = CGAffineTransformMakeTranslation(0, kStripHeight);
-	} completion:^(BOOL finished){
-		// Ticking again during the slide has already taken the button back.
-		TGAttachSheet *sheet = weakSheet;
-		if (!sheet || sheet->_ticked > 0)
-			return;
-		sheet.sendButton.hidden = YES;
-		sheet.sendButton.transform = CGAffineTransformIdentity;
-	}];
-}
-
-/// One round bitmap per tile, hue and glyph together, so the strip scrolls as
-/// seven plain images and not seven layers with corner masks.
-- (UIImage *)stripTileWithGlyph:(NSString *)glyph hue:(UIColor *)hue {
-	UIGraphicsBeginImageContextWithOptions(CGSizeMake(kStripTile, kStripTile), NO, 0);
-	CGRect oval = CGRectMake(0, 0, kStripTile, kStripTile);
-	[hue setFill];
-	[[UIBezierPath bezierPathWithOvalInRect:oval] fill];
-	if ([TGTheme drawsSkeuomorphicChrome])
-		[TGTheme drawGlossOnOvalInRect:oval baseColour:hue];
-	UIImage *mark = [TGIcons glyphNamed:glyph
-								 colour:[[TGTheme shared] onAccentColour]
-								   side:TGMetricMenuGlyph];
-	CGFloat origin = TGCenteredOrigin(kStripTile, TGMetricMenuGlyph);
-	[mark drawInRect:CGRectMake(origin, origin, TGMetricMenuGlyph, TGMetricMenuGlyph)];
-	UIImage *image = UIGraphicsGetImageFromCurrentImageContext();
-	UIGraphicsEndImageContext();
-	return image;
+/// What the bars say follows what is ticked: a count for a title, and Send where
+/// the choices were. The toolbar's own animated change crossfades them.
+- (void)refreshBarsWithAdded:(BOOL)added {
+	self.sendItem.title = [NSString stringWithFormat:@"Send %ld", (long)_ticked];
+	self.header.title = _ticked ? [NSString stringWithFormat:@"%ld Selected", (long)_ticked]
+								: @"Recent";
+	if (added && _ticked == 1){
+		UIBarButtonItem *gapLeft = [[UIBarButtonItem alloc]
+				initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace target:nil action:nil];
+		UIBarButtonItem *gapRight = [[UIBarButtonItem alloc]
+				initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace target:nil action:nil];
+		[self.toolbar setItems:@[gapLeft, self.sendItem, gapRight] animated:YES];
+	} else if (!added && _ticked == 0){
+		[self.toolbar setItems:self.choiceItems animated:YES];
+	}
 }
 
 /// The check in a tile's corner as a bitmap, so a tile with one costs a blit
@@ -531,18 +478,13 @@ static NSString *const kTileIdentifier = @"tile";
 		}
 	}
 
-	[self.sendButton setTitle:[NSString stringWithFormat:@"Send %ld", (long)_ticked]
-					 forState:UIControlStateNormal];
-	if (added && _ticked == 1)
-		[self showSendButton];
-	else if (!added && _ticked == 0)
-		[self hideSendButton];
+	[self refreshBarsWithAdded:added];
 }
 
 #pragma mark - actions
 
-- (void)choiceTapped:(UIButton *)button {
-	[self finishWithChoice:(TGAttachChoice)button.tag];
+- (void)choiceTapped:(UIBarButtonItem *)item {
+	[self finishWithChoice:(TGAttachChoice)item.tag];
 }
 
 - (void)finishWithChoice:(TGAttachChoice)choice {

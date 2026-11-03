@@ -192,14 +192,9 @@ static NSString *TGChatNameForId(NSNumber *chatId) {
 - (NSArray *)powerSavingSections {
 	__weak typeof(self) weakSelf = self;
 	TGClient *client = [TGClient shared];
-	BOOL possible = [TGDevice tier] >= TGDeviceTierLegacy;
-
-	NSString *footer = possible
-			? @"Each of these redraws the screen while nothing is being touched, "
-			  @"which is where an A5 spends its battery. Turning one off leaves "
-			  @"the still picture."
-			: @"This device is below the tier that plays these at all, so these "
-			  @"switches change nothing here.";
+	NSString *footer = @"Each of these redraws the screen while nothing is being touched, "
+			@"which is where an old phone spends its battery. Turning one off leaves "
+			@"the still picture.";
 
 	return @[
 		TGSection(@"Resource-intensive processes", footer, @[
@@ -207,7 +202,7 @@ static NSString *TGChatNameForId(NSNumber *chatId) {
 					@"Loop animated stickers in chats instead of showing the "
 					@"first frame.",
 					@"sticker", TGIconTileGreen(),
-					[TGCapabilities animatedStickersWanted] && possible, ^(BOOL on){
+					[TGCapabilities animatedStickersWanted], ^(BOOL on){
 				[TGCapabilities setAnimatedStickersWanted:on];
 				[weakSelf rebuild];
 			}),
@@ -215,7 +210,7 @@ static NSString *TGChatNameForId(NSNumber *chatId) {
 					@"Draw the wallpaper behind messages. A plain background "
 					@"scrolls faster.",
 					@"chat", TGIconTileSky(),
-					[TGCapabilities wallpaperWanted] && possible, ^(BOOL on){
+					[TGCapabilities wallpaperWanted], ^(BOOL on){
 				[TGCapabilities setWallpaperWanted:on];
 				[weakSelf rebuild];
 			}),
@@ -223,7 +218,7 @@ static NSString *TGChatNameForId(NSNumber *chatId) {
 					@"Loop GIFs silently in the chat. Off, a GIF plays when "
 					@"tapped.",
 					@"video", TGIconTileOrchid(),
-					[TGCapabilities gifAutoplayWanted] && possible, ^(BOOL on){
+					[TGCapabilities gifAutoplayWanted], ^(BOOL on){
 				[TGCapabilities setGifAutoplayWanted:on];
 				[weakSelf rebuild];
 			}),

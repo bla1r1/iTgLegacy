@@ -262,7 +262,7 @@ static inline NSString *TGBytes(long long bytes) {
 - (void)loadForPage;
 - (void)openPage:(TGSettingsPage)page;
 - (void)openMyProfile;
-- (void)explainAddAccount;
+- (void)showAccountChoices;
 - (void)toast:(NSString *)text;
 - (void)pushPlaceholder:(NSString *)featureName;
 - (void)openURL:(NSString *)url;

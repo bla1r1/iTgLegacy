@@ -12,9 +12,15 @@
 # Output: build/armv7/tdlib/lib/libtdjson.dylib, install_name set so the app
 # can carry it inside the bundle.
 #
-# NOTE: whether TDLib actually RUNS on iOS 7.1.2 is still unproven. It needs
-# C++ thread_local, which iOS 7's dyld lacks - src/tlv_polyfill.c exists for
-# exactly that reason but only covers the main binary.
+# armv7 needs our patches on top of the submodule: scripts/tdlib_patches/*.patch.
+# They go on for the build and come off at exit, so the submodule stays clean.
+#
+#   scripts/build_tdlib_dylib.sh            build the candidate, leave the app alone
+#   scripts/build_tdlib_dylib.sh --install  also make it the dylib the app ships,
+#                                           keeping the previous one as .prev
+#
+# The candidate is not installed by default because a TDLib that loads on the
+# host proves nothing: only the device can say whether it runs.
 
 set -e
 
@@ -22,9 +28,15 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 TDLIB_SRC="${ROOT_DIR}/tdlib/td"
 BUILD_DIR="${ROOT_DIR}/build/tdlib-dylib-armv7"
-OUT_DIR="${ROOT_DIR}/build/armv7/tdlib/lib"
+SHIP_DIR="${ROOT_DIR}/build/armv7/tdlib/lib"
+OUT_DIR="${ROOT_DIR}/build/armv7/tdlib/candidate"
+PATCH_DIR="${SCRIPT_DIR}/tdlib_patches"
+
+INSTALL=0
+[ "${1:-}" = "--install" ] && INSTALL=1
 
 XCODE_DEV="/Applications/Xcode-beta.app/Contents/Developer"
+[ -d "${XCODE_DEV}" ] || XCODE_DEV="$(xcode-select -p)"
 SDK_PATH="${ROOT_DIR}/build/sdks/iPhoneOS12.4.sdk"
 [ -d "${SDK_PATH}" ] || SDK_PATH="${XCODE_DEV}/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS.sdk"
 TOOLCHAIN="${XCODE_DEV}/Toolchains/XcodeDefault.xctoolchain/usr/bin"
@@ -41,6 +53,21 @@ done
 echo "[+] TDLib -> libtdjson.dylib (armv7)"
 echo "    src : ${TDLIB_SRC}"
 echo "    sdk : ${SDK_PATH}"
+
+# Never leave the submodule patched, however the build ends.
+APPLIED=()
+unpatch() {
+	local i
+	for ((i = ${#APPLIED[@]} - 1; i >= 0; i--)); do
+		git -C "${TDLIB_SRC}" apply -R "${APPLIED[$i]}" || echo "[-] could not take off ${APPLIED[$i]}"
+	done
+}
+trap unpatch EXIT
+for patch in "${PATCH_DIR}"/*.patch; do
+	git -C "${TDLIB_SRC}" apply "${patch}" || { echo "[-] ${patch} does not apply to this TDLib"; exit 1; }
+	APPLIED+=("${patch}")
+	echo "[+] patch: $(basename "${patch}")"
+done
 
 # TDLib needs host-side code generation before it can cross-compile
 if [ ! -d "${ROOT_DIR}/tdlib/native-build" ]; then
@@ -110,5 +137,16 @@ echo ""
 echo "[+] ${OUT_DIR}/libtdjson.dylib"
 ls -lh "${OUT_DIR}/libtdjson.dylib"
 otool -l "${OUT_DIR}/libtdjson.dylib" | grep -A2 LC_ID_DYLIB | head -3
-echo "    __TEXT size (must stay under 16MB for armv7 thumb branches):"
-otool -l "${OUT_DIR}/libtdjson.dylib" | awk '/segname __TEXT/{f=1} f&&/vmsize/{print "    "$2; exit}'
+TEXT_SIZE="$(otool -l "${OUT_DIR}/libtdjson.dylib" | awk '/segname __TEXT/{f=1} f&&/vmsize/{print $2; exit}')"
+echo "    __TEXT ${TEXT_SIZE} (armv7 thumb branches reach 16MB, 0x1000000)"
+if [ "$((TEXT_SIZE))" -ge "$((0x1000000))" ]; then
+	echo "[-] __TEXT is past what a thumb branch reaches"
+	exit 1
+fi
+
+if [ "${INSTALL}" -eq 1 ]; then
+	mkdir -p "${SHIP_DIR}"
+	[ -f "${SHIP_DIR}/libtdjson.dylib" ] && cp -f "${SHIP_DIR}/libtdjson.dylib" "${SHIP_DIR}/libtdjson.prev.dylib"
+	cp -f "${OUT_DIR}/libtdjson.dylib" "${SHIP_DIR}/libtdjson.dylib"
+	echo "[+] installed; the previous one is libtdjson.prev.dylib"
+fi

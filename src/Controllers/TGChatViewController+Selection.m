@@ -2,6 +2,38 @@
 #import "TGForwardPicker.h"
 #import "TGStyle.h"
 #import "TGAlertSheet.h"
+#import <QuartzCore/QuartzCore.h>
+
+/// finalizeCell runs for every row that scrolls past, so the entrance pop is
+/// kept here instead: only the row the finger hit is animated.
+static void TGAnimateSelectionCheckbox(TGChatViewController *chat, int64_t messageId) {
+	NSInteger row = NSNotFound;
+	for (NSUInteger i = 0; i < chat.messages.count; i++) {
+		if ([chat.messages[i][@"id"] longLongValue] == messageId) {
+			row = (NSInteger)i;
+			break;
+		}
+	}
+	if (row == NSNotFound)
+		return;
+
+	NSIndexPath *path = [NSIndexPath indexPathForRow:row inSection:0];
+	TGBubbleCell *cell = (TGBubbleCell *)[chat.table cellForRowAtIndexPath:path];
+	if (![cell isKindOfClass:[TGBubbleCell class]] || cell.checkbox.hidden)
+		return;
+
+	cell.checkbox.alpha = TGAlphaTransparent;
+	CAKeyframeAnimation *pop = [CAKeyframeAnimation animationWithKeyPath:@"transform.scale"];
+	pop.values = @[@(TGTransformScaleMenuInitial), @(TGTransformScalePillActive), @(1.0f)];
+	pop.keyTimes = @[@0.0f, @0.66f, @1.0f];
+	pop.duration = TGAnimationDurationFast;
+	pop.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseOut];
+	[cell.checkbox.layer addAnimation:pop forKey:@"tg.selection.pop"];
+
+	[UIView animateWithDuration:TGAnimationDurationFast animations:^{
+		cell.checkbox.alpha = TGAlphaOpaque;
+	}];
+}
 
 @implementation TGChatViewController (Selection)
 
@@ -17,7 +49,9 @@
 	}
 
 	[self.input resignFirstResponder];
-	self.inputBar.hidden = YES;
+	// Keep the composer on screen while it fades. Hiding it now would leave
+	// the toolbar sliding over an empty strip.
+	self.inputBar.hidden = NO;
 
 	if (!self.editToolbar) {
 		CGRect b = self.view.bounds;
@@ -48,6 +82,7 @@
 		[self.view addSubview:self.editToolbar];
 	}
 	self.editToolbar.hidden = NO;
+	self.editToolbar.transform = CGAffineTransformMakeTranslation(0, self.editToolbar.bounds.size.height);
 	[self.view bringSubviewToFront:self.editToolbar];
 
 	self.savedTitleView = self.navigationItem.titleView;
@@ -62,6 +97,20 @@
 
 	[self updateEditToolbar];
 	[self.table reloadData];
+
+	// Move the toolbar with a transform rather than its frame: a frame change
+	// relayouts every button inside it, which is the expensive part on an A4.
+	// The composer fades out underneath at the same time.
+	__weak typeof(self) weakSelf = self;
+	[UIView animateWithDuration:TGAnimationDurationNormal animations:^{
+		weakSelf.editToolbar.transform = CGAffineTransformIdentity;
+		weakSelf.inputBar.alpha = TGAlphaTransparent;
+	} completion:^(BOOL finished){
+		// Selecting again during this fade must not hide the composer.
+		TGChatViewController *me = weakSelf;
+		if (me && me.isEditingMessages)
+			me.inputBar.hidden = YES;
+	}];
 }
 
 - (void)exitEditMode {
@@ -69,8 +118,8 @@
 	self.isEditingMessages = NO;
 	[self.selectedMessageIds removeAllObjects];
 
-	self.editToolbar.hidden = YES;
 	self.inputBar.hidden = NO;
+	self.inputBar.alpha = TGAlphaTransparent;
 
 	self.navigationItem.leftBarButtonItem = nil;
 	self.navigationItem.titleView = self.savedTitleView;
@@ -78,6 +127,22 @@
 	self.title = nil;
 
 	[self.table reloadData];
+
+	// The reverse: the toolbar drops away while the composer fades back in.
+	// It is hidden only after the animation, and only if the mode is still off,
+	// so a fast Select-again does not expose the composer under it.
+	__weak typeof(self) weakSelf = self;
+	[UIView animateWithDuration:TGAnimationDurationNormal animations:^{
+		weakSelf.editToolbar.transform = CGAffineTransformMakeTranslation(0,
+				weakSelf.editToolbar.bounds.size.height);
+		weakSelf.inputBar.alpha = TGAlphaOpaque;
+	} completion:^(BOOL finished){
+		TGChatViewController *me = weakSelf;
+		if (!me || me.isEditingMessages)
+			return;
+		me.editToolbar.hidden = YES;
+		me.editToolbar.transform = CGAffineTransformIdentity;
+	}];
 }
 
 - (void)updateEditToolbar {
@@ -112,13 +177,21 @@
 - (void)toggleMessageSelection:(int64_t)messageId {
 	if (!messageId) return;
 	NSNumber *num = @(messageId);
-	if ([self.selectedMessageIds containsObject:num]) {
-		[self.selectedMessageIds removeObject:num];
-	} else {
+	BOOL selecting = ![self.selectedMessageIds containsObject:num];
+	if (selecting) {
 		[self.selectedMessageIds addObject:num];
+	} else {
+		[self.selectedMessageIds removeObject:num];
 	}
 	[self updateEditToolbar];
 	[self.table reloadData];
+
+	if (selecting) {
+		// The reload may have built the visible row only on the next layout
+		// pass; force it so the pop lands on the cell the finger touched.
+		[self.table layoutIfNeeded];
+		TGAnimateSelectionCheckbox(self, messageId);
+	}
 }
 
 - (void)selectMessageAtIndex:(NSInteger)index {

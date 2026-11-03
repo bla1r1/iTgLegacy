@@ -5,6 +5,7 @@
 #import "TGChatViewControllerInternal.h"
 #import <QuartzCore/QuartzCore.h>
 #import "TGCapabilities.h"
+#import "TGDevice.h"
 #import "TGStyle.h"
 
 @implementation TGChatViewController (MediaCells)
@@ -286,8 +287,21 @@ static const long long kGifAutoDownloadLimit = 3 * 1024 * 1024;
 	if (![m[@"kind"] isEqualToString:@"messageAnimation"] || cell.picture.hidden ||
 		![TGCapabilities canAutoplayGIFs] || self.isEditingMessages){
 		[cell stopLoopingVideo];
+		// Stopped here for any reason, the row must go back to its play mark
+		// instead of keeping the disc hidden from when it was looping.
+		if ([m[@"kind"] isEqualToString:@"messageAnimation"] && !cell.picture.hidden &&
+			cell.disc.hidden) {
+			cell.disc.hidden = NO;
+			cell.disc.image = [TGIcons mediaDiscOfSide:kGifDisc playing:NO];
+		}
 		return;
 	}
+	// On Vintage the decoder and the scroll share the one core. A row that
+	// appears during a drag must not start a player or a download; the scroll
+	// stop picks the row at the centre and calls this again for that one only.
+	if ([TGDevice tier] == TGDeviceTierVintage &&
+		(self.table.isDragging || self.table.isDecelerating))
+		return;
 	NSNumber *docId = [m[@"docId"] isKindOfClass:NSNumber.class] ? m[@"docId"] : nil;
 	if (!docId)
 		return;

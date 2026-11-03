@@ -152,3 +152,8 @@ extern NSString *const TGQuickRepliesChangedNotification;
 /// updateSuggestedActions added or removed rows. No payload; the list that
 /// draws them re-reads the client.
 extern NSString *const TGSuggestedActionsChangedNotification;
+
+/// Posted on the main queue when the running account changes: after the old
+/// account's in-memory state is cleared and before the new client resumes, so
+/// the app drops its old screens before the next auth state rebuilds them.
+extern NSString *const TGAccountDidSwitchNotification;

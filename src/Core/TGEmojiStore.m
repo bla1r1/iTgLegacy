@@ -18,6 +18,11 @@
 	return store;
 }
 
+- (void)reset {
+	self.categories = nil;
+	self.askingForCategories = NO;
+}
+
 /// A burst of tabs opening asks once. The first non-empty answer is kept: an
 /// empty one means TDLib has no file database this session, and caching it
 /// would hide the categories after the database finishes building.

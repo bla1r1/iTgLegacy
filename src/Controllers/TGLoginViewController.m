@@ -5,6 +5,18 @@
 #import "TGIcons.h"
 #import "TGUIFormat.h"
 
+/// The field is what was wrong, so it is the thing that moves: one sideways
+/// nudge, no frame change, run by the render server.
+static void TGShakeRejectedInput(UIView *view) {
+    CAKeyframeAnimation *shake =
+            [CAKeyframeAnimation animationWithKeyPath:@"transform.translation.x"];
+    shake.values = @[@0.0f, @-8.0f, @8.0f, @-5.0f, @5.0f, @0.0f];
+    shake.duration = TGAnimationDurationSlow;
+    shake.timingFunction = [CAMediaTimingFunction
+            functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
+    [view.layer addAnimation:shake forKey:@"tg.errorShake"];
+}
+
 @implementation TGLoginViewController
 
 - (void)viewDidLoad {
@@ -279,7 +291,7 @@
 }
 
 - (void)setBusy:(BOOL)busy {
-    self.busy = busy;
+    _busy = busy;
     if (busy) {
         self.errorLabel.text = nil;
         self.errorLabel.hidden = YES;
@@ -366,7 +378,13 @@
         if (sentence.length) {
             me.errorLabel.text = sentence;
             me.errorLabel.hidden = NO;
+            me.errorLabel.alpha = TGAlphaTransparent;
+            __weak typeof(me) weakMe = me;
+            [UIView animateWithDuration:TGAnimationDurationFast animations:^{
+                weakMe.errorLabel.alpha = TGAlphaOpaque;
+            }];
             [me layoutActiveStep];
+            TGShakeRejectedInput(me.inputContainer);
             [me.inputField becomeFirstResponder];
         }
     });
