@@ -28,7 +28,7 @@ void TGIconsClearSettingsIconCache(void) {
 				// the profile's saved-music strip
 				@"music",
 				// the call screen
-				@"endcall", @"recent", @"star", @"speakerOn",
+				@"endcall", @"recent", @"star", @"speaker", @"speakerOn",
 				// the stories strip's add bubble
 				@"plus",
 				// the chat list's compose button: a square and a pencil
@@ -165,7 +165,7 @@ void TGIconsClearSettingsIconCache(void) {
 			CGContextStrokePath(ctx);
 
 		} else if ([name isEqualToString:@"mute"] || [name isEqualToString:@"unmute"]
-				|| [name isEqualToString:@"speakerOn"]){
+				|| [name isEqualToString:@"speaker"] || [name isEqualToString:@"speakerOn"]){
 			// a speaker cone
 			CGContextMoveToPoint(ctx, m, s * 0.38f);
 			CGContextAddLineToPoint(ctx, s * 0.34f, s * 0.38f);

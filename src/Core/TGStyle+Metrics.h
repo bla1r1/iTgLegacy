@@ -96,16 +96,8 @@ static const CGFloat TGMetricCallTogglesBottom   = 150.0f;
 static const CGFloat TGMetricCallLabelGap        = 65.0f;
 static const CGFloat TGMetricCallLabelWidth      = 80.0f;
 static const CGFloat TGMetricCallLabelHeight     = 15.0f;
-/// The name block sits under the status bar; Telegram moves it down a little
-/// on taller phones and keeps it close to the top on a 3.5" one.
-static const CGFloat TGMetricCallStatusTopSmall  = 52.0f;
-static const CGFloat TGMetricCallStatusTop       = 76.0f;
-static const CGFloat TGMetricCallStatusTopTall   = 112.0f;
-/// The four-word key in the top-right corner, and the bar a minimised call
-/// leaves: the status bar's own row, as the system's in-call bar is, so nothing
-/// under it moves or is covered.
-static const CGFloat TGMetricCallKeyWidth        = 128.0f;
-static const CGFloat TGMetricCallKeyHeight       = 32.0f;
+/// The bar a minimised call leaves: the status bar's own row, as the system's
+/// in-call bar is, so nothing under it moves or is covered.
 static const CGFloat TGMetricCallBarHeight       = 20.0f;
 static const CGFloat TGMetricCallKeyCardWidth    = 280.0f;
 static const CGFloat TGMetricCallKeyCardHeight   = 220.0f;

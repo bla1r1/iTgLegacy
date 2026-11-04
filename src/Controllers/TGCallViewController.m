@@ -151,8 +151,11 @@
 - (void)returnToCall {
 	int64_t userId = self.userId;
 	NSString *name = self.peerName;
+	// The call's own direction: a screen told "incoming" would offer Accept and
+	// Decline on a call this side placed and is still ringing out.
+	BOOL outgoing = [TGCall shared].outgoing;
 	[self hide];
-	[TGCallViewController presentForUserId:userId name:name outgoing:NO];
+	[TGCallViewController presentForUserId:userId name:name outgoing:outgoing];
 }
 
 - (void)hide {
@@ -193,13 +196,11 @@
 @property (nonatomic, assign) BOOL outgoing;
 
 @property (nonatomic, strong) CAGradientLayer *bgLayer;
-@property (nonatomic, strong) UIImageView *photoView;
-@property (nonatomic, strong) UIImageView *fallbackAvatar;
-@property (nonatomic, strong) UIView *shadeView;
-@property (nonatomic, strong) UIButton *backButton;
+@property (nonatomic, strong) UILabel *emojiLabel;
 @property (nonatomic, strong) UILabel *nameLabel;
 @property (nonatomic, strong) UILabel *statusLabel;
-@property (nonatomic, strong) UIButton *keyButton;
+@property (nonatomic, strong) UIImageView *avatarView;
+@property (nonatomic, strong) UIButton *backButton;
 @property (nonatomic, copy) NSString *keyEmojiText;
 
 @property (nonatomic, strong) UIView *keyCard;
@@ -221,8 +222,6 @@
 
 @property (nonatomic, assign) BOOL speakerOn;
 @property (nonatomic, strong) UILabel *lastCreatedLabel;
-@property (nonatomic, assign) BOOL photoRequested;
-@property (nonatomic, assign) BOOL photoUserEnsured;
 
 /// Which variant of the control row `updateLayoutForCallActive:` last built,
 /// so a rotation rebuilds the same one instead of guessing from the state.
@@ -297,46 +296,58 @@ static NSArray *TGCallGradient(NSArray *colours) {
 - (void)viewDidLoad {
     [super viewDidLoad];
 
-    self.view.backgroundColor = [[TGTheme shared] mediaViewerBackdropColour];
-
-    // The peer's own picture fills the screen, the way Telegram's call screen
-    // is the person rather than a card of controls. It starts hidden: until
-    // the picture arrives the gradient behind it is the backdrop.
-    self.photoView = [[UIImageView alloc] initWithFrame:self.view.bounds];
-    self.photoView.contentMode = UIViewContentModeScaleAspectFill;
-    self.photoView.clipsToBounds = YES;
-    self.photoView.backgroundColor = [UIColor clearColor];
-    [self.view addSubview:self.photoView];
-
-    self.shadeView = [[UIView alloc] initWithFrame:self.view.bounds];
-    self.shadeView.backgroundColor = [[TGTheme shared] scrimColour];
-    self.shadeView.userInteractionEnabled = NO;
-    self.shadeView.hidden = YES;
-    [self.view addSubview:self.shadeView];
-
-    // No profile picture still gets a face: the same initial disc the chat
-    // list draws, so the screen is a person rather than an empty gradient.
-    self.fallbackAvatar = [[UIImageView alloc] initWithFrame:CGRectZero];
-    self.fallbackAvatar.contentMode = UIViewContentModeScaleAspectFill;
-    self.fallbackAvatar.layer.cornerRadius = TGHalf(TGMetricCallAvatarSide);
-    self.fallbackAvatar.clipsToBounds = YES;
-    NSString *initials = [TGIcons initialsForTitle:
-            self.peerName.length ? self.peerName : @"?"];
-    self.fallbackAvatar.image = [TGIcons avatarWithInitials:
-            initials.length ? initials : @"?"
-            size:TGMetricCallAvatarSide colourId:self.userId];
-    [self.view addSubview:self.fallbackAvatar];
-
+    // Gradient Background
     self.bgLayer = [CAGradientLayer layer];
     self.bgLayer.frame = self.view.bounds;
     self.bgLayer.colors = TGCallGradient([[TGTheme shared] callGradientColours]);
-    [self.view.layer insertSublayer:self.bgLayer above:self.photoView.layer];
+    [self.view.layer addSublayer:self.bgLayer];
 
-    // Back to the chat without ending the call. Telegram's call screen keeps
-    // a chevron in the corner for exactly this.
+    // Down the screen once, each thing under the last, so moving the avatar
+    // does not leave the name sitting where it used to be. The placement
+    // lives in applyChromeLayout, which the first layout pass and every
+    // rotation land on.
+    self.emojiLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+    self.emojiLabel.font = TGFontGlyph();
+    self.emojiLabel.textAlignment = NSTextAlignmentCenter;
+    self.emojiLabel.backgroundColor = [UIColor clearColor];
+    // A tap opens the card that says what the four emoji are for.
+    self.emojiLabel.userInteractionEnabled = YES;
+    [self.emojiLabel addGestureRecognizer:[[UITapGestureRecognizer alloc]
+            initWithTarget:self action:@selector(showKeyCard)]];
+    [self.view addSubview:self.emojiLabel];
+
+    CGFloat side = TGMetricCallAvatarSide;
+    self.avatarView = [[UIImageView alloc] initWithFrame:CGRectMake(0, 0, side, side)];
+    self.avatarView.layer.cornerRadius = TGHalf(side);
+    self.avatarView.clipsToBounds = YES;
+    self.avatarView.layer.shouldRasterize = YES;
+    self.avatarView.layer.rasterizationScale = [UIScreen mainScreen].scale;
+    self.avatarView.layer.borderColor = [[TGTheme shared] separatorColour].CGColor;
+    self.avatarView.layer.borderWidth = 1.0f;
+    self.avatarView.image = [TGIcons avatarWithInitials:
+            (self.peerName.length ? [self.peerName substringToIndex:1].uppercaseString : @"?")
+                                                   size:side colourId:self.userId];
+    [self.view addSubview:self.avatarView];
+
+    self.nameLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+    self.nameLabel.text = self.peerName.length ? self.peerName
+            : ([[TGClient shared] nameForUserId:self.userId] ?: @"Call");
+    self.nameLabel.font = TGFontHero();
+    self.nameLabel.textColor = [[TGTheme shared] onAccentColour];
+    self.nameLabel.textAlignment = NSTextAlignmentCenter;
+    self.nameLabel.backgroundColor = [UIColor clearColor];
+    [self.view addSubview:self.nameLabel];
+
+    self.statusLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+    self.statusLabel.font = TGFontBody();
+    self.statusLabel.textColor = [[TGTheme shared] callSubtitleColour];
+    self.statusLabel.textAlignment = NSTextAlignmentCenter;
+    self.statusLabel.backgroundColor = [UIColor clearColor];
+    [self.view addSubview:self.statusLabel];
+
+    // Back to the chat without ending the call, leaving the bar as the way
+    // back. Without it the bar could never appear.
     self.backButton = [UIButton buttonWithType:UIButtonTypeCustom];
-    self.backButton.frame = CGRectMake(TGMetricPadSmall, TGMetricPadWide,
-            TGMetricCallLabelWidth, TGMetricRow);
     self.backButton.titleLabel.font = TGFontBody();
     [self.backButton setTitle:@"Back" forState:UIControlStateNormal];
     [self.backButton setTitleColor:[[TGTheme shared] onAccentColour]
@@ -349,38 +360,10 @@ static NSArray *TGCallGradient(NSArray *colours) {
               forControlEvents:UIControlEventTouchUpInside];
     [self.view addSubview:self.backButton];
 
-    self.nameLabel = [[UILabel alloc] initWithFrame:CGRectZero];
-    self.nameLabel.text = self.peerName.length ? self.peerName
-            : ([[TGClient shared] nameForUserId:self.userId] ?: @"Call");
-    self.nameLabel.font = TGFontHero();
-    self.nameLabel.textColor = [[TGTheme shared] onAccentColour];
-    self.nameLabel.textAlignment = NSTextAlignmentCenter;
-    self.nameLabel.backgroundColor = [UIColor clearColor];
-    self.nameLabel.adjustsFontSizeToFitWidth = YES;
-    self.nameLabel.lineBreakMode = NSLineBreakByTruncatingTail;
-    [self.view addSubview:self.nameLabel];
-
-    self.statusLabel = [[UILabel alloc] initWithFrame:CGRectZero];
-    self.statusLabel.font = TGFontBody();
-    self.statusLabel.textColor = [[TGTheme shared] callSubtitleColour];
-    self.statusLabel.textAlignment = NSTextAlignmentCenter;
-    self.statusLabel.backgroundColor = [UIColor clearColor];
-    [self.view addSubview:self.statusLabel];
-
-    // The four emoji out of the call key sit in the top-right, and a tap
-    // opens the full card; the words are the shortcut, the card the proof.
-    self.keyButton = [UIButton buttonWithType:UIButtonTypeCustom];
-    self.keyButton.titleLabel.font = TGFontEmojiSmall();
-    [self.keyButton setTitleColor:[[TGTheme shared] onAccentColour]
-                         forState:UIControlStateNormal];
-    self.keyButton.hidden = YES;
-    [self.keyButton addTarget:self action:@selector(showKeyCard)
-             forControlEvents:UIControlEventTouchUpInside];
-    [self.view addSubview:self.keyButton];
-
     BOOL canVideo = [TGCapabilities canEncodeVideoCall];
 
-    self.speakerBtn = [self createButtonWithTitle:@"Speaker" icon:@"unmute"];
+    // Not "unmute": the icon table draws that one as the notifications bell.
+    self.speakerBtn = [self createButtonWithTitle:@"Speaker" icon:@"speaker"];
     self.speakerLbl = self.lastCreatedLabel;
     self.videoBtn = [self createButtonWithTitle:@"Video" icon:@"video"];
     self.videoLbl = self.lastCreatedLabel;
@@ -440,8 +423,11 @@ static NSArray *TGCallGradient(NSArray *colours) {
     if (self.outgoing && [TGCall shared].state == TGCallStateNone)
         [[TGCall shared] callUser:self.userId];
 
-    [self loadPeerPhoto];
     [self applyState:[TGCall shared].state];
+#if TG_DEV
+    if (self.userId == 0)
+        [self setupEmojis];
+#endif
 
     self.ticker = [NSTimer scheduledTimerWithTimeInterval:1.0
                                                    target:self
@@ -452,7 +438,7 @@ static NSArray *TGCallGradient(NSArray *colours) {
 
 - (void)viewDidLayoutSubviews {
     [super viewDidLayoutSubviews];
-    if (!self.nameLabel)
+    if (!self.emojiLabel)
         return;
     [self applyChromeLayout];
     // The same row variant the call state chose, at the new width.
@@ -466,59 +452,6 @@ static NSArray *TGCallGradient(NSArray *colours) {
         [self.ticker invalidate];
         self.ticker = nil;
     }
-}
-
-#pragma mark - the peer's picture
-
-/// The call screen shows the person, so the profile picture is fetched the
-/// same way the profile screen fetches it: the small file id from the client,
-/// decoded off the main thread, then set. No picture leaves the gradient.
-- (void)loadPeerPhoto {
-    if (self.photoRequested || self.userId == 0)
-        return;
-    NSNumber *fileId = [[TGClient shared] photoFileIdForUserId:self.userId];
-    if (![fileId isKindOfClass:NSNumber.class] || fileId.integerValue <= 0) {
-        if (self.photoUserEnsured)
-            return;
-        self.photoUserEnsured = YES;
-        __weak typeof(self) weakSelf = self;
-        [[TGClient shared] ensureUserName:self.userId completion:^{
-            TGCallViewController *me = weakSelf;
-            if (!me)
-                return;
-            NSNumber *now = [[TGClient shared] photoFileIdForUserId:me.userId];
-            if ([now isKindOfClass:NSNumber.class] && now.integerValue > 0)
-                [me loadPeerPhoto];
-        }];
-        return;
-    }
-    self.photoRequested = YES;
-    __weak typeof(self) weakSelf = self;
-    [[TGClient shared] downloadFile:fileId.integerValue completion:^(NSString *path){
-        if (!path.length)
-            return;
-        dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_LOW, 0), ^{
-            UIImage *photo = [TGIcons decodedImageAtPath:path
-                    fittingSize:[UIScreen mainScreen].bounds.size
-                           fill:YES
-                          scale:[UIScreen mainScreen].scale];
-            if (!photo)
-                return;
-            dispatch_async(dispatch_get_main_queue(), ^{
-                TGCallViewController *me = weakSelf;
-                if (!me)
-                    return;
-                TGCallState state = [TGCall shared].state;
-                if (state == TGCallStateEnded || state == TGCallStateFailed ||
-                        state == TGCallStateNone)
-                    return;
-                me.photoView.image = photo;
-                me.bgLayer.hidden = YES;
-                me.shadeView.hidden = NO;
-                me.fallbackAvatar.hidden = YES;
-            });
-        });
-    }];
 }
 
 #pragma mark - chrome
@@ -547,6 +480,10 @@ static NSArray *TGCallGradient(NSArray *colours) {
                                          cornerRadius:TGHalf(TGMetricCallButtonSide)]
               forState:UIControlStateHighlighted];
     btn.backgroundColor = [UIColor clearColor];
+    // Drawn glyphs rather than emoji: iOS 7's font has no colour glyph for
+    // some of these, and the ones it does have do not match the rest of the
+    // iconography. Inactive controls sit on the steel plate, so their glyph
+    // is primary text, not white.
     UIImage *glyph = [icon isEqualToString:@"microphone"]
             ? [TGIcons microphoneOfSide:TGMetricCallGlyphSide colour:[theme primaryTextColour]]
             : [TGIcons glyphNamed:icon colour:[theme primaryTextColour] side:TGMetricCallGlyphSide];
@@ -571,44 +508,28 @@ static NSArray *TGCallGradient(NSArray *colours) {
     return btn;
 }
 
-- (BOOL)usesTallStatusOffset {
-    return self.view.bounds.size.height > 700;
-}
-
-- (CGFloat)statusTop {
-    CGFloat height = self.view.bounds.size.height;
-    if (height < 500)
-        return TGMetricCallStatusTopSmall;
-    if (height > 700)
-        return TGMetricCallStatusTopTall;
-    return TGMetricCallStatusTop;
-}
-
 - (void)applyChromeLayout {
+    // The emoji key, avatar, name and status stack down the screen from the
+    // top; every rotation rewrites these frames from the present bounds so
+    // the name never stays where a wider screen once put it.
     CGRect b = self.view.bounds;
+    CGFloat gutter = TGMetricPadMedium;
+    CGFloat textWidth = b.size.width - TGDoubled(gutter);
+    CGFloat y = TGMetricCallEmojiTop;
     self.bgLayer.frame = b;
-    self.photoView.frame = b;
-    self.shadeView.frame = b;
 
-    CGFloat top = [self statusTop];
-    CGFloat width = b.size.width;
-    self.backButton.frame = CGRectMake(TGMetricPadSmall, TGMetricPadWide,
+    self.emojiLabel.frame = CGRectMake(gutter, y, textWidth, TGMetricCallEmojiHeight);
+    self.backButton.frame = CGRectMake(TGMetricPadSmall, 0,
             TGMetricCallLabelWidth, TGMetricRow);
-    self.keyButton.frame = CGRectMake(width - TGMetricCallKeyWidth - TGMetricPadSmall,
-            TGMetricPadWide, TGMetricCallKeyWidth, TGMetricCallKeyHeight);
+    y += TGMetricCallEmojiHeight + TGMetricPadLarge;
 
-    self.nameLabel.frame = CGRectMake(TGMetricPadMedium, top,
-            width - TGDoubled(TGMetricPadMedium), TGMetricLineHero);
-    self.statusLabel.frame = CGRectMake(TGMetricPadMedium,
-            top + TGMetricLineHero + TGMetricPadTiny,
-            width - TGDoubled(TGMetricPadMedium), TGMetricCallStatusHeight);
+    CGFloat side = TGMetricCallAvatarSide;
+    self.avatarView.frame = CGRectMake(TGCenteredOrigin(b.size.width, side), y, side, side);
+    y += side + TGMetricPadLarge;
 
-    CGFloat avatarSide = TGMetricCallAvatarSide;
-    CGFloat controlsTop = b.size.height - TGMetricCallTogglesBottom;
-    CGFloat avatarCentre = (top + TGMetricLineHero + TGMetricCallStatusHeight +
-            controlsTop) / 2;
-    self.fallbackAvatar.frame = CGRectMake(TGCenteredOrigin(width, avatarSide),
-            avatarCentre - TGHalf(avatarSide), avatarSide, avatarSide);
+    self.nameLabel.frame = CGRectMake(gutter, y, textWidth, TGMetricCallNameHeight);
+    y += TGMetricCallNameHeight + TGMetricPadTiny;
+    self.statusLabel.frame = CGRectMake(gutter, y, textWidth, TGMetricCallStatusHeight);
 
     if (self.keyCard)
         [self layoutKeyCardInBounds:b];
@@ -711,7 +632,7 @@ static NSArray *TGCallGradient(NSArray *colours) {
     [self updateLayoutForCallActive:!isRinging];
     switch (state){
         case TGCallStatePending:
-            [self setStatusText:(self.outgoing ? @"Ringing..." : @"Incoming call")];
+            [self setStatusText:(self.outgoing ? @"Calling..." : @"Incoming...")];
             [self setStatusPulsing:YES];
             break;
         case TGCallStateExchangingKeys:
@@ -727,8 +648,7 @@ static NSArray *TGCallGradient(NSArray *colours) {
                         -[[TGCall shared] duration]];
             self.bgLayer.colors = TGCallGradient([[TGTheme shared] callGradientColoursConnected]);
             [self setupEmojis];
-            [self setStatusText:TGUIFormatCallDuration([[TGCall shared] duration])];
-            [self tick];
+            [self setStatusText:[self talkTimeText]];
             break;
         case TGCallStateFailed:
             [self setStatusText:([TGCall shared].endReason ?: @"Call failed")];
@@ -746,9 +666,14 @@ static NSArray *TGCallGradient(NSArray *colours) {
 }
 
 - (NSString *)emojiKeyText {
+#if TG_DEV
+    // Only the callscreen/ preview has no peer; it has no key to show either.
+    if (self.userId == 0)
+        return @"🐶  🐱  🐭  🐹";
+#endif
     NSArray *emojis = [TGCall shared].emojis;
     if (emojis.count >= 4)
-        return [NSString stringWithFormat:@"%@ %@ %@ %@",
+        return [NSString stringWithFormat:@"%@  %@  %@  %@",
                 emojis[0], emojis[1], emojis[2], emojis[3]];
     NSData *key = [TGCall shared].callKey;
     if (key.length >= 32) {
@@ -756,7 +681,7 @@ static NSArray *TGCallGradient(NSArray *colours) {
         CC_SHA256(key.bytes, (CC_LONG)key.length, hash);
         NSArray *list = @[@"🐶", @"🐱", @"🐭", @"🐹", @"🐰", @"🦊", @"🐻", @"🐼",
                           @"🐨", @"🐯", @"🦁", @"🐮", @"🐷", @"🐸", @"🐵"];
-        return [NSString stringWithFormat:@"%@ %@ %@ %@",
+        return [NSString stringWithFormat:@"%@  %@  %@  %@",
                 list[hash[0] % list.count], list[hash[1] % list.count],
                 list[hash[2] % list.count], list[hash[3] % list.count]];
     }
@@ -768,8 +693,7 @@ static NSArray *TGCallGradient(NSArray *colours) {
     if (!text.length)
         return;
     self.keyEmojiText = text;
-    [self.keyButton setTitle:text forState:UIControlStateNormal];
-    self.keyButton.hidden = NO;
+    self.emojiLabel.text = text;
     if (self.keyCard)
         self.keyCardEmoji.text = text;
 }
@@ -871,10 +795,16 @@ static NSArray *TGCallGradient(NSArray *colours) {
     }];
 }
 
+- (NSString *)talkTimeText {
+    NSInteger seconds = (NSInteger)[[TGCall shared] duration];
+    return [NSString stringWithFormat:@"ılı %ld:%02ld",
+            (long)(seconds / 60), (long)(seconds % 60)];
+}
+
 - (void)tick {
     if ([TGCall shared].state != TGCallStateEstablished)
         return;
-    self.statusLabel.text = TGUIFormatCallDuration([[TGCall shared] duration]);
+    self.statusLabel.text = [self talkTimeText];
 }
 
 #pragma mark - controls
@@ -913,9 +843,9 @@ static NSArray *TGCallGradient(NSArray *colours) {
     // the lit state always shows the crossed-out mic, in the light colour
     UIImage *micActive = [TGIcons microphoneOffOfSide:TGMetricCallGlyphSide
                                                colour:[theme onAccentColour]];
-    UIImage *spk = [TGIcons glyphNamed:(self.speakerOn ? @"speakerOn" : @"unmute")
+    UIImage *spk = [TGIcons glyphNamed:(self.speakerOn ? @"speakerOn" : @"speaker")
                                 colour:[theme primaryTextColour] side:TGMetricCallGlyphSide];
-    UIImage *spkActive = [TGIcons glyphNamed:(self.speakerOn ? @"speakerOn" : @"unmute")
+    UIImage *spkActive = [TGIcons glyphNamed:(self.speakerOn ? @"speakerOn" : @"speaker")
                                       colour:[theme onAccentColour] side:TGMetricCallGlyphSide];
 
     [self setGlyph:mic activeGlyph:micActive on:self.micBtn active:muted];
@@ -1026,10 +956,6 @@ static NSArray *TGCallGradient(NSArray *colours) {
 /// second before the screen closes shows what happened.
 - (void)windDown {
     [self setStatusPulsing:NO];
-    self.bgLayer.hidden = NO;
-    self.photoView.hidden = YES;
-    self.fallbackAvatar.hidden = YES;
-    self.shadeView.hidden = YES;
     self.bgLayer.colors = TGCallGradient([[TGTheme shared] callGradientColoursFailed]);
     [UIView animateWithDuration:TGAnimationDurationMedium animations:^{
         for (UIView *view in @[self.speakerBtn, self.videoBtn, self.micBtn,

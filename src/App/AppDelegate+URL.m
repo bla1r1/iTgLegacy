@@ -725,6 +725,15 @@ static const CGFloat kIconDumpSide = 52.0f;
 		return YES;
 	}
 
+	// itglegacy://callscreen/Name - the call screen's look with no call behind
+	// it; call/ would ring a real person. End closes it.
+	if ([host isEqualToString:@"callscreen"]){
+		dispatch_async(dispatch_get_main_queue(), ^{
+			[TGCallViewController presentForUserId:0 name:arg outgoing:NO];
+		});
+		return YES;
+	}
+
 	// itglegacy://videonote - the round video recorder over whatever is showing,
 	// bound to a chat that does not exist: its look and its clock can be checked
 	// without opening a real conversation, which would mark it read.
