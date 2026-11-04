@@ -17,6 +17,7 @@
 #import "TGCallMessagesTests.m"
 #import "TGCallIceTests.m"
 #import "TGCallReflectorTests.m"
+#import "TGCallV2Tests.m"
 #import "TGCallIntegrationTests.m"
 #import "TGLibTgvoipHooksTests.m"
 #import "TGMessageLayoutTests.m"

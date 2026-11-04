@@ -22,6 +22,7 @@
 	if ((self = [super init])){
 		_targets = [NSMutableArray array];
 		_socketHandle = -1;
+		_controlling = YES;
 		arc4random_buf(&_tieBreaker, sizeof(_tieBreaker));
 	}
 	return self;
@@ -107,7 +108,8 @@
 	NSData *request = [TGCallStun bindingRequestWithUsername:username
 													password:self.peerPwd
 												  tieBreaker:self.tieBreaker
-												useCandidate:YES];
+												useCandidate:self.controlling
+												 controlling:self.controlling];
 
 	if (self.transport){
 		self.transport(request);

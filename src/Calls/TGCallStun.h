@@ -15,6 +15,14 @@
                              tieBreaker:(uint64_t)tieBreaker
                             useCandidate:(BOOL)useCandidate;
 
+/// 9.0.0: only the controlling side sends ICE-CONTROLLING and USE-CANDIDATE;
+/// the controlled side sends ICE-CONTROLLED and never nominates.
++ (NSData *)bindingRequestWithUsername:(NSString *)username
+                              password:(NSString *)password
+                             tieBreaker:(uint64_t)tieBreaker
+                            useCandidate:(BOOL)useCandidate
+                             controlling:(BOOL)controlling;
+
 /// A success response to `request`, signed with our own password.
 + (NSData *)bindingResponseTo:(NSData *)request
                      password:(NSString *)password

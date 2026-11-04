@@ -31,7 +31,7 @@
 //                               "type": { "@type": "callServerTypeTelegramReflector",
 //                                         "peer_tag": <base64 16 bytes> } } ],
 //                "protocol": { "@type": "callProtocol",
-//                              "library_versions": ["9.0.0"] } } }
+//                              "library_versions": ["5.0.0"] } } }
 //
 #import "TGTestRunner.h"
 #import "TGCall.h"
@@ -144,7 +144,7 @@
             }],
             @"protocol"       : @{
                 @"@type"            : @"callProtocol",
-                @"library_versions" : @[@"9.0.0"],
+                @"library_versions" : @[@"5.0.0"],
             },
         },
     };
@@ -223,6 +223,8 @@
     NSArray *offered = create[@"protocol"][@"library_versions"];
     // tgcalls InstanceImpl::GetVersions, checked against the real library by
     // scripts/call_bench.sh. An empty overlap means iOS cannot take the call.
+    XCTAssertEqualObjects(offered.firstObject, @"9.0.0",
+            @"iOS has no sound on anything older: see -protocol");
     XCTAssertTrue([offered containsObject:@"5.0.0"]);
     XCTAssertTrue([offered containsObject:@"2.7.7"]);
     [[TGCall shared] teardown];
@@ -579,7 +581,7 @@
             @"encryption_key" : [shortKey base64EncodedStringWithOptions:0],
             @"servers"        : @[],
             @"protocol"       : @{ @"@type": @"callProtocol",
-                                   @"library_versions": @[@"9.0.0"] },
+                                   @"library_versions": @[@"5.0.0"] },
         },
     }];
 

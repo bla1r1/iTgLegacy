@@ -53,6 +53,7 @@ LDFLAGS := \
     -L$(OPENSSL)/lib \
     -L/opt/homebrew/opt/webp/lib \
     -lcrypto \
+    -lssl \
     -lwebp \
     -lz \
     -lc++ \
@@ -62,7 +63,7 @@ LDFLAGS := \
 # ─── sources ──────────────────────────────────────────────────────────────────
 
 # Pure C (no ARC)
-C_SRCS := $(SRC)/Calls/TGCallCrypto.c $(SRC)/Media/TGSoftVideoClock.c
+C_SRCS := $(SRC)/Calls/TGCallCrypto.c $(SRC)/Calls/TGCallSrtp.c $(SRC)/Media/TGSoftVideoClock.c
 
 # ObjC sources under test
 OBJC_SRCS := \
@@ -70,6 +71,9 @@ OBJC_SRCS := \
     $(SRC)/Calls/TGCallMessages.m \
     $(SRC)/Calls/TGCallIce.m \
     $(SRC)/Calls/TGCallReflector.m \
+    $(SRC)/Calls/TGCallV2Signaling.m \
+    $(SRC)/Calls/TGCallV2Session.m \
+    $(SRC)/Calls/TGCallDtls.m \
     $(SRC)/Calls/TGCall.mm \
     $(SRC)/Views/TGMessageLayout.mm \
     $(SRC)/Core/TGStyle.m \
@@ -172,6 +176,7 @@ TEST_SRCS := \
     $(TESTS)/TGCallMessagesTests.m \
     $(TESTS)/TGCallIceTests.m \
     $(TESTS)/TGCallReflectorTests.m \
+    $(TESTS)/TGCallV2Tests.m \
     $(TESTS)/TGCallIntegrationTests.m \
     $(TESTS)/TGLibTgvoipHooksTests.m \
     $(TESTS)/TGMessageLayoutTests.m \

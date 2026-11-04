@@ -158,6 +158,9 @@ TDLIB_LIBS_ARM64 := $(TDLIB_KEEP_ARM64) \
 # libcrypto: TDLib brings its own copy inside the dylib, but libtgvoip is
 # linked into the app and needs AES and SHA here.
 DEPS_LIBS  := -lopus -lvpx -lstdc++ -lz -lcrypto
+# 9.0.0 needs DTLS, which lives in libssl. The armv7 tree has it beside
+# libcrypto; arm64 already names -lssl on its TDLib link line.
+ARMV7_SSL_LIBS := -L$(BUILD_DIR)/armv7/openssl -lssl
 
 # ------------------------------------------------------------------------------
 # Source Files
@@ -445,6 +448,9 @@ APP_SRC_M := \
 	src/Calls/TGCallStun.m \
 	src/Calls/TGCallMessages.m \
 	src/Calls/TGCallReflector.m \
+	src/Calls/TGCallV2Signaling.m \
+	src/Calls/TGCallV2Session.m \
+	src/Calls/TGCallDtls.m \
 	src/Media/UIImage+WebP.m \
 	src/Media/TGStickerImage.m \
 	src/Media/TGWebMDecoder.m \
@@ -477,7 +483,8 @@ APP_SRC_C := \
 	src/Views/TGSVGPath.c \
 	src/Core/TGSampler.c \
 	compat/tlv_polyfill.c \
-	src/Calls/TGCallCrypto.c
+	src/Calls/TGCallCrypto.c \
+	src/Calls/TGCallSrtp.c
 
 # Object mapping for armv7
 # Reached only from dev mode.
@@ -597,7 +604,7 @@ ipa-armv7: $(MACHOFIX) $(ARMV7_ALL_OBJS)
 	@mkdir -p "$(IPA_DIR)" "$(BUILD_DIR)/armv7/app$(DEV_SUFFIX)/$(APP_NAME).app"
 	$(CC) -arch armv7 -isysroot $(SDK_PATH) $(MIN_IOS) -Wl,-dead_strip -ObjC -Wl,-pagezero_size,0x1000 \
 		-L$(BUILD_DIR)/armv7/libs -L$(BUILD_DIR)/armv7/tdlib/lib -L$(ROOT_DIR)/third_party/opus/lib \
-		$(ARMV7_ALL_OBJS) $(FRAMEWORKS) $(WEBP_ARMV7) $(ARMV7_FFMPEG_LIBS) $(TDLIB_LIBS) $(DEPS_LIBS) -o "$(BUILD_DIR)/armv7/app$(DEV_SUFFIX)/$(APP_NAME).app/$(APP_NAME)"
+		$(ARMV7_ALL_OBJS) $(FRAMEWORKS) $(WEBP_ARMV7) $(ARMV7_FFMPEG_LIBS) $(TDLIB_LIBS) $(DEPS_LIBS) $(ARMV7_SSL_LIBS) -o "$(BUILD_DIR)/armv7/app$(DEV_SUFFIX)/$(APP_NAME).app/$(APP_NAME)"
 	@cp -f "$(ROOT_DIR)/resources/Info.plist" "$(BUILD_DIR)/armv7/app$(DEV_SUFFIX)/$(APP_NAME).app/Info.plist" 2>/dev/null || true
 	@$(call ADD_DEV_SCHEMES,$(BUILD_DIR)/armv7/app$(DEV_SUFFIX)/$(APP_NAME).app/Info.plist)
 	@cp -f "$(ROOT_DIR)/resources/fonts/"*.ttf "$(BUILD_DIR)/armv7/app$(DEV_SUFFIX)/$(APP_NAME).app/" 2>/dev/null || true

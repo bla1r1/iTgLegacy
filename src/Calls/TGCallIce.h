@@ -12,6 +12,10 @@
 @property (nonatomic, strong) NSString *peerUfrag;
 @property (nonatomic, strong) NSString *peerPwd;
 
+/// 9.0.0 has an explicit ICE role: the caller controls, the callee does not
+/// and never sends USE-CANDIDATE. The 5.0.0 path leaves this YES.
+@property (nonatomic, assign) BOOL controlling;
+
 /// Fired on the main queue the first time a check is answered.
 @property (nonatomic, copy) void (^onConnected)(NSString *address, uint16_t port);
 /// Everything that is not STUN: the media stream.

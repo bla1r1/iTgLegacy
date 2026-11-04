@@ -12,6 +12,7 @@ static const uint16_t kAttrXorMappedAddr   = 0x0020;
 static const uint16_t kAttrPriority        = 0x0024;
 static const uint16_t kAttrUseCandidate    = 0x0025;
 static const uint16_t kAttrIceControlling   = 0x802A;
+static const uint16_t kAttrIceControlled    = 0x8029;
 static const uint16_t kAttrFingerprint     = 0x8028;
 
 static void TGAppend16(NSMutableData *data, uint16_t value) {
@@ -108,6 +109,18 @@ static void TGAppendIntegrityAndFingerprint(NSMutableData *message, NSString *pa
                               password:(NSString *)password
                              tieBreaker:(uint64_t)tieBreaker
                             useCandidate:(BOOL)useCandidate {
+	return [self bindingRequestWithUsername:username
+	                               password:password
+	                              tieBreaker:tieBreaker
+	                             useCandidate:useCandidate
+	                              controlling:YES];
+}
+
++ (NSData *)bindingRequestWithUsername:(NSString *)username
+                              password:(NSString *)password
+                             tieBreaker:(uint64_t)tieBreaker
+                            useCandidate:(BOOL)useCandidate
+                             controlling:(BOOL)controlling {
 	NSMutableData *message = [NSMutableData data];
 	TGAppend16(message, 0x0001);   // binding request
 	TGAppend16(message, 0);        // length, filled in later
@@ -127,9 +140,9 @@ static void TGAppendIntegrityAndFingerprint(NSMutableData *message, NSString *pa
 	NSMutableData *tie = [NSMutableData data];
 	TGAppend32(tie, (uint32_t)(tieBreaker >> 32));
 	TGAppend32(tie, (uint32_t)tieBreaker);
-	TGAppendAttribute(message, kAttrIceControlling, tie);
+	TGAppendAttribute(message, controlling ? kAttrIceControlling : kAttrIceControlled, tie);
 
-	if (useCandidate)
+	if (useCandidate && controlling)
 		TGAppendAttribute(message, kAttrUseCandidate, [NSData data]);
 
 	TGAppendIntegrityAndFingerprint(message, password);

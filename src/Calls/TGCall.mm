@@ -9,6 +9,7 @@
 #import "TGCallMessages.h"
 #import "TGCallIce.h"
 #import "TGCallStun.h"
+#import "TGCallV2Session.h"
 #include "TGCallCrypto.h"
 #import <AVFoundation/AVFoundation.h>
 
@@ -169,6 +170,8 @@ static void TGInstallCrypto(void) {
 @property (nonatomic, strong) NSString *peerPwd;
 @property (nonatomic, strong) TGCallIce *ice;
 @property (nonatomic, strong) TGCallAudioEngine *audioEngine;
+@property (nonatomic, strong) TGCallV2Session *v2;
+@property (nonatomic, assign) BOOL isV2;
 @property (nonatomic, assign) uint32_t mediaSeqOut;
 @property (nonatomic, assign) uint16_t rtpSeqOut;
 @property (nonatomic, assign) uint32_t rtpTimestampOut;
@@ -270,10 +273,11 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V8";
 		return;
 	self.sentCandidates = YES;
 
-	self.localUfrag = [self randomIceStringOfLength:4];
-	self.localPwd = [self randomIceStringOfLength:24];
+	self.localUfrag = self.localUfrag ?: [self randomIceStringOfLength:4];
+	self.localPwd = self.localPwd ?: [self randomIceStringOfLength:24];
 
 	self.ice = [[TGCallIce alloc] init];
+	self.ice.controlling = !self.isV2 || self.outgoing;
 	self.ice.localUfrag = self.localUfrag;
 	self.ice.localPwd = self.localPwd;
 	__weak __typeof__(self) weakSelf = self;
@@ -292,11 +296,37 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V8";
 	};
 	self.ice.onConnected = ^(NSString *address, uint16_t port){
 		NSLog(@"TGCall: media path is %@:%u", address, port);
+		// 9.0.0 is not usable until DTLS has produced SRTP keys; the session
+		// calls back when that happens. Starting the engine here would play
+		// audio before there is a key to decrypt it with.
+		if (weakSelf.isV2){
+			[weakSelf.v2 iceConnected];
+			return;
+		}
 		weakSelf.state = TGCallStateEstablished;
 		[weakSelf startAudioEngine];
 	};
 	[self.ice start];
 
+	if (self.isV2){
+		// 9.0.0 patches every relay candidate to component 1 and priority
+		// 41877760 before serializing, and carries the candidate as JSON.
+		NSMutableArray *v2Candidates = [NSMutableArray array];
+		NSInteger v2Index = 0;
+		for (TGCallReflector *reflector in self.reflectors){
+			v2Index++;
+			uint32_t serverId = reflector.serverId ?: (uint32_t)v2Index;
+			NSString *hostname = [NSString stringWithFormat:@"reflector-%u-%u.reflector",
+					serverId, reflector.localTag];
+			[v2Candidates addObject:[NSString stringWithFormat:
+					@"candidate:%u 1 udp 41877760 %@ %u typ relay generation 0 "
+					@"ufrag %@ network-id 9 network-cost 50",
+					reflector.localTag, hostname, reflector.port, self.localUfrag]];
+		}
+		[self.v2 sendCandidates:v2Candidates];
+		NSLog(@"TGCallV2: sent our candidates, ufrag=%@", self.localUfrag);
+		return;
+	}
 
 	// The address is a name rather than an IP: the peer reads our four-byte
 	// tag out of it and uses that to address us through the reflector.
@@ -367,6 +397,11 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V8";
 		return;
 	}
 	out.length = size;
+
+	if (self.isV2){
+		[self.v2 handlePlaintext:out packetSeq:seq];
+		return;
+	}
 
 	for (NSDictionary *message in [TGCallMessages parsePacket:out seq:seq]){
 		uint8_t type = [message[@"type"] unsignedCharValue];
@@ -674,10 +709,11 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V8";
 		@"udp_reflector"    : @YES,
 		@"min_layer"        : @(65),
 		@"max_layer"        : @(92),
-		// 5.0.0 and 2.7.7 are the tgcalls InstanceImpl this class speaks. Current mobile
-		// clients have neither of the old two, and iOS will not take a call with no
-		// version in common. 7.0.0 and up are a different protocol (DTLS, SCTP).
-		@"library_versions" : @[@"5.0.0", @"2.7.7", @"3.0.0", @"2.4.4"],
+		// 9.0.0 first: on iOS a 5.0.0 call connects and stays silent both ways, because
+		// InstanceImpl gets the shared audio device's root module, whose
+		// RegisterAudioCallback does nothing; only 7.0.0 and up get a child that has
+		// sound. 5.0.0 and 2.7.7 stay for clients with their own audio device.
+		@"library_versions" : @[@"9.0.0", @"5.0.0", @"2.7.7", @"3.0.0", @"2.4.4"],
 	};
 }
 
@@ -759,6 +795,18 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V8";
 	}
 
 	self.callKey = key;
+
+	// 9.0.0 is the V2 signalling protocol with DTLS/SRTP media. The version
+	// comes from TDLib's negotiated list, not from what we offered.
+	NSArray *versions = state[@"protocol"][@"library_versions"];
+	self.isV2 = [versions isKindOfClass:[NSArray class]] &&
+	            [versions containsObject:@"9.0.0"];
+	if (self.isV2){
+		self.localUfrag = self.localUfrag ?: [self randomIceStringOfLength:4];
+		self.localPwd = self.localPwd ?: [self randomIceStringOfLength:24];
+		[self startV2Session];
+	}
+
 	if (self.pendingSignalingData.count) {
 		NSArray *pending = [self.pendingSignalingData copy];
 		[self.pendingSignalingData removeAllObjects];
@@ -778,6 +826,64 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V8";
 
 }
  
+- (void)startV2Session {
+	TGCallV2Session *v2 = [[TGCallV2Session alloc] init];
+	v2.outgoing = self.outgoing;
+	v2.localUfrag = self.localUfrag;
+	v2.localPwd = self.localPwd;
+	// A non-zero ssrc is mandatory in the offer, or the peer builds no
+	// incoming audio channel and throws our RTP away.
+	uint32_t ssrc = arc4random();
+	v2.localSsrc = ssrc ? ssrc : 1;
+
+	__weak __typeof__(self) weakSelf = self;
+	v2.sendSignaling = ^(NSData *plaintext, uint32_t seq){
+		[weakSelf sendSignalling:plaintext seq:seq];
+	};
+	v2.sendMedia = ^(const uint8_t *bytes, size_t length){
+		[weakSelf sendV2Media:bytes length:length];
+	};
+	v2.onRemoteCandidates = ^(NSArray *candidates){
+		for (NSString *candidate in candidates){
+			[weakSelf readPeerTagFromCandidate:candidate];
+			[weakSelf.ice addPeerCandidate:candidate];
+		}
+	};
+	v2.onPeerCredentials = ^(NSString *ufrag, NSString *pwd){
+		weakSelf.ice.peerUfrag = ufrag;
+		weakSelf.ice.peerPwd = pwd;
+	};
+	v2.onAudio = ^(const uint8_t *rtp, size_t length){
+		[weakSelf handleIncomingRTPBytes:rtp length:length];
+	};
+	v2.onEstablished = ^{
+		weakSelf.state = TGCallStateEstablished;
+		[weakSelf startAudioEngine];
+	};
+	v2.onFailure = ^(NSString *reason){
+		[weakSelf failV2:reason];
+	};
+	self.v2 = v2;
+	[v2 start];
+}
+
+- (void)sendV2Media:(const uint8_t *)bytes length:(size_t)length {
+	uint32_t tag = self.verifiedMediaTag ?: self.currentSenderTag;
+	if (!tag || !length)
+		return;
+	TGCallReflector *target = self.verifiedReflector ?: (self.currentReflector ?: self.reflector);
+	NSData *payload = [NSData dataWithBytesNoCopy:(void *)bytes
+	                                       length:length
+	                                 freeWhenDone:NO];
+	[target sendPayload:payload toTag:tag];
+}
+
+- (void)failV2:(NSString *)reason {
+	NSLog(@"TGCallV2: ending call: %@", reason);
+	[self teardown];
+	self.state = TGCallStateFailed;
+}
+
 // Connect to all candidate reflectors from TDLib
 - (void)probeReflectorsIn:(NSDictionary *)state key:(NSData *)key {
 	self.reflectors = [NSMutableArray array];
@@ -850,6 +956,11 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V8";
 - (void)sendOutgoingAudioFrame:(NSData *)opusFrame {
 	if (!self.callKey.length || opusFrame.length == 0 || self.muted)
 		return;
+
+	if (self.isV2){
+		[self.v2 sendOpusFrame:opusFrame];
+		return;
+	}
 
 	// Official tgcalls single-message audio packet:
 	// Byte 0: 0x05 (TGCallMessageAudioData)
@@ -1087,6 +1198,16 @@ static inline BOOL TGLooksLikeStun(const uint8_t *bytes) {
 	// away - which is most of them, and all the interesting ones.
 	size_t declared = ((size_t)bytes[20] << 24) | ((size_t)bytes[21] << 16) |
 					  ((size_t)bytes[22] << 8)  |  (size_t)bytes[23];
+
+	// 9.0.0 media is plain DTLS/SRTP behind the same reflector envelope.
+	// STUN still goes through the old path below: ICE has not changed.
+	if (self.isV2 && packet.length > 24 && !TGLooksLikeStun(bytes + 24)){
+		size_t available = packet.length - 24;
+		if (declared > 0 && declared <= available)
+			available = declared;
+		[self.v2 handlePacket:bytes + 24 length:available];
+		return;
+	}
 
 	// Media is what arrives fifty to a hundred times a second, and it always
 	// arrives at offset 24. Try it there first, straight off the datagram:
@@ -1417,11 +1538,21 @@ static inline BOOL TGLooksLikeStun(const uint8_t *bytes) {
 		close(_benchSocket);
 		_benchSocket = 0;
 	}
+	_benchMorse = NO;
 #endif
+	// A fresh call starts its RTP sequence anywhere: a high value kept from the last
+	// call made every receiver report repeat it instead of following this one.
+	_highestRtpSeqIn = 0;
+	_audioFramesIn = 0;
 	if (self.audioEngine) {
 		[self.audioEngine stop];
 		self.audioEngine = nil;
 	}
+	[self.v2 stop];
+	self.v2 = nil;
+	self.isV2 = NO;
+	self.localUfrag = nil;
+	self.localPwd = nil;
 	[self.ice stop];
 	self.ice = nil;
 	for (TGCallReflector *reflector in self.reflectors)
