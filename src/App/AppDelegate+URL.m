@@ -99,6 +99,28 @@ static const CGFloat kIconDumpSide = 52.0f;
 	NSString *arg = [url.path stringByReplacingOccurrencesOfString:@"/" withString:@""];
 	NSLog(@"handleOpenURL: %@", host ?: @"(launch)");
 
+	// itglegacy://callbench[/stop] - a call against tgcalls_cli on the Mac, no account
+	// involved. The config is written by scripts/call_bench_device.sh.
+	if ([host isEqualToString:@"callbench"]){
+		dispatch_async(dispatch_get_main_queue(), ^{
+			if ([arg isEqualToString:@"stop"]){
+				[[TGCall shared] hangUp];
+				return;
+			}
+			NSString *dir = NSSearchPathForDirectoriesInDomains(NSCachesDirectory,
+					NSUserDomainMask, YES)[0];
+			NSData *json = [NSData dataWithContentsOfFile:
+					[dir stringByAppendingPathComponent:@"callbench.json"]];
+			NSDictionary *config = json ? [NSJSONSerialization JSONObjectWithData:json
+					options:0 error:nil] : nil;
+			if (config)
+				[[TGCall shared] startBenchWithConfig:config];
+			else
+				NSLog(@"callbench: no config");
+		});
+		return YES;
+	}
+
 	// itglegacy://devmode[/close] - what three taps on Chats opens.
 	if ([host isEqualToString:@"devmode"]){
 		dispatch_async(dispatch_get_main_queue(), ^{

@@ -48,7 +48,7 @@ static NSDictionary *TGFlattenGift(NSDictionary *entry) {
 	return out;
 }
 
-static NSDictionary *TGFlattenStory(NSDictionary *story) {
+NSDictionary *TGFlattenStory(NSDictionary *story) {
 	NSDictionary *content = story[@"content"];
 	NSString *kind = content[@"@type"];
 

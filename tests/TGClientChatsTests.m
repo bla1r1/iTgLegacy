@@ -98,6 +98,28 @@ static int64_t orderOf(NSArray *chats, int64_t id_) {
 @interface TGClientChatsTests : XCTestCase
 @end
 
+/// The last request of one type in the outbox, parsed the same way the client
+/// sends it. Join tests answer it through handleUpdate, which is the receive
+/// path a real TDLib answer takes.
+static NSDictionary *joinTestRequest(TGClient *c, NSString *type) {
+	NSDictionary *found = nil;
+	for (NSData *d in c.outbox){
+		NSString *json = [[NSString alloc] initWithData:d encoding:NSUTF8StringEncoding];
+		NSString *trimmed = [json componentsSeparatedByString:@"\0"][0];
+		NSDictionary *request = [NSJSONSerialization JSONObjectWithData:
+				[trimmed dataUsingEncoding:NSUTF8StringEncoding] options:0 error:nil];
+		if ([request[@"@type"] isEqualToString:type])
+			found = request;
+	}
+	return found;
+}
+
+static void joinTestReply(TGClient *c, NSDictionary *request, NSDictionary *answer) {
+	NSMutableDictionary *reply = [answer mutableCopy];
+	reply[@"@extra"] = request[@"@extra"];
+	[c handleUpdate:reply];
+}
+
 @implementation TGClientChatsTests
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -741,6 +763,118 @@ static int64_t orderOf(NSArray *chats, int64_t id_) {
 						 @"notification_settings" : settings}];
 	XCTAssertEqualObjects(c.chatsById[@(77)][@"notificationSettings"], settings);
 	XCTAssertTrue([c.chatsById[@(77)][@"isMuted"] boolValue]);
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+#pragma mark - a chat opened from outside the list
+
+/// A public channel reached from a profile has no row in chatsById. The type
+/// must come from getChat, not from the miss read as a private chat.
+- (void)testChatKind_AbsentChatReadsSupergroupTypeFromGetChat {
+	TGClient *c = T();
+	__block NSDictionary *kind = nil;
+	[c chatKindForChat:900 completion:^(NSDictionary *answer){ kind = answer; }];
+
+	NSDictionary *getChat = joinTestRequest(c, @"getChat");
+	XCTAssertEqualObjects(getChat[@"chat_id"], @(900));
+	joinTestReply(c, getChat, @{
+		@"@type" : @"chat", @"id" : @(900), @"title" : @"Music Box",
+		@"type"  : @{@"@type" : @"chatTypeSupergroup",
+					 @"supergroup_id" : @(12), @"is_channel" : @YES},
+	});
+
+	XCTAssertNil(c.chatsById[@(900)],
+			@"chatsById feeds the chat list, and this chat was only looked at");
+	XCTAssertNil(kind, @"the group record has not answered yet");
+
+	NSDictionary *getSupergroup = joinTestRequest(c, @"getSupergroup");
+	XCTAssertEqualObjects(getSupergroup[@"supergroup_id"], @(12));
+	joinTestReply(c, getSupergroup, @{
+		@"@type" : @"supergroup", @"id" : @(12), @"member_count" : @(1500),
+		@"status" : @{@"@type" : @"chatMemberStatusLeft"},
+	});
+
+	XCTAssertNotNil(kind);
+	XCTAssertTrue([kind[@"isGroup"] boolValue]);
+	XCTAssertTrue([kind[@"isChannel"] boolValue],
+			@"is_channel lives on the chatTypeSupergroup");
+	XCTAssertEqual([kind[@"memberCount"] integerValue], (NSInteger)1500);
+	XCTAssertNil(joinTestRequest(c, @"joinChat"),
+			@"opening a channel must not join it");
+}
+
+/// The supergroup record, not the chat, is where TDLib keeps membership.
+- (void)testChatKind_LeftStatusReadFromSupergroupRecord {
+	TGClient *c = T();
+	__block NSDictionary *kind = nil;
+	[c chatKindForChat:901 completion:^(NSDictionary *answer){ kind = answer; }];
+
+	NSDictionary *getChat = joinTestRequest(c, @"getChat");
+	joinTestReply(c, getChat, @{
+		@"@type" : @"chat", @"id" : @(901), @"title" : @"Public group",
+		@"type"  : @{@"@type" : @"chatTypeSupergroup", @"supergroup_id" : @(13)},
+	});
+	NSDictionary *getSupergroup = joinTestRequest(c, @"getSupergroup");
+	joinTestReply(c, getSupergroup, @{
+		@"@type" : @"supergroup", @"id" : @(13), @"member_count" : @(42),
+		@"status" : @{@"@type" : @"chatMemberStatusLeft"},
+	});
+
+	XCTAssertNotNil(kind);
+	XCTAssertFalse([kind[@"isMember"] boolValue],
+			@"chatMemberStatusLeft is not a member");
+	XCTAssertEqualObjects(kind[@"status"], @"chatMemberStatusLeft");
+}
+
+/// A basic group keeps the same status on its own record.
+- (void)testChatKind_BasicGroupMembershipComesFromTheGroupRecord {
+	TGClient *c = T();
+	__block NSDictionary *kind = nil;
+	[c chatKindForChat:902 completion:^(NSDictionary *answer){ kind = answer; }];
+
+	NSDictionary *getChat = joinTestRequest(c, @"getChat");
+	joinTestReply(c, getChat, @{
+		@"@type" : @"chat", @"id" : @(902), @"title" : @"Walkers",
+		@"type"  : @{@"@type" : @"chatTypeBasicGroup", @"basic_group_id" : @(7)},
+	});
+	NSDictionary *getGroup = joinTestRequest(c, @"getBasicGroup");
+	XCTAssertEqualObjects(getGroup[@"basic_group_id"], @(7));
+	joinTestReply(c, getGroup, @{
+		@"@type" : @"basicGroup", @"id" : @(7), @"member_count" : @(3),
+		@"status" : @{@"@type" : @"chatMemberStatusMember"},
+	});
+
+	XCTAssertNotNil(kind);
+	XCTAssertTrue([kind[@"isGroup"] boolValue]);
+	XCTAssertFalse([kind[@"isChannel"] boolValue]);
+	XCTAssertTrue([kind[@"isMember"] boolValue]);
+	XCTAssertEqual([kind[@"memberCount"] integerValue], (NSInteger)3);
+}
+
+/// The Join bar's tap is the only thing that sends joinChat, and success is
+/// TDLib's chatJoinResultSuccess, not merely an answer.
+- (void)testJoinChat_SendsJoinChatAndReportsSuccess {
+	TGClient *c = T();
+	__block BOOL called = NO;
+	__block BOOL joined = NO;
+	[c joinChat:903 completion:^(BOOL ok, BOOL requestSent){ called = YES; joined = ok; }];
+
+	NSDictionary *request = joinTestRequest(c, @"joinChat");
+	XCTAssertEqualObjects(request[@"chat_id"], @(903));
+	XCTAssertFalse(called, @"the bar waits for TDLib's answer");
+
+	joinTestReply(c, request, @{@"@type" : @"chatJoinResultSuccess", @"chat_id" : @(903)});
+	XCTAssertTrue(called);
+	XCTAssertTrue(joined, @"chatJoinResultSuccess is a real join");
+}
+
+- (void)testJoinChat_ARequestWaitingForAnAdminIsNotAJoin {
+	TGClient *c = T();
+	__block BOOL joined = YES, sent = NO;
+	[c joinChat:904 completion:^(BOOL ok, BOOL requestSent){ joined = ok; sent = requestSent; }];
+	joinTestReply(c, joinTestRequest(c, @"joinChat"), @{@"@type" : @"chatJoinResultRequestSent"});
+	XCTAssertFalse(joined);
+	XCTAssertTrue(sent);
 }
 
 @end

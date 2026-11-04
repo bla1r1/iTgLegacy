@@ -325,8 +325,14 @@ extern "C" {
 
 // Common helpers shared between TGClient and categories
 NSDictionary *TGFlattenMessage(NSDictionary *m);
+NSDictionary *TGFlattenStory(NSDictionary *story);
 NSNumber *TGPlayableVideoFileId(NSDictionary *video, NSArray *alternatives, int maxSide,
 								NSNumber **fallback);
+/// Vintage's software decoder: 720 pixels on the long side, square frames
+/// included. Takes the largest H.264 copy inside that, or the original.
+/// `width`/`height` receive the chosen file's size.
+NSNumber *TGPlayableVideoFileIdVintage(NSDictionary *video, NSArray *alternatives,
+									   NSNumber **fallback, int *width, int *height);
 NSDictionary *TGFlattenReplyMarkup(NSDictionary *markup);
 NSString *TGMessagePreview(NSDictionary *message);
 NSString *TGKnownMessagePreview(NSDictionary *message);

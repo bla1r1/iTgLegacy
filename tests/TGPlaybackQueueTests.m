@@ -2,10 +2,31 @@
 // skipped, because the queue only looked for voice notes.
 #import "TGTestRunner.h"
 #import "TGPlaybackQueue.h"
+#import "TGProfileTabs.h"
 
 @interface TGPlaybackQueueTests : XCTestCase @end
 
 @implementation TGPlaybackQueueTests
+
+- (void)testProfileTabs_StoriesThenGiftsThenMediaLikeTheOfficialClient {
+	NSArray *want = @[@"stories", @"gifts", @"media", @"files", @"music", @"voice", @"links", @"groups"];
+	XCTAssertEqualObjects(TGProfileTabKinds(YES, YES, YES, NO, nil), want);
+	NSArray *bare = @[@"media", @"files", @"music", @"voice", @"links"];
+	XCTAssertEqualObjects(TGProfileTabKinds(NO, NO, NO, NO, @"posts"), bare,
+			@"a person with no stories has no Stories tab to move");
+}
+
+- (void)testProfileTabs_MainTabMovesFirstAndPostsMeansStories {
+	XCTAssertEqualObjects(TGProfileTabKinds(YES, YES, NO, NO, @"gifts")[0], @"gifts");
+	XCTAssertEqualObjects(TGProfileTabKinds(YES, YES, NO, NO, @"gifts")[1], @"stories");
+	// The default main tab read as Media and pushed Media in front of everything.
+	XCTAssertEqualObjects(TGProfileTabKinds(YES, YES, NO, NO, @"posts")[0], @"stories");
+}
+
+- (void)testProfileTabs_MyProfileIsStoriesAndArchiveWithoutSavedMessages {
+	NSArray *mine = TGProfileTabKinds(NO, YES, NO, YES, @"posts");
+	XCTAssertEqualObjects(mine, (@[@"stories", @"gifts", @"archive"]));
+}
 
 - (void)testPrefetch_TakesTheNextTrackAndStopsAtTheEnd {
 	NSArray *list = @[@{@"docId" : @1}, @{@"docId" : @2}, @{@"docId" : @3}];

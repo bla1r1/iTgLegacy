@@ -57,13 +57,13 @@ REMOTE_EXE_NAME="${REMOTE_APP_NAME%.app}"
 echo "[+] Target app directory: $REMOTE_APP_DIR (executable: $REMOTE_EXE_NAME)"
 if [ "$DO_SYNC" -eq 1 ]; then
     echo "[+] Syncing full app bundle (binary, images, plists)..."
-    $SCP_CMD -r "$ROOT/build/armv7/app/LegacyTG.app/"* "mobile@localhost:$REMOTE_APP_DIR/"
+    $SCP_CMD -r "$ROOT/build/armv7/app-dev/LegacyTG.app/"* "mobile@localhost:$REMOTE_APP_DIR/"
     if [ "$REMOTE_EXE_NAME" != "LegacyTG" ]; then
         $SSH_CMD "cp '$REMOTE_APP_DIR/LegacyTG' '$REMOTE_APP_DIR/$REMOTE_EXE_NAME'" 2>/dev/null || true
     fi
 else
     echo "[+] Copying fresh executable over SSH..."
-    $SCP_CMD "$ROOT/build/armv7/app/LegacyTG.app/LegacyTG" "mobile@localhost:$REMOTE_APP_DIR/$REMOTE_EXE_NAME"
+    $SCP_CMD "$ROOT/build/armv7/app-dev/LegacyTG.app/LegacyTG" "mobile@localhost:$REMOTE_APP_DIR/$REMOTE_EXE_NAME"
 fi
 
 echo "[+] Restarting app process & waking screen..."

@@ -5,9 +5,11 @@
 #include "TGCallCrypto.h"
 
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <unistd.h>
+#include <errno.h>
 
 // ── tiny helper ──────────────────────────────────────────────────────────────
 
@@ -25,6 +27,13 @@ static NSString *randomIceString(NSUInteger length) {
     int _socket;
     struct sockaddr_in _lastSender;   // address of the last STUN check sender
     BOOL _hasSender;
+
+    // The reader has to be joined by stop, or it keeps the descriptor number
+    // and reads the next test's datagrams once the number is reused.
+    NSThread *_reader;
+    NSCondition *_lifecycle;
+    BOOL _stopping;
+    BOOL _readerFinished;
 
     // Reflector reply context, learned from the last wrapped packet. A reply
     // swaps the header around: the destination becomes TGCall's four bytes,
@@ -58,6 +67,7 @@ static NSString *randomIceString(NSUInteger length) {
 - (instancetype)init {
     if ((self = [super init])) {
         _socket = -1;
+        _lifecycle = [[NSCondition alloc] init];
         _localTag = arc4random();
         if (_localTag == 0) _localTag = 1;
         _ufrag  = randomIceString(4);
@@ -87,33 +97,80 @@ static NSString *randomIceString(NSUInteger length) {
     getsockname(_socket, (struct sockaddr *)&addr, &len);
     _listenPort = ntohs(addr.sin_port);
 
-    [NSThread detachNewThreadSelector:@selector(readLoop) toTarget:self withObject:nil];
+    // shutdown() does not wake recvfrom on an unconnected UDP socket. A short
+    // timeout is what lets stop join the reader instead of leaving it blocked
+    // on a descriptor number the next test will reuse.
+    struct timeval timeout = { 0, 100000 };
+    setsockopt(_socket, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+
+    [_lifecycle lock];
+    _stopping = NO;
+    _readerFinished = NO;
+    [_lifecycle unlock];
+
+    _reader = [[NSThread alloc] initWithTarget:self
+                                      selector:@selector(readLoop)
+                                        object:nil];
+    [_reader start];
     return YES;
 }
 
 - (void)stop {
+    [_lifecycle lock];
+    _stopping = YES;
     int s = _socket;
-    _socket = -1;
-    if (s >= 0) {
-        // recvfrom() is blocking. close() alone does not reliably wake it, and
-        // the descriptor number can be reused by the next test's peer before
-        // this thread notices - which then steals that peer's packets.
-        // shutdown() wakes the blocked call while the descriptor is still ours.
-        shutdown(s, SHUT_RDWR);
-        close(s);
+    NSThread *reader = _reader;
+    [_lifecycle unlock];
+
+    if (s >= 0)
+        shutdown(s, SHUT_RDWR);   // best effort; ENOTCONN on unconnected UDP
+
+    if (reader && reader != [NSThread currentThread]) {
+        [_lifecycle lock];
+        while (!_readerFinished)
+            [_lifecycle wait];
+        [_lifecycle unlock];
     }
+
+    [_lifecycle lock];
+    s = _socket;
+    _socket = -1;
+    _reader = nil;
+    [_lifecycle unlock];
+
+    if (s >= 0)
+        close(s);
 }
 
 // ── read loop (background thread) ────────────────────────────────────────
 
 - (void)readLoop {
     uint8_t buf[4096];
-    while (_socket >= 0) {
+    for (;;) {
+        [_lifecycle lock];
+        BOOL stopping = _stopping;
+        int handle = _socket;
+        [_lifecycle unlock];
+        if (stopping || handle < 0)
+            break;
+
         struct sockaddr_in from;
         socklen_t fromLen = sizeof(from);
-        ssize_t got = recvfrom(_socket, buf, sizeof(buf), 0,
+        ssize_t got = recvfrom(handle, buf, sizeof(buf), 0,
                                (struct sockaddr *)&from, &fromLen);
-        if (got <= 0) break;
+        if (got < 0) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
+                continue;
+            break;
+        }
+        if (got == 0)
+            continue;
+
+        [_lifecycle lock];
+        BOOL stoppingNow = _stopping;
+        [_lifecycle unlock];
+        if (stoppingNow)
+            break;
 
         NSData *packet = [NSData dataWithBytes:buf length:(NSUInteger)got];
         NSData *sender = [NSData dataWithBytes:&from length:sizeof(from)];
@@ -121,6 +178,11 @@ static NSString *randomIceString(NSUInteger length) {
             [self handlePacket:packet fromAddress:sender];
         });
     }
+
+    [_lifecycle lock];
+    _readerFinished = YES;
+    [_lifecycle broadcast];
+    [_lifecycle unlock];
 }
 
 // ── packet dispatch ──────────────────────────────────────────────────────

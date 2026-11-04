@@ -152,6 +152,18 @@ FOUNDATION_EXPORT NSDictionary *TGMemberRowForMember(NSDictionary *member,
 /// Members in a group or supergroup; 0 for anything else.
 - (void)memberCountForChat:(int64_t)chatId completion:(void (^)(NSInteger count))completion;
 
+/// The chat's real kind, even when the chat is not in chatsById: a chat opened
+/// from a profile or a link has no cached row, and guessing private put
+/// presence under a channel's name. The answer carries "isGroup", "isChannel",
+/// "isMember", "memberCount" and the raw "status". For a group the membership
+/// comes from the supergroup or basic group record, not from the chat.
+- (void)chatKindForChat:(int64_t)chatId
+             completion:(void (^)(NSDictionary *kind))completion;
+
+/// Joins a public group or channel. `ok` only when TDLib says the account is now a
+/// member; `requestSent` when an admin has to approve it first.
+- (void)joinChat:(int64_t)chatId completion:(void (^)(BOOL ok, BOOL requestSent))completion;
+
 /// Ask TDLib to populate the main chat list. Only meaningful once authorized.
 - (void)loadChats;
 

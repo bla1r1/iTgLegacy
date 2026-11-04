@@ -12,6 +12,7 @@
 #import "TGStorySettingsViewController.h"
 #import "TGStoriesMenuViewController.h"
 #import "TGSettingsViewController+Tier2.h"
+#import "TGEmojiStatusViewController.h"
 #import "TGSponsoredMessagesViewController.h"
 #import "TGEnvironmentViewController.h"
 #import "TGBotConsoleViewController.h"
@@ -122,6 +123,18 @@ static NSArray *TGCustomResultRows(NSString *result) {
 				edit.hidesBottomBarWhenPushed = YES;
 				[weakSelf.navigationController pushViewController:edit animated:YES];
 			}),
+			// Official keeps this in the top edit block, not in dev: it is a
+			// profile action for a Premium account, and Telegram answers the
+			// refusal itself for an account that is not Premium.
+			TGIconRow(@"Emoji Status", @"star", TGIconTileGold(), ^{
+				TGEmojiStatusViewController *status =
+						[[TGEmojiStatusViewController alloc] init];
+				status.target = TGEmojiStatusTargetSelf;
+				status.userId = [[TGClient shared].me[@"id"] longLongValue];
+				status.subjectTitle = @"Emoji Status";
+				status.hidesBottomBarWhenPushed = YES;
+				[weakSelf.navigationController pushViewController:status animated:YES];
+			}),
 		]),
 
 		// The chats and the devices they live on. Telegram keeps these above
@@ -141,18 +154,16 @@ static NSArray *TGCustomResultRows(NSString *result) {
 			TGIconTapRow(@"Chat Folders", foldersDetail, @"folder", TGIconTileCyan(), ^{
 				[weakSelf openPage:TGSettingsPageFolders];
 			}),
-			TGIconRow(@"Stories", @"notifications", TGIconTileRed(), ^{
-				// Telegram keeps the story archive, albums, live story and the
-				// per-chat notification exceptions together. This row used to
-				// land on the exception list alone, so archive management was
-				// reachable only by holding the strip.
-				TGStoriesMenuViewController *stories =
-						[[TGStoriesMenuViewController alloc] initWithChatId:
-								[[TGClient shared] savedMessagesChatId]
-								title:@"My Story"];
-				stories.hidesBottomBarWhenPushed = YES;
-				[weakSelf.navigationController pushViewController:stories animated:YES];
+			// The official manager is the profile: Stories and Archive tabs on one
+			// screen, instead of a menu of screens.
+			TGIconRow(@"My Stories", @"notifications", TGIconTileRed(), ^{
+				[weakSelf openMyProfileOnTab:@"stories"];
 			}),
+		]),
+
+		// Official keeps Proxy in its own section above the app settings, not
+		// mixed into the chat and device rows.
+		TGSection(nil, nil, @[
 			TGIconTapRow(@"Proxy", proxyDetail, @"data", TGIconTileGrey(), ^{
 				[weakSelf openPage:TGSettingsPageProxy];
 			}),
@@ -176,11 +187,6 @@ static NSArray *TGCustomResultRows(NSString *result) {
 			}),
 			TGIconTapRow(@"Language", languageDetail, @"language", TGIconTileViolet(), ^{
 				[weakSelf openPage:TGSettingsPageLanguage];
-			}),
-			TGIconTapRow(@"This Device", [TGDevice tierName], @"devices", TGIconTileSlate(), ^{
-				TGDeviceViewController *device = [[TGDeviceViewController alloc] init];
-				device.hidesBottomBarWhenPushed = YES;
-				[weakSelf.navigationController pushViewController:device animated:YES];
 			}),
 		]),
 
@@ -242,6 +248,14 @@ static NSArray *TGCustomResultRows(NSString *result) {
 		]),
 
 		TGSection(nil, nil, @[
+			// This Device is the one row official has no equivalent for: it
+			// explains every button this hardware cannot show. Keep it at the
+			// end, with Log out, rather than among the account settings.
+			TGIconTapRow(@"This Device", [TGDevice tierName], @"devices", TGIconTileSlate(), ^{
+				TGDeviceViewController *device = [[TGDeviceViewController alloc] init];
+				device.hidesBottomBarWhenPushed = YES;
+				[weakSelf.navigationController pushViewController:device animated:YES];
+			}),
 			TGRedRow(@"Log out", ^{
 				[TGAlertSheet showConfirm:@"Are you sure you want to log out?"
 									title:@"Log out"
@@ -1178,6 +1192,12 @@ static NSString *TGOrderLines(NSDictionary *order) {
 			}),
 			TGTapRow(@"Invoice Tools", @"Card lookup, offers, order validation", ^{
 				[weakSelf openPage:TGSettingsPagePaymentDev];
+			}),
+			TGTapRow(@"Stories Menu", @"Stealth, public stories, live, exceptions", ^{
+				TGStoriesMenuViewController *stories = [[TGStoriesMenuViewController alloc]
+						initWithChatId:[[TGClient shared] savedMessagesChatId] title:@"Your Story"];
+				stories.hidesBottomBarWhenPushed = YES;
+				[weakSelf.navigationController pushViewController:stories animated:YES];
 			}),
 			[weakSelf tier2ToolsRow],
 			[weakSelf tier2ProxyCarrierRow],

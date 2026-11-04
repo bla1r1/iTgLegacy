@@ -65,6 +65,12 @@ static int TGDiffers(const uint8_t *a, const uint8_t *b, size_t size) {
 int TGCallDecryptPacket(const uint8_t *key, int outgoing, int signaling,
                         const uint8_t *packet, size_t length,
                         uint8_t *out, uint32_t *seq) {
+	// A call key is 256 bytes; anything less cannot name a key half. NULL here
+	// used to be a segfault at key + 88, which is what a reader thread racing
+	// teardown looked like in the crash reports.
+	if (!key || !packet || !out)
+		return -1;
+
 	// 16 bytes of msgKey, 4 of seq, and at least a byte of payload.
 	if (length < 21)
 		return -1;
@@ -98,6 +104,9 @@ int TGCallDecryptPacket(const uint8_t *key, int outgoing, int signaling,
 int TGCallEncryptPacket(const uint8_t *key, int outgoing, int signaling,
                         const uint8_t *payload, size_t length,
                         uint32_t seq, uint8_t *out) {
+	if (!key || !payload || !out)
+		return -1;
+
 	int x = TGKeyOffsetForWriting(outgoing, signaling);
 
 	// Plaintext is the sequence number followed by the payload.

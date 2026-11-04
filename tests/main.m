@@ -20,6 +20,7 @@
 #import "TGCallIntegrationTests.m"
 #import "TGLibTgvoipHooksTests.m"
 #import "TGMessageLayoutTests.m"
+#import "TGSoftVideoClockTests.m"
 
 int main(int argc, char *argv[]) {
     @autoreleasepool {

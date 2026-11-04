@@ -40,6 +40,11 @@ typedef NS_ENUM(NSInteger, TGCallState) {
 /// Ask TDLib to place a call. The rest arrives through -handleUpdate:.
 - (void)callUser:(int64_t)userId;
 - (void)accept;
+#if TG_DEV
+/// A call against tgcalls_cli --mode bridge with no account: signaling over a local
+/// socket instead of TDLib. See scripts/call_bench_device.sh.
+- (void)startBenchWithConfig:(NSDictionary *)config;
+#endif
 - (void)hangUp;
 - (void)setMuted:(BOOL)muted;
 

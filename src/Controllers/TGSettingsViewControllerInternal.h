@@ -261,6 +261,7 @@ static inline NSString *TGBytes(long long bytes) {
 - (void)loadForPage;
 - (void)openPage:(TGSettingsPage)page;
 - (void)openMyProfile;
+- (void)openMyProfileOnTab:(NSString *)tab;
 - (void)showAccountChoices;
 - (void)toast:(NSString *)text;
 - (void)pushPlaceholder:(NSString *)featureName;

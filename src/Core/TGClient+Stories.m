@@ -661,6 +661,22 @@ NSUInteger TGStoryRowProbeLimit(TGDeviceTier tier) {
 	}];
 }
 
+- (void)archivedStoriesForChat:(int64_t)chatId
+					completion:(void (^)(NSArray *))completion {
+	[self request:@{@"@type" : @"getChatArchivedStories",
+					@"chat_id" : @(chatId),
+					@"from_story_id" : @(0),
+					@"limit" : @(60)}
+	   completion:^(NSDictionary *result){
+		NSMutableArray *out = [NSMutableArray array];
+		for (NSDictionary *story in TGStoryArray(result[@"stories"]))
+			if ([story isKindOfClass:NSDictionary.class])
+				[out addObject:TGFlattenStory(story)];
+		if (completion)
+			completion(out);
+	}];
+}
+
 - (void)archivedStoryIdsForChat:(int64_t)chatId
 					 fromStoryId:(int32_t)fromStoryId
 						  limit:(NSInteger)limit

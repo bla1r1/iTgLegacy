@@ -4,6 +4,7 @@
 #import "TGStyle.h"
 #import "TGAlertSheet.h"
 #import "TGStoryViewerViewController.h"
+#import "TGProfileTabs.h"
 #import "TGProfileTrackCell.h"
 #import "TGClientInternal.h"
 #import "TGIcons.h"
@@ -31,6 +32,11 @@ NSURL *TGProfileFirstURL(NSString *text, NSArray *entities) {
 				: [NSURL URLWithString:[@"http://" stringByAppendingString:url]];
 	}
 	return nil;
+}
+
+/// Two tabs share the story tiles: what is on the page, and the archive.
+static BOOL TGKindIsStories(NSString *kind) {
+	return [kind isEqualToString:@"stories"] || [kind isEqualToString:@"archive"];
 }
 
 @implementation TGProfileViewController (Media)
@@ -83,6 +89,8 @@ NSURL *TGProfileFirstURL(NSString *text, NSArray *entities) {
 			me.groupsInCommon = safe;
 		else if ([kind isEqualToString:@"stories"])
 			me.stories = safe;
+		else if ([kind isEqualToString:@"archive"])
+			me.archivedStories = safe;
 		else if ([kind isEqualToString:@"gifts"])
 			me.gifts = safe;
 		// A search answers one page, so its total is asked for separately. The
@@ -95,7 +103,7 @@ NSURL *TGProfileFirstURL(NSString *text, NSArray *entities) {
 			}];
 		else
 			me.mediaCounts[kind] = @(safe.count);
-		if ([kind isEqualToString:@"media"] || [kind isEqualToString:@"stories"] ||
+		if ([kind isEqualToString:@"media"] || TGKindIsStories(kind) ||
 				[kind isEqualToString:@"gifts"]){
 			me.storyGridCellCache = nil;
 			me.mediaGridCacheContent = nil;
@@ -105,6 +113,8 @@ NSURL *TGProfileFirstURL(NSString *text, NSArray *entities) {
 
 	if ([kind isEqualToString:@"stories"]){
 		[[TGClient shared] storiesForChat:self.chatId completion:done];
+	} else if ([kind isEqualToString:@"archive"]){
+		[[TGClient shared] archivedStoriesForChat:self.chatId completion:done];
 	} else if ([kind isEqualToString:@"gifts"]){
 		if (self.userId)
 			[[TGClient shared] giftsForUser:self.userId completion:done];
@@ -136,36 +146,17 @@ NSURL *TGProfileFirstURL(NSString *text, NSArray *entities) {
 /// Files, Music, Voice, Links, Groups, then Stories and Gifts when they have
 /// something to show. The category a profile was set to open on moves first.
 - (NSArray *)currentMediaTabs {
+	NSDictionary *titles = @{@"stories" : @"Stories", @"gifts" : @"Gifts", @"media" : @"Media",
+							 @"files" : @"Files", @"music" : @"Music", @"voice" : @"Voice",
+							 @"links" : @"Links", @"groups" : @"Groups", @"archive" : @"Archive"};
+	// Your own user id is also your Saved Messages chat. Its tabs belong to that
+	// chat's profile; My Profile has what you publish, and your archive.
+	BOOL own = self.isOwnProfile;
+	BOOL ownPublic = own && ![self showsSavedMessages];
 	NSMutableArray *out = [NSMutableArray array];
-	// Your own user id is also your Saved Messages chat. Those tabs belong to that
-	// chat's profile; the one others see has only what you publish.
-	if (!self.isOwnProfile || [self showsSavedMessages]){
-		[out addObject:@{@"title" : @"Media", @"kind" : @"media"}];
-		[out addObject:@{@"title" : @"Files", @"kind" : @"files"}];
-		[out addObject:@{@"title" : @"Music", @"kind" : @"music"}];
-		[out addObject:@{@"title" : @"Voice", @"kind" : @"voice"}];
-		[out addObject:@{@"title" : @"Links", @"kind" : @"links"}];
-	}
-	if (self.commonGroupCount > 0)
-		[out addObject:@{@"title" : @"Groups", @"kind" : @"groups"}];
-	if (self.stories.count)
-		[out addObject:@{@"title" : @"Stories", @"kind" : @"stories"}];
-	if (self.gifts.count)
-		[out addObject:@{@"title" : @"Gifts", @"kind" : @"gifts"}];
-
-	// main_profile_tab moves the chosen pane to the front. "posts" and "gifs"
-	// have no pane of their own here; both read as Media.
-	// It is not the selected tab: tabs do not change places when tapped.
-	NSString *chosen = self.mainMediaKind;
-	if ([chosen isEqualToString:@"posts"] || [chosen isEqualToString:@"gifs"])
-		chosen = @"media";
-	for (NSUInteger i = 0; i < out.count; i++){
-		if ([out[i][@"kind"] isEqualToString:chosen]){
-			if (i > 0)
-				[out exchangeObjectAtIndex:0 withObjectAtIndex:i];
-			break;
-		}
-	}
+	for (NSString *kind in TGProfileTabKinds(!own && self.stories.count, self.gifts.count > 0,
+			self.commonGroupCount > 0, ownPublic, self.mainMediaKind))
+		[out addObject:@{@"title" : titles[kind], @"kind" : kind}];
 	return out;
 }
 
@@ -198,7 +189,7 @@ NSURL *TGProfileFirstURL(NSString *text, NSArray *entities) {
 	// Media became a grid of its own: one row of the table holds the tiles
 	// the photo strip used to (B1). Stories share the same renderer, and
 	// gifts read like the official sheet: big square tiles.
-	return [kind isEqualToString:@"media"] || [kind isEqualToString:@"stories"] ||
+	return [kind isEqualToString:@"media"] || TGKindIsStories(kind) ||
 		   [kind isEqualToString:@"gifts"];
 }
 
@@ -245,9 +236,9 @@ static const CGFloat kVideoMarkInset = TGMetricPadWide;
 
 - (CGFloat)storyGridHeight {
 	NSString *kind = [self selectedMediaKind];
-	BOOL storyKind = [kind isEqualToString:@"stories"];
+	BOOL storyKind = TGKindIsStories(kind);
 	BOOL giftKind = [kind isEqualToString:@"gifts"];
-	NSInteger dataCount = storyKind ? (NSInteger)self.stories.count
+	NSInteger dataCount = storyKind ? (NSInteger)[self selectedMediaRows].count
 						: giftKind ? (NSInteger)self.gifts.count
 						: (NSInteger)self.photos.count;
 	NSInteger count = MIN(dataCount, 120);
@@ -284,7 +275,7 @@ static const CGFloat kVideoMarkInset = TGMetricPadWide;
 	}
 
 	NSString *kind = [self selectedMediaKind];
-	BOOL storyKind = [kind isEqualToString:@"stories"];
+	BOOL storyKind = TGKindIsStories(kind);
 	BOOL giftKind  = [kind isEqualToString:@"gifts"];
 
 	NSArray *rows = [self selectedMediaRows];
@@ -353,6 +344,7 @@ static const CGFloat kVideoMarkInset = TGMetricPadWide;
 		if (storyKind) {
 			tap.tag = 500 + i;
 			[tap addTarget:self action:@selector(storyTileTapped:) forControlEvents:UIControlEventTouchUpInside];
+			[self addStoryHoldTo:tap];
 		} else {
 			tap.tag = 600 + i;
 			[tap addTarget:self action:@selector(photoTileTapped:) forControlEvents:UIControlEventTouchUpInside];
@@ -381,7 +373,7 @@ static const CGFloat kVideoMarkInset = TGMetricPadWide;
 /// the photo strip was a second, forgetful cache).
 - (UITableViewCell *)mediaGridCell:(UITableView *)tableView {
 	NSString *kind = [self selectedMediaKind];
-	BOOL storyKind = [kind isEqualToString:@"stories"];
+	BOOL storyKind = TGKindIsStories(kind);
 	BOOL giftKind = [kind isEqualToString:@"gifts"];
 	// One cache per kind: the rows themselves change shape between them,
 	// and a grid built for photos cannot be re-faced for gifts.
@@ -470,6 +462,7 @@ static const CGFloat kVideoMarkInset = TGMetricPadWide;
 			tap.tag = 500 + i;
 			[tap addTarget:self action:@selector(storyTileTapped:)
 				  forControlEvents:UIControlEventTouchUpInside];
+			[self addStoryHoldTo:tap];
 			[cell.contentView addSubview:tap];
 		}
 
@@ -539,9 +532,11 @@ static const CGFloat kVideoMarkInset = TGMetricPadWide;
 /// What the selected tab shows; nil for the photo strip, which is not a list.
 - (NSString *)selectedMediaKind {
 	NSString *kind = self.storedMediaKind;
-	// Edit Profile still offers "posts" and "gifs"; there is no pane for
-	// either here, so both open the media grid rather than a dead kind.
-	if ([kind isEqualToString:@"posts"] || [kind isEqualToString:@"gifs"])
+	// td_api's profileTabPosts is the stories on the page. There is no GIF pane
+	// here yet, so that one opens the media grid rather than a dead kind.
+	if ([kind isEqualToString:@"posts"])
+		kind = @"stories";
+	else if ([kind isEqualToString:@"gifs"])
 		kind = @"media";
 	// The answer is only valid while that kind still has a tab: stories end,
 	// gifts empty out, and holding a dead kind would render a toolbar
@@ -570,6 +565,7 @@ static const CGFloat kVideoMarkInset = TGMetricPadWide;
 	if ([kind isEqualToString:@"voice"])   return self.voice ?: @[];
 	if ([kind isEqualToString:@"links"])   return self.links ?: @[];
 	if ([kind isEqualToString:@"groups"])  return self.groupsInCommon ?: @[];
+	if ([kind isEqualToString:@"archive"]) return self.archivedStories ?: @[];
 	if ([kind isEqualToString:@"stories"]) return self.stories ?: @[];
 	if ([kind isEqualToString:@"gifts"])   return self.gifts ?: @[];
 	return @[];
@@ -577,6 +573,56 @@ static const CGFloat kVideoMarkInset = TGMetricPadWide;
 
 - (void)storyTileTapped:(UIButton *)button {
 	[self openStoryAtIndex:button.tag - 500];
+}
+
+- (void)addStoryHoldTo:(UIButton *)tile {
+	if (self.isOwnProfile)
+		[tile addGestureRecognizer:[[UILongPressGestureRecognizer alloc]
+				initWithTarget:self action:@selector(storyTileHeld:)]];
+}
+
+/// The manager: holding a tile of My Profile puts the story on the page or takes
+/// it off, and it stays in the archive either way. The viewer offers the same.
+- (void)storyTileHeld:(UILongPressGestureRecognizer *)hold {
+	if (hold.state != UIGestureRecognizerStateBegan)
+		return;
+	NSArray *rows = [self selectedMediaRows];
+	NSInteger index = hold.view.tag - 500;
+	if (index < 0 || index >= (NSInteger)rows.count)
+		return;
+	NSDictionary *story = rows[(NSUInteger)index];
+	BOOL posted = [story[@"isPostedToChatPage"] boolValue];
+	if (![story[@"canToggleIsPostedToChatPage"] boolValue])
+		return;
+	__weak typeof(self) weakSelf = self;
+	[TGAlertSheet showChoices:@[posted ? @"Remove from Profile" : @"Save to Profile"]
+						title:nil destructiveIndex:posted ? 0 : -1 inView:self.view
+					 onChoice:^(NSInteger choice){
+		[[TGClient shared] toggleStory:(int32_t)[story[@"storyId"] intValue]
+							  fromChat:weakSelf.chatId
+					  postedToChatPage:!posted
+							completion:^(BOOL ok, NSString *error){
+			TGProfileViewController *me = weakSelf;
+			if (!me)
+				return;
+			if (!ok){
+				[TGAlertSheet showMessage:error ?: @"Telegram refused that."
+									title:@"Stories" inView:me.view];
+				return;
+			}
+			[me reloadOwnStories];
+		}];
+	}];
+}
+
+/// Both tabs, because a story moved between them. The viewer can change them too.
+- (void)reloadOwnStories {
+	if (!self.isOwnProfile)
+		return;
+	for (NSString *kind in @[@"stories", @"archive"]){
+		[self.loadedMediaKinds removeObject:kind];
+		[self fetchMediaForKind:kind];
+	}
 }
 
 /// A gift tile opens the detail sheet, the way the official grid does:
@@ -594,7 +640,8 @@ static const CGFloat kVideoMarkInset = TGMetricPadWide;
 
 /// Displays full-screen view for the selected story.
 - (void)openStoryAtIndex:(NSInteger)index {
-	if (index < 0 || index >= (NSInteger)self.stories.count)
+	NSArray *rows = [self selectedMediaRows];
+	if (index < 0 || index >= (NSInteger)rows.count)
 		return;
 	// The profile grid and the chat list's strip open the same viewer. The
 	// old inline backdrop lived here and knew nothing about openStory,
@@ -602,7 +649,7 @@ static const CGFloat kVideoMarkInset = TGMetricPadWide;
 	TGStoryViewerViewController *viewer = [[TGStoryViewerViewController alloc]
 			initWithChatId:self.chatId
 					 title:self.title ?: @"Stories"
-				   stories:self.stories
+				   stories:rows
 				startIndex:index
 				 canManage:self.chatId == [[TGClient shared] savedMessagesChatId]];
 	UINavigationController *nav = [[UINavigationController alloc]

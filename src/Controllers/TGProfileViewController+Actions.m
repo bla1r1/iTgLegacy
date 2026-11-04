@@ -12,6 +12,7 @@
 #import "TGContactsViewController.h"
 #import "TGProfileViewController+Tier2.h"
 #import "TGSponsoredMessagesViewController.h"
+#import "TGStoryComposerViewController.h"
 #import "TGBotConsoleViewController.h"
 #import "TGAffiliateProgramsViewController.h"
 
@@ -322,6 +323,8 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 		[items addObject:@{@"title" : @"Affiliate Program", @"icon" : @"star"}];
 	// A note kept in the chat without being sent to anyone. It is the only
 	// way to make a message that never leaves this device.
+	if (self.isOwnProfile)
+		[items insertObject:@{@"title" : @"Add Story", @"icon" : @"plus"} atIndex:0];
 	[items addObject:@{@"title" : @"Add Local Note", @"icon" : @"edit"}];
 	if ([[TGClient shared] chatIsSavedMessages:self.chatId])
 		[items insertObject:@{@"title" : @"Topics", @"icon" : @"folder"} atIndex:0];
@@ -495,6 +498,15 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 						 onChoice:^(NSInteger index){
 			static const NSInteger seconds[4] = {0, 86400, 604800, 2592000};
 			[[TGClient shared] setChat:chatId autoDeleteSeconds:seconds[index]];
+		}];
+		return;
+	}
+
+	if ([title isEqualToString:@"Add Story"]){
+		__weak typeof(self) weakSelf = self;
+		[TGStoryComposerViewController openFromController:self chatId:self.chatId
+													title:@"Your Story" onPosted:^{
+			[weakSelf reloadOwnStories];
 		}];
 		return;
 	}

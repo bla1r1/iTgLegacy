@@ -41,6 +41,12 @@ static const CGFloat kPinnedGlyph = 14.0f;
 static const CGFloat kPinnedTextX = TGMetricPadLarge + kPinnedGlyph + TGMetricPadSmall;
 /// Finds the message line when the strip already exists and only its text changes.
 static const NSInteger kPinnedBodyTag = 0x9010;
+/// The bar that stands in for the composer: mute for a channel you follow,
+/// join for one you have not joined yet. One tag per state, so a second answer
+/// replaces the bar instead of stacking another one on top.
+static const NSInteger kChatMuteBarTag = 0x9020;
+static const NSInteger kChatJoinGroupBarTag = 0x9021;
+static const NSInteger kChatJoinChannelBarTag = 0x9022;
 
 #pragma mark - controller
 
@@ -314,29 +320,16 @@ static const NSInteger kPinnedBodyTag = 0x9010;
 	};
 
 	[self loadPinnedMessage];
-	[self applyPostingRights];
 
 	if (self.chatId == [[TGClient shared] savedMessagesChatId]){
 		subtitle.hidden = YES;
 		return;
 	}
 
-	if (!self.isGroup){
-		[[TGClient shared] statusForUser:self.chatId completion:^(NSString *status){
-			if (!status.length)
-				return;
-			weakSelf.restingSubtitle = status;
-			[weakSelf titleSubtitleOwnerChanged:nil];
-		}];
-		return;
-	}
-
-	[[TGClient shared] memberCountForChat:self.chatId completion:^(NSInteger count){
-		if (count > 0){
-			weakSelf.restingSubtitle = [NSString stringWithFormat:@"%ld members", (long)count];
-			[weakSelf titleSubtitleOwnerChanged:nil];
-		}
-	}];
+	// The caller only knows isGroup when the chat came from the list. A chat
+	// opened from a profile has no row to read, so ask getChat before drawing
+	// presence or replacing the composer with the wrong control.
+	[self loadChatKindAndChrome];
 }
 
 - (void)themeChanged:(NSNotification *)note {
@@ -741,31 +734,124 @@ static const NSInteger kPinnedBodyTag = 0x9010;
 	[self.navigationController pushViewController:profile animated:YES];
 }
 
-/// A channel you only follow has no composer; it gets a mute switch instead,
-/// which is what the bottom of a channel offers in every client.
-- (void)applyPostingRights {
+/// Asks for the chat's real kind before drawing the header and the composer.
+/// Until the answer lands the subtitle stays empty; a presence line or a Mute
+/// button for a channel you never joined is worse than no line at all.
+- (void)loadChatKindAndChrome {
 	__weak typeof(self) weakSelf = self;
-	[[TGClient shared] canSendInChat:self.chatId completion:^(BOOL canSend, BOOL isChannel){
+	[[TGClient shared] chatKindForChat:self.chatId completion:^(NSDictionary *kind){
 		TGChatViewController *me = weakSelf;
-		if (!me || canSend)
+		if (!me || !kind)
 			return;
 
-		me.inputBar.hidden = YES;
+		BOOL isGroup = [kind[@"isGroup"] boolValue];
+		BOOL isChannel = [kind[@"isChannel"] boolValue];
+		BOOL isMember = [kind[@"isMember"] boolValue];
+		NSInteger count = [kind[@"memberCount"] integerValue];
+		// A chat opened from a profile came in as private, and the rows laid out so
+		// far took no sender line or group spacing.
+		if (me.isGroup != isGroup){
+			me.isGroup = isGroup;
+			[me.table reloadData];
+		}
 
-		CGRect b = me.view.bounds;
-		UIButton *mute = [UIButton buttonWithType:UIButtonTypeCustom];
-		mute.frame = me.inputBar.frame;
-		mute.backgroundColor = [[TGTheme shared] inputBarColour];
-		mute.autoresizingMask = UIViewAutoresizingFlexibleWidth |
-								UIViewAutoresizingFlexibleTopMargin;
-		[mute setTitleColor:[[TGTheme shared] accentColour] forState:UIControlStateNormal];
-		mute.titleLabel.font = TGFontBody();
-		[mute setTitle:(isChannel ? @"Mute channel" : @"Mute chat")
-			  forState:UIControlStateNormal];
-		[mute addTarget:me action:@selector(muteFromChat:)
-	   forControlEvents:UIControlEventTouchUpInside];
-		[me.view addSubview:mute];
-		(void)b;
+		if (!isGroup){
+			[[TGClient shared] statusForUser:me.chatId completion:^(NSString *status){
+				TGChatViewController *again = weakSelf;
+				if (!again || !status.length)
+					return;
+				again.restingSubtitle = status;
+				[again titleSubtitleOwnerChanged:nil];
+			}];
+		} else if (count > 0){
+			me.restingSubtitle = [NSString stringWithFormat:@"%ld %@", (long)count,
+					isChannel ? @"subscribers" : @"members"];
+			[me titleSubtitleOwnerChanged:nil];
+		}
+
+		[me applyPostingRightsForGroup:isGroup channel:isChannel member:isMember];
+	}];
+}
+
+/// The bottom bar is one of three: the composer, Mute for a channel you
+/// follow, or Join for a group or channel you have not joined. A joined group
+/// always gets the composer back, even if posting is restricted.
+- (void)applyPostingRightsForGroup:(BOOL)isGroup
+						  channel:(BOOL)isChannel
+						   member:(BOOL)isMember {
+	[self removeComposerStandIn];
+
+	if (isGroup && !isMember){
+		[self showComposerStandIn:(isChannel ? @"Join Channel" : @"Join Group")
+						   action:@selector(joinFromChat:)
+							  tag:(isChannel ? kChatJoinChannelBarTag : kChatJoinGroupBarTag)];
+		return;
+	}
+
+	if (isGroup && !isChannel){
+		self.inputBar.hidden = NO;
+		return;
+	}
+
+	// A channel you follow has no composer unless you may post in it; the
+	// same answer decides a private chat's bottom, as before.
+	__weak typeof(self) weakSelf = self;
+	[[TGClient shared] canSendInChat:self.chatId completion:^(BOOL canSend, BOOL channel){
+		TGChatViewController *me = weakSelf;
+		if (!me)
+			return;
+		if (canSend){
+			[me removeComposerStandIn];
+			me.inputBar.hidden = NO;
+			return;
+		}
+		[me showComposerStandIn:(channel ? @"Mute channel" : @"Mute chat")
+						 action:@selector(muteFromChat:)
+							tag:kChatMuteBarTag];
+	}];
+}
+
+- (void)showComposerStandIn:(NSString *)title action:(SEL)action tag:(NSInteger)tag {
+	self.inputBar.hidden = YES;
+	UIButton *bar = [UIButton buttonWithType:UIButtonTypeCustom];
+	bar.frame = self.inputBar.frame;
+	bar.tag = tag;
+	bar.backgroundColor = [[TGTheme shared] inputBarColour];
+	bar.autoresizingMask = UIViewAutoresizingFlexibleWidth |
+						   UIViewAutoresizingFlexibleTopMargin;
+	[bar setTitleColor:[[TGTheme shared] accentColour] forState:UIControlStateNormal];
+	bar.titleLabel.font = TGFontBody();
+	[bar setTitle:title forState:UIControlStateNormal];
+	[bar addTarget:self action:action forControlEvents:UIControlEventTouchUpInside];
+	[self.view addSubview:bar];
+}
+
+- (void)removeComposerStandIn {
+	[[self.view viewWithTag:kChatMuteBarTag] removeFromSuperview];
+	[[self.view viewWithTag:kChatJoinGroupBarTag] removeFromSuperview];
+	[[self.view viewWithTag:kChatJoinChannelBarTag] removeFromSuperview];
+}
+
+/// Nothing is sent until the tap. A successful join turns the bar into what
+/// the chat now offers: Mute for a channel, the composer for a group.
+- (void)joinFromChat:(UIButton *)button {
+	BOOL isChannel = button.tag == kChatJoinChannelBarTag;
+	button.enabled = NO;
+	__weak typeof(self) weakSelf = self;
+	[[TGClient shared] joinChat:self.chatId completion:^(BOOL ok, BOOL requestSent){
+		TGChatViewController *me = weakSelf;
+		if (!me)
+			return;
+		if (!ok){
+			button.enabled = !requestSent;
+			[TGSnackbar showInView:me.view
+							  text:(requestSent ? @"Join request sent"
+												: @"Telegram did not let you join")
+						   seconds:2 onCommit:nil];
+			return;
+		}
+		me.isGroup = YES;
+		[me applyPostingRightsForGroup:YES channel:isChannel member:YES];
 	}];
 }
 

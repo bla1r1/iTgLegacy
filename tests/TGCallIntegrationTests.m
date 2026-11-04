@@ -201,8 +201,32 @@
     }, 4.0);
 }
 
+/// A live call acknowledges our media state once a second, and every
+/// decryptable packet re-locks verifiedMediaTag/currentSenderTag to the tag it
+/// came from. The tag tests below are about selection logic, not about racing
+/// the media stream, so they stop inbound traffic first. -stop joins the
+/// reflector reader, so no callback is running when it returns.
+- (void)quiesceIncomingTraffic {
+    [[TGCall shared].reflector stop];
+}
+
 // ──────────────────────────────────────────────────────────────────────────────
 #pragma mark - call state machine
+
+- (void)testCallOffersVersionsTheCurrentMobileClientHas {
+    [TGClient resetSentRequests];
+    [[TGCall shared] callUser:42];
+    NSDictionary *create = nil;
+    for (NSDictionary *request in [TGClient sentRequests])
+        if ([request[@"@type"] isEqualToString:@"createCall"])
+            create = request;
+    NSArray *offered = create[@"protocol"][@"library_versions"];
+    // tgcalls InstanceImpl::GetVersions, checked against the real library by
+    // scripts/call_bench.sh. An empty overlap means iOS cannot take the call.
+    XCTAssertTrue([offered containsObject:@"5.0.0"]);
+    XCTAssertTrue([offered containsObject:@"2.7.7"]);
+    [[TGCall shared] teardown];
+}
 
 /// Feeding TGCall a callStatePending update must move it to Pending.
 - (void)testHandleUpdate_PendingState {
@@ -874,6 +898,7 @@
 - (void)testReadPeerTagFromCandidateSetsTagAndRemoteTag {
     NSData *key = TGTestCallKey();
     XCTAssertTrue([self startEstablishedCallWithKey:key callId:45]);
+    [self quiesceIncomingTraffic];
 
     [TGCall shared].currentSenderTag = 0;
     NSString *candidate = @"candidate:1 1 udp 2130706431 reflector-1-88888.reflector 54321 typ relay";
@@ -886,6 +911,7 @@
 - (void)testVerifiedMediaTagPreservedAgainstRoutineStunChecks {
     NSData *key = TGTestCallKey();
     XCTAssertTrue([self startEstablishedCallWithKey:key callId:46]);
+    [self quiesceIncomingTraffic];
 
     uint32_t mediaTag = 3267239008U;
     uint32_t secondaryTag = 827660216U;

@@ -1,3 +1,7 @@
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <unistd.h>
 #import "TGCall.h"
 #import "TGBase64.h"
 #import "TGClient.h"
@@ -180,6 +184,10 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V8";
 
 
 @implementation TGCall {
+#if TG_DEV
+	int _benchSocket;
+	BOOL _benchMorse;
+#endif
 	uint32_t _mediaPacketsIn;
 	uint32_t _mediaPacketsParsed;
 	// One scratch buffer for decryption, reused for every packet. The reader
@@ -526,6 +534,14 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V8";
 		return;
 	encrypted.length = size;
 
+#if TG_DEV
+	if (_benchSocket > 0){
+		uint32_t size = htonl((uint32_t)encrypted.length);
+		(void)!write(_benchSocket, &size, sizeof(size));
+		(void)!write(_benchSocket, encrypted.bytes, encrypted.length);
+		return;
+	}
+#endif
 	[[TGClient shared] send:@{
 		@"@type"   : @"sendCallSignalingData",
 		@"call_id" : @(self.callId),
@@ -555,7 +571,57 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V8";
 	}];
 }
 
+#if TG_DEV
+- (void)startBenchWithConfig:(NSDictionary *)config {
+	int fd = socket(AF_INET, SOCK_STREAM, 0);
+	struct sockaddr_in addr = {0};
+	addr.sin_family = AF_INET;
+	addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+	addr.sin_port = htons([config[@"signalPort"] unsignedShortValue]);
+	if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) != 0){
+		NSLog(@"TGCall: bench could not reach the signaling socket");
+		close(fd);
+		return;
+	}
+	_benchSocket = fd;
+	_benchMorse = [config[@"morse"] boolValue];
+	__weak __typeof__(self) weakSelf = self;
+	dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+		for (;;){
+			uint32_t size = 0;
+			if (recv(fd, &size, sizeof(size), MSG_WAITALL) != sizeof(size))
+				return;
+			NSMutableData *data = [NSMutableData dataWithLength:ntohl(size)];
+			if (recv(fd, data.mutableBytes, data.length, MSG_WAITALL) != (ssize_t)data.length)
+				return;
+			dispatch_async(dispatch_get_main_queue(), ^{
+				[weakSelf handleSignalingData:data];
+			});
+		}
+	});
+	[self handleUpdate:@{
+		@"@type" : @"call", @"id" : @(1), @"user_id" : @(42LL),
+		@"is_outgoing" : @([config[@"role"] isEqualToString:@"caller"]),
+		@"state" : @{
+			@"@type" : @"callStateReady",
+			@"encryption_key" : config[@"key"],
+			@"servers" : @[@{
+				@"ip_address" : config[@"reflectorHost"], @"port" : config[@"reflectorPort"],
+				@"type" : @{@"@type" : @"callServerTypeTelegramReflector", @"peer_tag" : config[@"tag"]},
+			}],
+			@"protocol" : @{@"@type" : @"callProtocol", @"library_versions" : @[config[@"version"]]},
+		},
+	}];
+}
+#endif
+
 - (void)hangUp {
+#if TG_DEV
+	if (_benchSocket > 0){
+		[self teardown];
+		return;
+	}
+#endif
 	if (self.callId)
 		[[TGClient shared] send:@{
 			@"@type"           : @"discardCall",
@@ -608,7 +674,10 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V8";
 		@"udp_reflector"    : @YES,
 		@"min_layer"        : @(65),
 		@"max_layer"        : @(92),
-		@"library_versions" : @[@"3.0.0", @"2.4.4"],
+		// 5.0.0 and 2.7.7 are the tgcalls InstanceImpl this class speaks. Current mobile
+		// clients have neither of the old two, and iOS will not take a call with no
+		// version in common. 7.0.0 and up are a different protocol (DTLS, SCTP).
+		@"library_versions" : @[@"5.0.0", @"2.7.7", @"3.0.0", @"2.4.4"],
 	};
 }
 
@@ -762,7 +831,14 @@ static const char *kBuildMarker = "BUILD_MARKER_AUDIO_FIX_V8";
 	self.audioEngine.onOutgoingOpusFrame = ^(NSData *opusFrame) {
 		[weakSelf sendOutgoingAudioFrame:opusFrame];
 	};
+#if TG_DEV
+	self.audioEngine.emitMorseSignal = _benchMorse;
+#endif
 	[self.audioEngine start];
+#if TG_DEV
+	if (_benchSocket > 0)
+		[self setSpeaker:YES];
+#endif
 	if (self.currentSenderTag && !self.sentMediaState){
 		self.sentMediaState = YES;
 		[self sendMediaStateMessage];
@@ -1336,6 +1412,12 @@ static inline BOOL TGLooksLikeStun(const uint8_t *bytes) {
 }
 
 - (void)teardown {
+#if TG_DEV
+	if (_benchSocket > 0){
+		close(_benchSocket);
+		_benchSocket = 0;
+	}
+#endif
 	if (self.audioEngine) {
 		[self.audioEngine stop];
 		self.audioEngine = nil;

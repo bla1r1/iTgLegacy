@@ -10,8 +10,6 @@
 #import "TGBusinessViewController.h"
 #import "TGWebProxyCarrierViewController.h"
 #import "TGTier2HubViewController.h"
-#import "TGEmojiStatusViewController.h"
-#import "TGProfileAudioViewController.h"
 #import "TGTextStylesViewController.h"
 #import "TGDiceViewController.h"
 
@@ -50,28 +48,11 @@
 
 - (NSArray *)tier2Sections {
 	__weak typeof(self) weakSelf = self;
-	int64_t myId = [[TGClient shared].me[@"id"] longLongValue];
 	return @[
-		TGSection(@"Profile Extras", @"Emoji status, profile audio and text "
-				@"composition styles come from Telegram; the screens show its "
-				@"refusal when an account is not Premium.", @[
-			TGIconRow(@"Emoji Status", @"star", TGIconTileGold(), ^{
-				TGEmojiStatusViewController *status =
-						[[TGEmojiStatusViewController alloc] init];
-				status.target = TGEmojiStatusTargetSelf;
-				status.userId = myId;
-				status.subjectTitle = @"Emoji Status";
-				status.hidesBottomBarWhenPushed = YES;
-				[weakSelf.navigationController pushViewController:status animated:YES];
-			}),
-			TGIconRow(@"Profile Audio", @"music", TGIconTileViolet(), ^{
-				TGProfileAudioViewController *audio =
-						[[TGProfileAudioViewController alloc] init];
-				audio.userId = myId;
-				audio.subjectTitle = @"Profile Audio";
-				audio.hidesBottomBarWhenPushed = YES;
-				[weakSelf.navigationController pushViewController:audio animated:YES];
-			}),
+		TGSection(@"Text and Dice Tools", @"Text composition styles and the "
+				@"stake dice table are Telegram features with no user-facing "
+				@"settings row; the screens show its refusal when a call is "
+				@"not available to this account.", @[
 			TGIconTapRow(@"Text Styles", @"Composer",
 						 @"edit", TGIconTileSky(), ^{
 				TGTextStylesViewController *styles =

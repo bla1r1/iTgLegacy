@@ -117,6 +117,14 @@ endif
 
 WEBP_ARMV7 := -F$(ROOT_DIR)/libs -framework WebP
 WEBP_ARM64 := -L$(BUILD_DIR)/arm64/libs -lwebp
+
+# FFmpeg is the Vintage software decoder and exists for armv7 only. The arm64
+# compile must never see these headers: TGSoftVideoPlayer compiles a stub there.
+ARMV7_FFMPEG      := $(BUILD_DIR)/armv7/ffmpeg
+ARMV7_FFMPEG_INC  := -I$(ARMV7_FFMPEG)/include
+ARMV7_FFMPEG_LIBS := $(ARMV7_FFMPEG)/lib/libavformat.a \
+                     $(ARMV7_FFMPEG)/lib/libavcodec.a \
+                     $(ARMV7_FFMPEG)/lib/libavutil.a
 #        ^^ backed by the repacked archive from scripts/repack_arm64_libs.sh
 
 FRAMEWORKS := -framework UIKit -framework Accelerate -framework Foundation -framework QuickLook \
@@ -128,7 +136,7 @@ FRAMEWORKS := -framework UIKit -framework Accelerate -framework Foundation -fram
               -framework CoreLocation -framework MapKit \
               -framework CoreTelephony -framework CoreImage \
               -framework CoreText -framework AssetsLibrary \
-              -framework ImageIO -framework Security
+              -framework ImageIO -framework Security -framework OpenGLES
 
 
 # TDLib is loaded at runtime from libtdjson.dylib, never linked.
@@ -318,6 +326,7 @@ APP_SRC_M := \
 	src/Views/TGProfileTrackCell.m \
 	src/Core/TGGhostMode.m \
 	src/Core/TGPlaybackQueue.m \
+	src/Core/TGProfileTabs.m \
 	src/Controllers/TGStoryCameraViewController.m \
 	src/Controllers/TGProfileAppearanceViewController.m \
 	src/Views/TGChatListRowGeometry.m \
@@ -439,6 +448,7 @@ APP_SRC_M := \
 	src/Media/UIImage+WebP.m \
 	src/Media/TGStickerImage.m \
 	src/Media/TGWebMDecoder.m \
+	src/Media/TGSoftVideoPlayer.m \
 	src/Views/TGMediaViewer.m \
 	src/Audio/TGMusicPlayer.m \
 	src/Audio/TGVideoNoteRecorder.m
@@ -463,6 +473,7 @@ APP_SRC_MM := \
 
 APP_SRC_C := \
 	src/Core/TGUpdateType.c \
+	src/Media/TGSoftVideoClock.c \
 	src/Views/TGSVGPath.c \
 	src/Core/TGSampler.c \
 	compat/tlv_polyfill.c \
@@ -471,6 +482,8 @@ APP_SRC_C := \
 # Object mapping for armv7
 # Reached only from dev mode.
 DEV_SRC_M := \
+	src/Controllers/TGStoriesMenuViewController.m \
+	src/Controllers/TGStoryArchiveViewController.m \
 	src/App/TGBench.m \
 	src/Controllers/TGDevShowcase.m \
 	src/Controllers/TGDevModeViewController.m \
@@ -521,7 +534,7 @@ ARM64_ALL_OBJS   := $(ARM64_LIBTG_OBJS) $(ARM64_APP_OBJS)
 # changed header re-triggers the translation units that include it. Without
 # this the linker happily mixes pre-rename and post-rename objects, and the
 # result crashes with unrecognized selectors at runtime (2026-10-25).
-CFLAGS_ARMV7    := -arch armv7 -mthumb -O2 -isysroot $(SDK_PATH) $(MIN_IOS) $(INCLUDES) $(DEFINES) -fPIC \
+CFLAGS_ARMV7    := -arch armv7 -mthumb -O2 -isysroot $(SDK_PATH) $(MIN_IOS) $(INCLUDES) $(ARMV7_FFMPEG_INC) $(DEFINES) -fPIC \
                    -MMD -MP \
                    -Wno-macro-redefined -Wno-implicit-function-declaration -Wno-incompatible-pointer-types -Wno-deprecated-declarations
 OBJCFLAGS_ARMV7 := $(CFLAGS_ARMV7) -fobjc-arc
@@ -555,12 +568,12 @@ deploy-full:
 ipa: ipa-armv7 ipa-arm64
 	@echo "[+] Packaging universal fat IPA $(IPA_FILE)..."
 	@mkdir -p "$(IPA_DIR)" "$(BUILD_DIR)/fat_app/$(APP_NAME).app"
-	@cp -rf "$(BUILD_DIR)/arm64/app/$(APP_NAME).app/"* "$(BUILD_DIR)/fat_app/$(APP_NAME).app/"
-	@lipo -create "$(BUILD_DIR)/armv7/app/$(APP_NAME).app/$(APP_NAME)" "$(BUILD_DIR)/arm64/app/$(APP_NAME).app/$(APP_NAME)" -output "$(BUILD_DIR)/fat_app/$(APP_NAME).app/$(APP_NAME)"
+	@cp -rf "$(BUILD_DIR)/arm64/app$(DEV_SUFFIX)/$(APP_NAME).app/"* "$(BUILD_DIR)/fat_app/$(APP_NAME).app/"
+	@lipo -create "$(BUILD_DIR)/armv7/app$(DEV_SUFFIX)/$(APP_NAME).app/$(APP_NAME)" "$(BUILD_DIR)/arm64/app$(DEV_SUFFIX)/$(APP_NAME).app/$(APP_NAME)" -output "$(BUILD_DIR)/fat_app/$(APP_NAME).app/$(APP_NAME)"
 	# The armv7 slice dlopens this; the arm64 slice has TDLib linked in and
 	# ignores it. Packaging from the arm64 bundle alone left it out, and the
 	# universal build installed on a 4S with no TDLib at all.
-	@cp -f "$(BUILD_DIR)/armv7/app/$(APP_NAME).app/libtdjson.dylib" "$(BUILD_DIR)/fat_app/$(APP_NAME).app/" 2>/dev/null || echo "[!] no armv7 libtdjson.dylib to package"
+	@cp -f "$(BUILD_DIR)/armv7/app$(DEV_SUFFIX)/$(APP_NAME).app/libtdjson.dylib" "$(BUILD_DIR)/fat_app/$(APP_NAME).app/" 2>/dev/null || echo "[!] no armv7 libtdjson.dylib to package"
 	@codesign -s - --force "$(BUILD_DIR)/fat_app/$(APP_NAME).app" 2>/dev/null || true
 	@rm -rf "$(BUILD_DIR)/Payload"
 	@mkdir -p "$(BUILD_DIR)/Payload"
@@ -581,42 +594,42 @@ $(MACHOFIX): tools/machofix.c
 
 ipa-armv7: $(MACHOFIX) $(ARMV7_ALL_OBJS)
 	@echo "[+] Building 32-bit armv7 app bundle..."
-	@mkdir -p "$(IPA_DIR)" "$(BUILD_DIR)/armv7/app/$(APP_NAME).app"
+	@mkdir -p "$(IPA_DIR)" "$(BUILD_DIR)/armv7/app$(DEV_SUFFIX)/$(APP_NAME).app"
 	$(CC) -arch armv7 -isysroot $(SDK_PATH) $(MIN_IOS) -Wl,-dead_strip -ObjC -Wl,-pagezero_size,0x1000 \
 		-L$(BUILD_DIR)/armv7/libs -L$(BUILD_DIR)/armv7/tdlib/lib -L$(ROOT_DIR)/third_party/opus/lib \
-		$(ARMV7_ALL_OBJS) $(FRAMEWORKS) $(WEBP_ARMV7) $(TDLIB_LIBS) $(DEPS_LIBS) -o "$(BUILD_DIR)/armv7/app/$(APP_NAME).app/$(APP_NAME)"
-	@cp -f "$(ROOT_DIR)/resources/Info.plist" "$(BUILD_DIR)/armv7/app/$(APP_NAME).app/Info.plist" 2>/dev/null || true
-	@$(call ADD_DEV_SCHEMES,$(BUILD_DIR)/armv7/app/$(APP_NAME).app/Info.plist)
-	@cp -f "$(ROOT_DIR)/resources/fonts/"*.ttf "$(BUILD_DIR)/armv7/app/$(APP_NAME).app/" 2>/dev/null || true
-	@cp -f "$(ROOT_DIR)/resources/sounds/"*.mp3 "$(BUILD_DIR)/armv7/app/$(APP_NAME).app/" 2>/dev/null || true
-	@cp -rf "$(ROOT_DIR)/images/"* "$(BUILD_DIR)/armv7/app/$(APP_NAME).app/" 2>/dev/null || true
+		$(ARMV7_ALL_OBJS) $(FRAMEWORKS) $(WEBP_ARMV7) $(ARMV7_FFMPEG_LIBS) $(TDLIB_LIBS) $(DEPS_LIBS) -o "$(BUILD_DIR)/armv7/app$(DEV_SUFFIX)/$(APP_NAME).app/$(APP_NAME)"
+	@cp -f "$(ROOT_DIR)/resources/Info.plist" "$(BUILD_DIR)/armv7/app$(DEV_SUFFIX)/$(APP_NAME).app/Info.plist" 2>/dev/null || true
+	@$(call ADD_DEV_SCHEMES,$(BUILD_DIR)/armv7/app$(DEV_SUFFIX)/$(APP_NAME).app/Info.plist)
+	@cp -f "$(ROOT_DIR)/resources/fonts/"*.ttf "$(BUILD_DIR)/armv7/app$(DEV_SUFFIX)/$(APP_NAME).app/" 2>/dev/null || true
+	@cp -f "$(ROOT_DIR)/resources/sounds/"*.mp3 "$(BUILD_DIR)/armv7/app$(DEV_SUFFIX)/$(APP_NAME).app/" 2>/dev/null || true
+	@cp -rf "$(ROOT_DIR)/images/"* "$(BUILD_DIR)/armv7/app$(DEV_SUFFIX)/$(APP_NAME).app/" 2>/dev/null || true
 	@# TDLib rides along as its own image: statically linked it pushes __TEXT
 	@# past the 16MB armv7 thumb branch limit. Built by scripts/build_tdlib_dylib.sh.
-	@cp -f "$(BUILD_DIR)/armv7/tdlib/lib/libtdjson.dylib" "$(BUILD_DIR)/armv7/app/$(APP_NAME).app/" 2>/dev/null || echo "[!] no libtdjson.dylib - run scripts/build_tdlib_dylib.sh"
+	@cp -f "$(BUILD_DIR)/armv7/tdlib/lib/libtdjson.dylib" "$(BUILD_DIR)/armv7/app$(DEV_SUFFIX)/$(APP_NAME).app/" 2>/dev/null || echo "[!] no libtdjson.dylib - run scripts/build_tdlib_dylib.sh"
 	@echo "[+] Repairing armv7 Mach-O (__PAGEZERO, LC_MAIN, Thumb bits)..."
-	$(MACHOFIX) "$(BUILD_DIR)/armv7/app/$(APP_NAME).app/$(APP_NAME)"
-	@ldid -S "$(BUILD_DIR)/armv7/app/$(APP_NAME).app/$(APP_NAME)" 2>/dev/null || true
+	$(MACHOFIX) "$(BUILD_DIR)/armv7/app$(DEV_SUFFIX)/$(APP_NAME).app/$(APP_NAME)"
+	@ldid -S "$(BUILD_DIR)/armv7/app$(DEV_SUFFIX)/$(APP_NAME).app/$(APP_NAME)" 2>/dev/null || true
 	@rm -rf "$(BUILD_DIR)/Payload" "$(IPA_ARMV7)"
 	@mkdir -p "$(BUILD_DIR)/Payload"
-	@cp -rf "$(BUILD_DIR)/armv7/app/$(APP_NAME).app" "$(BUILD_DIR)/Payload/"
+	@cp -rf "$(BUILD_DIR)/armv7/app$(DEV_SUFFIX)/$(APP_NAME).app" "$(BUILD_DIR)/Payload/"
 	@cd "$(BUILD_DIR)" && zip -qr "$(IPA_ARMV7)" Payload
 	@rm -rf "$(BUILD_DIR)/Payload"
 
 ipa-arm64: $(ARM64_ALL_OBJS)
 	@echo "[+] Building 64-bit arm64 app bundle..."
-	@mkdir -p "$(IPA_DIR)" "$(BUILD_DIR)/arm64/app/$(APP_NAME).app"
+	@mkdir -p "$(IPA_DIR)" "$(BUILD_DIR)/arm64/app$(DEV_SUFFIX)/$(APP_NAME).app"
 	$(CC) -arch arm64 -isysroot $(SDK_PATH) $(MIN_IOS) -Wl,-dead_strip \
 		-L$(BUILD_DIR)/arm64/libs -L$(BUILD_DIR)/arm64/tdlib64 -L$(ROOT_DIR)/third_party/opus/lib \
-		$(ARM64_ALL_OBJS) $(FRAMEWORKS) $(WEBP_ARM64) $(TDLIB_LIBS_ARM64) $(DEPS_LIBS) -o "$(BUILD_DIR)/arm64/app/$(APP_NAME).app/$(APP_NAME)"
-	@cp -f "$(ROOT_DIR)/resources/Info.plist" "$(BUILD_DIR)/arm64/app/$(APP_NAME).app/Info.plist" 2>/dev/null || true
-	@$(call ADD_DEV_SCHEMES,$(BUILD_DIR)/arm64/app/$(APP_NAME).app/Info.plist)
-	@cp -f "$(ROOT_DIR)/resources/fonts/"*.ttf "$(BUILD_DIR)/arm64/app/$(APP_NAME).app/" 2>/dev/null || true
-	@cp -f "$(ROOT_DIR)/resources/sounds/"*.mp3 "$(BUILD_DIR)/arm64/app/$(APP_NAME).app/" 2>/dev/null || true
-	@cp -rf "$(ROOT_DIR)/images/"* "$(BUILD_DIR)/arm64/app/$(APP_NAME).app/" 2>/dev/null || true
-	@codesign -s - --force "$(BUILD_DIR)/arm64/app/$(APP_NAME).app" 2>/dev/null || true
+		$(ARM64_ALL_OBJS) $(FRAMEWORKS) $(WEBP_ARM64) $(TDLIB_LIBS_ARM64) $(DEPS_LIBS) -o "$(BUILD_DIR)/arm64/app$(DEV_SUFFIX)/$(APP_NAME).app/$(APP_NAME)"
+	@cp -f "$(ROOT_DIR)/resources/Info.plist" "$(BUILD_DIR)/arm64/app$(DEV_SUFFIX)/$(APP_NAME).app/Info.plist" 2>/dev/null || true
+	@$(call ADD_DEV_SCHEMES,$(BUILD_DIR)/arm64/app$(DEV_SUFFIX)/$(APP_NAME).app/Info.plist)
+	@cp -f "$(ROOT_DIR)/resources/fonts/"*.ttf "$(BUILD_DIR)/arm64/app$(DEV_SUFFIX)/$(APP_NAME).app/" 2>/dev/null || true
+	@cp -f "$(ROOT_DIR)/resources/sounds/"*.mp3 "$(BUILD_DIR)/arm64/app$(DEV_SUFFIX)/$(APP_NAME).app/" 2>/dev/null || true
+	@cp -rf "$(ROOT_DIR)/images/"* "$(BUILD_DIR)/arm64/app$(DEV_SUFFIX)/$(APP_NAME).app/" 2>/dev/null || true
+	@codesign -s - --force "$(BUILD_DIR)/arm64/app$(DEV_SUFFIX)/$(APP_NAME).app" 2>/dev/null || true
 	@rm -rf "$(BUILD_DIR)/Payload" "$(IPA_ARM64)"
 	@mkdir -p "$(BUILD_DIR)/Payload"
-	@cp -rf "$(BUILD_DIR)/arm64/app/$(APP_NAME).app" "$(BUILD_DIR)/Payload/"
+	@cp -rf "$(BUILD_DIR)/arm64/app$(DEV_SUFFIX)/$(APP_NAME).app" "$(BUILD_DIR)/Payload/"
 	@cd "$(BUILD_DIR)" && zip -qr "$(IPA_ARM64)" Payload
 	@rm -rf "$(BUILD_DIR)/Payload"
 

@@ -1510,6 +1510,94 @@ static NSDictionary *TGChatNotificationSettingsRecord(NSDictionary *current, BOO
 	}];
 }
 
+/// A group's ChatMemberStatus is a member when it is not left or banned; a
+/// restricted member says so itself. This is deliberately permissive for a
+/// record without a status, so a malformed answer cannot invent a Join bar.
+static BOOL TGGroupStatusIsMember(NSDictionary *status) {
+	NSString *kind = status[@"@type"];
+	if ([kind isEqualToString:@"chatMemberStatusLeft"] ||
+		[kind isEqualToString:@"chatMemberStatusBanned"])
+		return NO;
+	if ([kind isEqualToString:@"chatMemberStatusRestricted"])
+		return [status[@"is_member"] boolValue];
+	if ([kind isEqualToString:@"chatMemberStatusCreator"] &&
+		status[@"is_member"])
+		return [status[@"is_member"] boolValue];
+	return YES;
+}
+
+/// The chat kind is always asked of getChat: a public chat opened from a
+/// profile is not in chatsById, and the cached-row miss used to read as a
+/// private chat with a presence line and "Mute channel". Nothing goes into
+/// chatsById: that is the chat list's source, and a channel you only looked at
+/// must not join it.
+- (void)chatKindForChat:(int64_t)chatId
+			 completion:(void (^)(NSDictionary *kind))completion {
+	__weak typeof(self) weakSelf = self;
+	[self request:@{@"@type" : @"getChat", @"chat_id" : @(chatId)}
+	   completion:^(NSDictionary *chat){
+		TGClient *me = weakSelf;
+		if (!me || ![chat[@"@type"] isEqualToString:@"chat"]){
+			if (completion) completion(nil);
+			return;
+		}
+
+		NSDictionary *type = chat[@"type"];
+		NSString *typeName = type[@"@type"];
+		BOOL isSupergroup = [typeName isEqualToString:@"chatTypeSupergroup"];
+		BOOL isBasicGroup = [typeName isEqualToString:@"chatTypeBasicGroup"];
+		BOOL isGroup = isSupergroup || isBasicGroup;
+		BOOL isChannel = isSupergroup && [type[@"is_channel"] boolValue];
+
+		NSMutableDictionary *answer = [@{
+			@"isGroup"     : @(isGroup),
+			@"isChannel"   : @(isChannel),
+			@"isMember"    : @YES,
+			@"memberCount" : @0,
+			@"status"      : @"",
+		} mutableCopy];
+		if (!isGroup){
+			if (completion) completion(answer);
+			return;
+		}
+
+		void (^collect)(NSDictionary *) = ^(NSDictionary *group){
+			TGClient *again = weakSelf;
+			if (!again || !group[@"id"]){
+				if (completion) completion(nil);
+				return;
+			}
+			NSDictionary *status = [group[@"status"] isKindOfClass:NSDictionary.class]
+					? group[@"status"] : @{};
+			BOOL member = TGGroupStatusIsMember(status);
+			answer[@"isMember"] = @(member);
+			answer[@"status"] = status[@"@type"] ?: @"";
+			answer[@"memberCount"] = group[@"member_count"] ?: @0;
+			if (completion) completion(answer);
+		};
+
+		if (isSupergroup){
+			[me request:@{@"@type" : @"getSupergroup",
+						  @"supergroup_id" : type[@"supergroup_id"]}
+			 completion:collect];
+		} else {
+			[me request:@{@"@type" : @"getBasicGroup",
+						  @"basic_group_id" : type[@"basic_group_id"]}
+			 completion:collect];
+		}
+	}];
+}
+
+- (void)joinChat:(int64_t)chatId completion:(void (^)(BOOL ok, BOOL requestSent))completion {
+	[self request:@{@"@type" : @"joinChat", @"chat_id" : @(chatId)}
+	   completion:^(NSDictionary *result){
+		NSString *kind = result[@"@type"];
+		if (completion)
+			completion([kind isEqualToString:@"chatJoinResultSuccess"],
+					   [kind isEqualToString:@"chatJoinResultRequestSent"]);
+	}];
+}
+
 /// The chat's action bar: its kind, the words a join request says, and the
 /// account details a report-and-block dialog carries for the contacts form.
 - (void)mergeActionBar:(NSDictionary *)bar intoChatRow:(NSMutableDictionary *)row {

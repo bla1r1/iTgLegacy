@@ -1,11 +1,13 @@
 #import "TGCallReflector.h"
 
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <errno.h>
 
 @interface TGCallReflector ()
 @property (nonatomic, strong) NSString *host;
@@ -20,6 +22,14 @@
 
 @implementation TGCallReflector {
 	struct sockaddr_in _server;
+
+	// Guards _stopping and _readerFinished. stop has to know that the reader
+	// is gone before it closes the descriptor and returns: otherwise the thread
+	// can still be inside onPacket, or blocked in recv on a descriptor number
+	// the next call will reuse.
+	NSCondition *_lifecycle;
+	BOOL _stopping;
+	BOOL _readerFinished;
 }
 
 - (instancetype)initWithHost:(NSString *)host port:(uint16_t)port peerTag:(NSData *)peerTag {
@@ -28,6 +38,7 @@
 		_port = port;
 		_peerTag = peerTag;
 		_socketHandle = -1;
+		_lifecycle = [[NSCondition alloc] init];
 		// Four random bytes name this side of the call. The reflector uses
 		// them to decide which way a packet goes.
 		arc4random_buf(&_localTag, sizeof(_localTag));
@@ -73,7 +84,21 @@
 		return NO;
 	}
 
+	// shutdown() does not wake recv on an unconnected UDP socket, and close()
+	// from another thread does not either. A short receive timeout is what
+	// lets readLoop notice -stop and exit; without it the thread outlives the
+	// call, keeps the descriptor, and after the number is reused it reads the
+	// next call's datagrams.
+	struct timeval timeout = { 0, 100000 };   // 100 ms
+	setsockopt(self.socketHandle, SOL_SOCKET, SO_RCVTIMEO,
+			   &timeout, sizeof(timeout));
+
 	NSLog(@"TGCallReflector: %@:%u, our tag %08x", self.host, self.port, self.localTag);
+
+	[_lifecycle lock];
+	_stopping = NO;
+	_readerFinished = NO;
+	[_lifecycle unlock];
 
 	self.reader = [[NSThread alloc] initWithTarget:self selector:@selector(readLoop) object:nil];
 	[self.reader start];
@@ -166,10 +191,14 @@
 }
 
 - (void)send:(NSData *)packet {
-	if (self.socketHandle < 0)
-		return;
-	sendto(self.socketHandle, packet.bytes, packet.length, 0,
-		   (struct sockaddr *)&_server, sizeof(_server));
+	// Hold the lifecycle lock across the send: stop closes the descriptor only
+	// after the reader is gone, but a main-thread send must not race that close
+	// and land on a descriptor number that now belongs to someone else.
+	[_lifecycle lock];
+	if (self.socketHandle >= 0)
+		sendto(self.socketHandle, packet.bytes, packet.length, 0,
+			   (struct sockaddr *)&_server, sizeof(_server));
+	[_lifecycle unlock];
 }
 
 /// The reader thread. Its own thread rather than the main queue, for the whole
@@ -184,10 +213,24 @@
 	// a view over it and is only read inside the call, so nothing is copied.
 	uint8_t buffer[2048];
 	uint32_t received = 0;
-	while (self.socketHandle >= 0){
-		ssize_t got = recv(self.socketHandle, buffer, sizeof(buffer), 0);
-		if (got <= 0)
+	for (;;) {
+		[_lifecycle lock];
+		BOOL stopping = _stopping;
+		int handle = self.socketHandle;
+		[_lifecycle unlock];
+		if (stopping || handle < 0)
 			break;
+
+		ssize_t got = recv(handle, buffer, sizeof(buffer), 0);
+		if (got < 0) {
+			// The receive timeout is how this thread notices -stop when
+			// shutdown cannot wake an unconnected UDP socket.
+			if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
+				continue;
+			break;
+		}
+		if (got == 0)
+			continue;   // an empty datagram, not end of stream
 
 		// A relayed packet carries the sender's four bytes right after the
 		// sixteen-byte tag; that is the address to answer.
@@ -204,6 +247,12 @@
 			NSLog(@"TGCallReflector: %u packets in, last %ld bytes",
 					received, (long)got);
 
+		[_lifecycle lock];
+		BOOL stoppingNow = _stopping;
+		[_lifecycle unlock];
+		if (stoppingNow)
+			break;
+
 		if (self.onPacket){
 			NSData *packet = [NSData dataWithBytesNoCopy:buffer
 												  length:got
@@ -211,20 +260,45 @@
 			self.onPacket(packet);
 		}
 	}
+
+	[_lifecycle lock];
+	_readerFinished = YES;
+	[_lifecycle broadcast];
+	[_lifecycle unlock];
 }
 
 - (void)stop {
+	[_lifecycle lock];
+	_stopping = YES;
+	int handle = self.socketHandle;
+	NSThread *reader = self.reader;
+	[_lifecycle unlock];
+
 	[self.pinger invalidate];
 	self.pinger = nil;
-	int handle = self.socketHandle;
-	self.socketHandle = -1;
-	if (handle >= 0){
-		// The read loop is blocked in recv(). Closing alone does not wake it on
-		// every platform, and the descriptor number can be reused before the
-		// thread notices, so it would start reading someone else's socket.
+
+	// Best effort: on an unconnected UDP socket this fails with ENOTCONN. The
+	// receive timeout is what actually makes the reader return.
+	if (handle >= 0)
 		shutdown(handle, SHUT_RDWR);
-		close(handle);
+
+	// Wait for the reader before closing: until it has returned it may be
+	// inside onPacket, or about to recv on this descriptor number.
+	if (reader && reader != [NSThread currentThread]) {
+		[_lifecycle lock];
+		while (!_readerFinished)
+			[_lifecycle wait];
+		[_lifecycle unlock];
 	}
+
+	[_lifecycle lock];
+	handle = self.socketHandle;
+	self.socketHandle = -1;
+	self.reader = nil;
+	[_lifecycle unlock];
+
+	if (handle >= 0)
+		close(handle);
 }
 
 @end

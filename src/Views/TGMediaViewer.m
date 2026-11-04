@@ -1,6 +1,8 @@
 #import "TGMediaViewer.h"
 #import "TGMediaStore.h"
 #import "TGClient.h"
+#import "TGDevice.h"
+#import "TGSoftVideoPlayer.h"
 #import "TGStickerStore.h"
 #import "TGSnackbar.h"
 #import "TGTheme.h"
@@ -38,6 +40,9 @@ static const CGFloat kClockWidth    = 52.0f;
 static const CGFloat kThumbSide     = 42.0f;
 static const CGFloat kThumbGap      = 6.0f;
 static const CGFloat kThumbStripH   = 54.0f;
+/// The software decoder is measured at 480x480; anything over 720 on its
+/// long side (1080x1080 is 19-25 fps) is not attempted.
+static const int kSoftVideoMaxLongSide = 720;
 
 /// A view whose whole job is to keep the player layer filling it. A CALayer
 /// does not autoresize, and this app rotates - the old movie view had its
@@ -114,7 +119,13 @@ static const CGFloat kThumbStripH   = 54.0f;
 /// currentPlaybackTime that seeks to the nearest keyframe, so dragging the
 /// scrubber jumped in half-second steps. A layer plays where it is put.
 @property (nonatomic, strong) AVPlayer *player;
+/// The software player replaces AVPlayer only after the latter refuses a
+/// file on a Vintage device. It sits in the same page and uses the same
+/// transport buttons.
+@property (nonatomic, strong) TGSoftVideoPlayer *softPlayer;
+@property (nonatomic, copy) NSString *currentMoviePath;
 @property (nonatomic, assign) BOOL triedMovieCopy;
+@property (nonatomic, assign) BOOL triedSoftMovie;
 @property (nonatomic, strong) AVPlayerLayer *playerLayer;
 @property (nonatomic, strong) TGPlayerView *playerView;
 @property (nonatomic, assign) NSInteger moviePage;
@@ -1251,6 +1262,16 @@ static CGAffineTransform TGTransformOnto(CGRect resting, CGRect target) {
 #pragma mark - video
 
 - (void)toggleMovie {
+	if (self.softPlayer){
+		if (self.softPlayer.isPlaying){
+			[self.softPlayer pause];
+			[self.playButton setImage:[self playGlyph] forState:UIControlStateNormal];
+		} else {
+			[self.softPlayer play];
+			[self.playButton setImage:[self pauseGlyph] forState:UIControlStateNormal];
+		}
+		return;
+	}
 	if (self.player){
 		// rate rather than a playback state: AVPlayer has no "playing" flag,
 		// and a rate of zero is what paused means.
@@ -1270,6 +1291,7 @@ static CGAffineTransform TGTransformOnto(CGRect resting, CGRect target) {
 		return;
 
 	self.triedMovieCopy = NO;
+	self.triedSoftMovie = NO;
 	self.timeLabel.text = @"...";
 	__weak typeof(self) weakSelf = self;
 	NSInteger fetchingPage = self.index;
@@ -1291,6 +1313,8 @@ static CGAffineTransform TGTransformOnto(CGRect resting, CGRect target) {
 	if (!page)
 		return;
 	[self stopMovie];
+	self.currentMoviePath = path;
+	self.triedSoftMovie = NO;
 
 	NSDictionary *item = self.items[self.index];
 	self.movieLoops = [item[@"kind"] isEqualToString:@"messageAnimation"];
@@ -1333,6 +1357,8 @@ static CGAffineTransform TGTransformOnto(CGRect resting, CGRect target) {
 /// Seconds, or a negative number while the item is still working out how
 /// long it is - which it does not know until it is ready to play.
 - (NSTimeInterval)movieDuration {
+	if (self.softPlayer)
+		return self.softPlayer.duration > 0 ? self.softPlayer.duration : -1;
 	AVPlayerItem *item = self.player.currentItem;
 	if (!item)
 		return -1;
@@ -1343,23 +1369,74 @@ static CGAffineTransform TGTransformOnto(CGRect resting, CGRect target) {
 }
 
 - (NSTimeInterval)moviePosition {
+	if (self.softPlayer)
+		return self.softPlayer.position;
 	if (!self.player)
 		return 0;
 	CMTime now = self.player.currentTime;
 	return CMTIME_IS_VALID(now) ? CMTimeGetSeconds(now) : 0;
 }
 
+- (void)showVideoFormatAlert {
+	[TGAlertSheet showMessage:@"This video's format cannot be played on this device."
+						title:@"Video" inView:self.backdrop];
+}
+
+/// The one place that decides what the software player gets: the smallest
+/// copy Telegram offered, or the file already on disk when it is inside the
+/// measured 720-pixel limit. Everything else ends at the alert.
+- (void)startSoftPlaybackAfterFailure {
+	NSDictionary *item = self.items[self.index];
+	if (![item isKindOfClass:NSDictionary.class]){
+		[self showVideoFormatAlert];
+		return;
+	}
+	NSNumber *copy = item[@"videoFallbackId"];
+	if ([copy isKindOfClass:NSNumber.class]){
+		__weak typeof(self) weakSelf = self;
+		NSInteger page = self.index;
+		[self beginLoadingPage:page];
+		[[TGMediaStore shared] downloadFile:copy.integerValue completion:^(NSString *path){
+			[weakSelf endLoadingPage:page];
+			if (!weakSelf || weakSelf.index != page)
+				return;
+			if (path.length)
+				[weakSelf startSoftMovieAtPath:path];
+			else
+				[weakSelf showVideoFormatAlert];
+		}];
+		return;
+	}
+	// docWidth/docHeight are the chosen file's size; mediaWidth/mediaHeight
+	// are the original's, which can be 1080 even when the file on disk is 480.
+	int longSide = MAX([item[@"docWidth"] intValue], [item[@"docHeight"] intValue]);
+	if (longSide <= 0)
+		longSide = MAX([item[@"mediaWidth"] intValue], [item[@"mediaHeight"] intValue]);
+	if (self.currentMoviePath.length && longSide > 0 &&
+		longSide <= kSoftVideoMaxLongSide){
+		[self startSoftMovieAtPath:self.currentMoviePath];
+		return;
+	}
+	[self showVideoFormatAlert];
+}
+
 /// AVPlayer says nothing on its own when it cannot decode a file: the picture
-/// stays black and the clock never moves. One smaller copy is tried, then the
-/// viewer says so.
+/// stays black and the clock never moves. Vintage hands the file to FFmpeg;
+/// every other tier tries one smaller copy and then says so.
 - (void)movieFailed {
 	NSLog(@"video playback: %@", self.player.currentItem.error);
+	if ([TGDevice tier] == TGDeviceTierVintage && !self.triedSoftMovie){
+		self.triedSoftMovie = YES;
+		[self stopMovie];
+		self.timeLabel.text = @"...";
+		[self startSoftPlaybackAfterFailure];
+		return;
+	}
 	NSNumber *copy = self.items[self.index][@"videoFallbackId"];
 	[self stopMovie];
 	self.timeLabel.text = @"--:--";
 	if (self.triedMovieCopy || ![copy isKindOfClass:NSNumber.class]){
-		[TGAlertSheet showMessage:@"This video's format cannot be played on this device."
-							title:@"Video" inView:self.backdrop];
+		[self showVideoFormatAlert];
 		return;
 	}
 	self.triedMovieCopy = YES;
@@ -1374,7 +1451,77 @@ static CGAffineTransform TGTransformOnto(CGRect resting, CGRect target) {
 	}];
 }
 
+/// Same page, same controls, same looping rule as the AVPlayer path. The GL
+/// view replaces the player layer where the page's picture already sits.
+- (void)startSoftMovieAtPath:(NSString *)path {
+	UIView *page = self.pages[@(self.index)];
+	if (!page || !path.length){
+		[self showVideoFormatAlert];
+		return;
+	}
+	[self stopMovie];
+	self.currentMoviePath = path;
+
+	NSDictionary *item = self.items[self.index];
+	self.movieLoops = [item[@"kind"] isEqualToString:@"messageAnimation"];
+	if (!self.movieLoops){
+		[[AVAudioSession sharedInstance] setCategory:AVAudioSessionCategoryPlayback
+											   error:nil];
+		[[AVAudioSession sharedInstance] setActive:YES error:nil];
+	}
+
+	TGSoftVideoPlayer *soft = [[TGSoftVideoPlayer alloc] initWithPath:path];
+	if (!soft){
+		[self showVideoFormatAlert];
+		return;
+	}
+	soft.loops = self.movieLoops;
+	soft.view.frame = page.bounds;
+	soft.view.autoresizingMask = UIViewAutoresizingFlexibleWidth |
+								 UIViewAutoresizingFlexibleHeight;
+	[page addSubview:soft.view];
+
+	self.softPlayer = soft;
+	self.moviePage = self.index;
+	[self.playButton setImage:[self pauseGlyph] forState:UIControlStateNormal];
+
+	__weak typeof(self) weakSelf = self;
+	__weak TGSoftVideoPlayer *weakSoft = soft;
+	soft.finished = ^{
+		TGMediaViewer *me = weakSelf;
+		if (!me || me.softPlayer != weakSoft)
+			return;
+		[me.playButton setImage:[me playGlyph] forState:UIControlStateNormal];
+		me.scrubber.value = 0;
+	};
+	soft.failed = ^(NSError *error){
+		TGMediaViewer *me = weakSelf;
+		if (!me || me.softPlayer != weakSoft)
+			return;
+		NSLog(@"video playback (software): %@", error);
+		[me stopMovie];
+		me.timeLabel.text = @"--:--";
+		[me showVideoFormatAlert];
+	};
+
+	[soft play];
+	self.movieTimer = [NSTimer scheduledTimerWithTimeInterval:0.3 target:self
+			selector:@selector(movieTicked) userInfo:nil repeats:YES];
+}
+
 - (void)movieTicked {
+	if (self.softPlayer){
+		NSTimeInterval duration = [self movieDuration];
+		if (duration <= 0)
+			return;
+		NSTimeInterval at = [self moviePosition];
+		if (!self.scrubber.tracking)
+			self.scrubber.value = (float)(at / duration);
+		NSInteger left = (NSInteger)MAX(0.0, duration - at);
+		self.timeLabel.text = [NSString stringWithFormat:@"-%ld:%02ld",
+				(long)(left / 60), (long)(left % 60)];
+		return;
+	}
 	if (self.player.currentItem.status == AVPlayerItemStatusFailed){
 		[self movieFailed];
 		return;
@@ -1397,6 +1544,10 @@ static CGAffineTransform TGTransformOnto(CGRect resting, CGRect target) {
 	NSTimeInterval duration = [self movieDuration];
 	if (duration <= 0)
 		return;
+	if (self.softPlayer){
+		[self.softPlayer seekToTime:self.scrubber.value * duration];
+		return;
+	}
 	CMTime target = CMTimeMakeWithSeconds(self.scrubber.value * duration,
 										  NSEC_PER_SEC);
 	[self.player seekToTime:target
@@ -1418,16 +1569,25 @@ static CGAffineTransform TGTransformOnto(CGRect resting, CGRect target) {
 - (void)stopMovie {
 	[self.movieTimer invalidate];
 	self.movieTimer = nil;
-	if (!self.player)
-		return;
-	[[NSNotificationCenter defaultCenter] removeObserver:self
-			name:AVPlayerItemDidPlayToEndTimeNotification
-			object:self.player.currentItem];
-	[self.player pause];
-	[self.playerView removeFromSuperview];
-	self.playerView = nil;
-	self.playerLayer = nil;
-	self.player = nil;
+	if (self.softPlayer){
+		// Drop the callbacks first: stop must not run the viewer's failure
+		// path while the page is being torn down.
+		self.softPlayer.finished = nil;
+		self.softPlayer.failed = nil;
+		[self.softPlayer stop];
+		[self.softPlayer.view removeFromSuperview];
+		self.softPlayer = nil;
+	}
+	if (self.player){
+		[[NSNotificationCenter defaultCenter] removeObserver:self
+				name:AVPlayerItemDidPlayToEndTimeNotification
+				object:self.player.currentItem];
+		[self.player pause];
+		[self.playerView removeFromSuperview];
+		self.playerView = nil;
+		self.playerLayer = nil;
+		self.player = nil;
+	}
 	self.moviePage = NSNotFound;
 	self.movieLoops = NO;
 	[self.playButton setImage:[self playGlyph] forState:UIControlStateNormal];

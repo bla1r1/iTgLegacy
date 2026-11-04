@@ -62,7 +62,7 @@ LDFLAGS := \
 # ─── sources ──────────────────────────────────────────────────────────────────
 
 # Pure C (no ARC)
-C_SRCS := $(SRC)/Calls/TGCallCrypto.c
+C_SRCS := $(SRC)/Calls/TGCallCrypto.c $(SRC)/Media/TGSoftVideoClock.c
 
 # ObjC sources under test
 OBJC_SRCS := \
@@ -143,7 +143,8 @@ CLIENT_OBJC_SRCS := \
     $(SRC)/Core/TGPerf.m \
     $(SRC)/Controllers/TGUIFormat.m \
     $(SRC)/Views/TGChatListRowGeometry.m \
-    $(SRC)/Core/TGPlaybackQueue.m
+    $(SRC)/Core/TGPlaybackQueue.m \
+    $(SRC)/Core/TGProfileTabs.m
 
 # Test helper ObjC sources. TGClientStub and TGCallAudioEngineStub stand in
 # for the iOS-only production classes that TGCall.mm would otherwise need.
@@ -173,7 +174,8 @@ TEST_SRCS := \
     $(TESTS)/TGCallReflectorTests.m \
     $(TESTS)/TGCallIntegrationTests.m \
     $(TESTS)/TGLibTgvoipHooksTests.m \
-    $(TESTS)/TGMessageLayoutTests.m
+    $(TESTS)/TGMessageLayoutTests.m \
+    $(TESTS)/TGSoftVideoClockTests.m
 
 CLIENT_TEST_SRCS := \
     $(TESTS)/TGJsonTests.m \
@@ -284,6 +286,8 @@ sim: $(SIM_BINARY)
 	@echo "\n════════ Running VoIP call simulation (LegacyTG stack) ════════"
 	$(SIM_BINARY)
 
+bench: $(BUILD)/call_bench
+
 official_sim: $(OFFICIAL_SIM_BINARY)
 	@echo "\n════════ Running VoIP call simulation (Official libtgvoip) ════════"
 	$(OFFICIAL_SIM_BINARY)
@@ -321,6 +325,16 @@ $(SIM_BINARY): $(SIM_BINARY_DEPS)
 	    $(LDFLAGS) \
 	    -o $@
 	@echo "  Built $(notdir $@)"
+
+$(BUILD)/call_bench: $(TESTS)/call_bench.mm $(C_SRCS) $(OBJC_SRCS) $(TEST_HELPER_SRCS)
+	@mkdir -p $(BUILD)
+	$(CLANG) $(CFLAGS) -I$(OPUS)/include/opus \
+	    $(C_SRCS) \
+	    $(OBJC_SRCS) \
+	    $(TEST_HELPER_SRCS) \
+	    $(TESTS)/call_bench.mm \
+	    $(LDFLAGS) -L$(OPUS)/lib -lopus \
+	    -o $@
 
 $(OFFICIAL_SIM_BINARY): $(OFFICIAL_SIM_DEPS)
 	@mkdir -p $(BUILD)

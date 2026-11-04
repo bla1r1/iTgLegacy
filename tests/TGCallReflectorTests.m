@@ -10,6 +10,12 @@
 #import "TGCallReflector.h"
 #import "TGCallTestHelpers.h"
 
+// -stop has to be able to prove the reader thread is gone; the tests below
+// read it directly.
+@interface TGCallReflector (TestLifecycle)
+@property (nonatomic, strong) NSThread *reader;
+@end
+
 @interface TGCallReflectorTests : XCTestCase
 @end
 
@@ -96,6 +102,56 @@
                                                           port:0 peerTag:tag];
     [r stop];
     XCTAssertNoThrow([r stop]);
+}
+
+/// A reader thread that outlives -stop is not harmless: it keeps the
+/// descriptor number, and once the number is reused it reads the next call's
+/// datagrams - that is how a stale packet reached a torn-down TGCall and
+/// crashed on a nil call key. stop must return only once the reader has
+/// exited, and no onPacket may still be running when it does.
+- (void)testStopWaitsForReaderAndDropsLateCallbacks {
+    uint16_t serverPort = 0;
+    int server = TGTestUDPSocket(&serverPort);
+    XCTAssertGreaterThanOrEqual(server, 0);
+
+    NSData *peerTag = TGTestPeerTag();
+    TGCallReflector *reflector = [[TGCallReflector alloc] initWithHost:@"127.0.0.1"
+                                                                  port:serverPort
+                                                               peerTag:peerTag];
+
+    __block BOOL inCallback = NO;
+    __block BOOL callbackFinished = NO;
+    reflector.onPacket = ^(NSData *packet){
+        inCallback = YES;
+        // Long enough that a stop which does not wait returns in the middle
+        // of this callback.
+        [NSThread sleepForTimeInterval:0.2];
+        callbackFinished = YES;
+    };
+
+    XCTAssertTrue([reflector start]);
+
+    struct sockaddr_in reflectorAddress;
+    NSData *ping = TGTestRecvFrom(server, &reflectorAddress, 2.0);
+    XCTAssertNotNil(ping);
+
+    uint8_t frame[24] = {0};
+    ssize_t sent = sendto(server, frame, sizeof(frame), 0,
+                          (struct sockaddr *)&reflectorAddress,
+                          sizeof(reflectorAddress));
+    XCTAssertEqual(sent, (ssize_t)sizeof(frame));
+
+    XCTAssertTrue(TGWaitForCondition(^{ return (BOOL)inCallback; }, 2.0),
+                  @"the datagram must reach onPacket");
+
+    [reflector stop];
+
+    XCTAssertTrue(callbackFinished,
+                  @"stop returned while a packet callback was still running");
+    XCTAssertTrue(reflector.reader == nil || reflector.reader.isFinished,
+                  @"the reader thread outlived stop");
+
+    close(server);
 }
 
 // ──────────────────────────────────────────────────────────────────────────────

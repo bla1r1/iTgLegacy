@@ -1,3 +1,4 @@
+#import "TGProfileViewController.h"
 #import "TGSettingsViewControllerInternal.h"
 #import "TGAlertSheet.h"
 #import "TGStyle.h"
@@ -8,13 +9,17 @@
 
 /// Your own profile, as everyone else sees it - their "My Profile" row.
 - (void)openMyProfile {
+	[self openMyProfileOnTab:nil];
+}
+
+- (void)openMyProfileOnTab:(NSString *)tab {
 	int64_t userId = [[TGClient shared].me[@"id"] longLongValue];
 	if (!userId)
 		return;
-	Class profileClass = NSClassFromString(@"TGProfileViewController");
-	UIViewController *profile = [[profileClass alloc]
+	TGProfileViewController *profile = [[TGProfileViewController alloc]
 			initWithChatId:userId userId:userId
 					 title:[TGClient shared].me[@"first_name"] ?: @"Profile"];
+	profile.storedMediaKind = tab;
 	profile.hidesBottomBarWhenPushed = YES;
 	[self.navigationController pushViewController:profile animated:YES];
 }

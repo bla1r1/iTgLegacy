@@ -12,9 +12,54 @@
 
 /// Decoders are rated by a 16:9 frame: 1080x1080 passes on its long side alone and
 /// is still far over 720p.
-static BOOL TGVideoFits(NSDictionary *video, int maxSide) {
+static BOOL TGVideoFitsLimit(NSDictionary *video, int maxSide, BOOL longSideOnly) {
 	int w = [video[@"width"] intValue], h = [video[@"height"] intValue];
-	return MAX(w, h) <= maxSide && MIN(w, h) <= maxSide * 9 / 16;
+	if (maxSide <= 0)
+		return NO;
+	return MAX(w, h) <= maxSide &&
+		   (longSideOnly || MIN(w, h) <= maxSide * 9 / 16);
+}
+
+static BOOL TGVideoFits(NSDictionary *video, int maxSide) {
+	return TGVideoFitsLimit(video, maxSide, NO);
+}
+
+static NSNumber *TGPlayableVideoFileIdLimited(NSDictionary *video, NSArray *alternatives,
+											  int maxSide, BOOL longSideOnly,
+											  NSNumber **fallback,
+											  int *outWidth, int *outHeight) {
+	NSNumber *best = nil, *smallest = nil;
+	int bestSide = 0, smallestSide = 0;
+	int bestWidth = 0, bestHeight = 0;
+	if ([alternatives isKindOfClass:NSArray.class])
+		for (NSDictionary *copy in alternatives){
+			NSNumber *fileId = copy[@"video"][@"id"];
+			if (![copy[@"codec"] isEqual:@"h264"] || ![fileId isKindOfClass:NSNumber.class])
+				continue;
+			if (!TGVideoFitsLimit(copy, maxSide, longSideOnly))
+				continue;
+			int width = [copy[@"width"] intValue], height = [copy[@"height"] intValue];
+			int side = MAX(width, height);
+			if (side > bestSide){
+				best = fileId;
+				bestSide = side;
+				bestWidth = width;
+				bestHeight = height;
+			}
+			if (!smallest || side < smallestSide){
+				smallest = fileId;
+				smallestSide = side;
+			}
+		}
+	BOOL originalFits = TGVideoFitsLimit(video, maxSide, longSideOnly);
+	NSNumber *chosen = originalFits || !best ? video[@"video"][@"id"] : best;
+	if (outWidth)
+		*outWidth = originalFits || !best ? [video[@"width"] intValue] : bestWidth;
+	if (outHeight)
+		*outHeight = originalFits || !best ? [video[@"height"] intValue] : bestHeight;
+	if (fallback)
+		*fallback = [smallest isEqual:chosen] ? nil : smallest;
+	return chosen;
 }
 
 /// Which file of a video to play. The original when it fits the decoder, or the
@@ -22,29 +67,18 @@ static BOOL TGVideoFits(NSDictionary *video, int maxSide) {
 /// `fallback`, for an original that fits by size but not by profile.
 NSNumber *TGPlayableVideoFileId(NSDictionary *video, NSArray *alternatives, int maxSide,
 								NSNumber **fallback) {
-	NSNumber *best = nil, *smallest = nil;
-	int bestSide = 0, smallestSide = 0;
-	if ([alternatives isKindOfClass:NSArray.class])
-		for (NSDictionary *copy in alternatives){
-			NSNumber *fileId = copy[@"video"][@"id"];
-			if (![copy[@"codec"] isEqual:@"h264"] || ![fileId isKindOfClass:NSNumber.class])
-				continue;
-			if (!TGVideoFits(copy, maxSide))
-				continue;
-			int side = MAX([copy[@"width"] intValue], [copy[@"height"] intValue]);
-			if (side > bestSide){
-				best = fileId;
-				bestSide = side;
-			}
-			if (!smallest || side < smallestSide){
-				smallest = fileId;
-				smallestSide = side;
-			}
-		}
-	NSNumber *chosen = TGVideoFits(video, maxSide) || !best ? video[@"video"][@"id"] : best;
-	if (fallback)
-		*fallback = [smallest isEqual:chosen] ? nil : smallest;
-	return chosen;
+	return TGPlayableVideoFileIdLimited(video, alternatives, maxSide, NO, fallback,
+										NULL, NULL);
+}
+
+/// The A4's software decoder is measured on the long side: 480x480 runs at
+/// 106 fps, 1080x1080 at 19-25. Anything over 720 on that side is not worth
+/// the download, so a smaller copy is taken even when the original is 16:9.
+/// `width`/`height` come back as the chosen file's size, not the original's.
+NSNumber *TGPlayableVideoFileIdVintage(NSDictionary *video, NSArray *alternatives,
+									   NSNumber **fallback, int *width, int *height) {
+	return TGPlayableVideoFileIdLimited(video, alternatives, 720, YES, fallback,
+										width, height);
 }
 
 
@@ -259,6 +293,7 @@ NSDictionary *TGFlattenMessage(NSDictionary *m) {
 
 	NSNumber *bigPhotoFileId = nil;
 	int mediaWidth = 0, mediaHeight = 0;
+	int docWidth = 0, docHeight = 0;
 	NSNumber *videoFallbackId = nil;
 	BOOL hasStickers = NO;   // media other stickers were attached to
 
@@ -291,8 +326,15 @@ NSDictionary *TGFlattenMessage(NSDictionary *m) {
 	} else if ([ctype isEqualToString:@"messageVideo"]){
 		hasStickers = [content[@"video"][@"has_stickers"] boolValue];
 		photoFileId = content[@"video"][@"thumbnail"][@"file"][@"id"];
-		docFileId   = TGPlayableVideoFileId(content[@"video"], content[@"alternative_videos"],
-				[TGCapabilities maxVideoSide], &videoFallbackId);
+		// Vintage plays video with the software decoder, whose measured ceiling
+		// is 720 on the long side. Other tiers keep the hardware decoder's
+		// wider limit.
+		docFileId = [TGDevice tier] == TGDeviceTierVintage
+				? TGPlayableVideoFileIdVintage(content[@"video"],
+						content[@"alternative_videos"], &videoFallbackId,
+						&docWidth, &docHeight)
+				: TGPlayableVideoFileId(content[@"video"], content[@"alternative_videos"],
+						[TGCapabilities maxVideoSide], &videoFallbackId);
 		docName     = content[@"video"][@"file_name"];
 		mediaWidth  = [content[@"video"][@"width"] intValue];
 		mediaHeight = [content[@"video"][@"height"] intValue];
@@ -661,6 +703,10 @@ NSDictionary *TGFlattenMessage(NSDictionary *m) {
 		@"hasStickers" : @(hasStickers),
 		@"mediaWidth": @(mediaWidth),
 		@"mediaHeight": @(mediaHeight),
+		// The file behind docId can be a smaller alternative of the original;
+		// its own size decides whether the software player may try it.
+		@"docWidth"  : @(docWidth),
+		@"docHeight" : @(docHeight),
 		@"docId"     : docFileId   ?: [NSNull null],
 		@"videoFallbackId" : videoFallbackId ?: [NSNull null],
 		@"docName"   : docName     ?: @"",

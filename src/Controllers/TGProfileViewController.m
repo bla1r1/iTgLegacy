@@ -1307,6 +1307,8 @@ static const CGFloat kMusicChevronSide = TGMetricGiftStar;
 - (void)viewDidAppear:(BOOL)animated {
 	[super viewDidAppear:animated];
 	[self loadVisibleMediaTabIfNeeded];
+	// Back from the viewer, which can move or delete a story.
+	[self reloadOwnStories];
 }
 
 - (void)viewWillDisappear:(BOOL)animated {

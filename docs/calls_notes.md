@@ -35,3 +35,11 @@ Our `-protocol` announces `library_versions ["3.0.0", "2.4.4"]`. Modern desktop 
 - Log at connect time on both ends: `protocol_version`, `connectionMaxLayer`, chosen codec, and whether the first media packet decrypts (`VoIPController` logs it in `HandleIncomingPacket`).
 - Compare phone↔desktop (works) vs. phone↔phone (silent) — the divergence point is the answer.
 - If the modern peer negotiates a layer > 92 or protocol > 9, raise `max_layer`/`library_versions` to match what tgvoip 2.4.4 actually supports.
+
+## Bench against the real library (2026-11-04)
+
+`scripts/call_bench.sh` runs our `TGCall` on the Mac against tgcalls itself (`tgcalls_cli --mode bridge`, from Telegram-iOS with `tests/call_bench/tgcalls_cli_bridge.patch`) through a real reflector, no account. `scripts/call_bench_device.sh` does the same from the device with the real audio engine.
+
+Current tgcalls registers 2.7.7, 5.0.0 and 7.0.0 up; 3.0.0 and 2.4.4 are gone, and iOS (`selectVersionOnAccept`) cannot take a call with no version in common. 7.0.0 and up are a different protocol (DTLS, SCTP) and would need a port. 2.7.7 and 5.0.0 are `InstanceImpl`, whose wire format is what `TGCall` already speaks, so they went on the offer list.
+
+Result, Mac and iPod: Established in both roles on both versions. Their 440 Hz tone reaches us at a 0.84-1.00 energy share. Our tone reaches them at 0.10-0.24 against 0.00-0.01 when we send nothing. Their `Render` output is noisy on any input (a real tgcalls pair reads 0.01-0.02 there), so it shows the tone arrives, not how clean it is. Not tried: a call between two accounts through TDLib, where the server picks the version.

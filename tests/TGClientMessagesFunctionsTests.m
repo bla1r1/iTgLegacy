@@ -350,6 +350,37 @@ static NSDictionary *altV(int side, NSString *codec, int fileId) {
 	XCTAssertEqualObjects(TGPlayableVideoFileId(video, nil, 1280, &fallback), @(1));
 }
 
+- (void)testPlayableVideoVintage_TakesTheCopyInside720OnItsLongSide {
+	NSDictionary *video = @{@"width" : @(1280), @"height" : @(720), @"video" : @{@"id" : @(1)}};
+	NSArray *copies = @[altV(1280, @"h264", 2), altV(640, @"h264", 3)];
+	NSNumber *fallback = nil;
+	int width = 0, height = 0;
+	// 1280x720 is 720p in 16:9 terms, but the software decoder is measured
+	// on the long side and a 640x360 copy is the one it can keep up with.
+	XCTAssertEqualObjects(TGPlayableVideoFileIdVintage(video, copies, &fallback,
+													   &width, &height), @(3));
+	XCTAssertNil(fallback);
+	XCTAssertEqual(width, 640);
+	XCTAssertEqual(height, 320);
+}
+
+- (void)testPlayableVideoVintage_ASquare480CopySurvivesTheLongSideRule {
+	NSDictionary *video = @{@"width" : @(1080), @"height" : @(1080), @"video" : @{@"id" : @(1)}};
+	NSDictionary *copy = @{@"width" : @(480), @"height" : @(480), @"codec" : @"h264",
+						   @"video" : @{@"id" : @(2)}};
+	NSNumber *fallback = nil;
+	int width = 0, height = 0;
+	// The old 16:9 short-side rule would throw this copy away at a 720 limit.
+	XCTAssertEqualObjects(TGPlayableVideoFileIdVintage(video, @[copy], &fallback,
+													   &width, &height), @(2));
+	XCTAssertNil(fallback);
+	XCTAssertEqual(width, 480);
+	XCTAssertEqual(height, 480);
+	XCTAssertEqualObjects(TGPlayableVideoFileIdVintage(
+			@{@"width" : @(640), @"height" : @(360), @"video" : @{@"id" : @(1)}},
+			nil, nil, NULL, NULL), @(1));
+}
+
 - (void)testPlayableVideo_TheOnlyCopyIsNotItsOwnFallback {
 	NSDictionary *video = @{@"width" : @(1920), @"height" : @(1080), @"video" : @{@"id" : @(1)}};
 	NSNumber *fallback = nil;

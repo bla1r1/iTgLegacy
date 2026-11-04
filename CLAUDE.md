@@ -11,8 +11,10 @@ Telegram client for iOS 6.0–12.5.7 on old hardware. Objective-C UI over TDLib 
 - `src/App/` — app entry: main, AppDelegate, URL routing, dev bench
 - `src/Media/` — decoders (WebP, WebM sticker video)
 - `scripts/lint_tokens.sh` — fails on any hardcoded point size or colour in a screen
-- `make -f tests/Makefile test` — host test suite (currently 1190 client and 167 call tests)
+- `make -f tests/Makefile test` — host test suite (currently 1271 client and 173 call tests)
 - `scripts/devrun.sh` — build, install, launch, log, screenshot on device
+- `make DEV=1` — dev build: dev mode (three taps on Chats), fixture chats, bench, automation URLs, ghost mode. All under `#if TG_DEV`; `devrun.sh` builds this into `build/armv7/app-dev`. `scripts/check_release.sh` fails if any of it reaches a build without the flag
+- `scripts/build_ffmpeg.sh` — FFmpeg for the Vintage software video player, into `build/armv7/ffmpeg`
 
 ## Architecture rules
 - UIKit stays in Objective-C. No C++ in `.h` files consumed by ViewControllers.

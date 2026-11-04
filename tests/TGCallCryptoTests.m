@@ -243,4 +243,19 @@
     XCTAssertEqual(encLen, (int)(16 + 4 + sizeof(payload)));
 }
 
+/// A nil key must be rejected, not dereferenced. This is the shape of the
+/// crash reports: a reflector callback reached the encryptor after teardown
+/// had already cleared the call key, and key + 88 faulted at address 0x58.
+- (void)testEncryptAndDecryptRejectNullKey {
+    uint8_t payload[] = { 0x01, 0x02 };
+    uint8_t cipher[sizeof(payload) + 32];
+    uint8_t plain[sizeof(payload) + 32];
+    uint32_t seq = 0;
+
+    XCTAssertLessThanOrEqual(
+        TGCallEncryptPacket(NULL, 1, 0, payload, sizeof(payload), 1, cipher), 0);
+    XCTAssertLessThanOrEqual(
+        TGCallDecryptPacket(NULL, 0, 0, payload, sizeof(payload), plain, &seq), 0);
+}
+
 @end

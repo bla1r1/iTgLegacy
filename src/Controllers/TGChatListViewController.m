@@ -8,7 +8,7 @@
 #import "TGOptions.h"
 #import "TGStoryViewerViewController.h"
 #import "TGStoryComposerViewController.h"
-#import "TGStoriesMenuViewController.h"
+#import "TGProfileViewController.h"
 #import "TGChatListRowGeometry.h"
 
 // Height of the folder pill strip above the chat list (official-style tabs).
@@ -1636,16 +1636,14 @@ static NSDictionary *TGChatSnapshotRow(NSDictionary *chat) {
 							title:@"Stories" inView:self.view];
 		return;
 	}
-	TGStoriesMenuViewController *menu = [[TGStoriesMenuViewController alloc]
-			initWithChatId:savedId title:@"Your Story"];
-	__weak typeof(self) weakSelf = self;
-	menu.onStoriesChanged = ^{
-		TGChatListViewController *me = weakSelf;
-		me.storyRowsReadAt = nil;
-		[me reloadStoriesIfNeeded];
-	};
-	menu.hidesBottomBarWhenPushed = YES;
-	[self.navigationController pushViewController:menu animated:YES];
+	// The manager is My Profile, as in the official client: Stories and Archive on
+	// one screen. A story moved there shows in the strip on the way back.
+	TGProfileViewController *profile = [[TGProfileViewController alloc]
+			initWithChatId:savedId userId:savedId title:@"My Profile"];
+	profile.storedMediaKind = @"stories";
+	profile.hidesBottomBarWhenPushed = YES;
+	self.storyRowsReadAt = nil;
+	[self.navigationController pushViewController:profile animated:YES];
 }
 
 - (void)openArchive {

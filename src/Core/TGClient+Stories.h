@@ -54,6 +54,10 @@ NSUInteger TGStoryRowProbeLimit(TGDeviceTier tier);
 /// All stories a chat has ever posted; requires can_edit_stories in a group
 /// or channel. Only the ids Telegram returns are new: the archive screen
 /// converts them with -story:fromChat:completion:.
+/// The archive as tiles, the same rows storiesForChat: gives: first 60.
+- (void)archivedStoriesForChat:(int64_t)chatId
+					completion:(void (^)(NSArray *))completion;
+
 - (void)archivedStoryIdsForChat:(int64_t)chatId
 					 fromStoryId:(int32_t)fromStoryId
 						  limit:(NSInteger)limit

@@ -79,7 +79,6 @@ NSURL *TGProfileFirstURL(NSString *text, NSArray *entities);
 @property (nonatomic, assign) BOOL isLoadingMoreMedia;
 /// The categories the bar is showing, in order: each is @{"title", "kind"}.
 /// Built fresh on every render by currentMediaTabs.
-@property (nonatomic, copy)   NSString *storedMediaKind;
 @property (nonatomic, copy)   NSString *mainMediaKind;
 /// Kinds whose page has already been asked for, so a re-selected tab does not
 /// re-request its list on every switch (item 8: fetch when opened).
@@ -90,6 +89,7 @@ NSURL *TGProfileFirstURL(NSString *text, NSArray *entities);
 @property (nonatomic, strong) NSArray *members;
 @property (nonatomic, strong) NSArray *gifts;
 @property (nonatomic, strong) NSArray *stories;
+@property (nonatomic, strong) NSArray *archivedStories;
 /// The first saved track from userFullInfo, shown under the action plates
 /// before the full profile-audio page answers.
 @property (nonatomic, strong) NSDictionary *firstProfileAudio;
@@ -200,6 +200,7 @@ NSURL *TGProfileFirstURL(NSString *text, NSArray *entities);
 - (void)fetchMediaForKind:(NSString *)kind;
 - (void)mediaTabSelected:(NSString *)kind;
 - (BOOL)showsSavedMessages;
+- (void)reloadOwnStories;
 - (void)loadVisibleMediaTabIfNeeded;
 - (NSArray *)currentMediaTabs;
 - (NSString *)selectedMediaKind;

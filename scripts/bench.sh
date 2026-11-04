@@ -19,7 +19,7 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT="$ROOT/build/bench/$(date +%Y%m%d-%H%M%S)"
 SSH="ssh -o ConnectTimeout=6 -o BatchMode=yes itgphone"
-BIN="$ROOT/build/armv7/app/LegacyTG.app/LegacyTG"
+BIN="$ROOT/build/armv7/app-dev/LegacyTG.app/LegacyTG"
 LAUNCH=1
 PROF=""
 while [ $# -gt 0 ]; do

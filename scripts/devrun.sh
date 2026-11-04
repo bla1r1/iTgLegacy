@@ -121,7 +121,7 @@ install_ipa() {
 # the fake signature amfid wants; the bundle has none of its own.
 install_over_ssh() {
 	ssh_ready || { echo "no ideviceinstaller and no ssh - cannot install" >&2; return 1; }
-	local app="$ROOT/build/armv7/app/LegacyTG.app"
+	local app="$ROOT/build/armv7/app-dev/LegacyTG.app"
 	[ -d "$app" ] || { echo "no app bundle at $app" >&2; return 1; }
 	say "installing over SSH into /Applications"
 	# tar over the pipe: the device has tar and gzip but no rsync, and scp of a

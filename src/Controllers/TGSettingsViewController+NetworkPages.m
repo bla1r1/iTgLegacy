@@ -746,14 +746,14 @@ static NSString *TGChatNameForId(NSNumber *chatId) {
 		TGSection(nil, nil, @[
 			TGActionRow(@"Add Proxy", ^{ [weakSelf addProxyByAsking]; }),
 		]),
+#if TG_DEV
 		TGSection(@"WEB PROXY CARRIER",
 				  @"A web proxy runs its page in the client. TDLib asks for "
 				  @"the page's messages and its failure through these two "
 				  @"requests.", @[
-#if TG_DEV
 			[weakSelf tier2ProxyCarrierRow],
-#endif
 		]),
+#endif
 	];
 }
 
