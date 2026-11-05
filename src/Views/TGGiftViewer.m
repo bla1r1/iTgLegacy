@@ -320,7 +320,7 @@ static NSString *TGGiftStamp(NSNumber *unix) {
 			kAvatar, kAvatar)];
 	face.layer.cornerRadius = TGHalf(kAvatar);
 	face.clipsToBounds = YES;
-	NSString *first = [name substringToIndex:1].uppercaseString;
+	NSString *first = [TGIcons initialsForTitle:name];
 	face.image = [TGIcons avatarWithInitials:first size:kAvatar colourId:userId];
 	[_card addSubview:face];
 

@@ -330,8 +330,8 @@
 	}
 #endif
 
-	NSString *initials = name.length ? [name substringToIndex:1] : @"?";
-	UIImage *placeholder = [TGIcons avatarWithInitials:initials.uppercaseString
+	NSString *initials = [TGIcons initialsForTitle:name];
+	UIImage *placeholder = [TGIcons avatarWithInitials:initials
 												  size:kAvatarSide
 											  colourId:userId];
 	self.senderAvatars[key] = placeholder;

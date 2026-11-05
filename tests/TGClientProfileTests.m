@@ -509,6 +509,8 @@ static NSDate *PGDate(NSInteger year, NSInteger month, NSInteger day) {
 - (void)testFirstUsername_AnEmptyArrayIsNilNotACrash {
 	XCTAssertNil(TGFirstUsername(plainP(@{@"usernames" : @{@"active_usernames" : @[]}})));
 	XCTAssertEqualObjects(TGFirstUsername(plainP(@{@"usernames" : @{@"active_usernames" : @[@"alice"]}})), @"alice");
+	XCTAssertEqualObjects(TGFirstUsername(@{@"username" : @"bob"}), @"bob");
+	XCTAssertEqualObjects(TGFirstUsername(@{@"username" : @"bob", @"usernames" : @{@"active_usernames" : @[]}}), @"bob");
 	XCTAssertNil(TGFirstUsername(@{}));
 }
 
@@ -518,9 +520,17 @@ static NSDate *PGDate(NSInteger year, NSInteger month, NSInteger day) {
 	[c userProfile:42 completion:^(NSDictionary *i){ info = i; }];
 	answerP(c, plainP(@{@"@type" : @"userFullInfo",
 						@"block_list" : @{@"@type" : @"blockListMain"},
-						@"bio" : @{@"@type" : @"formattedText", @"text" : @"hi"}}));
+						@"bio" : @{@"@type" : @"formattedText", @"text" : @"hi"},
+						@"business_info" : @{
+							@"location" : @{@"address" : @"123 Main St"}
+						},
+						@"bot_info" : @{
+							@"short_description" : @"I am a helper bot"
+						}}));
 	XCTAssertEqualObjects(info[@"isBlocked"], @YES);
 	XCTAssertEqualObjects(info[@"bio"], @"hi");
+	XCTAssertEqualObjects(info[@"businessLocation"], @"123 Main St");
+	XCTAssertEqualObjects(info[@"botDescription"], @"I am a helper bot");
 }
 
 - (void)testUserProfile_FlattensTheFirstProfileAudio {

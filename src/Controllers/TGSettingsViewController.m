@@ -79,6 +79,15 @@
 
 	self.title = [self pageTitle];
 
+	if (self.page == TGSettingsPageRecentCalls) {
+		UISegmentedControl *filter = [[UISegmentedControl alloc] initWithItems:@[@"All", @"Missed"]];
+		filter.selectedSegmentIndex = self.recentCallsFilter;
+		[filter addTarget:self action:@selector(recentCallsFilterChanged:) forControlEvents:UIControlEventValueChanged];
+		self.navigationItem.titleView = filter;
+	} else if (self.page == TGSettingsPageRoot) {
+		self.navigationItem.rightBarButtonItem = nil;
+	}
+
 	[self rebuild];
 	[self loadForPage];
 
@@ -320,6 +329,11 @@
 	[NSObject cancelPreviousPerformRequestsWithTarget:self
 			selector:@selector(loadForPage) object:nil];
 	[self performSelector:@selector(loadForPage) withObject:nil afterDelay:0.3];
+}
+
+- (void)recentCallsFilterChanged:(UISegmentedControl *)sender {
+	self.recentCallsFilter = sender.selectedSegmentIndex;
+	[self rebuild];
 }
 
 /// Four updates land on this screen - added, finished, paused, removed - and
@@ -1006,15 +1020,12 @@ static const CGFloat kMeTextInset  = TGMetricPadMedium;
 
 	self.avatarView = [[UIImageView alloc] initWithFrame:
 			CGRectMake(TGCenteredOrigin(width, side), kMeAvatarTop, side, side)];
-	self.avatarView.layer.cornerRadius = TGHalf(side);
-	self.avatarView.clipsToBounds = YES;
-	self.avatarView.layer.shouldRasterize = YES;
-	self.avatarView.layer.rasterizationScale = [UIScreen mainScreen].scale;
-	self.avatarView.layer.borderColor = [theme separatorColour].CGColor;
-	self.avatarView.layer.borderWidth = 1.0f;
+	// Pre-baked circle bitmap: no CALayer cornerRadius or rasterizing mask on scrolling headers.
 	self.avatarView.contentMode = UIViewContentModeScaleAspectFill;
+	self.avatarView.opaque = NO;
+	self.avatarView.backgroundColor = [UIColor clearColor];
 	self.avatarView.image = [TGIcons avatarWithInitials:
-			[name substringToIndex:1].uppercaseString
+			[TGIcons initialsForTitle:name]
 												   size:side
 											   colourId:[me[@"id"] longLongValue]];
 	[profile.contentView addSubview:self.avatarView];
@@ -1023,7 +1034,19 @@ static const CGFloat kMeTextInset  = TGMetricPadMedium;
 	if (fileId){
 		__weak typeof(self) weakSelf = self;
 		[[TGClient shared] downloadFile:fileId.integerValue completion:^(NSString *path){
-			[TGIcons loadImageAtPath:path into:weakSelf.avatarView];
+			if (!path.length)
+				return;
+			CGSize target = CGSizeMake(side, side);
+			CGFloat screenScale = TGMainScreenScale();
+			dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_LOW, 0), ^{
+				UIImage *decoded = [TGIcons decodedImageAtPath:path fittingSize:target fill:YES scale:screenScale];
+				UIImage *round = [TGIcons roundedImage:decoded size:target radius:TGHalf(side) corners:UIRectCornerAllCorners];
+				if (!round)
+					return;
+				dispatch_async(dispatch_get_main_queue(), ^{
+					weakSelf.avatarView.image = round;
+				});
+			});
 		}];
 	}
 

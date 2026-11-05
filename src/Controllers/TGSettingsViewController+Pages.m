@@ -20,6 +20,7 @@
 #import "TGTestHarnessViewController.h"
 #import "TGAffiliateProgramsViewController.h"
 #import "TGSupportInfoViewController.h"
+#import "TGCallViewController.h"
 
 /// A custom method's answer is a string the app has no schema for. When it is
 /// JSON, pretty-print it so the viewer reads like a response rather than one
@@ -116,12 +117,8 @@ static NSArray *TGCustomResultRows(NSString *result) {
 			([TGClient shared].authState != TGAuthStateReady) ? TGIconRow(@"Log in to Telegram", @"privacy", TGIconTileAzure(), ^{
 				[[AppDelegate sharedDelegate] showLoginUI];
 			}) : TGIconRow(@"Accounts", @"select", TGIconTileAzure(), ^{ [weakSelf showAccountChoices]; }),
-			// Their settings keeps one edit entry; the header above is the
-			// My Profile row, so a separate photo row competed with it.
-			TGIconTapRow(@"Edit Profile", username, @"chat", TGIconTileViolet(), ^{
-				UIViewController *edit = [[TGEditProfileViewController alloc] init];
-				edit.hidesBottomBarWhenPushed = YES;
-				[weakSelf.navigationController pushViewController:edit animated:YES];
+			TGIconRow(@"My Profile", @"contact", TGIconTileSky(), ^{
+				[weakSelf openMyProfile];
 			}),
 			// Official keeps this in the top edit block, not in dev: it is a
 			// profile action for a Premium account, and Telegram answers the
@@ -199,9 +196,6 @@ static NSArray *TGCustomResultRows(NSString *result) {
 				packs.hidesBottomBarWhenPushed = YES;
 				[weakSelf.navigationController pushViewController:packs animated:YES];
 			}),
-			TGIconRow(@"Chat Themes", @"chat", TGIconTileSky(), ^{
-				[weakSelf openPage:TGSettingsPageAppearance];
-			}),
 		]),
 
 		TGSection(nil, nil, @[
@@ -209,9 +203,6 @@ static NSArray *TGCustomResultRows(NSString *result) {
 				[weakSelf showPremiumState];
 			}),
 			[weakSelf tier2BusinessRow],
-			TGIconRow(@"Send a Gift", @"gift", TGIconTileCoral(), ^{
-				[weakSelf pushPlaceholder:@"Send a Gift"];
-			}),
 		]),
 
 		// Help last, the way the official client ends the list before Log
@@ -220,12 +211,6 @@ static NSArray *TGCustomResultRows(NSString *result) {
 		TGSection(@"Help", nil, @[
 			TGIconRow(@"Ask a Question", @"chat", TGIconTileAmber(), ^{
 				[weakSelf openSupport];
-			}),
-			TGIconRow(@"Support Info", @"data", TGIconTileAmber(), ^{
-				TGSupportInfoViewController *support =
-						[[TGSupportInfoViewController alloc] init];
-				support.hidesBottomBarWhenPushed = YES;
-				[weakSelf.navigationController pushViewController:support animated:YES];
 			}),
 			TGIconRow(@"Telegram FAQ", @"faq", TGIconTileCyan(), ^{
 				[weakSelf openURL:@"https://telegram.org/faq"];
@@ -744,8 +729,16 @@ static NSString *TGCallDebugText(NSDictionary *call) {
 
 - (NSArray *)recentCallSections {
 	__weak typeof(self) weakSelf = self;
-	if (!self.calls.count)
-		return @[TGSection(nil, nil, @[TGRow(TGKindPlain, @"No recent calls")])];
+	NSArray *displayCalls = self.calls;
+	if (self.recentCallsFilter == 1) {
+		NSPredicate *pred = [NSPredicate predicateWithBlock:^BOOL(NSDictionary *c, NSDictionary *bindings) {
+			return [c[@"missed"] boolValue];
+		}];
+		displayCalls = [self.calls filteredArrayUsingPredicate:pred];
+	}
+
+	if (!displayCalls.count)
+		return @[TGSection(nil, nil, @[TGRow(TGKindPlain, self.recentCallsFilter == 1 ? @"No missed calls" : @"No recent calls")])];
 
 	static NSDateFormatter *when = nil;
 	if (!when){
@@ -755,12 +748,13 @@ static NSString *TGCallDebugText(NSDictionary *call) {
 	}
 
 	NSMutableArray *rows = [NSMutableArray array];
-	for (NSDictionary *call in self.calls){
+	for (NSDictionary *call in displayCalls){
 		BOOL missed = [call[@"missed"] boolValue];
 		BOOL outgoing = [call[@"outgoing"] boolValue];
 		NSInteger duration = [call[@"duration"] integerValue];
+		NSString *typeLabel = missed ? @"Missed" : (outgoing ? @"Outgoing" : @"Incoming");
 		NSString *detail = [NSString stringWithFormat:@"%@ %@%@",
-				(outgoing ? @"Outgoing" : @"Incoming"),
+				typeLabel,
 				[when stringFromDate:[NSDate dateWithTimeIntervalSince1970:
 						[call[@"date"] doubleValue]]],
 				(!missed && duration > 0)
@@ -783,9 +777,10 @@ static NSString *TGCallDebugText(NSDictionary *call) {
 		}
 
 		NSMutableDictionary *row = [TGSubtitleRow(call[@"name"], detail, ^{
-#if TG_DEV
-			[weakSelf runRecentCallActionFor:call];
-#endif
+			int64_t userId = [call[@"userId"] longLongValue];
+			if (userId) {
+				[TGCallViewController presentForUserId:userId name:call[@"name"] outgoing:YES];
+			}
 		}) mutableCopy];
 		if (missed)
 			row[TGRowKind] = TGKindDestructive;
@@ -804,7 +799,7 @@ static NSString *TGCallDebugText(NSDictionary *call) {
 	[TGAlertSheet showChoices:@[@"Send Call Log", @"Send Debug Information"]
 						title:name
 					  message:[NSString stringWithFormat:@"%@ · %@",
-							  [call[@"outgoing"] boolValue] ? @"Outgoing" : @"Incoming",
+							  [call[@"missed"] boolValue] ? @"Missed" : ([call[@"outgoing"] boolValue] ? @"Outgoing" : @"Incoming"),
 							  TGCallRecordWhen(call[@"date"])]
 			 destructiveIndex:-1
 					   inView:self.view
@@ -1203,8 +1198,6 @@ static NSString *TGOrderLines(NSDictionary *order) {
 			[weakSelf tier2ProxyCarrierRow],
 		]),
 
-		[[weakSelf tier2Sections] firstObject] ?: TGSection(nil, nil, @[]),
-
 		TGSection(@"Components", nil, @[
 			// The component gallery is a development surface, not a setting.
 			// It sat in Appearance next to the theme picker, where a user had
@@ -1236,6 +1229,12 @@ static NSString *TGOrderLines(NSDictionary *order) {
 				  @"Surfaces for the calls a user account really can make: "
 				  @"advertisements, TDLib's environment, owned bots and the "
 				  @"read-only Premium and gift records.", @[
+			TGTapRow(@"Support Info", @"Staff tools and user diagnostic dump", ^{
+				TGSupportInfoViewController *support =
+						[[TGSupportInfoViewController alloc] init];
+				support.hidesBottomBarWhenPushed = YES;
+				[weakSelf.navigationController pushViewController:support animated:YES];
+			}),
 			TGTapRow(@"Sponsored Messages", @"Channel, search and video ads", ^{
 				TGSponsoredMessagesViewController *ads =
 						[[TGSponsoredMessagesViewController alloc] init];

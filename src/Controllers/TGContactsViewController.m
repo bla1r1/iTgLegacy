@@ -9,6 +9,7 @@
 #import "TGAlertSheet.h"
 #import "TGEmptyView.h"
 #import "TGImageLruCache.h"
+#import "TGStatusText.h"
 
 /// Avatars kept decoded while the list is open.
 static const NSUInteger kPhotoCacheCap = 50;
@@ -29,6 +30,7 @@ static const NSUInteger kPhotoCacheCap = 50;
 /// How many contacts this account has uploaded from a phone's address book.
 /// The footer is where it stays visible after an import.
 @property (nonatomic, assign) NSInteger importedCount;
+@property (nonatomic, assign) BOOL sortByLastSeen;
 @end
 
 /// A contact row with its avatar inset and a fixed size. The stock cell sized
@@ -65,7 +67,10 @@ static NSString *TGContactSectionTitle(NSString *name) {
 			[NSCharacterSet whitespaceAndNewlineCharacterSet]];
 	if (!trimmed.length)
 		return @"#";
-	NSString *first = [[trimmed substringToIndex:1] uppercaseString];
+	NSRange r = [trimmed rangeOfComposedCharacterSequenceAtIndex:0];
+	if (r.length != 1)
+		return @"#";
+	NSString *first = [[trimmed substringWithRange:r] uppercaseString];
 	unichar c = [first characterAtIndex:0];
 	if ((c >= 'A' && c <= 'Z') || (c >= 0x0400 && c <= 0x04FF))
 		return first;
@@ -97,6 +102,31 @@ static NSArray *TGContactSections(NSArray *users) {
 	return sorted;
 }
 
+static NSInteger TGPresenceRank(NSDictionary *status, double *outWasOnline) {
+	if (outWasOnline) *outWasOnline = 0;
+	if (![status isKindOfClass:[NSDictionary class]])
+		return 6;
+	NSString *type = status[@"@type"];
+	if ([type isEqualToString:@"userStatusOnline"]) {
+		return 0;
+	}
+	if ([type isEqualToString:@"userStatusOffline"]) {
+		double was = [status[@"was_online"] doubleValue];
+		if (outWasOnline) *outWasOnline = was;
+		return (was > 0) ? 1 : 5;
+	}
+	if ([type isEqualToString:@"userStatusRecently"]) {
+		return 2;
+	}
+	if ([type isEqualToString:@"userStatusLastWeek"]) {
+		return 3;
+	}
+	if ([type isEqualToString:@"userStatusLastMonth"]) {
+		return 4;
+	}
+	return 5;
+}
+
 @implementation TGContactsViewController
 
 - (void)viewDidLoad {
@@ -104,6 +134,13 @@ static NSArray *TGContactSections(NSArray *users) {
 
 	if ([self respondsToSelector:@selector(setEdgesForExtendedLayout:)])
 		self.edgesForExtendedLayout = UIRectEdgeNone;
+
+	if ([[NSUserDefaults standardUserDefaults] objectForKey:@"TGContactsSortByLastSeen"]) {
+		self.sortByLastSeen = [[NSUserDefaults standardUserDefaults] boolForKey:@"TGContactsSortByLastSeen"];
+	} else {
+		self.sortByLastSeen = YES;
+		[[NSUserDefaults standardUserDefaults] setBool:YES forKey:@"TGContactsSortByLastSeen"];
+	}
 
 	self.picked = [NSMutableSet set];
 	self.title = [self isPicking]
@@ -116,6 +153,11 @@ static NSArray *TGContactSections(NSArray *users) {
 					   target:self action:@selector(commitPicking)];
 		self.navigationItem.rightBarButtonItem.enabled = NO;
 	} else {
+		self.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc]
+				initWithTitle:@"Sort"
+						style:UIBarButtonItemStylePlain
+					   target:self
+					   action:@selector(sortTapped)];
 		self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc]
 				initWithBarButtonSystemItem:UIBarButtonSystemItemAdd
 									 target:self
@@ -145,6 +187,50 @@ static NSArray *TGContactSections(NSArray *users) {
 	}];
 
 	[self loadContacts];
+}
+
+- (void)sortTapped {
+	__weak typeof(self) weakSelf = self;
+	[TGAlertSheet showChoices:@[@"by Last Seen", @"by Name"]
+						title:@"Sort Contacts"
+			 destructiveIndex:-1
+					   inView:self.view
+					 onChoice:^(NSInteger index){
+		TGContactsViewController *me = weakSelf;
+		if (!me) return;
+		BOOL sortLastSeen = (index == 0);
+		if (me.sortByLastSeen != sortLastSeen) {
+			me.sortByLastSeen = sortLastSeen;
+			[[NSUserDefaults standardUserDefaults] setBool:sortLastSeen forKey:@"TGContactsSortByLastSeen"];
+			[me sortAndGroupContacts];
+			[me.tableView reloadData];
+		}
+	}];
+}
+
+- (void)sortAndGroupContacts {
+	if (self.sortByLastSeen) {
+		self.users = [self.users sortedArrayUsingComparator:^NSComparisonResult(id a, id b){
+			double wasA = 0, wasB = 0;
+			NSInteger rankA = TGPresenceRank(a[@"status"], &wasA);
+			NSInteger rankB = TGPresenceRank(b[@"status"], &wasB);
+			if (rankA != rankB) {
+				return rankA < rankB ? NSOrderedAscending : NSOrderedDescending;
+			}
+			if (rankA == 1) {
+				if (wasA != wasB) {
+					return wasA > wasB ? NSOrderedAscending : NSOrderedDescending;
+				}
+			}
+			return [TGContactName(a) localizedCaseInsensitiveCompare:TGContactName(b)];
+		}];
+		self.sections = @[@{@"title": @"", @"users": self.users}];
+	} else {
+		self.users = [self.users sortedArrayUsingComparator:^NSComparisonResult(id a, id b){
+			return [TGContactName(a) localizedCaseInsensitiveCompare:TGContactName(b)];
+		}];
+		self.sections = TGContactSections(self.users);
+	}
 }
 
 - (void)addContactTapped {
@@ -182,11 +268,8 @@ static NSArray *TGContactSections(NSArray *users) {
 		TGContactsViewController *me = weakSelf;
 		if (!me)
 			return;
-		NSMutableArray *list = [NSMutableArray arrayWithArray:users ?: @[]];
-		me.users = [list sortedArrayUsingComparator:^NSComparisonResult(id a, id b){
-			return [TGContactName(a) localizedCaseInsensitiveCompare:TGContactName(b)];
-		}];
-		me.sections = TGContactSections(me.users);
+		me.users = users ?: @[];
+		[me sortAndGroupContacts];
 		[me.tableView reloadData];
 		[me fetchMissingPhotos];
 
@@ -237,7 +320,7 @@ static NSArray *TGContactSections(NSArray *users) {
 				// A cell's own imageView takes the image's size, so a 160px photo
 				// would shove the name off the row. Scale once, on arrival.
 				UIGraphicsBeginImageContextWithOptions(
-						CGSizeMake(TGMetricListAvatar, TGMetricListAvatar), NO, 0);
+						CGSizeMake(TGMetricListAvatar, TGMetricListAvatar), NO, TGMainScreenScale());
 				[photo drawInRect:CGRectMake(0, 0, TGMetricListAvatar, TGMetricListAvatar)];
 				UIImage *scaled = UIGraphicsGetImageFromCurrentImageContext();
 				UIGraphicsEndImageContext();
@@ -276,12 +359,16 @@ static NSString *TGContactName(NSDictionary *u) {
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
+	if (self.sortByLastSeen)
+		return nil;
 	if (section < 0 || section >= (NSInteger)self.sections.count)
 		return nil;
 	return self.sections[(NSUInteger)section][@"title"];
 }
 
 - (NSArray *)sectionIndexTitlesForTableView:(UITableView *)tableView {
+	if (self.sortByLastSeen)
+		return nil;
 	// A short list reads worse with a rail down the side; Telegram keeps it
 	// for an address book that is actually long.
 	if (self.sections.count < 8)
@@ -325,29 +412,37 @@ static NSString *TGContactName(NSDictionary *u) {
 	cell.textLabel.font = TGFontBody();
 	cell.detailTextLabel.backgroundColor = bg;
 	cell.detailTextLabel.opaque = YES;
-	// Telegram puts the @name under a contact who has one and the number
-	// under everyone else. The number is still what a call needs, so it is
-	// the fallback rather than a second line that would not fit this row.
-	if ([u[@"username"] length])
+
+	NSString *presence = TGStatusTextFromTDStatus(u[@"status"]);
+	if (presence.length) {
+		cell.detailTextLabel.text = presence;
+		if ([u[@"status"][@"@type"] isEqualToString:@"userStatusOnline"]) {
+			cell.detailTextLabel.textColor = [[TGTheme shared] accentColour];
+		} else {
+			cell.detailTextLabel.textColor = [[TGTheme shared] secondaryTextColour];
+		}
+	} else if ([u[@"username"] length]) {
 		cell.detailTextLabel.text = [@"@" stringByAppendingString:u[@"username"]];
-	else
-		cell.detailTextLabel.text = [u[@"phone"] length]
-				? [NSString stringWithFormat:@"+%@", u[@"phone"]] : @"";
+		cell.detailTextLabel.textColor = [[TGTheme shared] secondaryTextColour];
+	} else if ([u[@"phone"] length]) {
+		cell.detailTextLabel.text = [NSString stringWithFormat:@"+%@", u[@"phone"]];
+		cell.detailTextLabel.textColor = [[TGTheme shared] secondaryTextColour];
+	} else {
+		cell.detailTextLabel.text = @"";
+	}
 	cell.detailTextLabel.font = TGFontCaption();
-	cell.detailTextLabel.textColor = [[TGTheme shared] secondaryTextColour];
 	cell.textLabel.textColor = [[TGTheme shared] primaryTextColour];
 	cell.accessoryType = [self isPicking]
 			? ([self.picked containsObject:u[@"id"]]
 					? UITableViewCellAccessoryCheckmark
 					: UITableViewCellAccessoryNone)
-			: UITableViewCellAccessoryDisclosureIndicator;
+			: UITableViewCellAccessoryNone;
 
 	NSNumber *fileId = u[@"photoFileId"];
 	UIImage *photo = [fileId isKindOfClass:NSNumber.class] ? self.photos[fileId] : nil;
 	int64_t uid = [u[@"id"] longLongValue];
 	if (!photo)
-		photo = [TGIcons avatarWithInitials:
-					(name.length ? [name substringToIndex:1].uppercaseString : @"?")
+		photo = [TGIcons avatarWithInitials:[TGIcons initialsForTitle:name]
 									   size:TGMetricListAvatar
 								   colourId:[u[@"id"] longLongValue]];
 	// Cropped and rounded once at the row's size: no clip, no rasterizing.
@@ -355,6 +450,8 @@ static NSString *TGContactName(NSDictionary *u) {
 										   size:CGSizeMake(TGMetricListAvatar, TGMetricListAvatar)
 										 radius:TGHalf(TGMetricListAvatar)
 										corners:UIRectCornerAllCorners];
+	cell.imageView.opaque = NO;
+	cell.imageView.backgroundColor = [UIColor clearColor];
 
 	return cell;
 }

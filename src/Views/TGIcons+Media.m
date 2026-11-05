@@ -54,7 +54,8 @@ static UIImage *TGRoundedLookup(UIImage *image, CGSize size, CGFloat radius, UIR
 /// Any thread: UIGraphics image contexts are per-thread since iOS 4.
 static UIImage *TGRoundedRender(UIImage *image, CGSize size, CGFloat radius, UIRectCorner corners) {
 	CGRect box = CGRectMake(0, 0, size.width, size.height);
-	UIGraphicsBeginImageContextWithOptions(size, NO, 0);
+	CGFloat scale = (image.scale > 0.0f) ? image.scale : TGMainScreenScale();
+	UIGraphicsBeginImageContextWithOptions(size, NO, scale);
 	if (radius > 0)
 		[[UIBezierPath bezierPathWithRoundedRect:box byRoundingCorners:corners
 									 cornerRadii:CGSizeMake(radius, radius)] addClip];

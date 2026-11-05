@@ -240,6 +240,7 @@ static inline NSString *TGBytes(long long bytes) {
 /// "chatId:messageId" and kept in defaults so the row can say so after a
 /// reopen. Sending a log twice is allowed; the row only records that one did.
 @property (nonatomic, strong) NSMutableDictionary *callDiagnostics;
+@property (nonatomic, assign) NSInteger recentCallsFilter;
 /// The root page names what its rows are set to, the way Telegram's does:
 /// the cache size under Data and Storage, the current device under Devices,
 /// the pack name under Language and the proxy state under Proxy. They are
@@ -262,6 +263,7 @@ static inline NSString *TGBytes(long long bytes) {
 - (void)openPage:(TGSettingsPage)page;
 - (void)openMyProfile;
 - (void)openMyProfileOnTab:(NSString *)tab;
+- (void)openEditProfile;
 - (void)showAccountChoices;
 - (void)toast:(NSString *)text;
 - (void)pushPlaceholder:(NSString *)featureName;

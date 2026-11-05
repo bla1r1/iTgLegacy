@@ -884,20 +884,22 @@ static BOOL TGSearchMessageMatchesScope(NSDictionary *message, NSInteger scope) 
 		__weak typeof(self) weakSelf = self;
 		[[TGClient shared] downloadFile:fileId.integerValue completion:^(NSString *path){
 			TGSearchViewController *me = weakSelf;
-			UIImage *photo = path ? [UIImage imageWithContentsOfFile:path] : nil;
-			if (!me || !photo)
+			if (!me || !path.length)
 				return;
-			UIGraphicsBeginImageContextWithOptions(
-					CGSizeMake(TGMetricListAvatar, TGMetricListAvatar), NO, 0);
-			[photo drawInRect:CGRectMake(0, 0, TGMetricListAvatar, TGMetricListAvatar)];
-			me.avatars[fileId] = UIGraphicsGetImageFromCurrentImageContext();
-			UIGraphicsEndImageContext();
+			UIImage *decoded = [TGIcons decodedImageAtPath:path
+											   fittingSize:CGSizeMake(TGMetricListAvatar, TGMetricListAvatar)
+													  fill:YES
+													 scale:TGMainScreenScale()];
+			UIImage *rounded = [TGIcons roundedImage:decoded
+												size:CGSizeMake(TGMetricListAvatar, TGMetricListAvatar)
+											  radius:TGHalf(TGMetricListAvatar)
+											 corners:UIRectCornerAllCorners];
+			me.avatars[fileId] = rounded ?: decoded;
 			[me.tableView reloadData];
 		}];
 	}
 
-	return [TGIcons avatarWithInitials:
-				(title.length ? [title substringToIndex:1].uppercaseString : @"?")
+	return [TGIcons avatarWithInitials:[TGIcons initialsForTitle:title]
 								  size:TGMetricListAvatar
 							  colourId:chatId];
 }

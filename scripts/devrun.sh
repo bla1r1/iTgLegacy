@@ -245,7 +245,7 @@ shot() {
 	local remote="/var/mobile/screenshot.png"
 	if ! ssh $SSH_OPTS "$SSH_HOST" "[ -f '$remote' ]"; then
 		remote="$(ssh $SSH_OPTS "$SSH_HOST" \
-			'ls -t /var/mobile/Applications/*/Library/Caches/screen.png 2>/dev/null | head -1')"
+			'ls -t /var/mobile/Applications/*/Library/Caches/screen.png 2>/dev/null | sed 1q')"
 	fi
 	[ -n "$remote" ] || { echo "device did not write a screenshot" >&2; return 1; }
 

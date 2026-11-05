@@ -10,6 +10,7 @@
 #import "TGQuickRepliesViewController.h"
 #import "TGDiceViewController.h"
 #import "TGEphemeralViewController.h"
+#import "TGAiComposeViewController.h"
 #import "TGStyle.h"
 
 // The mode the recording button was left in last chat, persisted read/write
@@ -385,6 +386,62 @@ static const NSInteger kBannerSubtitleTag = 72;
 
 #pragma mark - sending later
 
+static NSRange TGTextFieldSelectedRange(UITextField *tf) {
+	UITextRange *r = tf.selectedTextRange;
+	if (!r) return NSMakeRange(NSNotFound, 0);
+	NSInteger start = [tf offsetFromPosition:tf.beginningOfDocument toPosition:r.start];
+	NSInteger end = [tf offsetFromPosition:tf.beginningOfDocument toPosition:r.end];
+	return NSMakeRange(start, end - start);
+}
+
+static void TGTextFieldSetSelectedRange(UITextField *tf, NSRange range) {
+	if (range.location == NSNotFound) return;
+	UITextPosition *start = [tf positionFromPosition:tf.beginningOfDocument offset:range.location];
+	UITextPosition *end = [tf positionFromPosition:start offset:range.length];
+	if (start && end) {
+		tf.selectedTextRange = [tf textRangeFromPosition:start toPosition:end];
+	}
+}
+
+- (void)showFormattingSheet {
+	__weak typeof(self) weakSelf = self;
+	NSArray *styles = @[@"Bold (**)", @"Italic (*)", @"Code (`)", @"Spoiler (||)", @"Strikethrough (~)"];
+	[TGAlertSheet showChoices:styles title:@"Format Text" destructiveIndex:-1
+					   inView:self.navigationController.view ?: self.view
+					 onChoice:^(NSInteger index){
+		[weakSelf applyFormattingStyle:index];
+	}];
+}
+
+- (void)applyFormattingStyle:(NSInteger)style {
+	NSRange r = TGTextFieldSelectedRange(self.input);
+	NSString *text = self.input.text ?: @"";
+	NSString *prefix = @"";
+	NSString *suffix = @"";
+	switch (style){
+		case 0: prefix = @"**"; suffix = @"**"; break;
+		case 1: prefix = @"*";  suffix = @"*"; break;
+		case 2: prefix = @"`";  suffix = @"`"; break;
+		case 3: prefix = @"||"; suffix = @"||"; break;
+		case 4: prefix = @"~";  suffix = @"~"; break;
+		default: break;
+	}
+	if (r.location != NSNotFound && r.length > 0 && r.location + r.length <= text.length){
+		NSString *selected = [text substringWithRange:r];
+		NSString *formatted = [NSString stringWithFormat:@"%@%@%@", prefix, selected, suffix];
+		self.input.text = [text stringByReplacingCharactersInRange:r withString:formatted];
+		TGTextFieldSetSelectedRange(self.input, NSMakeRange(r.location + prefix.length, selected.length));
+	} else {
+		if (text.length > 0){
+			self.input.text = [NSString stringWithFormat:@"%@%@%@", prefix, text, suffix];
+		} else {
+			self.input.text = [NSString stringWithFormat:@"%@%@", prefix, suffix];
+			TGTextFieldSetSelectedRange(self.input, NSMakeRange(prefix.length, 0));
+		}
+	}
+	[self inputChanged];
+}
+
 /// Holding Send when there is text offers what a send can wait for. With an
 /// empty field there is nothing to wait with, and the hold says nothing.
 - (void)sendHeld:(UILongPressGestureRecognizer *)hold {
@@ -399,17 +456,32 @@ static const NSInteger kBannerSubtitleTag = 72;
 	NSString *queue = self.scheduledCount > 0
 			? [NSString stringWithFormat:@"Scheduled Messages (%ld)", (long)self.scheduledCount]
 			: @"Scheduled Messages";
-	[TGAlertSheet showChoices:@[@"Send At a Time...", @"Send When Online", queue,
-								@"Preview Formatting"]
+	NSArray *choices = @[
+		@"Format Text...",
+		@"AI Compose",
+		@"Send At a Time...",
+		@"Send When Online",
+		queue,
+		@"Preview Formatting"
+	];
+	[TGAlertSheet showChoices:choices
 						title:nil
 			 destructiveIndex:-1
 					   inView:self.navigationController.view ?: self.view
 					 onChoice:^(NSInteger index){
 		if (index == 0)
+			[weakSelf showFormattingSheet];
+		else if (index == 1){
+			TGAiComposeViewController *vc = [[TGAiComposeViewController alloc] init];
+			vc.chatId = weakSelf.chatId;
+			vc.chatTitle = weakSelf.chatTitle;
+			vc.hidesBottomBarWhenPushed = YES;
+			[weakSelf.navigationController pushViewController:vc animated:YES];
+		} else if (index == 2)
 			[weakSelf holdScheduledSheet];
-		else if (index == 1)
+		else if (index == 3)
 			[weakSelf sendHeldText:[TGClient scheduledWhenOnline]];
-		else if (index == 2){
+		else if (index == 4){
 			TGScheduledViewController *vc = [[TGScheduledViewController alloc] init];
 			vc.chatId = weakSelf.chatId;
 			vc.chatTitle = weakSelf.chatTitle;

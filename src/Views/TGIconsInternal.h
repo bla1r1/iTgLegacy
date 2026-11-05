@@ -5,6 +5,7 @@
 UIImage *TGIconsGetCached(NSString *key);
 void TGIconsSetCached(NSString *key, UIImage *img);
 void TGIconsClearSettingsIconCache(void);
+CGFloat TGMainScreenScale(void);
 
 /// One weight for the whole line-art family. The set was drawn at ten
 /// different widths - 1.3 through 5.0 - and send sat next to attach in the

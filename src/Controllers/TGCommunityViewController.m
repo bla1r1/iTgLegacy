@@ -86,8 +86,8 @@ static const CGFloat kCommunityPhotoBar  = 92.0f;
 		fileId = self.fullInfo[@"photoFileId"];
 	if (![fileId isKindOfClass:NSNumber.class] || fileId.integerValue <= 0){
 		NSString *name = self.community[@"name"] ?: @"C";
-		NSString *initial = name.length ? [name substringToIndex:1] : @"C";
-		self.photoView.image = [TGIcons avatarWithInitials:initial.uppercaseString
+		NSString *initial = [TGIcons initialsForTitle:name];
+		self.photoView.image = [TGIcons avatarWithInitials:initial
 													 size:kCommunityPhotoSide
 												 colourId:0];
 		return;

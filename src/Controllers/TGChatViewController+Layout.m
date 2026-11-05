@@ -412,6 +412,9 @@ UIColor *TGSenderColour(int64_t userId) {
 
 	int64_t senderId = [m[@"senderId"] longLongValue];
 	NSString *senderName = (self.isGroup && !mine) ? [[TGClient shared] nameForUserId:senderId] : nil;
+	NSString *senderTag = m[@"senderTag"];
+	if (senderName.length && [senderTag isKindOfClass:NSString.class] && senderTag.length)
+		senderName = [NSString stringWithFormat:@"%@ · %@", senderName, senderTag];
 
 	BOOL inlineStamp = [self stampFitsInlineFor:m];
 	CGFloat timeW = [self timeWidthFor:m];

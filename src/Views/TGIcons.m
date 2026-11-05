@@ -16,6 +16,21 @@ void TGIconsSetCached(NSString *key, UIImage *img) {
 	if (key && img) sCache[key] = img;
 }
 
+CGFloat TGMainScreenScale(void) {
+	static CGFloat s = 0.0f;
+	static dispatch_once_t once;
+	dispatch_once(&once, ^{
+		if ([NSThread isMainThread]) {
+			s = [UIScreen mainScreen].scale;
+		} else {
+			dispatch_sync(dispatch_get_main_queue(), ^{
+				s = [UIScreen mainScreen].scale;
+			});
+		}
+	});
+	return s > 0.0f ? s : 1.0f;
+}
+
 @implementation TGIcons
 
 + (UIImage *)emojiGlyph:(NSString *)emoji side:(CGFloat)side {

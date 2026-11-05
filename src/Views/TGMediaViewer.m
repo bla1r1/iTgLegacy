@@ -872,8 +872,7 @@ static CGAffineTransform TGTransformOnto(CGRect resting, CGRect target) {
 /// account map; the initials stand in until it arrives.
 - (void)refreshAvatarForUserId:(int64_t)userId title:(NSString *)title {
 	self.avatarFileId = nil;
-	NSString *initial = title.length
-			? [title substringToIndex:1].uppercaseString : @"?";
+	NSString *initial = [TGIcons initialsForTitle:title];
 	self.authorAvatar.image = [TGIcons avatarWithInitials:initial
 													size:TGMetricViewerAvatarSide
 												colourId:userId];

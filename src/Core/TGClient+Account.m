@@ -156,9 +156,12 @@ NSString *TGProfileBirthdayText(NSInteger day, NSInteger month, NSInteger year, 
 
 NSString *TGFirstUsername(NSDictionary *user) {
 	NSArray *active = user[@"usernames"][@"active_usernames"];
-	if (![active isKindOfClass:NSArray.class] || !active.count)
-		return nil;
-	return active[0];
+	if ([active isKindOfClass:NSArray.class] && active.count)
+		return active[0];
+	NSString *legacy = user[@"username"];
+	if ([legacy isKindOfClass:NSString.class] && legacy.length)
+		return legacy;
+	return nil;
 }
 
 @implementation TGClient (Account)
@@ -195,6 +198,7 @@ NSString *TGFirstUsername(NSDictionary *user) {
 						@"phone"       : u[@"phone_number"] ?: @"",
 						@"username"    : ([u[@"usernames"][@"active_usernames"] isKindOfClass:[NSArray class]] && [u[@"usernames"][@"active_usernames"] count] > 0) ? u[@"usernames"][@"active_usernames"][0] : (u[@"username"] ?: @""),
 						@"photoFileId" : u[@"profile_photo"][@"small"][@"id"] ?: [NSNull null],
+						@"status"      : u[@"status"] ?: [NSNull null],
 					}];
 				}
 				if (--left == 0 && completion)
@@ -558,6 +562,8 @@ NSString *TGFirstUsername(NSDictionary *user) {
 			// The channel this person set as their personal channel, if any.
 			@"personalChatId" : [full[@"personal_chat_id"] isKindOfClass:NSNumber.class]
 					? full[@"personal_chat_id"] : @0,
+			@"businessLocation" : full[@"business_info"][@"location"][@"address"] ?: @"",
+			@"botDescription"   : full[@"bot_info"][@"short_description"] ?: (full[@"bot_info"][@"description"] ?: @""),
 		});
 	}];
 }

@@ -36,7 +36,7 @@ void TGIconsClearSettingsIconCache(void) {
 				// the dismiss cross and the record lock's arrow, which were
 				// drawn with characters in four places and came out as four
 				// different shapes
-				@"close", @"chevronUp", nil];
+				@"close", @"chevronUp", @"mention", nil];
 	// An unknown name has to answer nil, not a blank square: a row with no
 	// glyph is better than a row with a hole where one should be.
 	if (![known containsObject:name])
@@ -427,6 +427,16 @@ void TGIconsClearSettingsIconCache(void) {
 			CGContextMoveToPoint(ctx, s * 0.36f, s * 0.50f);
 			CGContextAddLineToPoint(ctx, s * 0.46f, s * 0.60f);
 			CGContextAddLineToPoint(ctx, s * 0.66f, s * 0.38f);
+			CGContextStrokePath(ctx);
+
+		} else if ([name isEqualToString:@"mention"]){
+			// '@' symbol: outer circle curve wrapping around an inner core
+			CGFloat cx = s / 2.0f;
+			CGFloat cy = s / 2.0f;
+			CGFloat r = s * 0.18f;
+			CGContextStrokeEllipseInRect(ctx, CGRectMake(cx - r, cy - r, r * 2.0f, r * 2.0f));
+			CGContextMoveToPoint(ctx, cx + r, cy + r * 0.5f);
+			CGContextAddArc(ctx, cx, cy, s * 0.32f, 0.4f, M_PI * 1.85f, 0);
 			CGContextStrokePath(ctx);
 
 		} else {

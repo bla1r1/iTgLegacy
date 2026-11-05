@@ -1876,8 +1876,8 @@ static NSString *TGStatGraphLine(NSDictionary *graph, NSString *label) {
 		}
 	}
 	if (!avatarImg) {
-		NSString *initials = fullName.length ? [fullName substringToIndex:1] : @"?";
-		avatarImg = [TGIcons avatarWithInitials:initials.uppercaseString
+		NSString *initials = [TGIcons initialsForTitle:fullName];
+		avatarImg = [TGIcons avatarWithInitials:initials
 										   size:TGMetricCallAvatarSide
 									   colourId:uid ?: (int64_t)[fullName hash]];
 	}

@@ -56,6 +56,10 @@ NSString *TGKnownMessagePreview(NSDictionary *message) {
 		return @"pinned a message";
 	if ([ctype isEqualToString:@"messagePoll"])
 		return @"Poll";
+	if ([ctype isEqualToString:@"messageRichMessage"]){
+		NSString *t = TGRichMessageText(content);
+		return t.length ? t : @"Rich message";
+	}
 	return nil;
 }
 

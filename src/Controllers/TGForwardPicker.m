@@ -294,7 +294,7 @@
 		photo = [TGIcons savedMessagesAvatarOfSide:TGMetricListAvatar];
 
 	if (!photo){
-		NSString *initials = title.length ? [title substringToIndex:1].uppercaseString : @"?";
+		NSString *initials = [TGIcons initialsForTitle:title];
 		photo = [TGIcons avatarWithInitials:initials
 									   size:TGMetricListAvatar
 								   colourId:[c[@"id"] longLongValue]];

@@ -368,7 +368,7 @@ static NSString *TGStoryRelativeTime(NSTimeInterval timestamp) {
 
 - (void)refreshAuthorAvatar {
 	NSString *title = self.senderLabel.text.length ? self.senderLabel.text : @"Story";
-	NSString *initial = title.length ? [title substringToIndex:1].uppercaseString : @"?";
+	NSString *initial = [TGIcons initialsForTitle:title];
 	self.authorAvatar.image = [TGIcons avatarWithInitials:initial
 												   size:TGMetricStoryHeaderAvatar
 											   colourId:self.chatId];

@@ -27,16 +27,26 @@ static const CGFloat kAvatar    = TGMetricChatAvatar;
 - (void)applyTheme;
 
 /// The table's own row actions start at iOS 8. Before that the list swipes a
-/// row itself: three buttons are built the first time the row is pulled open
-/// and dropped again when it closes, so ordinary scrolling never pays for them.
+/// row itself: three trailing buttons (Pin, Mute, Delete) on a left swipe,
+/// and one leading button (Read/Unread) on a right swipe.
+- (void)revealSwipeActionsWithTrailingTitles:(NSArray *)trailingTitles
+                             trailingColours:(NSArray *)trailingColours
+                               leadingTitles:(NSArray *)leadingTitles
+                              leadingColours:(NSArray *)leadingColours
+                                      target:(id)target
+                                      action:(SEL)action;
 - (void)revealSwipeActionsWithTitles:(NSArray *)titles
                              colours:(NSArray *)colours
                               target:(id)target
                               action:(SEL)action;
 - (void)setSwipeActionsOffset:(CGFloat)offset;
+- (void)openTrailingSwipeActionsAnimated:(BOOL)animated;
+- (void)openLeadingSwipeActionsAnimated:(BOOL)animated;
 - (void)openSwipeActionsAnimated:(BOOL)animated;
 - (void)closeSwipeActionsAnimated:(BOOL)animated;
 @property (nonatomic, readonly) BOOL swipeActionsOpen;
 @property (nonatomic, readonly) CGFloat swipeActionsWidth;
+@property (nonatomic, readonly) CGFloat trailingActionsWidth;
+@property (nonatomic, readonly) CGFloat leadingActionsWidth;
 
 @end

@@ -95,10 +95,7 @@ static const CGFloat kDefaultAvatarSide = 40.0f;
 }
 
 - (void)setName:(NSString *)name colourId:(int64_t)colourId {
-	NSString *initials = @"?";
-	if (name.length) {
-		initials = [name substringToIndex:1].uppercaseString;
-	}
+	NSString *initials = [TGIcons initialsForTitle:name];
 	UIImage *photo = [TGIcons avatarWithInitials:initials size:_avatarSide colourId:colourId];
 	self.image = photo;
 }

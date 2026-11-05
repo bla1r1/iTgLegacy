@@ -268,6 +268,76 @@ NSString *TGPhraseFromTypeName(NSString *ctype) {
 	return out;
 }
 
+static NSString *TGRichTextPlain(id text) {
+	if (![text isKindOfClass:NSDictionary.class])
+		return [text isKindOfClass:NSString.class] ? text : @"";
+	NSString *type = text[@"@type"] ?: @"";
+	if ([type isEqualToString:@"richTextPlain"])
+		return text[@"text"] ?: @"";
+	if ([type isEqualToString:@"richTexts"]){
+		NSMutableString *s = [NSMutableString string];
+		for (id item in text[@"texts"])
+			[s appendString:TGRichTextPlain(item)];
+		return s;
+	}
+	if (text[@"text"])
+		return TGRichTextPlain(text[@"text"]);
+	return @"";
+}
+
+static void TGFlattenRichBlocks(NSArray *blocks, NSMutableArray *lines) {
+	if (![blocks isKindOfClass:NSArray.class])
+		return;
+	for (NSDictionary *block in blocks){
+		if (![block isKindOfClass:NSDictionary.class])
+			continue;
+		NSString *type = block[@"@type"] ?: @"";
+		if ([type isEqualToString:@"pageBlockParagraph"] ||
+			[type isEqualToString:@"pageBlockSectionHeading"] ||
+			[type isEqualToString:@"pageBlockHeader"] ||
+			[type isEqualToString:@"pageBlockSubheader"] ||
+			[type isEqualToString:@"pageBlockPreformatted"] ||
+			[type isEqualToString:@"pageBlockFooter"] ||
+			[type isEqualToString:@"pageBlockThinking"] ||
+			(!type.length && block[@"text"])){
+			NSString *p = TGRichTextPlain(block[@"text"]);
+			if (p.length)
+				[lines addObject:p];
+		} else if ([type isEqualToString:@"pageBlockList"]){
+			for (NSDictionary *item in block[@"items"]){
+				NSMutableArray *itemLines = [NSMutableArray array];
+				TGFlattenRichBlocks(item[@"blocks"], itemLines);
+				BOOL checked = [item[@"is_checked"] boolValue];
+				NSString *marker = [item[@"has_checkbox"] boolValue] ? (checked ? @"☑ " : @"☐ ") : @"• ";
+				NSString *body = [itemLines componentsJoinedByString:@"\n"];
+				if (body.length)
+					[lines addObject:[marker stringByAppendingString:body]];
+			}
+		} else if ([type isEqualToString:@"pageBlockBlockQuote"] ||
+				   [type isEqualToString:@"pageBlockPullQuote"] ||
+				   [type isEqualToString:@"pageBlockExpandableBlockQuote"]){
+			NSString *q = TGRichTextPlain(block[@"text"]);
+			if (q.length)
+				[lines addObject:[@"> " stringByAppendingString:q]];
+		} else if ([type isEqualToString:@"pageBlockDivider"]){
+			[lines addObject:@"—"];
+		} else if (block[@"blocks"]){
+			TGFlattenRichBlocks(block[@"blocks"], lines);
+		}
+	}
+}
+
+NSString *TGRichMessageText(NSDictionary *content) {
+	if (![content isKindOfClass:NSDictionary.class])
+		return @"";
+	NSArray *blocks = content[@"blocks"] ?: content[@"rich_message"][@"blocks"];
+	if (!blocks.count && content[@"text"])
+		return TGRichTextPlain(content[@"text"]);
+	NSMutableArray *lines = [NSMutableArray array];
+	TGFlattenRichBlocks(blocks, lines);
+	return [lines componentsJoinedByString:@"\n"];
+}
+
 /// Flatten a TDLib message into what the UI needs.
 NSDictionary *TGFlattenMessage(NSDictionary *m) {
 	NSDictionary *content = m[@"content"];
@@ -581,8 +651,16 @@ NSDictionary *TGFlattenMessage(NSDictionary *m) {
 					?: content[@"title"] ?: @"Invoice", amount / 100.0, currency]
 			: (content[@"product_info"][@"title"] ?: @"Invoice");
 
+	} else if ([ctype isEqualToString:@"messageRichMessage"]){
+		extra = TGRichMessageText(content);
+		if (!extra.length)
+			extra = @"Rich message";
+		isService = NO;
+
 	} else if ([ctype isEqualToString:@"messageStory"]){
-		extra = @"Story";
+		int64_t posterId = [content[@"story_poster_chat_id"] longLongValue];
+		NSString *posterName = [[TGClient shared] nameForUserId:posterId];
+		extra = posterName.length ? [NSString stringWithFormat:@"Story by %@", posterName] : @"Story";
 
 	} else if ([ctype isEqualToString:@"messagePaidMedia"]){
 		extra = [NSString stringWithFormat:@"Paid media, %@ stars",
@@ -607,6 +685,19 @@ NSDictionary *TGFlattenMessage(NSDictionary *m) {
 
 	}
 
+	// Ephemeral bot reply in groups (private to the caller)
+	BOOL isEphemeral = NO;
+	if ([m[@"ephemeral_content"] isKindOfClass:NSDictionary.class]){
+		NSDictionary *econtent = m[@"ephemeral_content"];
+		NSString *etype = econtent[@"@type"];
+		if ([etype isEqualToString:@"messageText"] && [econtent[@"text"][@"text"] length]){
+			extra = [NSString stringWithFormat:@"(Only you) %@", econtent[@"text"][@"text"]];
+		}
+		isEphemeral = YES;
+	} else if ([m[@"ephemeral_content"] boolValue]){
+		isEphemeral = YES;
+	}
+
 	// A caption wins; then whatever the content itself says; and for a plain
 	// picture, nothing at all - the image speaks for itself.
 	NSString *caption = content[@"caption"][@"text"];
@@ -622,6 +713,10 @@ NSDictionary *TGFlattenMessage(NSDictionary *m) {
 		NSString *known = TGKnownMessagePreview(m);
 		text        = known ?: TGPhraseFromTypeName(ctype);
 		isService  |= known == nil;
+	}
+
+	if (isEphemeral && text.length && ![text hasPrefix:@"(Only you)"]) {
+		text = [NSString stringWithFormat:@"(Only you) %@", text];
 	}
 
 	// A content type with its own branch can still say nothing - an empty
@@ -688,6 +783,13 @@ NSDictionary *TGFlattenMessage(NSDictionary *m) {
 		break;
 	}
 
+	NSDictionary *lp = content[@"link_preview"] ?: content[@"web_page"];
+	NSString *lpSite = lp[@"site_name"] ?: @"";
+	NSString *lpTitle = lp[@"title"] ?: @"";
+	NSString *lpDesc = [lp[@"description"] isKindOfClass:NSDictionary.class]
+			? (lp[@"description"][@"text"] ?: @"") : (lp[@"description"] ?: @"");
+	NSString *lpUrl = lp[@"url"] ?: @"";
+
 	NSDictionary *row = @{
 		@"id"        : m[@"id"] ?: @(0),
 		@"text"      : text,
@@ -703,6 +805,11 @@ NSDictionary *TGFlattenMessage(NSDictionary *m) {
 		@"hasStickers" : @(hasStickers),
 		@"mediaWidth": @(mediaWidth),
 		@"mediaHeight": @(mediaHeight),
+		@"linkPreviewSite"  : lpSite ?: @"",
+		@"linkPreviewTitle" : lpTitle ?: @"",
+		@"linkPreviewDesc"  : lpDesc ?: @"",
+		@"linkPreviewUrl"   : lpUrl ?: @"",
+		@"senderTag"        : m[@"sender_tag"] ?: @"",
 		// The file behind docId can be a smaller alternative of the original;
 		// its own size decides whether the software player may try it.
 		@"docWidth"  : @(docWidth),

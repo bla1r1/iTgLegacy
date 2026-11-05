@@ -64,8 +64,7 @@
 			? self.ownStory[@"title"] : @"My Story";
 	UIImage *ownImage = self.ownStory[@"avatarImage"];
 	if (!ownImage){
-		NSString *first = ownTitle.length
-				? [ownTitle substringToIndex:1].uppercaseString : @"?";
+		NSString *first = [TGIcons initialsForTitle:ownTitle];
 		ownImage = [TGIcons avatarWithInitials:first
 										 size:TGMetricStoryAvatar
 									 colourId:[self.ownStory[@"chatId"] longLongValue]];
@@ -79,8 +78,7 @@
 				? row[@"title"] : @"";
 		UIImage *image = row[@"avatarImage"];
 		if (!image){
-			NSString *first = title.length
-					? [title substringToIndex:1].uppercaseString : @"?";
+			NSString *first = [TGIcons initialsForTitle:title];
 			image = [TGIcons avatarWithInitials:first
 										 size:TGMetricStoryAvatar
 									 colourId:[row[@"chatId"] longLongValue]];

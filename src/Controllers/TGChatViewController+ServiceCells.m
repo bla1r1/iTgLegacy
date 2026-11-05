@@ -245,11 +245,7 @@
 		cell.icon.hidden = NO;
 		CGFloat side = kContactDisc;
 		cell.icon.frame = CGRectMake(kPadH, fwd + kContactDiscTop, side, side);
-		NSString *initials = name.length ? [name substringToIndex:1] : @"?";
-		NSArray *words = [name componentsSeparatedByString:@" "];
-		if (words.count > 1 && [words[1] length])
-			initials = [initials stringByAppendingString:[words[1] substringToIndex:1]];
-		cell.icon.text = initials.uppercaseString;
+		cell.icon.text = [TGIcons initialsForTitle:name];
 		cell.icon.font = TGFontHeader();
 		cell.icon.layer.cornerRadius = TGHalf(side);
 		cell.icon.backgroundColor = [cardTheme mediaCircleColour];

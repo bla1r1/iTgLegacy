@@ -77,6 +77,15 @@ static UIImage *TGGiftGlyph(NSString *emoji) {
 
 /// The bar under the selected tab, and the room a text row leaves at its sides.
 static const CGFloat kMediaTabLine = 2.0f;
+static NSString *TGProfileUserName(NSDictionary *user) {
+	if (!user) return @"";
+	NSString *first = user[@"first_name"] ?: @"";
+	NSString *last = user[@"last_name"] ?: @"";
+	if (first.length && last.length)
+		return [NSString stringWithFormat:@"%@ %@", first, last];
+	return first.length ? first : last;
+}
+
 static const CGFloat kDetailInset = TGMetricPadWide;
 
 static const CGFloat kMusicStripInset = TGMetricPadMedium;
@@ -123,6 +132,7 @@ static const CGFloat kMusicChevronSide = TGMetricGiftStar;
 	if ([self respondsToSelector:@selector(setEdgesForExtendedLayout:)])
 		self.edgesForExtendedLayout = UIRectEdgeNone;
 	[self applyTheme];
+	[self updateNavigationItem];
 
 	// The status line listens to the network too (B4): a profile opened
 	// offline used to freeze at its captured last-seen.
@@ -170,6 +180,31 @@ static const CGFloat kMusicChevronSide = TGMetricGiftStar;
 - (void)viewWillAppear:(BOOL)animated {
 	[super viewWillAppear:animated];
 	[self applyTheme];
+	[self updateNavigationItem];
+	if (self.isOwnProfile){
+		NSString *ownName = TGProfileUserName([TGClient shared].me);
+		if (ownName.length)
+			self.name = ownName;
+		[self loadDetails];
+	}
+}
+
+- (void)updateNavigationItem {
+	if (self.isOwnProfile){
+		self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc]
+				initWithTitle:@"Edit"
+						style:UIBarButtonItemStylePlain
+					   target:self
+					   action:@selector(editProfileTapped)];
+	} else {
+		self.navigationItem.rightBarButtonItem = nil;
+	}
+}
+
+- (void)editProfileTapped {
+	TGEditProfileViewController *edit = [[TGEditProfileViewController alloc] init];
+	edit.hidesBottomBarWhenPushed = YES;
+	[self.navigationController pushViewController:edit animated:YES];
 }
 
 - (void)applyTheme {
@@ -297,10 +332,12 @@ static const CGFloat kMusicChevronSide = TGMetricGiftStar;
 	// view inside a scrolling table header is a mask the A4 repaints on every
 	// scroll step; TGIcons bakes the same circle once.
 	self.avatarView.contentMode = UIViewContentModeScaleAspectFill;
-	NSString *initials = self.name.length ? [self.name substringToIndex:1] : @"?";
+	self.avatarView.opaque = NO;
+	self.avatarView.backgroundColor = [UIColor clearColor];
+	NSString *initials = [TGIcons initialsForTitle:self.name];
 	// The header is rebuilt on every answer that changes a mark or a tile. Going
 	// back to the initials each time looked like the photo never finished loading.
-	self.avatarView.image = self.avatarImage ?: [TGIcons avatarWithInitials:initials.uppercaseString
+	self.avatarView.image = self.avatarImage ?: [TGIcons avatarWithInitials:initials
 												   size:side
 											   colourId:self.userId ?: self.chatId];
 	[header addSubview:self.avatarView];
@@ -541,6 +578,9 @@ static const CGFloat kMusicChevronSide = TGMetricGiftStar;
 	__weak typeof(self) weakSelf = self;
 	[[TGClient shared] userInfo:self.userId completion:^(NSDictionary *user){
 		if (!user) return;
+		NSString *updatedName = TGProfileUserName(user);
+		if (updatedName.length)
+			weakSelf.name = updatedName;
 		// The marks beside the name and the scam/fake warning all come off
 		// the plain user record; none needs the full-info call.
 		NSDictionary *verification = user[@"verification_status"];
@@ -562,6 +602,14 @@ static const CGFloat kMusicChevronSide = TGMetricGiftStar;
 			[weakSelf fetchEmojiStatusImage:statusId];
 		}
 		weakSelf.phoneNumber = user[@"phone_number"] ?: @"";
+		NSArray *activeUsernames = user[@"usernames"][@"active_usernames"];
+		if ([activeUsernames isKindOfClass:NSArray.class] && activeUsernames.count) {
+			weakSelf.activeUsernames = activeUsernames;
+		} else if ([user[@"username"] length]) {
+			weakSelf.activeUsernames = @[user[@"username"]];
+		} else {
+			weakSelf.activeUsernames = @[];
+		}
 		weakSelf.username = TGFirstUsername(user) ?: @"";
 		weakSelf.details = [weakSelf basicDetailsRows];
 		[weakSelf buildHeader];
@@ -576,6 +624,7 @@ static const CGFloat kMusicChevronSide = TGMetricGiftStar;
 			weakSelf.canCall = [info[@"canCall"] boolValue];
 			weakSelf.canVideoCall = [info[@"canVideoCall"] boolValue];
 			weakSelf.commonGroupCount = [info[@"commonGroups"] integerValue];
+			weakSelf.businessLocation = info[@"businessLocation"] ?: @"";
 			NSDictionary *firstAudio = [info[@"firstProfileAudio"]
 					isKindOfClass:NSDictionary.class] ? info[@"firstProfileAudio"] : nil;
 			if (![firstAudio isEqual:weakSelf.firstProfileAudio]){
@@ -587,7 +636,10 @@ static const CGFloat kMusicChevronSide = TGMetricGiftStar;
 			weakSelf.noteEntities = info[@"noteEntities"] ?: @[];
 			weakSelf.birthdayToday = [info[@"birthdayToday"] boolValue];
 			weakSelf.hasPersonalPhoto = [info[@"personalPhoto"] longLongValue] != 0;
-			weakSelf.details = [weakSelf fullDetailsRowsWithBio:info[@"bio"]
+			NSString *bio = info[@"bio"];
+			if (!bio.length && [info[@"botDescription"] length])
+				bio = info[@"botDescription"];
+			weakSelf.details = [weakSelf fullDetailsRowsWithBio:bio
 													  birthday:info[@"birthday"]];
 			// The tab the person chose goes first, and the screen opens on it
 			// unless a tab has already been picked.
@@ -638,9 +690,18 @@ static const CGFloat kMusicChevronSide = TGMetricGiftStar;
 	if (self.phoneNumber.length)
 		[rows addObject:@{@"kind" : @"phone", @"label" : @"mobile",
 				@"value" : [@"+" stringByAppendingString:self.phoneNumber]}];
-	if (self.username.length)
+	if (self.activeUsernames.count > 0){
+		for (NSUInteger i = 0; i < self.activeUsernames.count; i++){
+			NSString *u = self.activeUsernames[i];
+			if (!u.length) continue;
+			[rows addObject:@{@"kind" : @"username",
+					@"label" : (i == 0 ? @"username" : @"link"),
+					@"value" : [@"@" stringByAppendingString:u]}];
+		}
+	} else if (self.username.length){
 		[rows addObject:@{@"kind" : @"username", @"label" : @"username",
 				@"value" : [@"@" stringByAppendingString:self.username]}];
+	}
 	if (self.isScam || self.isFake){
 		[rows addObject:@{@"kind" : @"warning", @"label" : @"",
 				@"value" : (self.isScam ? @"This account is marked as a scam."
@@ -651,6 +712,9 @@ static const CGFloat kMusicChevronSide = TGMetricGiftStar;
 	if (birthday.length)
 		[rows addObject:@{@"kind" : @"birthday", @"label" : @"birthday",
 				@"value" : birthday}];
+	if (self.businessLocation.length)
+		[rows addObject:@{@"kind" : @"businessLocation", @"label" : @"location",
+				@"value" : self.businessLocation}];
 	if (self.personalNote.length)
 		[rows addObject:@{@"kind" : @"note", @"label" : @"note",
 				@"value" : self.personalNote}];
@@ -731,7 +795,7 @@ static const CGFloat kMusicChevronSide = TGMetricGiftStar;
 #pragma mark - table
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
-	return 6;
+	return 5;
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
@@ -751,12 +815,6 @@ static const CGFloat kMusicChevronSide = TGMetricGiftStar;
 			return (rows.count + kStoryGridCols - 1) / kStoryGridCols;
 		}
 		return [self selectedMediaRows].count;
-	}
-
-	if (section == kSectionLogout){
-		// Show "Log out" only when this is the signed-in user's own profile.
-		int64_t myId = [[TGClient shared].me[@"id"] longLongValue];
-		return (self.userId && self.userId == myId) ? 1 : 0;
 	}
 	return 0;
 }
@@ -932,8 +990,28 @@ static const CGFloat kMusicChevronSide = TGMetricGiftStar;
 		NSString *kind = row[@"kind"];
 		TGTheme *theme = [TGTheme shared];
 		// The media lists share this reuse id and leave a chevron and an icon behind.
-		cell.accessoryType = UITableViewCellAccessoryNone;
-		cell.imageView.image = nil;
+		cell.accessoryType = ([kind isEqualToString:@"channel"] || [kind isEqualToString:@"businessLocation"])
+				? UITableViewCellAccessoryDisclosureIndicator : UITableViewCellAccessoryNone;
+
+		UIImage *icon = nil;
+		CGFloat iconSide = 22.0f;
+		if ([kind isEqualToString:@"phone"]) {
+			icon = [TGIcons glyphNamed:@"call" colour:[theme accentColour] side:iconSide];
+		} else if ([kind isEqualToString:@"username"]) {
+			icon = [TGIcons glyphNamed:@"mention" colour:[theme accentColour] side:iconSide];
+		} else if ([kind isEqualToString:@"birthday"]) {
+			icon = [TGIcons glyphNamed:@"star" colour:self.birthdayToday ? [theme onlineColour] : [theme accentColour] side:iconSide];
+		} else if ([kind isEqualToString:@"bio"] || [kind isEqualToString:@"about"] || [kind isEqualToString:@"note"]) {
+			icon = [TGIcons glyphNamed:@"edit" colour:[theme secondaryTextColour] side:iconSide];
+		} else if ([kind isEqualToString:@"channel"]) {
+			icon = [TGIcons glyphNamed:@"chat" colour:[theme accentColour] side:iconSide];
+		} else if ([kind isEqualToString:@"businessLocation"]) {
+			icon = [TGIcons glyphNamed:@"archive" colour:[theme accentColour] side:iconSide];
+		}
+		cell.imageView.image = icon;
+		cell.imageView.opaque = NO;
+		cell.imageView.backgroundColor = [UIColor clearColor];
+
 		cell.textLabel.text = row[@"label"];
 		cell.textLabel.font = TGFontMeta();
 		cell.textLabel.textColor = [theme secondaryTextColour];
@@ -1036,16 +1114,6 @@ static const CGFloat kMusicChevronSide = TGMetricGiftStar;
 				[weakCell setNeedsLayout];
 			}];
 		}
-		return cell;
-	}
-
-	if (indexPath.section == kSectionLogout){
-		cell.selectionStyle = UITableViewCellSelectionStyleDefault;
-		cell.textLabel.text = @"Log out";
-		cell.textLabel.textColor = [[TGTheme shared] destructiveColour];
-		cell.textLabel.textAlignment = NSTextAlignmentCenter;
-		cell.detailTextLabel.text = nil;
-		cell.imageView.image = nil;
 		return cell;
 	}
 
@@ -1178,16 +1246,6 @@ static const CGFloat kMusicChevronSide = TGMetricGiftStar;
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
 	[tableView deselectRowAtIndexPath:indexPath animated:YES];
 
-	if (indexPath.section == kSectionLogout){
-		[TGAlertSheet showConfirm:@"Are you sure you want to log out?"
-							title:@"Log out"
-						   action:@"Log out"
-					  destructive:YES
-						   inView:self.view
-						onConfirm:^{ [[TGClient shared] logOut]; }];
-		return;
-	}
-
 	if (indexPath.section == kSectionMembers &&
 		indexPath.row < (NSInteger)self.members.count){
 		// A member row is a person, not a chat: open their profile. The
@@ -1213,6 +1271,10 @@ static const CGFloat kMusicChevronSide = TGMetricGiftStar;
 	if ([kind isEqualToString:@"channel"]){
 		[self openChat:[self.personalChannel[@"chatId"] longLongValue]
 				 title:self.personalChannel[@"title"] message:0];
+	} else if ([kind isEqualToString:@"businessLocation"]){
+		NSString *encoded = [row[@"value"] stringByAddingPercentEscapesUsingEncoding:NSUTF8StringEncoding];
+		NSString *mapsUrl = [NSString stringWithFormat:@"http://maps.apple.com/?q=%@", encoded ?: @""];
+		[[UIApplication sharedApplication] openURL:[NSURL URLWithString:mapsUrl]];
 	} else if ([kind isEqualToString:@"addContact"]){
 		[self addToContactsTapped];
 	} else if ([kind isEqualToString:@"bio"]){
@@ -1220,7 +1282,7 @@ static const CGFloat kMusicChevronSide = TGMetricGiftStar;
 		if (url)
 			[[UIApplication sharedApplication] openURL:url];
 	} else if ([kind isEqualToString:@"phone"] || [kind isEqualToString:@"username"] ||
-			   [kind isEqualToString:@"invite"]){
+			   [kind isEqualToString:@"invite"] || [kind isEqualToString:@"birthday"]){
 		[self copyDetailValue:row[@"value"]];
 	}
 }

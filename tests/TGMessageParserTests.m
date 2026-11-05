@@ -365,6 +365,53 @@ static NSDictionary *textContent(NSString *text) {
 	XCTAssertEqual([flat[@"viewCount"] integerValue], (NSInteger)0);
 }
 
+- (void)testFlatten_RichMessageUnpacksBlocks {
+	NSDictionary *richContent = @{
+		@"@type" : @"messageRichMessage",
+		@"blocks" : @[
+			@{@"text" : @{@"text" : @"First block"}},
+			@{@"text" : @"Second block"}
+		]
+	};
+	NSDictionary *flat = TGFlattenMessage(msg(richContent, nil));
+	XCTAssertEqualObjects(flat[@"text"], @"First block\nSecond block");
+	XCTAssertEqualObjects(flat[@"kind"], @"messageRichMessage");
+}
+
+- (void)testFlatten_LinkPreviewExtracted {
+	NSDictionary *content = @{
+		@"@type" : @"messageText",
+		@"text"  : @{@"@type" : @"formattedText", @"text" : @"Check this out"},
+		@"link_preview" : @{
+			@"site_name"   : @"GitHub",
+			@"title"       : @"iTgLegacy",
+			@"description" : @"Telegram for iOS 6",
+			@"url"         : @"https://github.com/dmytrom/iTgLegacy"
+		}
+	};
+	NSDictionary *flat = TGFlattenMessage(msg(content, nil));
+	XCTAssertEqualObjects(flat[@"linkPreviewSite"], @"GitHub");
+	XCTAssertEqualObjects(flat[@"linkPreviewTitle"], @"iTgLegacy");
+	XCTAssertEqualObjects(flat[@"linkPreviewDesc"], @"Telegram for iOS 6");
+	XCTAssertEqualObjects(flat[@"linkPreviewUrl"], @"https://github.com/dmytrom/iTgLegacy");
+}
+
+- (void)testFlatten_EphemeralContentAddsOnlyYouPrefix {
+	NSDictionary *content = @{
+		@"@type" : @"messageText",
+		@"text"  : @{@"@type" : @"formattedText", @"text" : @"Secret note"}
+	};
+	NSDictionary *flat = TGFlattenMessage(msg(content, @{@"ephemeral_content" : @YES}));
+	XCTAssertEqualObjects(flat[@"text"], @"(Only you) Secret note");
+}
+
+- (void)testFlatten_SenderTagExtracted {
+	NSDictionary *flat = TGFlattenMessage(msg(textContent(@"hi"), @{
+		@"sender_tag" : @"Admin"
+	}));
+	XCTAssertEqualObjects(flat[@"senderTag"], @"Admin");
+}
+
 @end
 
 // vim:ft=objc

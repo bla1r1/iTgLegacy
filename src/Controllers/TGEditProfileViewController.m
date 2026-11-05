@@ -382,7 +382,7 @@ static NSString *TGBirthdayPrivacyLabel(NSString *value) {
 
 - (NSString *)birthdayText {
 	if (self.birthDay <= 0)
-		return @"Add";
+		return nil;
 	static NSArray *months = nil;
 	if (!months) months = @[@"", @"January", @"February", @"March", @"April",
 			@"May", @"June", @"July", @"August", @"September", @"October",
@@ -559,7 +559,7 @@ static NSString *TGBirthdayPrivacyLabel(NSString *value) {
 	if (section == 0) return 1;    // the picture
 	if (section == 1) return 2;    // first, last
 	if (section == 2) return 1;    // bio
-	if (section == 3) return 2;    // birthday, birthday privacy
+	if (section == 3) return self.birthDay > 0 ? 2 : 1;    // birthday, (privacy only when set)
 	if (section == 4) return 2;    // phone, username
 	return 1;                      // main profile tab
 }
@@ -631,7 +631,7 @@ static NSString *TGBirthdayPrivacyLabel(NSString *value) {
 		} else {
 			cell.textLabel.text = @"Birthday Privacy";
 			cell.detailTextLabel.text = self.birthdayPrivacy.length
-					? TGBirthdayPrivacyLabel(self.birthdayPrivacy) : @"...";
+					? TGBirthdayPrivacyLabel(self.birthdayPrivacy) : nil;
 			cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
 			cell.selectionStyle = UITableViewCellSelectionStyleBlue;
 		}
@@ -650,7 +650,7 @@ static NSString *TGBirthdayPrivacyLabel(NSString *value) {
 		if (path.row == 0){
 			cell.textLabel.text = @"Phone Number";
 			cell.detailTextLabel.text = self.phoneNumber.length
-					? [NSString stringWithFormat:@"+%@", self.phoneNumber] : @"unknown";
+					? [NSString stringWithFormat:@"+%@", self.phoneNumber] : nil;
 			// Changing a number is a whole login flow; this shows it.
 			cell.selectionStyle = UITableViewCellSelectionStyleNone;
 		} else {
@@ -658,7 +658,7 @@ static NSString *TGBirthdayPrivacyLabel(NSString *value) {
 			// come here to change, and its own screen owns the switches.
 			cell.textLabel.text = @"Username";
 			cell.detailTextLabel.text = self.username.length
-					? [NSString stringWithFormat:@"@%@", self.username] : @"none";
+					? [NSString stringWithFormat:@"@%@", self.username] : nil;
 			cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
 			cell.selectionStyle = UITableViewCellSelectionStyleBlue;
 		}
@@ -700,7 +700,7 @@ static NSString *TGBirthdayPrivacyLabel(NSString *value) {
 	self.photoView.layer.borderWidth = 1.0f;
 	self.photoView.contentMode = UIViewContentModeScaleAspectFill;
 	self.photoView.image = [TGIcons avatarWithInitials:
-			[name substringToIndex:1].uppercaseString
+			[TGIcons initialsForTitle:name]
 												  size:kPhotoSide
 											  colourId:[me[@"id"] longLongValue]];
 	[cell.contentView addSubview:self.photoView];

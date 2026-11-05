@@ -16,14 +16,16 @@ static const CGFloat kMuteGlyph     = 16.0f;
 static const CGFloat kMuteRoom      = 20.0f;
 static const CGFloat kPinGlyph      = 16.0f;
 static const CGFloat kBadgePad      = TGMetricPadMedium + TGMetricPadTiny;
-/// Three of these fit beside a 320 pt row. A fourth would cover the preview,
-/// so Pin and Read stay in the hold menu.
+/// Three buttons fit beside a 320 pt row without clipping.
 static const CGFloat kSwipeActionWidth = 76.0f;
 
 @interface TGChatCell ()
-@property (nonatomic, strong) NSMutableArray *swipeActionButtons;
+@property (nonatomic, strong) NSMutableArray *trailingActionButtons;
+@property (nonatomic, assign) CGFloat trailingActionsWidth;
+@property (nonatomic, strong) NSMutableArray *leadingActionButtons;
+@property (nonatomic, assign) CGFloat leadingActionsWidth;
 @property (nonatomic, assign) BOOL swipeActionsOpen;
-@property (nonatomic, assign) CGFloat swipeActionsWidth;
+@property (nonatomic, assign) CGFloat currentSwipeOffset;
 /// A close animation must not strip the buttons of a row that was swiped
 /// again before the first animation finished.
 @property (nonatomic, assign) NSUInteger swipeActionsGeneration;
@@ -54,14 +56,10 @@ static UIFont *TGChatCellTitleFont(void) {
 	self.contentView.backgroundColor = [theme listBackgroundColour];
 
 	self.avatar = [[UIImageView alloc] initWithFrame:CGRectMake(kInset, TGCenteredOrigin(kRowHeight, kAvatar), kAvatar, kAvatar)];
-	self.avatar.layer.cornerRadius = TGHalf(kAvatar);
-	self.avatar.clipsToBounds = YES;
-	self.avatar.layer.shouldRasterize = YES;
-	self.avatar.layer.rasterizationScale = scale;
-	self.avatar.layer.borderColor = [theme separatorColour].CGColor;
-	self.avatar.layer.borderWidth = 1.0f;
-	self.avatar.backgroundColor = [theme fileTileColour];
+	// Pre-baked circle bitmap: no cornerRadius or shouldRasterize layer on scrolling rows.
 	self.avatar.contentMode = UIViewContentModeScaleAspectFill;
+	self.avatar.opaque = NO;
+	self.avatar.backgroundColor = [UIColor clearColor];
 	[self.contentView addSubview:self.avatar];
 
 	self.titleLabel = [[UILabel alloc] init];
@@ -90,7 +88,6 @@ static UIFont *TGChatCellTitleFont(void) {
 	self.badge.textAlignment = NSTextAlignmentCenter;
 	self.badge.layer.cornerRadius = TGHalf(TGMetricChatBadgeHeight);
 	self.badge.clipsToBounds = YES;
-	self.badge.layer.shouldRasterize = YES;
 
 	self.editCheck = [[UILabel alloc] init];
 	self.editCheck.text = @"\u2713";
@@ -102,7 +99,6 @@ static UIFont *TGChatCellTitleFont(void) {
 	self.editCheck.clipsToBounds = YES;
 	self.editCheck.hidden = YES;
 	[self.contentView addSubview:self.editCheck];
-	self.badge.layer.rasterizationScale = scale;
 	self.badge.hidden = YES;
 	[self.contentView addSubview:self.badge];
 
@@ -113,8 +109,6 @@ static UIFont *TGChatCellTitleFont(void) {
 	self.onlineDot.layer.cornerRadius = TGHalf(dot);
 	self.onlineDot.layer.borderWidth = TGMetricBorderThick;
 	self.onlineDot.layer.borderColor = [theme listBackgroundColour].CGColor;
-	self.onlineDot.layer.shouldRasterize = YES;
-	self.onlineDot.layer.rasterizationScale = scale;
 	self.onlineDot.hidden = YES;
 	[self.contentView addSubview:self.onlineDot];
 
@@ -224,10 +218,18 @@ static UIFont *TGChatCellTitleFont(void) {
 	CGFloat hair = TGMetricHairline;
 	self.separator.frame = CGRectMake(kTextLeft, h - hair, w - kTextLeft, hair);
 
-	// Only a swiped row has these; closed rows keep no views to lay out.
-	if (self.swipeActionButtons.count){
-		CGFloat x = self.bounds.size.width - self.swipeActionsWidth;
-		for (UIButton *button in self.swipeActionButtons){
+	// Layout trailing buttons along the right edge
+	if (self.trailingActionButtons.count){
+		CGFloat x = self.bounds.size.width - self.trailingActionsWidth;
+		for (UIButton *button in self.trailingActionButtons){
+			button.frame = CGRectMake(x, 0, kSwipeActionWidth, self.bounds.size.height);
+			x += kSwipeActionWidth;
+		}
+	}
+	// Layout leading buttons along the left edge
+	if (self.leadingActionButtons.count){
+		CGFloat x = 0;
+		for (UIButton *button in self.leadingActionButtons){
 			button.frame = CGRectMake(x, 0, kSwipeActionWidth, self.bounds.size.height);
 			x += kSwipeActionWidth;
 		}
@@ -249,61 +251,106 @@ static UIFont *TGChatCellTitleFont(void) {
 	self.separator.backgroundColor = [theme separatorColour];
 }
 
-- (void)revealSwipeActionsWithTitles:(NSArray *)titles
-                             colours:(NSArray *)colours
-                              target:(id)target
-                              action:(SEL)action {
+- (CGFloat)swipeActionsWidth {
+	return self.trailingActionsWidth + self.leadingActionsWidth;
+}
+
+- (void)revealSwipeActionsWithTrailingTitles:(NSArray *)trailingTitles
+                             trailingColours:(NSArray *)trailingColours
+                               leadingTitles:(NSArray *)leadingTitles
+                              leadingColours:(NSArray *)leadingColours
+                                      target:(id)target
+                                      action:(SEL)action {
 	self.swipeActionsGeneration++;
-	if (!self.swipeActionButtons.count){
-		self.swipeActionButtons = [NSMutableArray arrayWithCapacity:titles.count];
-		for (NSUInteger i = 0; i < titles.count; i++){
+	[self removeSwipeActionButtons];
+
+	// Trailing buttons (shown when dragging left, offset < 0)
+	if (trailingTitles.count){
+		self.trailingActionButtons = [NSMutableArray arrayWithCapacity:trailingTitles.count];
+		for (NSUInteger i = 0; i < trailingTitles.count; i++){
 			UIButton *button = [UIButton buttonWithType:UIButtonTypeCustom];
 			button.titleLabel.font = TGFontCaptionStrong();
 			[button setTitleColor:[[TGTheme shared] onAccentColour]
 						 forState:UIControlStateNormal];
 			[button addTarget:target action:action
 			 forControlEvents:UIControlEventTouchUpInside];
-			[button setTitle:i < titles.count ? titles[i] : @""
+			[button setTitle:i < trailingTitles.count ? trailingTitles[i] : @""
 					forState:UIControlStateNormal];
-			if (i < colours.count)
-				button.backgroundColor = colours[i];
-			// Behind the content view: the row slides left and exposes them. On
-			// iOS 7 the content view sits in a private scroll view, not the cell.
+			if (i < trailingColours.count)
+				button.backgroundColor = trailingColours[i];
 			[self.contentView.superview insertSubview:button belowSubview:self.contentView];
-			[self.swipeActionButtons addObject:button];
+			[self.trailingActionButtons addObject:button];
 		}
-		self.swipeActionsWidth = (CGFloat)titles.count * kSwipeActionWidth;
-		self.clipsToBounds = YES;
-		[self setNeedsLayout];
-	} else {
-		for (NSUInteger i = 0; i < self.swipeActionButtons.count; i++){
-			UIButton *button = self.swipeActionButtons[i];
-			[button setTitle:i < titles.count ? titles[i] : @""
-					forState:UIControlStateNormal];
-			if (i < colours.count)
-				button.backgroundColor = colours[i];
-		}
+		self.trailingActionsWidth = (CGFloat)trailingTitles.count * kSwipeActionWidth;
 	}
+
+	// Leading buttons (shown when dragging right, offset > 0)
+	if (leadingTitles.count){
+		self.leadingActionButtons = [NSMutableArray arrayWithCapacity:leadingTitles.count];
+		for (NSUInteger i = 0; i < leadingTitles.count; i++){
+			UIButton *button = [UIButton buttonWithType:UIButtonTypeCustom];
+			button.titleLabel.font = TGFontCaptionStrong();
+			[button setTitleColor:[[TGTheme shared] onAccentColour]
+						 forState:UIControlStateNormal];
+			[button addTarget:target action:action
+			 forControlEvents:UIControlEventTouchUpInside];
+			[button setTitle:i < leadingTitles.count ? leadingTitles[i] : @""
+					forState:UIControlStateNormal];
+			if (i < leadingColours.count)
+				button.backgroundColor = leadingColours[i];
+			[self.contentView.superview insertSubview:button belowSubview:self.contentView];
+			[self.leadingActionButtons addObject:button];
+		}
+		self.leadingActionsWidth = (CGFloat)leadingTitles.count * kSwipeActionWidth;
+	}
+
+	self.clipsToBounds = YES;
 	self.swipeActionsOpen = NO;
+	self.currentSwipeOffset = 0;
 	self.contentView.transform = CGAffineTransformIdentity;
+	[self setNeedsLayout];
+}
+
+- (void)revealSwipeActionsWithTitles:(NSArray *)titles
+                             colours:(NSArray *)colours
+                              target:(id)target
+                              action:(SEL)action {
+	[self revealSwipeActionsWithTrailingTitles:titles
+	                           trailingColours:colours
+	                             leadingTitles:nil
+	                            leadingColours:nil
+	                                    target:target
+	                                    action:action];
 }
 
 - (void)setSwipeActionsOffset:(CGFloat)offset {
-	CGFloat width = self.swipeActionsWidth;
-	if (width <= 0)
-		return;
-	if (offset > 0)
-		offset = 0;
-	if (offset < -width)
-		offset = -width;
+	if (offset < 0){
+		// Dragging left: show trailing, hide leading
+		for (UIButton *b in self.leadingActionButtons) b.hidden = YES;
+		for (UIButton *b in self.trailingActionButtons) b.hidden = NO;
+		CGFloat maxOffset = self.trailingActionsWidth;
+		if (maxOffset > 0 && offset < -maxOffset)
+			offset = -maxOffset;
+	} else if (offset > 0){
+		// Dragging right: show leading, hide trailing
+		for (UIButton *b in self.leadingActionButtons) b.hidden = NO;
+		for (UIButton *b in self.trailingActionButtons) b.hidden = YES;
+		CGFloat maxOffset = self.leadingActionsWidth;
+		if (maxOffset > 0 && offset > maxOffset)
+			offset = maxOffset;
+	}
+	self.currentSwipeOffset = offset;
 	self.contentView.transform = CGAffineTransformMakeTranslation(offset, 0);
 }
 
-- (void)openSwipeActionsAnimated:(BOOL)animated {
-	CGFloat width = self.swipeActionsWidth;
+- (void)openTrailingSwipeActionsAnimated:(BOOL)animated {
+	CGFloat width = self.trailingActionsWidth;
 	if (width <= 0)
 		return;
+	for (UIButton *b in self.leadingActionButtons) b.hidden = YES;
+	for (UIButton *b in self.trailingActionButtons) b.hidden = NO;
 	self.swipeActionsOpen = YES;
+	self.currentSwipeOffset = -width;
 	if (!animated){
 		self.contentView.transform = CGAffineTransformMakeTranslation(-width, 0);
 		return;
@@ -313,15 +360,37 @@ static UIFont *TGChatCellTitleFont(void) {
 	}];
 }
 
+- (void)openLeadingSwipeActionsAnimated:(BOOL)animated {
+	CGFloat width = self.leadingActionsWidth;
+	if (width <= 0)
+		return;
+	for (UIButton *b in self.leadingActionButtons) b.hidden = NO;
+	for (UIButton *b in self.trailingActionButtons) b.hidden = YES;
+	self.swipeActionsOpen = YES;
+	self.currentSwipeOffset = width;
+	if (!animated){
+		self.contentView.transform = CGAffineTransformMakeTranslation(width, 0);
+		return;
+	}
+	[UIView animateWithDuration:TGAnimationDurationFast animations:^{
+		self.contentView.transform = CGAffineTransformMakeTranslation(width, 0);
+	}];
+}
+
+- (void)openSwipeActionsAnimated:(BOOL)animated {
+	[self openTrailingSwipeActionsAnimated:animated];
+}
+
 - (void)closeSwipeActionsAnimated:(BOOL)animated {
 	self.swipeActionsOpen = NO;
+	self.currentSwipeOffset = 0;
 	NSUInteger generation = ++self.swipeActionsGeneration;
 	void (^finish)(void) = ^{
 		if (self.swipeActionsGeneration != generation)
 			return;
 		[self removeSwipeActionButtons];
 	};
-	if (!animated || !self.swipeActionButtons.count){
+	if (!animated || (!self.trailingActionButtons.count && !self.leadingActionButtons.count)){
 		self.contentView.transform = CGAffineTransformIdentity;
 		finish();
 		return;
@@ -334,10 +403,15 @@ static UIFont *TGChatCellTitleFont(void) {
 }
 
 - (void)removeSwipeActionButtons {
-	for (UIButton *button in self.swipeActionButtons)
+	for (UIButton *button in self.trailingActionButtons)
 		[button removeFromSuperview];
-	self.swipeActionButtons = nil;
-	self.swipeActionsWidth = 0;
+	self.trailingActionButtons = nil;
+	self.trailingActionsWidth = 0;
+
+	for (UIButton *button in self.leadingActionButtons)
+		[button removeFromSuperview];
+	self.leadingActionButtons = nil;
+	self.leadingActionsWidth = 0;
 }
 
 - (void)setEditing:(BOOL)editing animated:(BOOL)animated {

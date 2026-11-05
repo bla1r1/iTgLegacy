@@ -97,7 +97,16 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 - (void)buildActionsIn:(UIView *)header atY:(CGFloat)y {
 	NSMutableArray *tiles = [NSMutableArray array];
 	BOOL own = self.isOwnProfile;
-	if (self.userId && !own){
+	if (own){
+		if (self.onSearchTapped) {
+			[tiles addObject:@[@"search", @"search"]];
+		} else {
+			[tiles addObject:@[@"chat", @"saved"]];
+		}
+		[tiles addObject:@[@"edit", @"edit"]];
+		[tiles addObject:@[@"plus", @"story"]];
+		[tiles addObject:@[@"more", @"more"]];
+	} else if (self.userId){
 		// A profile is often reached from a contact or a member list, not
 		// from the chat, so Message is the first thing Telegram offers. Opened
 		// from that chat (it passes a search), the chat is one step back.
@@ -119,18 +128,23 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 	if (!own)
 		[tiles addObject:@[(self.muted ? @"unmute" : @"mute"),
 						   (self.muted ? @"unmute" : @"mute")]];
-	if (self.onSearchTapped)
+	if (!own && self.onSearchTapped)
 		[tiles addObject:@[@"search", @"search"]];
-	[tiles addObject:@[@"more", @"more"]];
+	if (!own)
+		[tiles addObject:@[@"more", @"more"]];
 
 	CGFloat width = header.bounds.size.width;
 	CGFloat gap = 6, margin = 10;
-	CGFloat tileW = (width - TGDoubled(margin) - gap * (tiles.count - 1)) / tiles.count;
+	CGFloat tileW = (width - TGDoubled(margin) - gap * (tiles.count - 1)) / (CGFloat)MAX(tiles.count, 1);
+	if (tileW > 96.0f)
+		tileW = 96.0f;
+	CGFloat totalW = tiles.count * tileW + (tiles.count - 1) * gap;
+	CGFloat startX = TGCenteredOrigin(width, totalW);
 	TGTheme *theme = [TGTheme shared];
 
 	for (NSUInteger i = 0; i < tiles.count; i++){
 		UIButton *tile = [UIButton buttonWithType:UIButtonTypeCustom];
-		tile.frame = CGRectMake(margin + i * (tileW + gap), y, tileW, kActionTile);
+		tile.frame = CGRectMake(startX + i * (tileW + gap), y, tileW, kActionTile);
 		[tile setBackgroundImage:[TGTheme buttonImageForStyle:TGButtonStyleSecondary highlighted:NO height:kActionTile] forState:UIControlStateNormal];
 		[tile setBackgroundImage:[TGTheme buttonImageForStyle:TGButtonStyleSecondary highlighted:YES height:kActionTile] forState:UIControlStateHighlighted];
 		tile.backgroundColor = [UIColor clearColor];
@@ -163,7 +177,23 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 - (void)actionTileTapped:(UIButton *)tile {
 	NSString *action = self.actionNames[tile.tag][1];
 
-	if ([action isEqualToString:@"call"] || [action isEqualToString:@"video"]){
+	if ([action isEqualToString:@"saved"]){
+		int64_t myId = [[TGClient shared].me[@"id"] longLongValue];
+		int64_t savedChatId = [[TGClient shared] savedMessagesChatId] ?: myId;
+		TGChatViewController *chat = [[TGChatViewController alloc] init];
+		chat.chatId = savedChatId;
+		chat.chatTitle = @"Saved Messages";
+		chat.hidesBottomBarWhenPushed = YES;
+		[self.navigationController pushViewController:chat animated:YES];
+	} else if ([action isEqualToString:@"edit"]){
+		[self editProfileTapped];
+	} else if ([action isEqualToString:@"story"]){
+		__weak typeof(self) weakSelf = self;
+		[TGStoryComposerViewController openFromController:self chatId:self.chatId
+													title:@"Your Story" onPosted:^{
+			[weakSelf reloadOwnStories];
+		}];
+	} else if ([action isEqualToString:@"call"] || [action isEqualToString:@"video"]){
 		[TGCallViewController presentForUserId:self.userId
 										  name:self.name
 									  outgoing:YES];
@@ -269,6 +299,23 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 /// no secret chats, no gifts.
 - (void)showMoreMenuFrom:(UIView *)tile {
 	NSMutableArray *items = [NSMutableArray array];
+	if (self.isOwnProfile){
+		[items addObject:@{@"title" : @"Add Story", @"icon" : @"plus"}];
+		[items addObject:@{@"title" : @"Story Archive", @"icon" : @"archive"}];
+		[items addObject:@{@"title" : @"Edit Profile", @"icon" : @"edit"}];
+		[items addObject:@{@"title" : @"Copy Profile Link", @"icon" : @"copy"}];
+		[items addObject:@{@"title" : @"Add Local Note", @"icon" : @"edit"}];
+		CGPoint where = [tile convertPoint:CGPointMake(TGHalf(tile.bounds.size.width),
+													   tile.bounds.size.height)
+									toView:self.navigationController.view];
+		__weak typeof(self) weakSelf = self;
+		[TGPopupMenu showItems:items atPoint:where inView:self.navigationController.view
+					  onChoice:^(NSInteger index, NSString *title){
+			[weakSelf runMoreAction:title];
+		}];
+		return;
+	}
+
 	// Emoji status, profile audio, direct messages and stake dice: one
 	// category answers the rows and the tap so this menu stays a menu.
 	[items addObjectsFromArray:[self tier2MoreItems]];
@@ -276,8 +323,6 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 		[items addObject:@{@"title" : @"Share contact", @"icon" : @"forward"}];
 		if (self.userId == [[TGClient shared].me[@"id"] longLongValue])
 			[items addObject:@{@"title" : @"Copy Profile Link", @"icon" : @"forward"}];
-		else
-			[items addObject:@{@"title" : @"Groups in Common", @"icon" : @"folder"}];
 		[items addObject:@{@"title" : @"Start Secret Chat", @"icon" : @"privacy"}];
 	}
 	// The things one person can do to another's profile: a note only this
@@ -323,8 +368,6 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 		[items addObject:@{@"title" : @"Affiliate Program", @"icon" : @"star"}];
 	// A note kept in the chat without being sent to anyone. It is the only
 	// way to make a message that never leaves this device.
-	if (self.isOwnProfile)
-		[items insertObject:@{@"title" : @"Add Story", @"icon" : @"plus"} atIndex:0];
 	[items addObject:@{@"title" : @"Add Local Note", @"icon" : @"edit"}];
 	if ([[TGClient shared] chatIsSavedMessages:self.chatId])
 		[items insertObject:@{@"title" : @"Topics", @"icon" : @"folder"} atIndex:0];
@@ -406,6 +449,10 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 - (void)runMoreAction:(NSString *)title {
 	if ([self runTier2Action:title])
 		return;
+	if ([title isEqualToString:@"Edit Profile"]){
+		[self editProfileTapped];
+		return;
+	}
 	if ([title isEqualToString:@"Copy Profile Link"]){
 		// The link is Telegram's, not the username's spellcheck: ask whose
 		// account it hands out, which here is the signed-in one.
@@ -429,42 +476,8 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 		return;
 	}
 
-	if ([title isEqualToString:@"Groups in Common"]){
-		// The chats both accounts sit in, and each openable the way a chat
-		// row opens - because a group nobody can enter from here is listed
-		// for nothing.
-		int64_t userId = self.userId;
-		NSString *who = self.name;
-		__weak typeof(self) weakSelf = self;
-		[[TGClient shared] groupsInCommonWithUser:userId completion:^(NSArray *chats){
-			if (!chats.count){
-				NSString *message = [NSString stringWithFormat:
-						@"You are not in any groups with %@.", who ?: @"them"];
-				[TGAlertSheet showMessage:message
-									title:@"Groups in Common"
-								   inView:weakSelf.view];
-				return;
-			}
-			NSMutableArray *titles = [NSMutableArray array];
-			for (NSDictionary *c in chats)
-				[titles addObject:c[@"title"] ?: @""];
-			[TGAlertSheet showChoices:titles
-								title:(who.length
-										? [NSString stringWithFormat:
-												@"With %@", who]
-										: @"Groups in Common")
-					 destructiveIndex:-1
-							   inView:weakSelf.view
-							 onChoice:^(NSInteger index){
-				NSDictionary *c = chats[index];
-				TGChatViewController *vc = [[TGChatViewController alloc] init];
-				vc.chatId = [c[@"chatId"] longLongValue];
-				vc.chatTitle = c[@"title"];
-				vc.isGroup = YES;
-				vc.hidesBottomBarWhenPushed = YES;
-				[weakSelf.navigationController pushViewController:vc animated:YES];
-			}];
-		}];
+	if ([title isEqualToString:@"Story Archive"]){
+		[self mediaTabSelected:@"archive"];
 		return;
 	}
 

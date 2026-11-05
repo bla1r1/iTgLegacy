@@ -155,7 +155,7 @@ static BOOL TGKindIsStories(NSString *kind) {
 	BOOL ownPublic = own && ![self showsSavedMessages];
 	NSMutableArray *out = [NSMutableArray array];
 	for (NSString *kind in TGProfileTabKinds(!own && self.stories.count, self.gifts.count > 0,
-			self.commonGroupCount > 0, ownPublic, self.mainMediaKind))
+			NO, ownPublic, self.mainMediaKind))
 		[out addObject:@{@"title" : titles[kind], @"kind" : kind}];
 	return out;
 }
@@ -301,7 +301,7 @@ static const CGFloat kVideoMarkInset = TGMetricPadWide;
 
 			NSInteger userId = [tile[@"senderUserId"] longLongValue];
 			NSString *name = [[TGClient shared] nameForUserId:userId];
-			NSString *first = name.length ? [name substringToIndex:1].uppercaseString : @"?";
+			NSString *first = [TGIcons initialsForTitle:name];
 			UIButton *face = [UIButton buttonWithType:UIButtonTypeCustom];
 			face.frame = CGRectMake(frame.origin.x + TGMetricPadSmall, TGMetricPadSmall, kStoryFace, kStoryFace);
 			face.layer.cornerRadius = TGMetricCornerCard;
@@ -413,8 +413,7 @@ static const CGFloat kVideoMarkInset = TGMetricPadWide;
 
 			NSInteger userId = [tile[@"senderUserId"] longLongValue];
 			NSString *name = [[TGClient shared] nameForUserId:userId];
-			NSString *first = name.length
-					? [name substringToIndex:1].uppercaseString : @"?";
+			NSString *first = [TGIcons initialsForTitle:name];
 			UIButton *face = [UIButton buttonWithType:UIButtonTypeCustom];
 			face.frame = CGRectMake(TGMetricPadSmall, TGMetricPadSmall, kStoryFace, kStoryFace);
 			face.layer.cornerRadius = TGMetricCornerCard;
@@ -592,26 +591,50 @@ static const CGFloat kVideoMarkInset = TGMetricPadWide;
 		return;
 	NSDictionary *story = rows[(NSUInteger)index];
 	BOOL posted = [story[@"isPostedToChatPage"] boolValue];
-	if (![story[@"canToggleIsPostedToChatPage"] boolValue])
+	NSMutableArray *choices = [NSMutableArray array];
+	if ([story[@"canToggleIsPostedToChatPage"] boolValue])
+		[choices addObject:(posted ? @"Remove from Profile" : @"Save to Profile")];
+	if ([story[@"canBeDeleted"] boolValue])
+		[choices addObject:@"Delete Story"];
+	if (!choices.count)
 		return;
+	NSInteger deleteIndex = [choices indexOfObject:@"Delete Story"];
+	NSInteger destructiveIndex = (deleteIndex != NSNotFound) ? (NSInteger)deleteIndex : (posted ? 0 : -1);
 	__weak typeof(self) weakSelf = self;
-	[TGAlertSheet showChoices:@[posted ? @"Remove from Profile" : @"Save to Profile"]
-						title:nil destructiveIndex:posted ? 0 : -1 inView:self.view
+	[TGAlertSheet showChoices:choices
+						title:nil destructiveIndex:destructiveIndex inView:self.view
 					 onChoice:^(NSInteger choice){
-		[[TGClient shared] toggleStory:(int32_t)[story[@"storyId"] intValue]
-							  fromChat:weakSelf.chatId
-					  postedToChatPage:!posted
-							completion:^(BOOL ok, NSString *error){
-			TGProfileViewController *me = weakSelf;
-			if (!me)
-				return;
-			if (!ok){
-				[TGAlertSheet showMessage:error ?: @"Telegram refused that."
-									title:@"Stories" inView:me.view];
-				return;
-			}
-			[me reloadOwnStories];
-		}];
+		if (choice < 0 || choice >= (NSInteger)choices.count)
+			return;
+		NSString *picked = choices[(NSUInteger)choice];
+		if ([picked isEqualToString:@"Delete Story"]){
+			[[TGClient shared] deleteStory:[story[@"storyId"] intValue]
+								  fromChat:weakSelf.chatId
+								completion:^(BOOL ok, NSString *error){
+				TGProfileViewController *me = weakSelf;
+				if (!me) return;
+				if (!ok){
+					[TGAlertSheet showMessage:error ?: @"Telegram refused that."
+										title:@"Delete Story" inView:me.view];
+					return;
+				}
+				[me reloadOwnStories];
+			}];
+		} else {
+			[[TGClient shared] toggleStory:(int32_t)[story[@"storyId"] intValue]
+								  fromChat:weakSelf.chatId
+						  postedToChatPage:!posted
+								completion:^(BOOL ok, NSString *error){
+				TGProfileViewController *me = weakSelf;
+				if (!me) return;
+				if (!ok){
+					[TGAlertSheet showMessage:error ?: @"Telegram refused that."
+										title:@"Stories" inView:me.view];
+					return;
+				}
+				[me reloadOwnStories];
+			}];
+		}
 	}];
 }
 

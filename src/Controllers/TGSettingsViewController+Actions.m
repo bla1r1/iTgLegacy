@@ -24,6 +24,12 @@
 	[self.navigationController pushViewController:profile animated:YES];
 }
 
+- (void)openEditProfile {
+	TGEditProfileViewController *edit = [[TGEditProfileViewController alloc] init];
+	edit.hidesBottomBarWhenPushed = YES;
+	[self.navigationController pushViewController:edit animated:YES];
+}
+
 /// The account switcher: each account's title with the active one marked,
 /// then Add Account while fewer than three are in use. Picking an account
 /// switches to it; Add Account makes a new slot and switches straight over,

@@ -273,8 +273,6 @@ static const CGFloat kSwipeFlickVelocity = 500.0f;
 	NSDictionary *chat = chats[index];
 	BOOL muted = [chat[@"isMuted"] boolValue];
 	BOOL pinned = [chat[@"isPinned"] boolValue];
-	BOOL unread = [chat[@"markedUnread"] boolValue] ||
-				  [chat[@"unread"] integerValue] > 0;
 
 	__weak typeof(self) weakSelf = self;
 	void (^run)(NSString *) = ^(NSString *choice){
@@ -286,29 +284,44 @@ static const CGFloat kSwipeFlickVelocity = 500.0f;
 	id delete = [rowAction rowActionWithStyle:UITableViewRowActionStyleDestructive
 										title:([chat[@"isGroup"] boolValue] ? @"Leave" : @"Delete")
 									  handler:^(id action, NSIndexPath *path){ run(@"Delete"); }];
-	id archive = [rowAction rowActionWithStyle:UITableViewRowActionStyleNormal
-										 title:self.showsArchive ? @"Unarchive" : @"Archive"
-									   handler:^(id action, NSIndexPath *path){ run(@"Archive"); }];
-	[archive setBackgroundColor:[[TGTheme shared] archiveActionColour]];
 	id mute = [rowAction rowActionWithStyle:UITableViewRowActionStyleNormal
 									  title:muted ? @"Unmute" : @"Mute"
 									handler:^(id action, NSIndexPath *path){ run(@"Mute"); }];
 	[mute setBackgroundColor:[[TGTheme shared] muteActionColour]];
-	// Pin and read are on the same row as the two destructive verbs in the
-	// official client; leaving them only in the hold menu made the swipe a
-	// different tool rather than a shortcut to the same one.
-	id pin = [rowAction rowActionWithStyle:UITableViewRowActionStyleNormal
-									 title:pinned ? @"Unpin" : @"Pin"
-								   handler:^(id action, NSIndexPath *path){ run(@"Pin"); }];
-	[pin setBackgroundColor:[[TGTheme shared] muteActionColour]];
-	id read = [rowAction rowActionWithStyle:UITableViewRowActionStyleNormal
-									  title:unread ? @"Mark as Read" : @"Mark as Unread"
-									handler:^(id action, NSIndexPath *path){
-		run(unread ? @"Mark as Read" : @"Mark as Unread");
+	id pinOrArchive = [rowAction rowActionWithStyle:UITableViewRowActionStyleNormal
+											  title:self.showsArchive ? @"Unarchive" : (pinned ? @"Unpin" : @"Pin")
+											handler:^(id action, NSIndexPath *path){
+		run(self.showsArchive ? @"Archive" : @"Pin");
 	}];
-	[read setBackgroundColor:[[TGTheme shared] archiveActionColour]];
-	// Right to left: Delete sits at the edge.
-	return @[delete, archive, mute, pin, read];
+	[pinOrArchive setBackgroundColor:[[TGTheme shared] archiveActionColour]];
+
+	// Exactly three buttons fit in a 320 pt row without clipping.
+	return @[delete, mute, pinOrArchive];
+}
+
+- (id)tableView:(UITableView *)tableView leadingSwipeActionsConfigurationForRowAtIndexPath:(NSIndexPath *)indexPath {
+	Class configClass = NSClassFromString(@"UISwipeActionsConfiguration");
+	Class actionClass = NSClassFromString(@"UIContextualAction");
+	if (!configClass || !actionClass)
+		return nil;
+	NSInteger index = indexPath.row - (NSInteger)[self headerRows].count;
+	NSArray *chats = [self visibleChats];
+	if (index < 0 || index >= (NSInteger)chats.count)
+		return nil;
+	NSDictionary *chat = chats[index];
+	BOOL unread = [chat[@"markedUnread"] boolValue] ||
+				  [chat[@"unread"] integerValue] > 0;
+	__weak typeof(self) weakSelf = self;
+	id readAction = [actionClass contextualActionWithStyle:0
+													 title:(unread ? @"Read" : @"Unread")
+												   handler:^(id action, UIView *sourceView, void (^completionHandler)(BOOL)){
+		weakSelf.actionChat = chat;
+		[weakSelf runChatAction:(unread ? @"Mark as Read" : @"Mark as Unread")];
+		completionHandler(YES);
+	}];
+	[readAction setBackgroundColor:[[TGTheme shared] accentColour]];
+	id config = [configClass configurationWithActions:@[readAction]];
+	return config;
 }
 
 #pragma mark - swipe actions before iOS 8
@@ -366,9 +379,8 @@ static const CGFloat kSwipeFlickVelocity = 500.0f;
 
 	UIPanGestureRecognizer *pan = (UIPanGestureRecognizer *)gesture;
 	CGPoint delta = [pan translationInView:self.tableView];
-	// Leftward and flatter than it is tall: a vertical drag belongs to the
-	// table, and a rightward drag has no row to uncover.
-	if (delta.x >= 0 || fabs(delta.x) <= fabs(delta.y))
+	// Horizontal drag flatter than it is tall:
+	if (delta.x == 0 || fabs(delta.x) <= fabs(delta.y))
 		return NO;
 
 	NSIndexPath *path = [self.tableView indexPathForRowAtPoint:
@@ -382,7 +394,7 @@ static const CGFloat kSwipeFlickVelocity = 500.0f;
 	if (![self openSwipeCell])
 		return NO;
 
-	// The three action buttons sit directly under the swiped row. Taking
+	// The action buttons sit directly under the swiped row. Taking
 	// their touches would close the row before the button could run.
 	TGChatCell *cell = self.swipeActionsCell;
 	UIView *view = touch.view;
@@ -427,19 +439,37 @@ static const CGFloat kSwipeFlickVelocity = 500.0f;
 	self.swipeActionsChat = chat;
 
 	BOOL muted = [chat[@"isMuted"] boolValue];
+	BOOL pinned = [chat[@"isPinned"] boolValue];
 	BOOL isGroup = [chat[@"isGroup"] boolValue];
-	NSArray *titles = @[
+	BOOL unread = [chat[@"markedUnread"] boolValue] ||
+				  [chat[@"unread"] integerValue] > 0;
+
+	// Trailing actions (left swipe, revealed on the right): Pin, Mute, Delete
+	NSArray *trailingTitles = @[
+		self.showsArchive ? @"Unarchive" : (pinned ? @"Unpin" : @"Pin"),
 		muted ? @"Unmute" : @"Mute",
-		self.showsArchive ? @"Unarchive" : @"Archive",
 		isGroup ? @"Leave" : @"Delete",
 	];
-	NSArray *colours = @[
-		[[TGTheme shared] muteActionColour],
+	NSArray *trailingColours = @[
 		[[TGTheme shared] archiveActionColour],
+		[[TGTheme shared] muteActionColour],
 		[[TGTheme shared] destructiveColour],
 	];
-	[cell revealSwipeActionsWithTitles:titles colours:colours target:self
-								action:@selector(swipeActionButtonTapped:)];
+
+	// Leading action (right swipe, revealed on the left): Mark as Read / Unread
+	NSArray *leadingTitles = @[
+		unread ? @"Mark as Read" : @"Mark as Unread",
+	];
+	NSArray *leadingColours = @[
+		[[TGTheme shared] accentColour],
+	];
+
+	[cell revealSwipeActionsWithTrailingTitles:trailingTitles
+	                           trailingColours:trailingColours
+	                             leadingTitles:leadingTitles
+	                            leadingColours:leadingColours
+	                                    target:self
+	                                    action:@selector(swipeActionButtonTapped:)];
 	return YES;
 }
 
@@ -448,7 +478,7 @@ static const CGFloat kSwipeFlickVelocity = 500.0f;
 	NSIndexPath *path = [NSIndexPath indexPathForRow:row + (NSInteger)[self headerRows].count
 										   inSection:0];
 	if ([self beginSwipeActionsAtPath:path])
-		[self.swipeActionsCell openSwipeActionsAnimated:YES];
+		[self.swipeActionsCell openTrailingSwipeActionsAnimated:YES];
 }
 
 - (void)swipeActionsPan:(UIPanGestureRecognizer *)pan {
@@ -471,18 +501,30 @@ static const CGFloat kSwipeFlickVelocity = 500.0f;
 
 	CGFloat dx = [pan translationInView:self.tableView].x;
 	CGPoint velocity = [pan velocityInView:self.tableView];
-	BOOL open = pan.state == UIGestureRecognizerStateEnded &&
-			(dx <= -TGHalf(cell.swipeActionsWidth) ||
-			 velocity.x <= -kSwipeFlickVelocity);
-	if (open){
-		[cell openSwipeActionsAnimated:YES];
+
+	if (dx < 0){
+		BOOL open = pan.state == UIGestureRecognizerStateEnded &&
+				(dx <= -TGHalf(cell.trailingActionsWidth) ||
+				 velocity.x <= -kSwipeFlickVelocity);
+		if (open)
+			[cell openTrailingSwipeActionsAnimated:YES];
+		else
+			[self closeSwipeActionsAnimated:YES];
+	} else if (dx > 0){
+		BOOL open = pan.state == UIGestureRecognizerStateEnded &&
+				(dx >= TGHalf(cell.leadingActionsWidth) ||
+				 velocity.x >= kSwipeFlickVelocity);
+		if (open)
+			[cell openLeadingSwipeActionsAnimated:YES];
+		else
+			[self closeSwipeActionsAnimated:YES];
 	} else {
 		[self closeSwipeActionsAnimated:YES];
 	}
 }
 
-/// Buttons say Unmute, Unarchive and Leave; the action names stay Mute,
-/// Archive and Delete, exactly the words the iOS 8 row actions pass on.
+/// Buttons say Unmute, Unarchive, Leave, Unpin; the action names stay Mute,
+/// Archive, Delete, Pin, exactly the words runChatAction expects.
 - (void)swipeActionButtonTapped:(UIButton *)button {
 	NSDictionary *chat = self.swipeActionsChat;
 	TGChatCell *cell = self.swipeActionsCell;
@@ -496,6 +538,8 @@ static const CGFloat kSwipeFlickVelocity = 500.0f;
 		title = @"Archive";
 	else if ([title isEqualToString:@"Leave"])
 		title = @"Delete";
+	else if ([title isEqualToString:@"Unpin"])
+		title = @"Pin";
 
 	self.actionChat = chat;
 	[self runChatAction:title];

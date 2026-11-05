@@ -336,6 +336,7 @@ NSNumber *TGPlayableVideoFileIdVintage(NSDictionary *video, NSArray *alternative
 NSDictionary *TGFlattenReplyMarkup(NSDictionary *markup);
 NSString *TGMessagePreview(NSDictionary *message);
 NSString *TGKnownMessagePreview(NSDictionary *message);
+NSString *TGRichMessageText(NSDictionary *content);
 NSString *TGPhraseFromTypeName(NSString *ctype);
 NSString *TGReactionSummary(NSDictionary *m);
 

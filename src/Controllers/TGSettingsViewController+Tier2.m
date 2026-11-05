@@ -47,28 +47,7 @@
 }
 
 - (NSArray *)tier2Sections {
-	__weak typeof(self) weakSelf = self;
-	return @[
-		TGSection(@"Text and Dice Tools", @"Text composition styles and the "
-				@"stake dice table are Telegram features with no user-facing "
-				@"settings row; the screens show its refusal when a call is "
-				@"not available to this account.", @[
-			TGIconTapRow(@"Text Styles", @"Composer",
-						 @"edit", TGIconTileSky(), ^{
-				TGTextStylesViewController *styles =
-						[[TGTextStylesViewController alloc] init];
-				styles.hidesBottomBarWhenPushed = YES;
-				[weakSelf.navigationController pushViewController:styles animated:YES];
-			}),
-			TGIconTapRow(@"Stake Dice", @"State and prize table",
-						 @"star", TGIconTileAmber(), ^{
-				TGDiceViewController *dice = [[TGDiceViewController alloc] init];
-				dice.chatTitle = @"Stake Dice";
-				dice.hidesBottomBarWhenPushed = YES;
-				[weakSelf.navigationController pushViewController:dice animated:YES];
-			}),
-		]),
-	];
+	return @[];
 }
 #endif
 

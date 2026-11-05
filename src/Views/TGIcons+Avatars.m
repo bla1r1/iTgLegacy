@@ -128,7 +128,7 @@ static UIImage *TGGlyphAvatar(CGFloat side, void (^draw)(CGContextRef ctx, CGFlo
 	static const NSUInteger order[7] = {0, 7, 4, 1, 6, 3, 5};
 	NSArray *c = palette[order[(NSUInteger)llabs(colourId) % 7]];
 
-	UIGraphicsBeginImageContextWithOptions(CGSizeMake(size, size), NO, 0);
+	UIGraphicsBeginImageContextWithOptions(CGSizeMake(size, size), NO, TGMainScreenScale());
 	CGContextRef ctx = UIGraphicsGetCurrentContext();
 
 	CGContextSetRGBFillColor(ctx, [c[0] floatValue], [c[1] floatValue],
@@ -146,11 +146,11 @@ static UIImage *TGGlyphAvatar(CGFloat side, void (^draw)(CGContextRef ctx, CGFlo
 
 	NSString *text = initials.length ? initials : @"?";
 	UIFont *font = TGFontMediumAtSize(text.length > 1 ? size * 0.35f : size * 0.42f);
-	CGSize textSize = [text sizeWithFont:font];
-	[[UIColor whiteColor] set];
-	[text drawAtPoint:CGPointMake((size - textSize.width) / 2,
-								  (size - textSize.height) / 2)
-			 withFont:font];
+	CGSize textSize = TGLineTextSize(text, font);
+	CGRect textRect = CGRectMake((size - textSize.width) / 2.0f,
+								 (size - textSize.height) / 2.0f,
+								 textSize.width, textSize.height);
+	TGDrawText(text, textRect, font, [UIColor whiteColor], NSTextAlignmentCenter, nil);
 
 	UIImage *image = UIGraphicsGetImageFromCurrentImageContext();
 	UIGraphicsEndImageContext();
@@ -173,7 +173,7 @@ static UIImage *TGGlyphAvatar(CGFloat side, void (^draw)(CGContextRef ctx, CGFlo
 	if (size.width < 1 || size.height < 1)
 		return image;
 
-	CGFloat effectiveScale = (scale > 0.0f) ? scale : 1.0f;
+	CGFloat effectiveScale = (scale > 0.0f) ? scale : TGMainScreenScale();
 
 	// Try ImageIO DCT downsampling via provider if available
 	CGImageRef cgImage = image.CGImage;

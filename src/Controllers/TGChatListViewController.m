@@ -412,8 +412,7 @@ static NSDictionary *TGChatSnapshotRow(NSDictionary *chat) {
 		if (!image){
 			NSString *title = [story[@"title"] isKindOfClass:NSString.class]
 					? story[@"title"] : @"?";
-			NSString *first = title.length
-					? [title substringToIndex:1].uppercaseString : @"?";
+			NSString *first = [TGIcons initialsForTitle:title];
 			image = [TGIcons avatarWithInitials:first size:kListStorySide
 									 colourId:[story[@"chatId"] longLongValue]];
 		}
@@ -1726,10 +1725,14 @@ static dispatch_semaphore_t TGAvtDecodeGate(NSInteger cap) {
 											   fill:YES
 											  scale:screenScale];
 					if (img){
+						UIImage *rounded = [TGIcons roundedImage:img
+														    size:CGSizeMake(kAvatar, kAvatar)
+														  radius:TGHalf(kAvatar)
+														 corners:UIRectCornerAllCorners];
 						dispatch_async(dispatch_get_main_queue(), ^{
 							TGChatListViewController *me = weakSelf;
 							if (!me) { dispatch_semaphore_signal(gate); return; }
-							me.avatars[fileId] = img;
+							me.avatars[fileId] = rounded ?: img;
 							[me refreshListTitleView];
 							[me reloadTableDebounced];
 							dispatch_semaphore_signal(gate);
@@ -1937,12 +1940,13 @@ static NSString *TGChatDate(NSTimeInterval unix) {
 		photo = [TGIcons savedMessagesAvatarOfSide:kAvatar];
 	if (!photo){
 		NSString *title = c[@"title"] ?: @"";
-		NSString *initials = title.length ? [title substringToIndex:1] : @"?";
-		photo = [TGIcons avatarWithInitials:initials.uppercaseString
+		NSString *initials = [TGIcons initialsForTitle:title];
+		photo = [TGIcons avatarWithInitials:initials
 									   size:kAvatar
 								   colourId:[c[@"id"] longLongValue]];
 	}
 	cell.avatar.image = photo;
+	cell.avatar.opaque = NO;
 	cell.avatar.backgroundColor = [UIColor clearColor];
 
 	[cell setNeedsLayout];

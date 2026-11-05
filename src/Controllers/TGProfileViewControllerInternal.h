@@ -10,6 +10,7 @@
 #import "TGForwardPicker.h"
 #import "TGStyle.h"
 #import "TGStreamingVoicePlayer.h"
+#import "TGEditProfileViewController.h"
 
 static const CGFloat kActionTile = TGMetricActionTile;
 
@@ -54,7 +55,6 @@ static const NSInteger kSectionStories = 1;
 static const NSInteger kSectionGifts   = 2;
 static const NSInteger kSectionMembers = 3;
 static const NSInteger kSectionMedia   = 4;
-static const NSInteger kSectionLogout  = 5;
 
 static const NSInteger kStoryGridCols  = 3;
 static const CGFloat   kStoryGridGap   = TGMetricCollageGap;
@@ -142,6 +142,8 @@ NSURL *TGProfileFirstURL(NSString *text, NSArray *entities);
 /// The active username, kept apart from the rows so the full-info pass can
 /// rebuild the card without a second getUser.
 @property (nonatomic, copy) NSString *username;
+@property (nonatomic, copy) NSArray *activeUsernames;
+@property (nonatomic, copy) NSString *businessLocation;
 /// The voice/round note playing from the Voice tab, and which message id.
 @property (nonatomic, strong) TGStreamingVoicePlayer *voicePlayer;
 @property (nonatomic, assign) int64_t playingVoiceId;
@@ -178,6 +180,7 @@ NSURL *TGProfileFirstURL(NSString *text, NSArray *entities);
 - (void)updateGroupStatus;
 - (BOOL)isOwner;
 - (BOOL)isOwnProfile;
+- (void)editProfileTapped;
 
 @end
 

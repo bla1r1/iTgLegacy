@@ -324,8 +324,7 @@ static NSArray *TGCallGradient(NSArray *colours) {
     self.avatarView.layer.rasterizationScale = [UIScreen mainScreen].scale;
     self.avatarView.layer.borderColor = [[TGTheme shared] separatorColour].CGColor;
     self.avatarView.layer.borderWidth = 1.0f;
-    self.avatarView.image = [TGIcons avatarWithInitials:
-            (self.peerName.length ? [self.peerName substringToIndex:1].uppercaseString : @"?")
+    self.avatarView.image = [TGIcons avatarWithInitials:[TGIcons initialsForTitle:self.peerName]
                                                    size:side colourId:self.userId];
     [self.view addSubview:self.avatarView];
 
