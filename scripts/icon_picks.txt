@@ -1,7 +1,9 @@
 # row name source glyph   (ours = keep TGIcons drawing)
 1 chats mdi mdiChat
-2 contacts ours
-3 settings ours
+2 contacts mdi mdiAccount
+3 settings mdi mdiCog
+60 contactsOutline mdi mdiAccountOutline
+61 settingsOutline mdi mdiCogOutline
 4 compose fa pen-to-square
 5 send fa paper-plane
 6 attach fa paperclip

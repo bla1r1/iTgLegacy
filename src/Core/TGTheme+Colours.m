@@ -18,7 +18,7 @@
 #pragma mark - bars and global accents
 
 - (UIColor *)barColour {
-	return TGRole(@"bar", TG_BLUE_DARK4);   ///< navigation bar background
+	return TGRole(@"bar", [self systemBarBlueColour]);   ///< navigation bar background
 }
 
 - (UIColor *)barTitleColour {

@@ -12,6 +12,8 @@ void TGIconsClearSettingsIconCache(void) {
 /// single weight so the set reads as one family, which is what their 27x27
 /// outline icons do.
 + (UIImage *)menuGlyphNamed:(NSString *)name {
+	if ([name isEqualToString:@"contact"])
+		name = @"contacts";
 	UIImage *svg = [self pathIconNamed:name];
 	if (svg)
 		return svg;
@@ -491,6 +493,7 @@ void TGIconsClearSettingsIconCache(void) {
 	if (!glyph) {
 		// Fallback for missing glyphs: use a generic dot or similar if needed,
 		// but we'll map them carefully.
+		if ([name isEqualToString:@"contact"] || [name isEqualToString:@"contacts"]) glyph = [self pathIconNamed:@"contacts"] ?: [self contacts];
 		if ([name isEqualToString:@"star"]) glyph = [self menuGlyphNamed:@"folder"]; // Placeholder
 		if ([name isEqualToString:@"battery"]) glyph = [self menuGlyphNamed:@"call"]; // Placeholder
 		if ([name isEqualToString:@"devices"]) glyph = [self menuGlyphNamed:@"chat"]; // Placeholder

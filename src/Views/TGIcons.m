@@ -239,12 +239,18 @@ static void TGDrawTabPath(CGContextRef ctx, UIBezierPath *path, BOOL filled) {
 }
 
 + (UIImage *)contacts {
+	UIImage *svg = [self pathIconNamed:@"contacts" margin:0];
+	if (svg)
+		return svg;
 	return [self iconNamed:@"contacts" draw:^(CGContextRef ctx, CGFloat s){
 		TGDrawTabPath(ctx, TGContactsTabPath(s), YES);
 	}];
 }
 
 + (UIImage *)settings {
+	UIImage *svg = [self pathIconNamed:@"settings" margin:0];
+	if (svg)
+		return svg;
 	return [self iconNamed:@"settings" draw:^(CGContextRef ctx, CGFloat s){
 		TGDrawTabPath(ctx, TGSettingsTabPath(s), YES);
 	}];
@@ -260,12 +266,18 @@ static void TGDrawTabPath(CGContextRef ctx, UIBezierPath *path, BOOL filled) {
 }
 
 + (UIImage *)contactsOutline {
+	UIImage *svg = [self pathIconNamed:@"contactsOutline" margin:0];
+	if (svg)
+		return svg;
 	return [self iconNamed:@"contacts-outline" draw:^(CGContextRef ctx, CGFloat s){
 		TGDrawTabPath(ctx, TGContactsTabPath(s), NO);
 	}];
 }
 
 + (UIImage *)settingsOutline {
+	UIImage *svg = [self pathIconNamed:@"settingsOutline" margin:0];
+	if (svg)
+		return svg;
 	return [self iconNamed:@"settings-outline" draw:^(CGContextRef ctx, CGFloat s){
 		TGDrawTabPath(ctx, TGSettingsTabPath(s), NO);
 	}];

@@ -208,46 +208,61 @@ static NSString *const kWallpaperTypeKey = @"themeWallpaperType";
 	if (!bar)
 		return;
 
-	// iOS 6's own tab bar: black glass and the blue glow on the selected
-	// item, the look every app on the phone around this one has.
+	UIColor *barBg = [self barColour];
+	UIColor *on = [UIColor whiteColor];
+	UIColor *off = [UIColor colorWithWhite:1.0f alpha:TGAlphaSecondary];
+
+	// iOS 6 tints the system bar slate blue; iOS 7+ sets barTintColor.
 	if ([TGTheme drawsSkeuomorphicChrome]) {
-		// The system tab bar tinted the slate blue of the system nav bar, so
-		// the top and bottom of the screen are one colour.
-		bar.tintColor = [self systemBarBlueColour];
-		if ([bar respondsToSelector:@selector(setBackgroundImage:)])
-			bar.backgroundImage = nil;
-		if ([bar respondsToSelector:@selector(setSelectionIndicatorImage:)])
-			bar.selectionIndicatorImage = nil;
-		// On the blue bar the system's grey glyphs went dark; they are drawn
-		// white instead - full for the selected tab, faded for the rest.
-		for (UITabBarItem *item in bar.items) {
-			UIImage *mask = item.image;
-			if (!mask || ![item respondsToSelector:@selector(setFinishedSelectedImage:withFinishedUnselectedImage:)])
-				continue;
-			UIColor *off = [UIColor colorWithWhite:1.0f alpha:TGAlphaSecondary];
-			[item setFinishedSelectedImage:[TGIcons image:mask filledWith:[UIColor whiteColor]]
-			   withFinishedUnselectedImage:[TGIcons image:mask filledWith:off]];
-			[item setTitleTextAttributes:@{UITextAttributeTextColor : off}
-								forState:UIControlStateNormal];
-			[item setTitleTextAttributes:@{UITextAttributeTextColor : [UIColor whiteColor]}
-								forState:UIControlStateSelected];
-		}
-		return;
-	}
-
-	if ([bar respondsToSelector:@selector(setBarTintColor:)]){
+		bar.tintColor = barBg;
+	} else if ([bar respondsToSelector:@selector(setBarTintColor:)]) {
 		bar.translucent = NO;      // see -styleNavigationBar:
-		bar.barTintColor = [self barColour];
-		bar.tintColor = [self accentColour];
+		bar.barTintColor = barBg;
+		bar.tintColor = on;
 	} else {
-		bar.tintColor = [self barColour];
+		bar.tintColor = barBg;
 	}
 
-	// Their own bar from 7 on as well: no painted plate, no glow indicator.
 	if ([bar respondsToSelector:@selector(setBackgroundImage:)])
 		bar.backgroundImage = nil;
 	if ([bar respondsToSelector:@selector(setSelectionIndicatorImage:)])
 		bar.selectionIndicatorImage = nil;
+
+	// On the tinted bar the system's grey glyphs went dark/gray; they are drawn
+	// white instead - full for the selected tab, faded for the rest.
+	for (UITabBarItem *item in bar.items) {
+		UIImage *onMask = nil;
+		if ([item respondsToSelector:@selector(selectedImage)])
+			onMask = item.selectedImage;
+		if (!onMask)
+			onMask = item.image;
+		UIImage *offMask = item.image ?: onMask;
+
+		if (onMask || offMask) {
+			UIImage *onImg = [TGIcons image:(onMask ?: offMask) filledWith:on];
+			UIImage *offImg = [TGIcons image:(offMask ?: onMask) filledWith:off];
+
+			if ([item respondsToSelector:@selector(setFinishedSelectedImage:withFinishedUnselectedImage:)]) {
+				[item setFinishedSelectedImage:onImg withFinishedUnselectedImage:offImg];
+			}
+			if ([item respondsToSelector:@selector(setSelectedImage:)] &&
+				[onImg respondsToSelector:@selector(imageWithRenderingMode:)]) {
+				item.selectedImage = [onImg imageWithRenderingMode:UIImageRenderingModeAlwaysOriginal];
+				item.image = [offImg imageWithRenderingMode:UIImageRenderingModeAlwaysOriginal];
+			}
+		}
+
+		NSDictionary *normalAttrs = @{
+			UITextAttributeTextColor : off,
+			NSForegroundColorAttributeName : off
+		};
+		NSDictionary *selectedAttrs = @{
+			UITextAttributeTextColor : on,
+			NSForegroundColorAttributeName : on
+		};
+		[item setTitleTextAttributes:normalAttrs forState:UIControlStateNormal];
+		[item setTitleTextAttributes:selectedAttrs forState:UIControlStateSelected];
+	}
 }
 
 #pragma mark - wallpaper

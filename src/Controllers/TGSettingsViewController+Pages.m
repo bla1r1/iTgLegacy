@@ -118,7 +118,7 @@ static NSArray *TGCustomResultRows(NSString *result) {
 			([TGClient shared].authState != TGAuthStateReady) ? TGIconRow(@"Log in to Telegram", @"privacy", TGIconTileAzure(), ^{
 				[[AppDelegate sharedDelegate] showLoginUI];
 			}) : TGIconRow(@"Accounts", @"select", TGIconTileAzure(), ^{ [weakSelf showAccountChoices]; }),
-			TGIconRow(@"My Profile", @"contact", TGIconTileSky(), ^{
+			TGIconRow(@"My Profile", @"contacts", TGIconTileSky(), ^{
 				[weakSelf openMyProfile];
 			}),
 			// Official keeps this in the top edit block, not in dev: it is a

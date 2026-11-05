@@ -24,7 +24,7 @@ def fa(name):
         if os.path.exists(path):
             svg = open(path).read()
             w, h = re.search(r'viewBox="0 0 (\d+) (\d+)"', svg).groups()
-            d = re.search(r'<path d="([^"]+)"', svg).group(1)
+            d = re.search(r'<path[^>]+d="([^"]+)"', svg).group(1)
             # MDI draws inside 20 of its 24 units; FA fills its box, so it
             # gets the same margin (in 24ths) to sit at the same size.
             return d, int(w), int(h), 2
