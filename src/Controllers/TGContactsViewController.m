@@ -9,15 +9,19 @@
 #import "TGAlertSheet.h"
 #import "TGEmptyView.h"
 #import "TGImageLruCache.h"
+#import "TGMemberAvatarStore.h"
 #import "TGStatusText.h"
 
 /// Avatars kept decoded while the list is open.
 static const NSUInteger kPhotoCacheCap = 50;
 
 
-@interface TGContactsViewController ()
+@interface TGContactsViewController () <UISearchBarDelegate>
 @property (nonatomic, strong) TGEmptyView *emptyView;
 @property (nonatomic, strong) NSArray *users;
+@property (nonatomic, strong) UISearchBar *searchBar;
+@property (nonatomic, strong) NSArray *filteredUsers;
+@property (nonatomic, assign) BOOL isSearching;
 /// The same contacts split by their first letter, so the list reads like
 /// Telegram's address book instead of one long run of names.
 @property (nonatomic, strong) NSArray *sections;
@@ -37,18 +41,33 @@ static const NSUInteger kPhotoCacheCap = 50;
 /// the image view to the picture and put it at x 0 on iOS 6, so a large
 /// photo filled the row's height flush against the screen edge.
 @interface TGContactCell : UITableViewCell
+@property (nonatomic, strong) UIImageView *avatarView;
+@property (nonatomic, assign) int64_t avatarUser;
 @end
 
 @implementation TGContactCell
+
+- (instancetype)initWithStyle:(UITableViewCellStyle)style reuseIdentifier:(NSString *)reuseIdentifier {
+	if ((self = [super initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:reuseIdentifier])) {
+		_avatarView = [[UIImageView alloc] initWithFrame:CGRectMake(TGMetricPad, TGMetricZero, TGMetricListAvatar, TGMetricListAvatar)];
+		_avatarView.contentMode = UIViewContentModeScaleAspectFill;
+		_avatarView.clipsToBounds = YES;
+		_avatarView.opaque = NO;
+		_avatarView.backgroundColor = [UIColor clearColor];
+		[self.contentView addSubview:_avatarView];
+	}
+	return self;
+}
+
 - (void)layoutSubviews {
 	[super layoutSubviews];
 	CGFloat side = TGMetricListAvatar;
 	CGFloat h = self.contentView.bounds.size.height;
-	self.imageView.frame = CGRectMake(TGMetricPad, TGCenteredOrigin(h, side), side, side);
+	self.avatarView.frame = CGRectMake(TGMetricPad, TGCenteredOrigin(h, side), side, side);
 	CGFloat x = TGMetricPad + side + TGMetricPadMedium;
 	// To the content view's edge: UIKit sized the labels for the picture as
 	// it was before the inset, and the names came out cut short.
-	CGFloat width = MAX(0, self.contentView.bounds.size.width - x - TGMetricPadMedium);
+	CGFloat width = MAX(TGMetricZero, self.contentView.bounds.size.width - x - TGMetricPadMedium);
 	for (UILabel *label in @[self.textLabel, self.detailTextLabel]) {
 		CGRect f = label.frame;
 		f.origin.x = x;
@@ -169,6 +188,13 @@ static NSInteger TGPresenceRank(NSDictionary *status, double *outWasOnline) {
 	self.photos = [[TGImageLruCache alloc] initWithCapacity:kPhotoCacheCap];
 	self.photosRequested = [NSMutableSet set];
 	self.tableView.rowHeight = TGMetricPersonRow;
+	self.searchBar = [[UISearchBar alloc] initWithFrame:CGRectMake(TGMetricZero, TGMetricZero, self.view.bounds.size.width, TGMetricRow)];
+	[[TGTheme shared] styleSearchBar:self.searchBar];
+	self.searchBar.delegate = self;
+	self.searchBar.placeholder = @"Search Contacts";
+	self.searchBar.autocorrectionType = UITextAutocorrectionTypeNo;
+	self.searchBar.autocapitalizationType = UITextAutocapitalizationTypeNone;
+	self.tableView.tableHeaderView = self.searchBar;
 	// No separators drawn under the last contact, across the empty screen.
 	self.tableView.tableFooterView = [[UIView alloc] initWithFrame:CGRectZero];
 	self.tableView.backgroundColor = [[TGTheme shared] listBackgroundColour];
@@ -271,7 +297,12 @@ static NSInteger TGPresenceRank(NSDictionary *status, double *outWasOnline) {
 		me.users = users ?: @[];
 		[me sortAndGroupContacts];
 		[me.tableView reloadData];
-		[me fetchMissingPhotos];
+		for (NSDictionary *u in me.users) {
+			int64_t uid = [u[@"id"] longLongValue];
+			if (uid > 0) {
+				[[TGMemberAvatarStore shared] loadAvatarForUser:uid side:TGMetricListAvatar completion:nil];
+			}
+		}
 
 		if (me.users.count == 0) {
 			if (!me.emptyView) {
@@ -348,18 +379,70 @@ static NSString *TGContactName(NSDictionary *u) {
 	return u[@"phone"] ?: @"";
 }
 
+#pragma mark - search bar
+
+- (void)searchBar:(UISearchBar *)searchBar textDidChange:(NSString *)searchText {
+	NSString *trimmed = [searchText stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+	if (!trimmed.length) {
+		self.isSearching = NO;
+		self.filteredUsers = @[];
+		[self.tableView reloadData];
+		return;
+	}
+	self.isSearching = YES;
+	NSString *query = [trimmed lowercaseString];
+	NSMutableArray *matches = [NSMutableArray array];
+	for (NSDictionary *user in self.users) {
+		NSString *first = [user[@"first_name"] lowercaseString] ?: @"";
+		NSString *last = [user[@"last_name"] lowercaseString] ?: @"";
+		NSString *full = [NSString stringWithFormat:@"%@ %@", first, last];
+		NSString *uname = [user[@"username"] lowercaseString] ?: @"";
+		NSString *phone = user[@"phone"] ?: @"";
+		if ([first rangeOfString:query].location != NSNotFound ||
+			[last rangeOfString:query].location != NSNotFound ||
+			[full rangeOfString:query].location != NSNotFound ||
+			[uname rangeOfString:query].location != NSNotFound ||
+			[phone rangeOfString:query].location != NSNotFound) {
+			[matches addObject:user];
+		}
+	}
+	self.filteredUsers = matches;
+	[self.tableView reloadData];
+}
+
+- (void)searchBarTextDidBeginEditing:(UISearchBar *)searchBar {
+	[searchBar setShowsCancelButton:YES animated:YES];
+}
+
+- (void)searchBarCancelButtonClicked:(UISearchBar *)searchBar {
+	searchBar.text = @"";
+	[searchBar setShowsCancelButton:NO animated:YES];
+	[searchBar resignFirstResponder];
+	self.isSearching = NO;
+	self.filteredUsers = @[];
+	[self.tableView reloadData];
+}
+
+- (void)searchBarSearchButtonClicked:(UISearchBar *)searchBar {
+	[searchBar resignFirstResponder];
+}
+
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
+	if (self.isSearching)
+		return 1;
 	return (NSInteger)self.sections.count;
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
+	if (self.isSearching)
+		return (NSInteger)self.filteredUsers.count;
 	if (section < 0 || section >= (NSInteger)self.sections.count)
 		return 0;
 	return [self.sections[(NSUInteger)section][@"users"] count];
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
-	if (self.sortByLastSeen)
+	if (self.isSearching || self.sortByLastSeen)
 		return nil;
 	if (section < 0 || section >= (NSInteger)self.sections.count)
 		return nil;
@@ -367,7 +450,7 @@ static NSString *TGContactName(NSDictionary *u) {
 }
 
 - (NSArray *)sectionIndexTitlesForTableView:(UITableView *)tableView {
-	if (self.sortByLastSeen)
+	if (self.isSearching || self.sortByLastSeen)
 		return nil;
 	// A short list reads worse with a rail down the side; Telegram keeps it
 	// for an address book that is actually long.
@@ -385,6 +468,11 @@ static NSString *TGContactName(NSDictionary *u) {
 }
 
 - (NSDictionary *)userAtIndexPath:(NSIndexPath *)indexPath {
+	if (self.isSearching) {
+		if (indexPath.row < 0 || indexPath.row >= (NSInteger)self.filteredUsers.count)
+			return nil;
+		return self.filteredUsers[(NSUInteger)indexPath.row];
+	}
 	if (indexPath.section < 0 || indexPath.section >= (NSInteger)self.sections.count)
 		return nil;
 	NSArray *users = self.sections[(NSUInteger)indexPath.section][@"users"];
@@ -438,20 +526,35 @@ static NSString *TGContactName(NSDictionary *u) {
 					: UITableViewCellAccessoryNone)
 			: UITableViewCellAccessoryNone;
 
-	NSNumber *fileId = u[@"photoFileId"];
-	UIImage *photo = [fileId isKindOfClass:NSNumber.class] ? self.photos[fileId] : nil;
+	TGContactCell *contactCell = (TGContactCell *)cell;
 	int64_t uid = [u[@"id"] longLongValue];
-	if (!photo)
-		photo = [TGIcons avatarWithInitials:[TGIcons initialsForTitle:name]
-									   size:TGMetricListAvatar
-								   colourId:[u[@"id"] longLongValue]];
-	// Cropped and rounded once at the row's size: no clip, no rasterizing.
-	cell.imageView.image = [TGIcons roundedImage:photo
-										   size:CGSizeMake(TGMetricListAvatar, TGMetricListAvatar)
-										 radius:TGHalf(TGMetricListAvatar)
-										corners:UIRectCornerAllCorners];
-	cell.imageView.opaque = NO;
-	cell.imageView.backgroundColor = [UIColor clearColor];
+	contactCell.avatarUser = uid;
+
+	UIImage *photo = [[TGMemberAvatarStore shared] cachedAvatarForUser:uid side:TGMetricListAvatar];
+	if (photo) {
+		contactCell.avatarView.image = [TGIcons roundedImage:photo
+														size:CGSizeMake(TGMetricListAvatar, TGMetricListAvatar)
+													  radius:TGHalf(TGMetricListAvatar)
+													 corners:UIRectCornerAllCorners];
+	} else {
+		contactCell.avatarView.image = [TGIcons avatarWithInitials:[TGIcons initialsForTitle:name]
+															  size:TGMetricListAvatar
+														  colourId:uid];
+		__weak TGContactCell *weakCell = contactCell;
+		__weak UITableView *weakTable = tableView;
+		[[TGMemberAvatarStore shared] loadAvatarForUser:uid side:TGMetricListAvatar completion:^(UIImage *img){
+			if (!img) return;
+			dispatch_async(dispatch_get_main_queue(), ^{
+				TGContactCell *c = weakCell;
+				if (!c || c.avatarUser != uid) return;
+				c.avatarView.image = [TGIcons roundedImage:img
+													  size:CGSizeMake(TGMetricListAvatar, TGMetricListAvatar)
+													radius:TGHalf(TGMetricListAvatar)
+												   corners:UIRectCornerAllCorners];
+			});
+		}];
+	}
+	cell.imageView.image = nil;
 
 	return cell;
 }

@@ -417,13 +417,47 @@ UIColor *TGSenderColour(int64_t userId) {
 		senderName = [NSString stringWithFormat:@"%@ · %@", senderName, senderTag];
 
 	BOOL inlineStamp = [self stampFitsInlineFor:m];
+	NSString *lpSite = m[@"linkPreviewSite"];
+	NSString *lpTitle = m[@"linkPreviewTitle"];
+	NSString *lpDesc = m[@"linkPreviewDesc"];
+	NSString *lpUrl = m[@"linkPreviewUrl"];
+	BOOL hasLinkPreview = !isService && (lpTitle.length > 0 || lpDesc.length > 0 || lpSite.length > 0);
+	if (hasLinkPreview) inlineStamp = NO;
 	CGFloat timeW = [self timeWidthFor:m];
 	CGFloat contentW = MAX(body.width, pic.width);
 	if (isAlbum)
 		contentW = MAX(contentW, collageW);
 	NSString *quoted = [self quoteTextFor:m];
-	if (quoted || [m[@"forward"] length])
+	if (quoted || [m[@"forward"] length] || hasLinkPreview)
 		contentW = MAX(contentW, kBubbleMinW);
+
+	CGFloat linkPreviewH = 0;
+	CGFloat linkSiteH = 0;
+	CGFloat linkTitleH = 0;
+	CGFloat linkDescH = 0;
+	if (hasLinkPreview) {
+		layout.linkSite = lpSite;
+		layout.linkTitle = lpTitle;
+		layout.linkDesc = lpDesc;
+		layout.linkUrl = lpUrl;
+
+		CGFloat textMaxW = kBubbleMaxW - TGDoubled(kPadH) - kQuoteBarWidth - TGMetricPadSmall;
+		if (lpSite.length) {
+			linkSiteH = TGMetricLineCaption;
+			linkPreviewH += linkSiteH;
+		}
+		if (lpTitle.length) {
+			CGSize ts = TGTextSize(lpTitle, TGFontCaptionStrong(), textMaxW);
+			linkTitleH = MIN(ts.height, TGMetricLineCaption * 2.0f);
+			linkPreviewH += linkTitleH;
+		}
+		if (lpDesc.length) {
+			CGSize ds = TGTextSize(lpDesc, TGFontCaption(), textMaxW);
+			linkDescH = MIN(ds.height, TGMetricLineCaption * 2.0f);
+			linkPreviewH += linkDescH;
+		}
+		linkPreviewH += TGMetricPadSmall;
+	}
 	if (inlineStamp)
 		contentW = MAX(contentW, body.width + kStampGap + timeW);
 	if (isVoice)
@@ -452,7 +486,8 @@ UIColor *TGSenderColour(int64_t userId) {
 			+ [self decorationHeightFor:m]
 			+ (isAlbum ? (collageH + (body.height ? TGMetricPadSmall : TGMetricZero))
 					   : (pic.height ? pic.height + TGMetricPadSmall : TGMetricZero))
-			+ body.height;
+			+ body.height
+			+ (hasLinkPreview ? (linkPreviewH + (body.height > 0 ? TGMetricPadSmall : TGMetricZero)) : TGMetricZero);
 	if (isVoice)
 		bubbleH = TGMetricPersonRow + senderH
 				+ ([m[@"forward"] length] ? TGMetricQuoteForwardLine : TGMetricZero);
@@ -512,6 +547,39 @@ UIColor *TGSenderColour(int64_t userId) {
 		y += pic.height + TGMetricPadSmall;
 	}
 	layout.bodyFrame = CGRectMake(kPadH, y, bubbleW - TGDoubled(kPadH), body.height);
+	if (body.height > 0)
+		y += body.height + (hasLinkPreview ? TGMetricPadSmall : TGMetricZero);
+
+	if (hasLinkPreview) {
+		CGFloat lY = y;
+		layout.linkPreviewFrame = CGRectMake(kPadH, lY, innerW, linkPreviewH);
+		layout.linkBarFrame = CGRectMake(kPadH, lY, kQuoteBarWidth, linkPreviewH);
+		CGFloat textX = kPadH + kQuoteBarWidth + TGMetricPadSmall;
+		CGFloat textW = innerW - kQuoteBarWidth - TGMetricPadSmall;
+		CGFloat curY = lY;
+		if (linkSiteH > 0) {
+			layout.linkSiteFrame = CGRectMake(textX, curY, textW, linkSiteH);
+			curY += linkSiteH;
+		} else {
+			layout.linkSiteFrame = CGRectZero;
+		}
+		if (linkTitleH > 0) {
+			layout.linkTitleFrame = CGRectMake(textX, curY, textW, linkTitleH);
+			curY += linkTitleH;
+		} else {
+			layout.linkTitleFrame = CGRectZero;
+		}
+		if (linkDescH > 0) {
+			layout.linkDescFrame = CGRectMake(textX, curY, textW, linkDescH);
+			curY += linkDescH;
+		} else {
+			layout.linkDescFrame = CGRectZero;
+		}
+		y += linkPreviewH;
+	} else {
+		layout.linkPreviewFrame = CGRectZero;
+	}
+
 	CGFloat stampY = inlineStamp ? (y + body.height - TGMetricLineMicro)
 			: (bubbleH - kPadV - TGMetricStampHeight);
 	CGFloat tickW = mine ? TGMetricStampTicksRoom : TGMetricZero;
@@ -524,6 +592,7 @@ UIColor *TGSenderColour(int64_t userId) {
 	if (isAlbum) rowH += collageH + (body.height > 0 ? TGMetricPadSmall : TGMetricZero);
 	else if (pic.height > 0) rowH += pic.height + TGMetricPadSmall;
 	if (body.height > 0) rowH += body.height;
+	if (hasLinkPreview) rowH += linkPreviewH + (body.height > 0 ? TGMetricPadSmall : TGMetricZero);
 	if (isVoice) rowH = TGMetricVoicePillHeight + forwarded;
 	// Fixed, like a voice note: the artwork and the two lines beside it do
 	// not grow with the title, which is truncated instead.

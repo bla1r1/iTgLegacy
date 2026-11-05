@@ -13,6 +13,7 @@ static const CGFloat kAvatar    = TGMetricChatAvatar;
 @property (nonatomic, strong) UILabel *previewLabel;
 @property (nonatomic, strong) UILabel *dateLabel;
 @property (nonatomic, strong) UILabel *badge;
+@property (nonatomic, strong) UILabel *mentionBadge;
 @property (nonatomic, strong) UIView *onlineDot;
 @property (nonatomic, strong) UIImageView *tick;   // your own last message
 @property (nonatomic, strong) UIImageView *pin;   // pinned to the top
@@ -23,6 +24,7 @@ static const CGFloat kAvatar    = TGMetricChatAvatar;
 /// The preview, with whoever wrote it ("Ivan:", "You:") in the title colour
 /// ahead of the text, the way their list sets the speaker apart.
 - (void)setPreview:(NSString *)text author:(NSString *)author;
+- (void)setDraftPreview:(NSString *)draftText;
 
 - (void)applyTheme;
 

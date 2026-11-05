@@ -18,6 +18,12 @@
 @property (nonatomic, strong) UIView  *quoteBar;
 @property (nonatomic, strong) UILabel *quote;
 @property (nonatomic, strong) UILabel *quoteAuthor;
+@property (nonatomic, strong) UIView  *linkPreviewBar;
+@property (nonatomic, strong) UILabel *linkPreviewSite;
+@property (nonatomic, strong) UILabel *linkPreviewTitle;
+@property (nonatomic, strong) UILabel *linkPreviewDesc;
+@property (nonatomic, strong) UIButton *linkPreviewButton;
+@property (nonatomic, copy)   NSString *linkPreviewUrl;
 @property (nonatomic, strong) UIImageView *ticks;
 /// Skeuomorphic top specular highlight reflection line for tactile iOS 6 bubbles.
 @property (nonatomic, strong) UIView *shineBar;

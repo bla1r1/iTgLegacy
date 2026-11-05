@@ -26,6 +26,7 @@ typedef NS_ENUM(NSInteger, TGSettingsPage) {
 	/// TDLib keeps while the app is running.
 	TGSettingsPageNotificationSounds,
 	TGSettingsPageActiveNotifications,
+	TGSettingsPagePasscode,
 	/// Dev mode's settings tab and the consoles under it. Dev builds only.
 	TGSettingsPageDebug,
 	TGSettingsPageLanguageDev,

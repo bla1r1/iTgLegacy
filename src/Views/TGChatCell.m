@@ -102,6 +102,17 @@ static UIFont *TGChatCellTitleFont(void) {
 	self.badge.hidden = YES;
 	[self.contentView addSubview:self.badge];
 
+	self.mentionBadge = [[UILabel alloc] init];
+	self.mentionBadge.text = @"@";
+	self.mentionBadge.font = TGFontCaptionStrong();
+	self.mentionBadge.textColor = [[TGTheme shared] onAccentColour];
+	self.mentionBadge.backgroundColor = [theme accentColour];
+	self.mentionBadge.textAlignment = NSTextAlignmentCenter;
+	self.mentionBadge.layer.cornerRadius = TGHalf(TGMetricChatBadgeHeight);
+	self.mentionBadge.clipsToBounds = YES;
+	self.mentionBadge.hidden = YES;
+	[self.contentView addSubview:self.mentionBadge];
+
 	CGFloat dot = 15;
 	self.onlineDot = [[UIView alloc] initWithFrame:
 			CGRectMake(kInset + kAvatar - dot, TGCenteredOrigin(kRowHeight, kAvatar) + kAvatar - dot, dot, dot)];
@@ -151,6 +162,25 @@ static UIFont *TGChatCellTitleFont(void) {
 							 NSForegroundColorAttributeName: [theme secondaryTextColour]}];
 	[line addAttribute:NSForegroundColorAttributeName
 				 value:[theme primaryTextColour]
+				 range:NSMakeRange(0, prefix.length)];
+	self.previewLabel.attributedText = line;
+}
+
+- (void)setDraftPreview:(NSString *)draftText {
+	TGTheme *theme = [TGTheme shared];
+	draftText = draftText ?: @"";
+	NSString *prefix = @"Draft: ";
+	if (![self.previewLabel respondsToSelector:@selector(setAttributedText:)]) {
+		self.previewLabel.text = [prefix stringByAppendingString:draftText];
+		self.previewLabel.textColor = [theme destructiveColour];
+		return;
+	}
+	NSMutableAttributedString *line = [[NSMutableAttributedString alloc]
+			initWithString:[prefix stringByAppendingString:draftText]
+				attributes:@{NSFontAttributeName: self.previewLabel.font,
+							 NSForegroundColorAttributeName: [theme secondaryTextColour]}];
+	[line addAttribute:NSForegroundColorAttributeName
+				 value:[theme destructiveColour]
 				 range:NSMakeRange(0, prefix.length)];
 	self.previewLabel.attributedText = line;
 }
@@ -206,6 +236,14 @@ static UIFont *TGChatCellTitleFont(void) {
 			&badgeFrame, &pinFrame, &previewRight);
 	self.badge.frame = badgeFrame;
 	self.pin.frame = pinFrame;
+
+	if (!self.mentionBadge.hidden) {
+		CGFloat mentionSide = TGMetricChatBadgeHeight;
+		CGFloat mentionX = previewRight - mentionSide;
+		self.mentionBadge.frame = CGRectMake(mentionX, TGMetricChatBadgeTop, mentionSide, mentionSide);
+		previewRight = mentionX - TGMetricPadSmall;
+	}
+
 	CGFloat previewW = MAX(0, previewRight - kTextLeft);
 	CGSize fit = [self.previewLabel sizeThatFits:CGSizeMake(previewW, kPreviewMax)];
 	self.previewLabel.frame = CGRectMake(kTextLeft, kSecondLineTop, previewW,
@@ -246,6 +284,7 @@ static UIFont *TGChatCellTitleFont(void) {
 	self.previewLabel.textColor = [theme secondaryTextColour];
 	self.dateLabel.textColor = [theme listDateColour];
 	self.badge.backgroundColor = [theme badgeColour];
+	self.mentionBadge.backgroundColor = [theme accentColour];
 	self.onlineDot.backgroundColor = [theme onlineColour];
 	self.onlineDot.layer.borderColor = [theme listBackgroundColour].CGColor;
 	self.separator.backgroundColor = [theme separatorColour];

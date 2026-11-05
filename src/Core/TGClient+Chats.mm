@@ -1668,6 +1668,10 @@ static BOOL TGGroupStatusIsMember(NSDictionary *status) {
 	}
 	if (chat[@"unread_count"])
 		info[@"unread"] = chat[@"unread_count"];
+	if (chat[@"unread_mention_count"])
+		info[@"unreadMentions"] = chat[@"unread_mention_count"];
+	if (chat[@"unread_reaction_count"])
+		info[@"unreadReactions"] = chat[@"unread_reaction_count"];
 	// The dot you put there yourself, which is not the unread count: a chat
 	// with nothing unread can still be marked, and the menu has to know.
 	if (chat[@"is_marked_as_unread"])

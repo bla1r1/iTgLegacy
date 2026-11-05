@@ -9,6 +9,7 @@
 #import "TGTestRunner.h"
 #import "TGClient.h"
 #import "TGClientInternal.h"
+#import "TGPasscode.h"
 
 @interface TGClientDraftsTests : XCTestCase @end
 
@@ -282,6 +283,46 @@ static NSUInteger countRequestsOfType(TGClient *c, NSString *type) {
 	// not another request.
 	[c setDraft:@"" inChat:7 thread:0 replyTo:0];
 	XCTAssertEqualObjects([c draftForChat:7], @"");
+}
+
+- (void)testUnreadMentionsAndReactions_ParsedOnUpdateNewChat {
+	TGClient *c = D();
+	[c handleUpdate:@{@"@type" : @"updateNewChat", @"chat" : @{
+			@"@type" : @"chat", @"id" : @(42), @"title" : @"Group",
+			@"unread_count" : @(5),
+			@"unread_mention_count" : @(2),
+			@"unread_reaction_count" : @(3),
+			@"positions" : @[@{@"@type" : @"chatPosition",
+							   @"list" : @{@"@type" : @"chatListMain"},
+							   @"order" : @"10"}]}}];
+	NSDictionary *chat = c.chatsById[@(42)];
+	XCTAssertNotNil(chat);
+	XCTAssertEqual([chat[@"unreadMentions"] integerValue], (NSInteger)2);
+	XCTAssertEqual([chat[@"unreadReactions"] integerValue], (NSInteger)3);
+}
+
+- (void)testPasscode_LifecycleAndLock {
+	[TGPasscode clearPasscode];
+	XCTAssertFalse([TGPasscode hasPasscode]);
+	XCTAssertFalse([TGPasscode verifyPasscode:@"1234"]);
+
+	[TGPasscode setPasscode:@"1234"];
+	XCTAssertTrue([TGPasscode hasPasscode]);
+	XCTAssertTrue([TGPasscode verifyPasscode:@"1234"]);
+	XCTAssertFalse([TGPasscode verifyPasscode:@"0000"]);
+	XCTAssertFalse([TGPasscode verifyPasscode:@"123"]);
+
+	[TGPasscode setLocked:YES];
+	XCTAssertTrue([TGPasscode isLocked]);
+	[TGPasscode setLocked:NO];
+	XCTAssertFalse([TGPasscode isLocked]);
+
+	[TGPasscode setAutoLockTimeout:60];
+	XCTAssertEqual([TGPasscode autoLockTimeout], (NSInteger)60);
+	XCTAssertEqualObjects([TGPasscode autoLockTitleForSeconds:60], @"If away for 1 min");
+
+	[TGPasscode clearPasscode];
+	XCTAssertFalse([TGPasscode hasPasscode]);
 }
 
 @end

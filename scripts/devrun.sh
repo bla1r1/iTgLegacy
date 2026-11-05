@@ -132,7 +132,7 @@ install_over_ssh() {
 			ldid -S /Applications/LegacyTG.app/LegacyTG && \
 			chmod 755 /Applications/LegacyTG.app/LegacyTG && \
 			chown -R root:wheel /Applications/LegacyTG.app && \
-			uicache 2>/dev/null; true" || return 1
+			uicache 2>/dev/null; killall -9 SpringBoard 2>/dev/null; sleep 3; true" || return 1
 	echo "installed into /Applications"
 }
 

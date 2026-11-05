@@ -1216,6 +1216,25 @@ static NSDictionary *TGFlattenAutosaveScope(NSDictionary *settings) {
 			value = @"everybody";
 		else if ([first isEqualToString:@"userPrivacySettingRuleAllowContacts"])
 			value = @"contacts";
+
+		NSInteger allowUsersCount = 0;
+		NSInteger restrictUsersCount = 0;
+		for (NSDictionary *r in rules[@"rules"]) {
+			NSString *type = r[@"@type"];
+			if ([type isEqualToString:@"userPrivacySettingRuleAllowUsers"]) {
+				allowUsersCount += [r[@"user_ids"] count];
+			} else if ([type isEqualToString:@"userPrivacySettingRuleRestrictUsers"]) {
+				restrictUsersCount += [r[@"user_ids"] count];
+			}
+		}
+		if (allowUsersCount > 0 && [value isEqualToString:@"nobody"]) {
+			value = [NSString stringWithFormat:@"nobody (+%ld)", (long)allowUsersCount];
+		} else if (restrictUsersCount > 0) {
+			value = [NSString stringWithFormat:@"%@ (-%ld)", value, (long)restrictUsersCount];
+		} else if (allowUsersCount > 0 && [value isEqualToString:@"contacts"]) {
+			value = [NSString stringWithFormat:@"contacts (+%ld)", (long)allowUsersCount];
+		}
+
 		if (completion) completion(value);
 	}];
 }

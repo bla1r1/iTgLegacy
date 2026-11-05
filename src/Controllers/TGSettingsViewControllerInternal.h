@@ -103,10 +103,14 @@ static inline NSDictionary *TGSubtitleRow(NSString *title, NSString *subtitle,
 }
 
 static inline NSString *TGPrivacyLabel(NSString *value) {
-	if ([value isEqualToString:@"everybody"]) return @"Everybody";
-	if ([value isEqualToString:@"contacts"])  return @"My Contacts";
-	if ([value isEqualToString:@"nobody"])    return @"Nobody";
-	return @"...";
+	if (!value.length) return @"...";
+	if ([value hasPrefix:@"everybody"])
+		return [value stringByReplacingCharactersInRange:NSMakeRange(0, 9) withString:@"Everybody"];
+	if ([value hasPrefix:@"contacts"])
+		return [value stringByReplacingCharactersInRange:NSMakeRange(0, 8) withString:@"My Contacts"];
+	if ([value hasPrefix:@"nobody"])
+		return [value stringByReplacingCharactersInRange:NSMakeRange(0, 6) withString:@"Nobody"];
+	return value;
 }
 
 static inline NSDictionary *TGActionRow(NSString *title, void (^tap)(void)) {
@@ -350,6 +354,7 @@ static inline NSString *TGBytes(long long bytes) {
                       inGroup:(NSDictionary *)group;
 - (void)removeNotificationGroup:(NSDictionary *)group;
 - (NSArray *)privacySections;
+- (NSArray *)passcodeSections;
 - (NSArray *)languageSections;
 - (NSArray *)blockedSections;
 - (NSArray *)powerSavingSections;

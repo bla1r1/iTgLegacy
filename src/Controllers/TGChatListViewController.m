@@ -9,6 +9,8 @@
 #import "TGStoryViewerViewController.h"
 #import "TGStoryComposerViewController.h"
 #import "TGProfileViewController.h"
+#import "TGPasscode.h"
+#import "TGPasscodeViewController.h"
 #import "TGChatListRowGeometry.h"
 
 // Height of the folder pill strip above the chat list (official-style tabs).
@@ -280,6 +282,11 @@ static NSDictionary *TGChatSnapshotRow(NSDictionary *chat) {
 	[self reload];
 }
 
+- (void)viewWillAppear:(BOOL)animated {
+	[super viewWillAppear:animated];
+	[self buildHeaderButtons];
+}
+
 - (void)viewDidAppear:(BOOL)animated {
 	[super viewDidAppear:animated];
 	// The header cannot be parked inside viewDidLoad: the table has no
@@ -469,58 +476,44 @@ static NSDictionary *TGChatSnapshotRow(NSDictionary *chat) {
 	if (self.showsArchive || self.folderId != 0)
 		return;
 
-	UIButton *edit = [UIButton buttonWithType:UIButtonTypeCustom];
-	edit.frame = CGRectMake(TGMetricZero, TGMetricZero, kBarEditWidth, kBarEditHeight);
-	edit.layer.cornerRadius = TGHalf(kBarEditHeight);
-	edit.backgroundColor = [[TGTheme shared] barControlFillColour];
-	edit.titleLabel.font = TGFontCaptionStrong();
-	[edit setTitle:@"Edit" forState:UIControlStateNormal];
-	[edit setTitleColor:[[TGTheme shared] barButtonColour] forState:UIControlStateNormal];
-	[edit addTarget:self action:@selector(toggleChatListEditing)
-   forControlEvents:UIControlEventTouchUpInside];
-	self.editButton = edit;
-	self.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc]
-			initWithCustomView:edit];
+	UIBarButtonItem *edit = [[UIBarButtonItem alloc]
+			initWithTitle:(self.editingChats ? @"Done" : @"Edit")
+					style:(self.editingChats ? UIBarButtonItemStyleDone : UIBarButtonItemStylePlain)
+				   target:self
+				   action:@selector(toggleChatListEditing)];
 
-	UIView *right = [[UIView alloc] initWithFrame:CGRectMake(TGMetricZero, TGMetricZero, kBarRightWidth, kBarComposeSide)];
+	if ([TGPasscode hasPasscode] && !self.editingChats) {
+		UIBarButtonItem *lock = [[UIBarButtonItem alloc]
+				initWithImage:[TGIcons glyphNamed:@"privacy" colour:[[TGTheme shared] barButtonColour] side:TGMetricMenuGlyph]
+						style:UIBarButtonItemStylePlain
+					   target:self
+					   action:@selector(lockAppTapped)];
+		self.navigationItem.leftBarButtonItems = @[edit, lock];
+		self.navigationItem.leftItemsSupplementBackButton = YES;
+	} else {
+		self.navigationItem.leftBarButtonItems = @[edit];
+		self.navigationItem.leftBarButtonItem = edit;
+	}
 
-	UIButton *add = [UIButton buttonWithType:UIButtonTypeCustom];
-	add.frame = CGRectMake(TGMetricZero, kBarControlTop, kBarControlSide, kBarControlSide);
-	add.layer.cornerRadius = TGHalf(kBarControlSide);
-	// A filled disc, not a hole in the bar: the plus is a story action and
-	// has to read as a button over the blue bar.
-	add.backgroundColor = [[TGTheme shared] barControlFillColour];
-	add.clipsToBounds = YES;
-	CAShapeLayer *ring = [CAShapeLayer layer];
-	ring.frame = add.bounds;
-	ring.path = CGPathCreateWithEllipseInRect(add.bounds, NULL);
-	ring.fillColor = [UIColor clearColor].CGColor;
-	ring.strokeColor = [[TGTheme shared] barButtonColour].CGColor;
-	ring.lineWidth = TGMetricHairline;
-	ring.lineDashPattern = @[@3, @3];
-	[add.layer addSublayer:ring];
-	[add setImage:[TGIcons glyphNamed:@"plus"
-							   colour:[[TGTheme shared] barButtonColour]
-								 side:TGMetricMenuGlyph]
-		 forState:UIControlStateNormal];
-	[add addTarget:self action:@selector(openStoryComposer)
-  forControlEvents:UIControlEventTouchUpInside];
-	[right addSubview:add];
+	if (self.editingChats) {
+		self.navigationItem.rightBarButtonItems = nil;
+		self.navigationItem.rightBarButtonItem = nil;
+	} else {
+		UIBarButtonItem *compose = [[UIBarButtonItem alloc]
+				initWithBarButtonSystemItem:UIBarButtonSystemItemCompose
+									 target:self
+									 action:@selector(composeTapped)];
+		UIBarButtonItem *camera = [[UIBarButtonItem alloc]
+				initWithBarButtonSystemItem:UIBarButtonSystemItemCamera
+									 target:self
+									 action:@selector(openStoryComposer)];
+		self.navigationItem.rightBarButtonItems = @[compose, camera];
+	}
+}
 
-	UIButton *compose = [UIButton buttonWithType:UIButtonTypeCustom];
-	compose.frame = CGRectMake(kBarComposeX, TGMetricZero, kBarComposeSide, kBarComposeSide);
-	compose.layer.cornerRadius = TGHalf(kBarComposeSide);
-	compose.backgroundColor = [[TGTheme shared] composeButtonColour];
-	[compose setImage:[TGIcons glyphNamed:@"compose"
-								   colour:[[TGTheme shared] onAccentColour]
-									 side:TGMetricLineTitle]
-			 forState:UIControlStateNormal];
-	[compose addTarget:self action:@selector(composeTapped)
-	  forControlEvents:UIControlEventTouchUpInside];
-	[right addSubview:compose];
-
-	self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc]
-			initWithCustomView:right];
+- (void)lockAppTapped {
+	[TGPasscode setLocked:YES];
+	[TGPasscodeViewController presentUnlockIfLocked];
 }
 
 /// Telegram's Edit is multi-select, not a settings mode: check the chats,
@@ -530,9 +523,7 @@ static NSDictionary *TGChatSnapshotRow(NSDictionary *chat) {
 	self.editingChats = !self.editingChats;
 	self.tableView.allowsMultipleSelectionDuringEditing = YES;
 	[self.tableView setEditing:self.editingChats animated:YES];
-	[self.editButton setTitle:(self.editingChats ? @"Done" : @"Edit")
-					 forState:UIControlStateNormal];
-	self.navigationItem.rightBarButtonItem.customView.hidden = self.editingChats;
+	[self buildHeaderButtons];
 
 	if (!self.editingChats){
 		[self hideEditBarAnimated];
@@ -701,8 +692,7 @@ static NSDictionary *TGChatSnapshotRow(NSDictionary *chat) {
 - (void)finishChatEditingAction {
 	self.editingChats = NO;
 	[self.tableView setEditing:NO animated:YES];
-	[self.editButton setTitle:@"Edit" forState:UIControlStateNormal];
-	self.navigationItem.rightBarButtonItem.customView.hidden = NO;
+	[self buildHeaderButtons];
 	[self hideEditBarAnimated];
 	[self reload];
 }
@@ -1888,9 +1878,12 @@ static NSString *TGChatDate(NSTimeInterval unix) {
 	// Someone typing takes the preview over for as long as it lasts, in their
 	// blurple rather than the grey the preview uses.
 	NSString *action = c[@"action"];
+	NSString *draft = c[@"draft"];
 	if ([action length]){
 		cell.previewLabel.text = action;
 		cell.previewLabel.textColor = [theme typingColour];
+	} else if ([draft length]){
+		[cell setDraftPreview:draft];
 	} else if (c[@"previewText"]){
 		[cell setPreview:c[@"previewText"] author:c[@"lastAuthor"]];
 	} else {
@@ -1916,10 +1909,11 @@ static NSString *TGChatDate(NSTimeInterval unix) {
 											 side:kRowGlyph];
 
 	NSInteger unread = [c[@"unread"] integerValue];
-	// A mention is its own badge and outranks the count: official clients show
-	// "@" on a chat whose only unread thing is a mention, muted or not.
 	NSInteger mentions = [c[@"unreadMentions"] integerValue];
-	BOOL anyBadge = unread > 0 || mentions > 0;
+	cell.mentionBadge.hidden = (mentions <= 0);
+
+	BOOL marked = [c[@"markedUnread"] boolValue];
+	BOOL anyBadge = unread > 0 || marked;
 	cell.badge.hidden = !anyBadge;
 	// The pin is not a place-holder for the badge: a pinned chat that is also
 	// unread shows both, the count at the edge and the pin beside it.
@@ -1927,8 +1921,7 @@ static NSString *TGChatDate(NSTimeInterval unix) {
 	if (!cell.pin.hidden)
 		cell.pin.image = [TGIcons glyphNamed:@"pin" colour:[theme listDateColour]
 									  side:kRowGlyph];
-	cell.badge.text = mentions > 0 ? @"@"
-			: (unread > 0 ? [NSString stringWithFormat:@"%ld", (long)unread] : @"");
+	cell.badge.text = unread > 0 ? (unread > 9999 ? @"9999+" : [NSString stringWithFormat:@"%ld", (long)unread]) : @"";
 	// A muted chat still counts, it just stops shouting about it.
 	cell.badge.backgroundColor = [c[@"isMuted"] boolValue]
 			? [theme mutedBadgeColour] : [theme badgeColour];

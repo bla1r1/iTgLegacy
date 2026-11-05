@@ -330,6 +330,8 @@ APP_SRC_M := \
 	src/Core/TGGhostMode.m \
 	src/Core/TGPlaybackQueue.m \
 	src/Core/TGProfileTabs.m \
+	src/Core/TGPasscode.m \
+	src/Controllers/TGPasscodeViewController.m \
 	src/Controllers/TGStoryCameraViewController.m \
 	src/Controllers/TGProfileAppearanceViewController.m \
 	src/Views/TGChatListRowGeometry.m \

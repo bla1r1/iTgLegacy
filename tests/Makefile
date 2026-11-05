@@ -148,7 +148,8 @@ CLIENT_OBJC_SRCS := \
     $(SRC)/Controllers/TGUIFormat.m \
     $(SRC)/Views/TGChatListRowGeometry.m \
     $(SRC)/Core/TGPlaybackQueue.m \
-    $(SRC)/Core/TGProfileTabs.m
+    $(SRC)/Core/TGProfileTabs.m \
+    $(SRC)/Core/TGPasscode.m
 
 # Test helper ObjC sources. TGClientStub and TGCallAudioEngineStub stand in
 # for the iOS-only production classes that TGCall.mm would otherwise need.

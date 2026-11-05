@@ -4,6 +4,8 @@
 //
 #import "TGSettingsViewControllerInternal.h"
 #import "TGAlertSheet.h"
+#import "TGPasscode.h"
+#import "TGPasscodeViewController.h"
 #import "TGCloseFriendsViewController.h"
 #import "TGSessionsViewController.h"
 #import "TGChatViewController.h"
@@ -532,6 +534,10 @@ static NSString *TGNotificationGroupLabel(NSString *type) {
 	// then account status and the destructive rows at the end.
 	return @[
 		TGSection(@"SECURITY", nil, @[
+			TGIconTapRow(@"Passcode Lock", [TGPasscode hasPasscode] ? @"On" : @"Off",
+					@"privacy", TGIconTileSky(), ^{
+				[weakSelf openPage:TGSettingsPagePasscode];
+			}),
 			TGIconTapRow(@"Two-Step Verification", passwordDetail,
 					@"privacy", TGIconTileGrey(), ^{
 				[weakSelf showTwoStepState];
@@ -1069,6 +1075,87 @@ static NSString *TGNotificationGroupLabel(NSString *type) {
 	};
 	friends.hidesBottomBarWhenPushed = YES;
 	[weakSelf.navigationController pushViewController:friends animated:YES];
+}
+
+- (NSArray *)passcodeSections {
+	__weak typeof(self) weakSelf = self;
+	if (![TGPasscode hasPasscode]) {
+		return @[
+			TGSection(nil,
+					  @"When a passcode is set, a lock icon appears on the chat list. "
+					  @"Tap it to lock the app immediately.",
+					  @[
+				TGTapRow(@"Turn Passcode On", nil, ^{
+					TGPasscodeViewController *vc = [[TGPasscodeViewController alloc] init];
+					vc.mode = TGPasscodeModeSetup;
+					vc.onSuccess = ^{
+						[weakSelf.navigationController popViewControllerAnimated:YES];
+						[weakSelf rebuild];
+					};
+					vc.onCancel = ^{
+						[weakSelf.navigationController popViewControllerAnimated:YES];
+					};
+					[weakSelf.navigationController pushViewController:vc animated:YES];
+				})
+			])
+		];
+	}
+
+	NSInteger timeout = [TGPasscode autoLockTimeout];
+	NSString *timeoutTitle = [TGPasscode autoLockTitleForSeconds:timeout];
+
+	return @[
+		TGSection(nil, nil, @[
+			TGTapRow(@"Turn Passcode Off", nil, ^{
+				TGPasscodeViewController *vc = [[TGPasscodeViewController alloc] init];
+				vc.mode = TGPasscodeModeTurnOff;
+				vc.onSuccess = ^{
+					[weakSelf.navigationController popViewControllerAnimated:YES];
+					[weakSelf rebuild];
+				};
+				vc.onCancel = ^{
+					[weakSelf.navigationController popViewControllerAnimated:YES];
+				};
+				[weakSelf.navigationController pushViewController:vc animated:YES];
+			}),
+			TGTapRow(@"Change Passcode", nil, ^{
+				TGPasscodeViewController *vc = [[TGPasscodeViewController alloc] init];
+				vc.mode = TGPasscodeModeChange;
+				vc.onSuccess = ^{
+					[weakSelf.navigationController popViewControllerAnimated:YES];
+					[weakSelf rebuild];
+				};
+				vc.onCancel = ^{
+					[weakSelf.navigationController popViewControllerAnimated:YES];
+				};
+				[weakSelf.navigationController pushViewController:vc animated:YES];
+			})
+		]),
+		TGSection(nil,
+				  @"Lock the app automatically if away for a specified period of time.",
+				  @[
+			TGTapRow(@"Auto-Lock", timeoutTitle, ^{
+				NSArray *choices = @[
+					@"Immediately",
+					@"If away for 1 min",
+					@"If away for 5 min",
+					@"If away for 1 hour",
+					@"Disabled"
+				];
+				static const NSInteger timeouts[5] = {0, 60, 300, 3600, -1};
+				[TGAlertSheet showChoices:choices
+									title:@"Auto-Lock"
+						 destructiveIndex:-1
+								   inView:weakSelf.view
+								 onChoice:^(NSInteger index){
+					if (index >= 0 && index < 5) {
+						[TGPasscode setAutoLockTimeout:timeouts[index]];
+						[weakSelf rebuild];
+					}
+				}];
+			})
+		])
+	];
 }
 
 @end

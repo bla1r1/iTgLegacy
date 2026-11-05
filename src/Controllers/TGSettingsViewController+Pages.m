@@ -58,6 +58,7 @@ static NSArray *TGCustomResultRows(NSString *result) {
 		case TGSettingsPageActiveNotifications:
 			return [self activeNotificationSections];
 		case TGSettingsPagePrivacy:       return [self privacySections];
+		case TGSettingsPagePasscode:      return [self passcodeSections];
 		case TGSettingsPageLanguage:      return [self languageSections];
 		case TGSettingsPageBlocked:       return [self blockedSections];
 		case TGSettingsPagePowerSaving:   return [self powerSavingSections];

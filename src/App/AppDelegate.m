@@ -18,6 +18,8 @@
 #import "TGCallViewController.h"
 #import "TGLoginViewController.h"
 #import "TGTermsViewController.h"
+#import "TGPasscode.h"
+#import "TGPasscodeViewController.h"
 #import <QuartzCore/QuartzCore.h>
 #import "TGStyle.h"
 #import "TGAlertSheet.h"
@@ -163,6 +165,11 @@ static void TGDevCommandNotifyCallback(CFNotificationCenterRef center, void *obs
 	[self showMainUI];
 	[self.window makeKeyAndVisible];
 
+	if ([TGPasscode hasPasscode]) {
+		[TGPasscode setLocked:YES];
+		[TGPasscodeViewController presentUnlockIfLocked];
+	}
+
 	[self startTDLib];
 	TGWarmFonts([TGTheme shared].messageFontSize);
 	// One line if the launch itself misbehaves; silent when it is healthy.
@@ -174,6 +181,8 @@ static void TGDevCommandNotifyCallback(CFNotificationCenterRef center, void *obs
 #pragma mark - TDLib
 
 - (void)applicationDidEnterBackground:(UIApplication *)application {
+	[TGPasscode noteAppBackgrounded];
+
 	// B13: the close has to finish before iOS suspends us.
 	__block UIBackgroundTaskIdentifier task = UIBackgroundTaskInvalid;
 	void (^finish)(void) = ^{
@@ -187,6 +196,9 @@ static void TGDevCommandNotifyCallback(CFNotificationCenterRef center, void *obs
 }
 
 - (void)applicationWillEnterForeground:(UIApplication *)application {
+	if ([TGPasscode shouldLockOnForeground]) {
+		[TGPasscodeViewController presentUnlockIfLocked];
+	}
 	[[TGClient shared] resumeFromBackground];
 }
 

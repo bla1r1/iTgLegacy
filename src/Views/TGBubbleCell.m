@@ -164,6 +164,37 @@ static const CGFloat kSendRingMinimum = 0.2f;
 		[label addGestureRecognizer:quoteTap];
 	}
 
+	self.linkPreviewBar = [[UIView alloc] init];
+	self.linkPreviewBar.hidden = YES;
+	[self.bubble addSubview:self.linkPreviewBar];
+
+	self.linkPreviewSite = [[UILabel alloc] init];
+	self.linkPreviewSite.font = TGFontMetaStrong();
+	self.linkPreviewSite.backgroundColor = [UIColor clearColor];
+	self.linkPreviewSite.hidden = YES;
+	[self.bubble addSubview:self.linkPreviewSite];
+
+	self.linkPreviewTitle = [[UILabel alloc] init];
+	self.linkPreviewTitle.font = TGFontCaptionStrong();
+	self.linkPreviewTitle.numberOfLines = 2;
+	self.linkPreviewTitle.lineBreakMode = NSLineBreakByTruncatingTail;
+	self.linkPreviewTitle.backgroundColor = [UIColor clearColor];
+	self.linkPreviewTitle.hidden = YES;
+	[self.bubble addSubview:self.linkPreviewTitle];
+
+	self.linkPreviewDesc = [[UILabel alloc] init];
+	self.linkPreviewDesc.font = TGFontCaption();
+	self.linkPreviewDesc.numberOfLines = 2;
+	self.linkPreviewDesc.lineBreakMode = NSLineBreakByTruncatingTail;
+	self.linkPreviewDesc.backgroundColor = [UIColor clearColor];
+	self.linkPreviewDesc.hidden = YES;
+	[self.bubble addSubview:self.linkPreviewDesc];
+
+	self.linkPreviewButton = [UIButton buttonWithType:UIButtonTypeCustom];
+	self.linkPreviewButton.hidden = YES;
+	[self.linkPreviewButton addTarget:self action:@selector(linkPreviewTapped) forControlEvents:UIControlEventTouchUpInside];
+	[self.bubble addSubview:self.linkPreviewButton];
+
 	self.icon = [[UILabel alloc] init];
 	self.icon.textAlignment = NSTextAlignmentCenter;
 	self.icon.textColor = [[TGTheme shared] onAccentColour];
@@ -382,6 +413,11 @@ static const CGFloat kSendRingMinimum = 0.2f;
 - (void)quoteTapped:(UITapGestureRecognizer *)tap {
 	if (tap.state != UIGestureRecognizerStateEnded) return;
 	if (self.onQuoteTapped) self.onQuoteTapped();
+}
+
+- (void)linkPreviewTapped {
+	if (self.onLinkTapped && self.linkPreviewUrl.length)
+		self.onLinkTapped(self.linkPreviewUrl);
 }
 
 #pragma mark - voice waveform
@@ -670,6 +706,15 @@ static const CGFloat kSendRingMinimum = 0.2f;
 	self.quote.text = nil;
 	self.quoteAuthor.hidden = YES;
 	self.quoteAuthor.text = nil;
+	self.linkPreviewBar.hidden = YES;
+	self.linkPreviewSite.hidden = YES;
+	self.linkPreviewSite.text = nil;
+	self.linkPreviewTitle.hidden = YES;
+	self.linkPreviewTitle.text = nil;
+	self.linkPreviewDesc.hidden = YES;
+	self.linkPreviewDesc.text = nil;
+	self.linkPreviewButton.hidden = YES;
+	self.linkPreviewUrl = nil;
 	self.forwardLabel.hidden = YES;
 	self.forwardLabel.text = nil;
 	self.forwardLabel.attributedText = nil;

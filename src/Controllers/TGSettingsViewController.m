@@ -194,6 +194,7 @@
 		case TGSettingsPageNotificationSounds: return @"Custom Sounds";
 		case TGSettingsPageActiveNotifications: return @"Active Notifications";
 		case TGSettingsPagePrivacy:       return @"Privacy and Security";
+		case TGSettingsPagePasscode:      return @"Passcode Lock";
 		case TGSettingsPageLanguage:      return @"Language";
 		case TGSettingsPageBlocked:       return @"Blocked Users";
 		case TGSettingsPagePowerSaving:   return @"Power Saving";

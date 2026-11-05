@@ -142,6 +142,38 @@ static char kTGReactionChipInfoKey;
 	}
 	cell.body.frame = layout.bodyFrame;
 
+	// 7b. Link preview block
+	if (!CGRectIsEmpty(layout.linkPreviewFrame)) {
+		cell.linkPreviewBar.hidden = NO;
+		cell.linkPreviewBar.backgroundColor = [theme accentColour];
+		cell.linkPreviewBar.frame = layout.linkBarFrame;
+
+		if (layout.linkSite.length) {
+			cell.linkPreviewSite.hidden = NO;
+			cell.linkPreviewSite.textColor = [theme accentColour];
+			cell.linkPreviewSite.text = layout.linkSite;
+			cell.linkPreviewSite.frame = layout.linkSiteFrame;
+		}
+
+		if (layout.linkTitle.length) {
+			cell.linkPreviewTitle.hidden = NO;
+			cell.linkPreviewTitle.textColor = [theme primaryTextColour];
+			cell.linkPreviewTitle.text = layout.linkTitle;
+			cell.linkPreviewTitle.frame = layout.linkTitleFrame;
+		}
+
+		if (layout.linkDesc.length) {
+			cell.linkPreviewDesc.hidden = NO;
+			cell.linkPreviewDesc.textColor = [theme secondaryTextColour];
+			cell.linkPreviewDesc.text = layout.linkDesc;
+			cell.linkPreviewDesc.frame = layout.linkDescFrame;
+		}
+
+		cell.linkPreviewButton.hidden = NO;
+		cell.linkPreviewButton.frame = layout.linkPreviewFrame;
+		cell.linkPreviewUrl = layout.linkUrl;
+	}
+
 	__weak typeof(self) weakSelf = self;
 	cell.onLinkTapped = ^(NSString *url) {
 		[weakSelf handleOpenLink:url];
