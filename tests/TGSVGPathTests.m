@@ -75,7 +75,8 @@ static BOOL TGNear(CGFloat a, CGFloat b) {
 		CGPathRelease(path);
 	}
 	XCTAssertTrue(TGIconPathNamed("reply") != NULL);
-	XCTAssertTrue(TGIconPathNamed("contacts") == NULL);     // ours, still drawn
+	XCTAssertTrue(TGIconPathNamed("contacts") != NULL);
+	XCTAssertTrue(TGIconPathNamed("nonexistent") == NULL);
 }
 
 @end

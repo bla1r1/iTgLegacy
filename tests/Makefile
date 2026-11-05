@@ -229,6 +229,7 @@ CLIENT_TEST_SRCS := \
     $(TESTS)/TGStickerBudgetTests.m \
     $(TESTS)/TGStickerImageTests.m \
     $(TESTS)/TGChatListRowGeometryTests.m \
+    $(TESTS)/TGSVGPathTests.m \
     $(TESTS)/TGUIFormatTests.m
 
 TEST_BINARY := $(BUILD)/TGCallTests

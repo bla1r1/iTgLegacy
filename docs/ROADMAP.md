@@ -44,7 +44,7 @@ The app was fully rewritten onto TDLib. `libtg` — the hand-written MTProto sta
 | **done** | Animated `.tgs` stickers | `TGLottieView` |
 | **done** | Documents with name and size | |
 | **done** | Send photo from library | |
-| | `.webm` stickers | VP9 — no decoder on this hardware |
+| **done** | Video stickers (`.webm`) | VP9 with alpha via `TGWebMDecoder` & streaming player |
 | | Lottie: mattes, trim paths, repeaters | gradients done; the rest approximate |
 | **done** | Record and send voice note | libopusenc; 4 s → 22 KB on a 4S |
 | **done** | Send video, location, contacts | no file browser on iOS 7 |

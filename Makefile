@@ -505,8 +505,7 @@ DEV_SRC_M := \
 	src/Controllers/TGWebProxyCarrierViewController.m \
 	src/Controllers/TGTextStylesViewController.m \
 	src/Controllers/TGMessageToolsViewController.m \
-	src/Controllers/TGSuggestedPostViewController.m \
-	src/Controllers/TGAiComposeViewController.m
+	src/Controllers/TGSuggestedPostViewController.m
 ifneq ($(DEV),1)
 APP_SRC_M := $(filter-out $(DEV_SRC_M),$(APP_SRC_M))
 endif
