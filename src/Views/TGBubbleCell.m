@@ -80,6 +80,14 @@ static const CGFloat kSendRingMinimum = 0.2f;
 	self.body.backgroundColor = [UIColor clearColor];
 	[self.bubble addSubview:self.body];
 
+	self.captionLabel = [[UILabel alloc] init];
+	self.captionLabel.numberOfLines = 0;
+	self.captionLabel.lineBreakMode = NSLineBreakByWordWrapping;
+	self.captionLabel.font = TGFontBody();
+	self.captionLabel.backgroundColor = [UIColor clearColor];
+	self.captionLabel.hidden = YES;
+	[self.bubble addSubview:self.captionLabel];
+
 	self.sender = [[UILabel alloc] init];
 	self.sender.font = TGFontMetaStrong();
 	self.sender.lineBreakMode = NSLineBreakByTruncatingTail;
@@ -669,6 +677,10 @@ static const CGFloat kSendRingMinimum = 0.2f;
 	self.body.attributedText = nil;
 	self.body.numberOfLines = 0;
 	self.body.textAlignment = NSTextAlignmentLeft;
+	self.captionLabel.hidden = YES;
+	self.captionLabel.text = nil;
+	self.captionLabel.attributedText = nil;
+	self.captionLabel.numberOfLines = 0;
 	self.time.text = nil;
 	self.ticks.hidden = YES;
 	self.ticks.image = nil;
@@ -679,6 +691,7 @@ static const CGFloat kSendRingMinimum = 0.2f;
 	self.mediaStamp.hidden = YES;
 	self.mediaStamp.text = nil;
 	self.unreadDot.hidden = YES;
+	self.docMessageId = 0;
 
 	// The poll's option rows are five views apiece and were torn down and
 	// built again on every single reuse, because clearing pollMessageId here
@@ -686,7 +699,7 @@ static const CGFloat kSendRingMinimum = 0.2f;
 	// Hidden instead: the poll branch rebuilds them when the message under
 	// the cell actually changes.
 	for (UIView *old in self.bubble.subviews) {
-		if (old.tag >= 0x9100 && old.tag < 0x9200) old.hidden = YES;
+		if (old.tag >= 0x9100 && old.tag < 0x9300) old.hidden = YES;
 	}
 
 	// A round note moves the clock and the ticks out of the bubble, because a

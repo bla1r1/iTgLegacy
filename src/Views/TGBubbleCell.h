@@ -9,6 +9,7 @@
 
 @property (nonatomic, strong) UIView *bubble;
 @property (nonatomic, strong) UILabel *body;
+@property (nonatomic, strong) UILabel *captionLabel;
 @property (nonatomic, strong) UIImageView *picture;
 @property (nonatomic, strong) UILabel *time;
 @property (nonatomic, strong) TGLottieView *lottie;
@@ -65,6 +66,7 @@
 @property (nonatomic, strong) UILabel *mediaStamp;
 @property (nonatomic, assign) int64_t voiceMessageId;
 @property (nonatomic, assign) int64_t pollMessageId;
+@property (nonatomic, assign) int64_t docMessageId;
 /// What the option rows were built from: the tally, the chosen answer and
 /// whether it is closed. Keeping it lets a reused cell keep its rows while
 /// still rebuilding them the moment a vote lands.

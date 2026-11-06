@@ -1,5 +1,6 @@
 #import "TGEmojiPanel.h"
 #import "TGEmojiData.h"
+#import "TGCapabilities.h"
 #import "TGEmojiStore.h"
 #import "TGTheme.h"
 #import "TGIcons.h"
@@ -9,6 +10,7 @@
 #import "UIImage+WebP.h"
 #import <QuartzCore/QuartzCore.h>
 #import "TGStyle.h"
+#import "TGMessageLayout.h"
 #import "TGAlertSheet.h"
 #import "TGLottieView.h"
 #import <objc/runtime.h>
@@ -21,6 +23,14 @@ static inline void TGSetButtonItemData(UIButton *button, id item) {
 
 static inline id TGGetButtonItemData(UIButton *button) {
 	return objc_getAssociatedObject(button, &kTGItemDataKey);
+}
+
+/// The first character a title can show for a set with no cover: a whole
+/// composed character, never half a surrogate pair, and never one no font has.
+static NSString *TGFirstDrawableCharacter(NSString *title) {
+	NSString *shown = TGStripUndrawableScalars(title ?: @"");
+	return shown.length
+			? [shown substringWithRange:[shown rangeOfComposedCharacterSequenceAtIndex:0]] : @"?";
 }
 
 /// A set row as the search feed draws it: the tile carries the whole record
@@ -37,7 +47,7 @@ static NSArray *TGPackSearchTiles(NSArray *sets) {
 		if ([icon length])
 			tile[@"emoji"] = icon;
 		else if ([set[@"title"] length])
-			tile[@"emoji"] = [set[@"title"] substringToIndex:1];
+			tile[@"emoji"] = TGFirstDrawableCharacter(set[@"title"]);
 		NSNumber *thumbId = cover[@"thumbId"];
 		if ([thumbId isKindOfClass:NSNumber.class])
 			tile[@"thumbId"] = thumbId;
@@ -408,7 +418,7 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 				NSDictionary *cover = set[@"cover"];
 				NSMutableDictionary *entry = [NSMutableDictionary dictionary];
 				entry[@"emoji"] = [cover[@"emoji"] length] ? cover[@"emoji"]
-						: ([set[@"title"] length] ? [set[@"title"] substringToIndex:1] : @"?");
+						: TGFirstDrawableCharacter(set[@"title"]);
 				if ([cover[@"thumbId"] integerValue] > 0)
 					entry[@"thumbId"] = cover[@"thumbId"];
 				[out addObject:entry];
@@ -452,7 +462,9 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 												  ? [theme accentColour] : [theme secondaryTextColour])
 											side:TGMetricMenuGlyph]
 					forState:UIControlStateNormal];
-		} else {
+		} else if (!entry[@"thumbId"] || self.tab == TGEmojiPanelTabEmoji){
+			// A set with a cover waits for it blank, for the same reason the
+			// sticker cells do; the emoji tab's category icons are all drawable.
 			button.titleLabel.font = TGFontEmojiSmall();
 			[button setTitle:entry[@"emoji"] forState:UIControlStateNormal];
 		}
@@ -998,7 +1010,7 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 					CGRectMake(TGMetricPad, y + TGMetricPadSmall, w - TGDoubled(TGMetricPad),
 					kHeaderHeight - TGDoubled(TGMetricBubbleRowInset))];
 			header.tag = kHeaderTag;
-			header.text = [section[@"title"] uppercaseString];
+			header.text = TGStripUndrawableScalars([section[@"title"] uppercaseString]);
 			header.font = TGFontMicroStrong();
 			header.textColor = [theme secondaryTextColour];
 			header.backgroundColor = [UIColor clearColor];
@@ -1104,11 +1116,13 @@ static UIImage *TGBackspaceImage(UIColor *colour) {
 		UIImage *cached = dict[@"thumbId"] ? [TGPanelImageCache() objectForKey:dict[@"thumbId"]] : nil;
 		if (cached)
 			[button setImage:cached forState:UIControlStateNormal];
-		else {
-			// The emoji stands in until the picture arrives - and for good,
-			// for a sticker with no still thumbnail.
+		else if (!dict[@"thumbId"] && [TGCapabilities canDrawEmoji:dict[@"emoji"]]){
+			// Only a sticker with no still thumbnail keeps its emoji for good.
+			// One that is loading stays blank: an emoji newer than this iOS
+			// sent CoreText through every font on disk, 0.3-1.8 s per grid on
+			// a 4S, before the picture replaced it anyway.
 			button.titleLabel.font = TGFontEmojiLarge();
-			[button setTitle:dict[@"emoji"] ?: @"" forState:UIControlStateNormal];
+			[button setTitle:dict[@"emoji"] forState:UIControlStateNormal];
 		}
 	} else {
 		if (!tile){

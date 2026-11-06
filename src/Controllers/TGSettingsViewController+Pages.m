@@ -1,4 +1,5 @@
 #import "TGSettingsViewControllerInternal.h"
+#import "RootViewController.h"
 #import "TGAlertSheet.h"
 #import "TGForwardPicker.h"
 #import "TGListViewController.h"
@@ -738,8 +739,15 @@ static NSString *TGCallDebugText(NSDictionary *call) {
 		displayCalls = [self.calls filteredArrayUsingPredicate:pred];
 	}
 
+	// Telegram's switch for its fourth tab sits with the list it shows, so
+	// the tab can be turned off from inside it.
+	NSDictionary *tabSection = TGSection(nil, nil, @[
+			TGSwitchRow(@"Show Calls Tab", [RootViewController showsCallsTab], ^(BOOL on){
+				[RootViewController setShowsCallsTab:on];
+			})]);
+
 	if (!displayCalls.count)
-		return @[TGSection(nil, nil, @[TGRow(TGKindPlain, self.recentCallsFilter == 1 ? @"No missed calls" : @"No recent calls")])];
+		return @[tabSection, TGSection(nil, nil, @[TGRow(TGKindPlain, self.recentCallsFilter == 1 ? @"No missed calls" : @"No recent calls")])];
 
 	static NSDateFormatter *when = nil;
 	if (!when){
@@ -787,7 +795,7 @@ static NSString *TGCallDebugText(NSDictionary *call) {
 			row[TGRowKind] = TGKindDestructive;
 		[rows addObject:row];
 	}
-	return @[TGSection(nil, nil, rows)];
+	return @[tabSection, TGSection(nil, nil, rows)];
 }
 
 #if TG_DEV

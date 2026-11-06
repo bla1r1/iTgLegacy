@@ -1,3 +1,4 @@
+#import "TGCustomEmojiStore.h"
 #import "TGChatListViewControllerInternal.h"
 #import "TGPerf.h"
 #import "TGStatusText.h"
@@ -105,7 +106,8 @@ static NSDictionary *TGChatSnapshotRow(NSDictionary *chat) {
 				@"unread", @"unreadMentions", @"markedUnread", @"isMuted",
 				@"isPinned", @"isOnline", @"isSaved", @"lastId", @"lastOutgoing",
 				@"readOutbox", @"readInbox", @"photoFileId", @"isGroup", @"isForum",
-				@"isSecret", @"order", @"archiveOrder", @"supergroupId", @"draft"];
+				@"isSecret", @"order", @"archiveOrder", @"supergroupId", @"draft",
+				@"emojiStatusId"];
 	});
 	NSMutableDictionary *row = [NSMutableDictionary dictionaryWithCapacity:keys.count];
 	for (NSString *key in keys){
@@ -236,6 +238,18 @@ static NSDictionary *TGChatSnapshotRow(NSDictionary *chat) {
 				selector:@selector(reload) object:nil];
 		[weakSelf performSelector:@selector(reload) withObject:nil afterDelay:0.3];
 	};
+	// A status picture arrived: the visible rows draw it, at most every 0.2 s
+	// while a screenful of them comes in.
+	[[NSNotificationCenter defaultCenter] addObserverForName:TGCustomEmojiLoadedNotification
+			object:nil queue:[NSOperationQueue mainQueue]
+		usingBlock:^(NSNotification *note){
+		TGChatListViewController *me = weakSelf;
+		if (!me)
+			return;
+		[NSObject cancelPreviousPerformRequestsWithTarget:me
+				selector:@selector(reloadVisibleRows) object:nil];
+		[me performSelector:@selector(reloadVisibleRows) withObject:nil afterDelay:0.2];
+	}];
 	[[NSNotificationCenter defaultCenter] addObserverForName:TGStoriesChangedNotification
 			object:nil queue:[NSOperationQueue mainQueue]
 		usingBlock:^(NSNotification *note){
@@ -1824,6 +1838,13 @@ static NSString *TGChatDate(NSTimeInterval unix) {
 	return [self visibleChats].count + [self headerRows].count;
 }
 
+- (void)reloadVisibleRows {
+	NSArray *visible = [self.tableView indexPathsForVisibleRows];
+	if (visible.count)
+		[self.tableView reloadRowsAtIndexPaths:visible
+							  withRowAnimation:UITableViewRowAnimationNone];
+}
+
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
 	static NSString *reuse = @"TGChatCell";
 	TGChatCell *cell = [tableView dequeueReusableCellWithIdentifier:reuse];
@@ -1902,6 +1923,15 @@ static NSString *TGChatDate(NSTimeInterval unix) {
 
 	// A muted chat carries a small speaker after its title; a pinned one keeps
 	// a marker where the badge sits when it has none.
+	// A premium person's or a channel's emoji status after the name. Saved
+	// Messages is your own chat and shows none, as in Telegram.
+	int64_t statusId = [c[@"isSaved"] boolValue] ? 0 : [c[@"emojiStatusId"] longLongValue];
+	UIImage *status = statusId
+			? [[TGCustomEmojiStore shared] imageForId:statusId side:[TGChatCell statusSide]] : nil;
+	cell.statusIcon.image = status;
+	cell.statusIcon.hidden = !status;
+	[cell setNeedsLayout];
+
 	BOOL muted = [c[@"isMuted"] boolValue];
 	cell.muteIcon.hidden = !muted;
 	if (muted)

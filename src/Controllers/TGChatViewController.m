@@ -18,6 +18,8 @@
 #import <MapKit/MapKit.h>
 #import <AVFoundation/AVFoundation.h>
 #import "TGVoiceDecoder.h"
+#import "TGEmojiData.h"
+#import "TGCustomEmojiStore.h"
 #import "UIImage+WebP.h"
 #import "TGLottieView.h"
 #import "TGDevShowcase.h"
@@ -35,6 +37,7 @@
 #import "TGMessageStreamStore.h"
 #import "TGStyle.h"
 #import "TGAlertSheet.h"
+#import "TGDMTopicsViewController.h"
 
 /// The pin in the strip under the bar, and where its two lines begin after it.
 static const CGFloat kPinnedGlyph = 14.0f;
@@ -47,6 +50,7 @@ static const NSInteger kPinnedBodyTag = 0x9010;
 static const NSInteger kChatMuteBarTag = 0x9020;
 static const NSInteger kChatJoinGroupBarTag = 0x9021;
 static const NSInteger kChatJoinChannelBarTag = 0x9022;
+static const NSInteger kChatDiscussBarTag = 0x9023;
 
 #pragma mark - controller
 
@@ -65,6 +69,11 @@ static const NSInteger kChatJoinChannelBarTag = 0x9022;
 	// A chat that opens right after a popped one must not inherit a defer flag
 	// left set by a scroll whose settle callback was cancelled on the way out.
 	[TGLottieView setBuildsDeferred:NO];
+	// The sticker and emoji panel opens from here. Its emoji list and the font
+	// scan behind it are built off the main thread a second after the chat,
+	// once the history load has had the single core.
+	dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)),
+			dispatch_get_main_queue(), ^{ TGWarmEmojiData(); });
 
 	[[TGTheme shared] styleNavigationBar:self.navigationController.navigationBar];
 	double vcStart = TGPerfNow();
@@ -147,6 +156,10 @@ static const NSInteger kChatJoinChannelBarTag = 0x9022;
 			name:TGChatDraftStoppedNotification object:nil];
 	[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(videoPublished:)
 			name:TGChatVideoPublishedNotification object:nil];
+	// A custom emoji's picture arrived: the bubbles on screen swap the clear
+	// stand-in for it. Their size does not change, only what is drawn.
+	[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(customEmojiLoaded:)
+			name:TGCustomEmojiLoadedNotification object:nil];
 	TGPerfReport("chat vc", "chrome", vcStart, 50.0);
 	[self installSwipeToReply];
 	TGPerfReport("chat vc", "swipe + load", vcStart, 100.0);
@@ -472,6 +485,19 @@ static const NSInteger kChatJoinChannelBarTag = 0x9022;
 /// clears when it still holds the text the client had cached: a stop must not
 /// wipe words typed after it. The table reloads either way, because the
 /// message being streamed may have changed too.
+- (void)customEmojiLoaded:(NSNotification *)note {
+	// A screenful of emoji lands as a burst: one redraw for all of it.
+	[NSObject cancelPreviousPerformRequestsWithTarget:self
+			selector:@selector(redrawVisibleRows) object:nil];
+	[self performSelector:@selector(redrawVisibleRows) withObject:nil afterDelay:0.15];
+}
+
+- (void)redrawVisibleRows {
+	NSArray *visible = [self.table indexPathsForVisibleRows];
+	if (visible.count)
+		[self.table reloadRowsAtIndexPaths:visible withRowAnimation:UITableViewRowAnimationNone];
+}
+
 - (void)draftStopped:(NSNotification *)note {
 	NSDictionary *info = note.userInfo;
 	if ([info[@"chat_id"] longLongValue] != self.chatId)
@@ -512,11 +538,26 @@ static const NSInteger kChatJoinChannelBarTag = 0x9022;
 	comp[@"albumMessages"] = albumMsgs;
 	comp[@"albumCount"] = @(albumMsgs.count);
 
+	comp[@"caption"] = @"";
 	for (NSDictionary *sub in albumMsgs) {
-		if ([sub[@"text"] length]) {
-			comp[@"text"] = sub[@"text"];
+		NSString *cap = sub[@"caption"];
+		if ([cap length]) {
+			comp[@"caption"] = cap;
+			comp[@"text"] = cap;
 			comp[@"entities"] = sub[@"entities"] ?: @[];
 			break;
+		}
+	}
+	if (![comp[@"caption"] length]) {
+		for (NSDictionary *sub in albumMsgs) {
+			NSString *t = sub[@"text"];
+			NSString *docName = sub[@"docName"];
+			if (t.length && (docName.length == 0 || ![t hasPrefix:docName])) {
+				comp[@"caption"] = t;
+				comp[@"text"] = t;
+				comp[@"entities"] = sub[@"entities"] ?: @[];
+				break;
+			}
 		}
 	}
 	return comp;
@@ -530,10 +571,16 @@ static const NSInteger kChatJoinChannelBarTag = 0x9022;
 
 	for (NSDictionary *m in rawMessages) {
 		NSString *albumId = m[@"albumId"];
-		BOOL hasAlbum = (albumId.length > 0 && ![albumId isEqualToString:@"0"]);
+		NSString *kind = m[@"kind"];
+		BOOL isAlbumCandidate = [kind isEqualToString:@"messagePhoto"] ||
+								[kind isEqualToString:@"messageVideo"] ||
+								[kind isEqualToString:@"messageAnimation"] ||
+								[kind isEqualToString:@"messageDocument"];
+		BOOL hasAlbum = (albumId.length > 0 && ![albumId isEqualToString:@"0"] && isAlbumCandidate);
 
 		if (hasAlbum) {
-			if (currentAlbum && [currentAlbumId isEqualToString:albumId]) {
+			if (currentAlbum && [currentAlbumId isEqualToString:albumId] &&
+				[currentAlbum.firstObject[@"kind"] isEqualToString:kind]) {
 				[currentAlbum addObject:m];
 				continue;
 			} else {
@@ -719,7 +766,7 @@ static const NSInteger kChatJoinChannelBarTag = 0x9022;
 - (void)openProfile {
 	// A private chat id is the user id, which is what the profile needs to
 	// look up a photo and a phone number; a group has no single user.
-	int64_t userId = self.isGroup ? 0 : self.chatId;
+	int64_t userId = (self.isGroup || self.chatId < 0) ? 0 : self.chatId;
 	TGProfileViewController *profile = [[TGProfileViewController alloc]
 			initWithChatId:self.chatId userId:userId title:self.chatTitle];
 	__weak typeof(self) weakSelf = self;
@@ -770,6 +817,21 @@ static const NSInteger kChatJoinChannelBarTag = 0x9022;
 		}
 
 		[me applyPostingRightsForGroup:isGroup channel:isChannel member:isMember];
+
+		if (isChannel){
+			[[TGClient shared] chatProfile:me.chatId completion:^(NSDictionary *info){
+				TGChatViewController *again = weakSelf;
+				if (!again) return;
+				int64_t linked = [info[@"linkedChatId"] longLongValue];
+				again.linkedChatId = linked;
+				again.directMessagesChatId = [info[@"directMessagesChatId"] longLongValue];
+				again.hasDirectMessages = [info[@"hasDirectMessages"] boolValue];
+				again.canManageDirectMessages = [info[@"canManageDirectMessages"] boolValue];
+				if (isMember){
+					[again applyPostingRightsForGroup:YES channel:YES member:YES];
+				}
+			}];
+		}
 	}];
 }
 
@@ -805,10 +867,77 @@ static const NSInteger kChatJoinChannelBarTag = 0x9022;
 			me.inputBar.hidden = NO;
 			return;
 		}
+		if (channel && me.linkedChatId > 0){
+			[me showChannelBottomBarWithDiscuss];
+			return;
+		}
 		[me showComposerStandIn:(channel ? @"Mute channel" : @"Mute chat")
 						 action:@selector(muteFromChat:)
 							tag:kChatMuteBarTag];
 	}];
+}
+
+- (void)showChannelBottomBarWithDiscuss {
+	self.inputBar.hidden = YES;
+	[self removeComposerStandIn];
+	CGRect barFrame = self.inputBar.frame;
+	CGFloat halfW = floorf(TGHalf(barFrame.size.width));
+
+	UIButton *muteBar = [UIButton buttonWithType:UIButtonTypeCustom];
+	muteBar.frame = CGRectMake(barFrame.origin.x, barFrame.origin.y, halfW, barFrame.size.height);
+	muteBar.tag = kChatMuteBarTag;
+	muteBar.backgroundColor = [[TGTheme shared] inputBarColour];
+	muteBar.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleRightMargin | UIViewAutoresizingFlexibleTopMargin;
+	[muteBar setTitleColor:[[TGTheme shared] accentColour] forState:UIControlStateNormal];
+	muteBar.titleLabel.font = TGFontBody();
+	BOOL muted = [[TGClient shared] isChatMuted:self.chatId];
+	[muteBar setTitle:(muted ? @"Unmute" : @"Mute") forState:UIControlStateNormal];
+	[muteBar addTarget:self action:@selector(muteFromChat:) forControlEvents:UIControlEventTouchUpInside];
+	[self.view addSubview:muteBar];
+
+	UIButton *discussBar = [UIButton buttonWithType:UIButtonTypeCustom];
+	discussBar.frame = CGRectMake(barFrame.origin.x + halfW, barFrame.origin.y, barFrame.size.width - halfW, barFrame.size.height);
+	discussBar.tag = kChatDiscussBarTag;
+	discussBar.backgroundColor = [[TGTheme shared] inputBarColour];
+	discussBar.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleTopMargin;
+	[discussBar setTitleColor:[[TGTheme shared] accentColour] forState:UIControlStateNormal];
+	discussBar.titleLabel.font = TGFontBody();
+	[discussBar setTitle:@"Discuss" forState:UIControlStateNormal];
+	[discussBar addTarget:self action:@selector(discussFromChat:) forControlEvents:UIControlEventTouchUpInside];
+	[self.view addSubview:discussBar];
+}
+
+- (void)docRowTapped:(UIButton *)sender {
+	UIView *view = sender;
+	while (view && ![view isKindOfClass:TGBubbleCell.class])
+		view = view.superview;
+	TGBubbleCell *cell = (TGBubbleCell *)view;
+	if (!cell || !cell.docMessageId)
+		return;
+
+	NSInteger index = sender.tag - 0x9200;
+	NSDictionary *message = nil;
+	for (NSDictionary *candidate in self.messages){
+		if ([candidate[@"id"] longLongValue] == cell.docMessageId){
+			message = candidate;
+			break;
+		}
+	}
+	if (!message) return;
+	NSArray *docs = [message[@"isAlbum"] boolValue] && [message[@"albumMessages"] isKindOfClass:NSArray.class]
+			? message[@"albumMessages"] : @[message];
+	NSDictionary *doc = (index >= 0 && index < (NSInteger)docs.count) ? docs[(NSUInteger)index] : message;
+	[self downloadAndPresentDocument:doc fromCell:cell];
+}
+
+- (void)discussFromChat:(UIButton *)sender {
+	if (self.linkedChatId <= 0) return;
+	TGChatViewController *chat = [[TGChatViewController alloc] init];
+	chat.chatId = self.linkedChatId;
+	chat.chatTitle = @"Discussion";
+	chat.isGroup = YES;
+	chat.hidesBottomBarWhenPushed = YES;
+	[self.navigationController pushViewController:chat animated:YES];
 }
 
 - (void)showComposerStandIn:(NSString *)title action:(SEL)action tag:(NSInteger)tag {
@@ -828,6 +957,7 @@ static const NSInteger kChatJoinChannelBarTag = 0x9022;
 
 - (void)removeComposerStandIn {
 	[[self.view viewWithTag:kChatMuteBarTag] removeFromSuperview];
+	[[self.view viewWithTag:kChatDiscussBarTag] removeFromSuperview];
 	[[self.view viewWithTag:kChatJoinGroupBarTag] removeFromSuperview];
 	[[self.view viewWithTag:kChatJoinChannelBarTag] removeFromSuperview];
 }
@@ -858,7 +988,8 @@ static const NSInteger kChatJoinChannelBarTag = 0x9022;
 - (void)muteFromChat:(UIButton *)button {
 	BOOL muting = [button.currentTitle hasPrefix:@"Mute"];
 	[[TGClient shared] setChat:self.chatId muted:muting];
-	[button setTitle:(muting ? @"Unmute" : @"Mute channel") forState:UIControlStateNormal];
+	NSString *title = muting ? @"Unmute" : (button.bounds.size.width < 200.0f ? @"Mute" : @"Mute channel");
+	[button setTitle:title forState:UIControlStateNormal];
 }
 
 /// YES when this message continues the album the one before it started.
@@ -1505,6 +1636,11 @@ static const NSInteger kChatJoinChannelBarTag = 0x9022;
 		return;
 	}
 
+	if ([kind isEqualToString:@"messageDocument"]){
+		[self openDocumentMessage:m fromCell:[tableView cellForRowAtIndexPath:indexPath]];
+		return;
+	}
+
 	// A video note plays where it sits, in its own circle - handing it to the
 	// full-screen player turns a two-second glance into a modal screen.
 	if ([kind isEqualToString:@"messageVideoNote"]){
@@ -1521,7 +1657,7 @@ static const NSInteger kChatJoinChannelBarTag = 0x9022;
 	if ([kind isEqualToString:@"messageVideo"] ||
 		[kind isEqualToString:@"messageAnimation"] ||
 		[kind isEqualToString:@"messagePhoto"] ||
-		[m[@"isAlbum"] boolValue]){
+		([m[@"isAlbum"] boolValue] && ![kind isEqualToString:@"messageDocument"])){
 		NSArray *albumMsgs = [m[@"isAlbum"] boolValue] ? m[@"albumMessages"] : nil;
 		if (albumMsgs.count) {
 			[TGMediaViewer presentItems:albumMsgs
@@ -1570,6 +1706,66 @@ static const NSInteger kChatJoinChannelBarTag = 0x9022;
 
 - (void)showPlaybackFailure {
 	[TGAlertSheet showMessage:@"Cannot play this audio" title:nil inView:self.view];
+}
+
+- (void)openDocumentMessage:(NSDictionary *)m fromCell:(UITableViewCell *)cell {
+	NSArray *albumMsgs = [m[@"isAlbum"] boolValue] ? m[@"albumMessages"] : nil;
+	if (albumMsgs.count > 1) {
+		NSMutableArray *buttons = [NSMutableArray array];
+		for (NSDictionary *doc in albumMsgs) {
+			NSString *name = [doc[@"docName"] length] ? doc[@"docName"] : @"Document";
+			[buttons addObject:name];
+		}
+		__weak typeof(self) weakSelf = self;
+		[TGAlertSheet showChoices:buttons
+							title:@"Open Document"
+				 destructiveIndex:-1
+						   inView:self.view
+						 onChoice:^(NSInteger index){
+			if (index >= 0 && index < (NSInteger)albumMsgs.count) {
+				[weakSelf downloadAndPresentDocument:albumMsgs[(NSUInteger)index] fromCell:cell];
+			}
+		}];
+		return;
+	}
+	[self downloadAndPresentDocument:m fromCell:cell];
+}
+
+- (void)downloadAndPresentDocument:(NSDictionary *)doc fromCell:(UITableViewCell *)cell {
+	NSNumber *docId = doc[@"docId"];
+	if (![docId isKindOfClass:NSNumber.class] || docId.longLongValue <= 0)
+		return;
+
+	__weak typeof(self) weakSelf = self;
+	[[TGClient shared] downloadFile:docId.integerValue priority:TGDownloadPriorityOnScreen completion:^(NSString *path){
+		dispatch_async(dispatch_get_main_queue(), ^{
+			TGChatViewController *me = weakSelf;
+			if (!me || !path.length)
+				return;
+			NSURL *url = [NSURL fileURLWithPath:path];
+			me.docInteractionController = [UIDocumentInteractionController interactionControllerWithURL:url];
+			me.docInteractionController.delegate = (id<UIDocumentInteractionControllerDelegate>)me;
+			if (![me.docInteractionController presentPreviewAnimated:YES]) {
+				UIView *source = cell ?: me.view;
+				CGRect rect = cell ? cell.bounds : CGRectMake(TGHalf(me.view.bounds.size.width), TGHalf(me.view.bounds.size.height), TGMetricHairline, TGMetricHairline);
+				[me.docInteractionController presentOpenInMenuFromRect:rect inView:source animated:YES];
+			}
+		});
+	}];
+}
+
+#pragma mark - UIDocumentInteractionControllerDelegate
+
+- (UIViewController *)documentInteractionControllerViewControllerForPreview:(UIDocumentInteractionController *)controller {
+	return self;
+}
+
+- (UIView *)documentInteractionControllerViewForPreview:(UIDocumentInteractionController *)controller {
+	return self.view;
+}
+
+- (CGRect)documentInteractionControllerRectForPreview:(UIDocumentInteractionController *)controller {
+	return self.view.bounds;
 }
 
 #pragma mark - pagination & scroll

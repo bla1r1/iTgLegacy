@@ -233,6 +233,7 @@ APP_SRC_M := \
 	src/Core/TGClient.m \
 	src/Core/TGStickerStore.m \
 	src/Core/TGEmojiStore.m \
+	src/Core/TGCustomEmojiStore.m \
 	src/Core/TGMediaStore.m \
 	src/Core/TGMemberAvatarStore.m \
 	src/Core/TGClient+Auth.m \
@@ -371,6 +372,7 @@ APP_SRC_M := \
 	src/Controllers/TGTextStylesViewController.m \
 	src/Controllers/TGDMTopicsViewController.m \
 	src/Controllers/TGDMTopicViewController.m \
+	src/Controllers/TGSimilarChannelsViewController.m \
 	src/Controllers/TGDiceViewController.m \
 	src/Controllers/TGEphemeralViewController.m \
 	src/Controllers/TGVideoNoteViewController.m \

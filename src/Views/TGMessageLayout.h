@@ -28,11 +28,31 @@ extern "C" {
 
 UIFont *TGEmojiFontOfSize(CGFloat size);
 BOOL TGIsEmojiScalar(UTF32Char c);
+/// The text without the characters no font on this device has. Each one
+/// sent CoreText through every font on disk before drawing nothing: a sticker
+/// set titled with one small-capital M (U+1D0D) cost 2.75 s on a 4S. Checked
+/// against the system font and its fallback list, cached per character.
+/// Returns the same object when nothing goes.
+NSString *TGStripUndrawableScalars(NSString *text);
+/// The same walk with the coverage test passed in, so a host test does not
+/// depend on the fonts of the machine it runs on.
+NSString *TGStripScalars(NSString *text, BOOL (*drawable)(UTF32Char));
 NSAttributedString *TGEmojiAttributedText(NSString *text, UIFont *base);
+/// Where the message text gets a custom emoji's picture: the app points this
+/// at TGCustomEmojiStore at launch; nil (host tests) draws the clear stand-in.
+typedef UIImage *(*TGCustomEmojiProvider)(int64_t emojiId, CGFloat side);
+void TGSetCustomEmojiProvider(TGCustomEmojiProvider provider);
+/// The square a custom emoji takes in text set in `font`: one line high.
+CGFloat TGCustomEmojiSide(UIFont *font);
 NSAttributedString *TGAttributedMessageText(NSString *text, NSArray *entities, UIFont *baseFont, UIColor *textColor);
 void TGSetBodyText(UILabel *label, NSString *text, UIColor *colour);
 CGSize TGTextSize(NSString *text, UIFont *font, CGFloat width);
 CGSize TGTextSizeWithEntities(NSString *text, NSArray *entities, UIFont *font, CGFloat width);
+/// The top of a time stamp that shares the body's last line, from the body's
+/// own frame. Read off bodyFrame, never off the running y that lays out what
+/// follows the body: that y already includes the body, and adding its height
+/// twice put every stamp under its bubble.
+CGFloat TGInlineStampY(CGRect bodyFrame);
 
 #ifdef __cplusplus
 }

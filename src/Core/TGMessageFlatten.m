@@ -792,6 +792,7 @@ NSDictionary *TGFlattenMessage(NSDictionary *m) {
 
 	NSDictionary *row = @{
 		@"id"        : m[@"id"] ?: @(0),
+		@"caption"   : caption    ?: @"",
 		@"text"      : text,
 		@"replyId"   : replyId    ?: [NSNull null],
 		@"replyText" : replyText  ?: @"",

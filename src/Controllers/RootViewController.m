@@ -19,11 +19,62 @@
 #endif
 
 
+static NSString *const TGShowsCallsTabKey = @"TGShowsCallsTab";
+static NSString *const TGCallsTabChangedNotification = @"TGCallsTabChangedNotification";
+
 @interface RootViewController () <UINavigationControllerDelegate, UITabBarControllerDelegate>
 @property (nonatomic, strong) TGPlayerMiniBar *playerMiniBar;
+@property (nonatomic, strong) UINavigationController *contactsNC;
+@property (nonatomic, strong) UINavigationController *callsNC;
+@property (nonatomic, strong) UINavigationController *chatsNC;
+@property (nonatomic, strong) UINavigationController *settingsNC;
 @end
 
 @implementation RootViewController
+
++ (BOOL)showsCallsTab {
+	return [[NSUserDefaults standardUserDefaults] boolForKey:TGShowsCallsTabKey];
+}
+
++ (void)setShowsCallsTab:(BOOL)shows {
+	[[NSUserDefaults standardUserDefaults] setBool:shows forKey:TGShowsCallsTabKey];
+	[[NSNotificationCenter defaultCenter] postNotificationName:TGCallsTabChangedNotification
+														object:nil];
+}
+
+- (UINavigationController *)chatsNavigationController {
+	return self.chatsNC;
+}
+
+- (NSUInteger)chatsTabIndex {
+	NSUInteger index = [self.viewControllers indexOfObject:self.chatsNC];
+	return index == NSNotFound ? 0 : index;
+}
+
+/// Calls is built the first time it is shown and kept, so switching it off
+/// and on again does not drop the list it had loaded.
+- (void)applyTabs {
+	BOOL calls = [RootViewController showsCallsTab];
+	if (calls && !self.callsNC){
+		TGSettingsViewController *list = [[TGSettingsViewController alloc] init];
+		list.page = TGSettingsPageRecentCalls;
+		self.callsNC = [[TGNavController alloc] initWithRootViewController:list];
+		self.callsNC.delegate = self;
+		self.callsNC.tabBarItem = [[UITabBarItem alloc] initWithTitle:@"Calls"
+																 image:[TGIcons calls] tag:3];
+	}
+	UIViewController *selected = self.selectedViewController ?: self.chatsNC;
+	NSArray *tabs = calls
+			? @[self.contactsNC, self.callsNC, self.chatsNC, self.settingsNC]
+			: @[self.contactsNC, self.chatsNC, self.settingsNC];
+	[self setViewControllers:tabs animated:NO];
+	// styleTabBar paints the items the bar has now; one added later keeps the
+	// system's grey glyph unless the bar is painted again.
+	[[TGTheme shared] styleTabBar:self.tabBar];
+	// The switch lives on the Calls list itself, so turning it off from there
+	// lands on Settings, where the Recent Calls row still leads back.
+	self.selectedViewController = [tabs containsObject:selected] ? selected : self.settingsNC;
+}
 
 + (instancetype)standardTabBarController {
 	return [[self alloc] init];
@@ -46,6 +97,7 @@
 	TGChatListViewController *chats = [[TGChatListViewController alloc] init];
 	UINavigationController *chatsNC =
 		[[TGNavController alloc] initWithRootViewController:chats];
+	self.chatsNC = chatsNC;
 	chatsNC.tabBarItem = [[UITabBarItem alloc] initWithTitle:@"Chats"
 														image:[TGIcons chats] tag:0];
 
@@ -78,8 +130,10 @@
 		settingsNC.tabBarItem.selectedImage = [TGIcons settings];
 	}
 
-	[self setViewControllers:@[chatsNC, contactsNC, settingsNC] animated:NO];
-	[self setSelectedIndex:0];
+	self.contactsNC = contactsNC;
+	self.settingsNC = settingsNC;
+	[self applyTabs];
+	self.selectedViewController = chatsNC;
 
 	[[TGTheme shared] styleTabBar:self.tabBar];
 
@@ -90,6 +144,13 @@
 	[self.view addSubview:self.playerMiniBar];
 
 	__weak typeof(self) weakSelf = self;
+	[[NSNotificationCenter defaultCenter] addObserverForName:TGCallsTabChangedNotification
+													  object:nil
+													   queue:[NSOperationQueue mainQueue]
+												  usingBlock:^(NSNotification *note) {
+		[weakSelf applyTabs];
+	}];
+
 	[[NSNotificationCenter defaultCenter] addObserverForName:TGThemeChangedNotification
 													  object:nil
 													   queue:[NSOperationQueue mainQueue]
@@ -166,7 +227,7 @@
 	static NSInteger taps;
 	static CFAbsoluteTime last;
 	CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
-	BOOL onChats = tab == tabs.viewControllers.firstObject;
+	BOOL onChats = tab == self.chatsNC;
 	taps = onChats && now - last < 0.5 ? taps + 1 : (onChats ? 1 : 0);
 	last = now;
 	if (taps == 3){

@@ -19,6 +19,16 @@
 /// The glyph on an action tile, over the word that names it.
 static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 
+/// A 1 pt image of one colour, stretched by UIButton as its pressed background.
+static UIImage *TGSolidImage(UIColor *colour) {
+	UIGraphicsBeginImageContextWithOptions(CGSizeMake(1, 1), YES, 0);
+	[colour setFill];
+	UIRectFill(CGRectMake(0, 0, 1, 1));
+	UIImage *image = UIGraphicsGetImageFromCurrentImageContext();
+	UIGraphicsEndImageContext();
+	return image;
+}
+
 @implementation TGProfileViewController (Actions)
 
 /// The avatar's tap: other accounts' profiles go straight to the photo
@@ -103,7 +113,7 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 		} else {
 			[tiles addObject:@[@"chat", @"saved"]];
 		}
-		[tiles addObject:@[@"edit", @"edit"]];
+		// No edit tile: Edit is in the bar above, the way Telegram has it.
 		[tiles addObject:@[@"plus", @"story"]];
 		[tiles addObject:@[@"more", @"more"]];
 	} else if (self.userId){
@@ -145,9 +155,18 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 	for (NSUInteger i = 0; i < tiles.count; i++){
 		UIButton *tile = [UIButton buttonWithType:UIButtonTypeCustom];
 		tile.frame = CGRectMake(startX + i * (tileW + gap), y, tileW, kActionTile);
-		[tile setBackgroundImage:[TGTheme buttonImageForStyle:TGButtonStyleSecondary highlighted:NO height:kActionTile] forState:UIControlStateNormal];
-		[tile setBackgroundImage:[TGTheme buttonImageForStyle:TGButtonStyleSecondary highlighted:YES height:kActionTile] forState:UIControlStateHighlighted];
-		tile.backgroundColor = [UIColor clearColor];
+		if ([TGTheme drawsSkeuomorphicChrome]){
+			[tile setBackgroundImage:[TGTheme buttonImageForStyle:TGButtonStyleSecondary highlighted:NO height:kActionTile] forState:UIControlStateNormal];
+			[tile setBackgroundImage:[TGTheme buttonImageForStyle:TGButtonStyleSecondary highlighted:YES height:kActionTile] forState:UIControlStateHighlighted];
+			tile.backgroundColor = [UIColor clearColor];
+		} else {
+			// Flat chrome: Telegram's tiles are white cards on the grey page,
+			// the same card the rows under them sit on. The silver bevel is
+			// the iOS 6 button and read as a grey slab here.
+			tile.backgroundColor = [theme cardBackgroundColour];
+			[tile setBackgroundImage:TGSolidImage([theme groupedBackgroundColour])
+							forState:UIControlStateHighlighted];
+		}
 		tile.layer.cornerRadius = TGMetricCornerControl;
 		tile.clipsToBounds = YES;
 		tile.tag = i;
@@ -174,6 +193,15 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 	self.actionNames = tiles;
 }
 
+/// The Story tile and the empty Stories tab's link both start here.
+- (void)addStoryTapped {
+	__weak typeof(self) weakSelf = self;
+	[TGStoryComposerViewController openFromController:self chatId:self.chatId
+												title:@"Your Story" onPosted:^{
+		[weakSelf reloadOwnStories];
+	}];
+}
+
 - (void)actionTileTapped:(UIButton *)tile {
 	NSString *action = self.actionNames[tile.tag][1];
 
@@ -188,11 +216,7 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 	} else if ([action isEqualToString:@"edit"]){
 		[self editProfileTapped];
 	} else if ([action isEqualToString:@"story"]){
-		__weak typeof(self) weakSelf = self;
-		[TGStoryComposerViewController openFromController:self chatId:self.chatId
-													title:@"Your Story" onPosted:^{
-			[weakSelf reloadOwnStories];
-		}];
+		[self addStoryTapped];
 	} else if ([action isEqualToString:@"call"] || [action isEqualToString:@"video"]){
 		[TGCallViewController presentForUserId:self.userId
 										  name:self.name
@@ -300,9 +324,8 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 - (void)showMoreMenuFrom:(UIView *)tile {
 	NSMutableArray *items = [NSMutableArray array];
 	if (self.isOwnProfile){
-		[items addObject:@{@"title" : @"Add Story", @"icon" : @"plus"}];
+		// Add Story and Edit Profile have a tile and a bar button of their own.
 		[items addObject:@{@"title" : @"Story Archive", @"icon" : @"archive"}];
-		[items addObject:@{@"title" : @"Edit Profile", @"icon" : @"edit"}];
 		[items addObject:@{@"title" : @"Copy Profile Link", @"icon" : @"copy"}];
 		[items addObject:@{@"title" : @"Add Local Note", @"icon" : @"edit"}];
 		CGPoint where = [tile convertPoint:CGPointMake(TGHalf(tile.bounds.size.width),
@@ -344,20 +367,23 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 	// way in and the rows that are not group management (a note, the date
 	// picker, the chat's own history actions).
 	if (!self.userId){
-		[items addObject:@{@"title" : self.isChannel ? @"Channel Settings"
-													 : @"Group Settings",
-						   @"icon" : @"privacy"}];
-		// Sponsored messages are a channel surface; a normal group has none.
-		if (self.isChannel)
-			[items addObject:@{@"title" : @"Sponsored Messages",
-							   @"icon" : @"data"}];
-		if (self.isChannel)
-			[items addObject:@{@"title" : @"Affiliate Program",
-							   @"icon" : @"star"}];
+		if (self.canManage) {
+			[items addObject:@{@"title" : self.isChannel ? @"Channel Settings"
+														 : @"Group Settings",
+							   @"icon" : @"privacy"}];
+			if (self.isChannel)
+				[items addObject:@{@"title" : @"Sponsored Messages",
+								   @"icon" : @"data"}];
+			if (self.isChannel)
+				[items addObject:@{@"title" : @"Affiliate Program",
+								   @"icon" : @"star"}];
+		}
 		if (self.canInvite && !self.isChannel)
 			[items addObject:@{@"title" : @"Add Members", @"icon" : @"plus"}];
-		[items addObject:@{@"title" : @"Calls", @"icon" : @"call"}];
-		[items addObject:@{@"title" : @"View with Topics", @"icon" : @"folder"}];
+		if (!self.isChannel) {
+			[items addObject:@{@"title" : @"Calls", @"icon" : @"call"}];
+			[items addObject:@{@"title" : @"View with Topics", @"icon" : @"folder"}];
+		}
 	}
 	// A bot's own record is editable by the account that owns it. The row is
 	// only there for a bot, because every request behind it is refused for a
@@ -373,8 +399,10 @@ static const CGFloat kTileGlyph = TGMetricMenuGlyph;
 		[items insertObject:@{@"title" : @"Topics", @"icon" : @"folder"} atIndex:0];
 	if (self.onJumpToDateTapped)
 		[items addObject:@{@"title" : @"Jump to Date", @"icon" : @"folder"}];
-	[items addObject:@{@"title" : @"Auto-delete messages", @"icon" : @"delete"}];
-	[items addObject:@{@"title" : @"Clear history", @"icon" : @"delete"}];
+	if (self.userId || !self.isChannel || self.canManage)
+		[items addObject:@{@"title" : @"Auto-delete messages", @"icon" : @"delete"}];
+	if (self.userId || !self.isChannel)
+		[items addObject:@{@"title" : @"Clear history", @"icon" : @"delete"}];
 	[items addObject:@{@"title" : @"Report", @"icon" : @"privacy",
 					   @"destructive" : @YES}];
 	BOOL isMe = self.userId == [[TGClient shared].me[@"id"] longLongValue];

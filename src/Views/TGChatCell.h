@@ -17,6 +17,7 @@ static const CGFloat kAvatar    = TGMetricChatAvatar;
 @property (nonatomic, strong) UIView *onlineDot;
 @property (nonatomic, strong) UIImageView *tick;   // your own last message
 @property (nonatomic, strong) UIImageView *pin;   // pinned to the top
+@property (nonatomic, strong) UIImageView *statusIcon; // the emoji status after the title
 @property (nonatomic, strong) UIImageView *muteIcon;   // beside the title of a muted chat
 @property (nonatomic, strong) UIView *separator;   // starts under the text, not the picture
 @property (nonatomic, strong) UILabel *editCheck;    // the blue tick in chat-list Edit
@@ -46,6 +47,8 @@ static const CGFloat kAvatar    = TGMetricChatAvatar;
 - (void)openLeadingSwipeActionsAnimated:(BOOL)animated;
 - (void)openSwipeActionsAnimated:(BOOL)animated;
 - (void)closeSwipeActionsAnimated:(BOOL)animated;
+/// The side the emoji status is drawn at, to ask the store for that size.
++ (CGFloat)statusSide;
 @property (nonatomic, readonly) BOOL swipeActionsOpen;
 @property (nonatomic, readonly) CGFloat swipeActionsWidth;
 @property (nonatomic, readonly) CGFloat trailingActionsWidth;

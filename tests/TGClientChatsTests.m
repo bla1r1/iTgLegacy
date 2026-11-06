@@ -290,6 +290,23 @@ static void joinTestReply(TGClient *c, NSDictionary *request, NSDictionary *answ
 // ──────────────────────────────────────────────────────────────────────────────
 #pragma mark - saved messages
 
+/// A premium person's status arrives with the chat itself, not only as a
+/// later update: the row must carry its emoji id from updateNewChat, and a
+/// gift status draws its model's emoji.
+- (void)testMergeChat_KeepsTheEmojiStatusId {
+	TGClient *c = T();
+	deliverNewChat(c, @{ @"@type" : @"chat", @"id" : @(4401), @"title" : @"Anna",
+			@"type" : @{@"@type" : @"chatTypePrivate"},
+			@"positions" : @[pos(@"chatListMain", 300, NO)],
+			@"emoji_status" : @{@"@type" : @"emojiStatus",
+					@"type" : @{@"@type" : @"emojiStatusTypeCustomEmoji",
+							   @"custom_emoji_id" : @"5368324170671202286"}} });
+	XCTAssertEqual([knownChat(c, 4401)[@"emojiStatusId"] longLongValue], 5368324170671202286LL);
+	XCTAssertEqual(TGEmojiStatusCustomEmojiId(@{@"type" : @{@"@type" : @"emojiStatusTypeUpgradedGift",
+			@"model_custom_emoji_id" : @(77)}}), 77LL);
+	XCTAssertEqual(TGEmojiStatusCustomEmojiId(nil), 0LL);
+}
+
 - (void)testMergeChat_SavedMessagesRowIsMarked {
 	TGClient *c = T();
 	c.me = @{@"id" : @777};
@@ -311,6 +328,44 @@ static void joinTestReply(TGClient *c, NSDictionary *request, NSDictionary *answ
 	XCTAssertTrue([info[@"isSaved"] boolValue]);
 	XCTAssertEqualObjects(info[@"lastAuthor"], nil,
 			@"in Saved Messages nothing is 'You'");
+}
+
+/// loadChats runs before getMe, so the own chat can land while me is still
+/// nil; the getMe answer has to mark the row it already has.
+- (void)testMergeChat_SavedMessagesMarkedWhenMeArrivesAfterTheChat {
+	TGClient *c = T();
+	c.me = nil;
+
+	deliverNewChat(c, @{ @"@type" : @"chat",
+			@"id" : @(777), @"title" : @"Dmytro",
+			@"type"      : @{@"@type" : @"chatTypePrivate"},
+			@"positions" : @[pos(@"chatListMain", 900, NO)],
+			@"last_message" : @{
+					@"@type" : @"message", @"id" : @(5), @"date" : @(5),
+					@"is_outgoing" : @YES,
+					@"content" : @{@"@type" : @"messageText",
+								   @"text" : @{@"@type" : @"formattedText",
+											   @"text" : @"keep this"}}} });
+
+	[c handleUpdate:@{@"@type" : @"user", @"id" : @(777),
+			@"first_name" : @"Dmytro", @"last_name" : @"",
+			@"phone_number" : @"15550001111"}];
+
+	NSDictionary *info = knownChat(c, 777);
+	XCTAssertEqualObjects(info[@"title"], @"Saved Messages",
+			@"the row is renamed when me arrives");
+	XCTAssertTrue([info[@"isSaved"] boolValue]);
+	XCTAssertEqualObjects(info[@"lastAuthor"], nil,
+			@"in Saved Messages nothing is 'You'");
+	XCTAssertTrue([c chatIsSavedMessages:777]);
+}
+
+/// The row may not be loaded at all; the id from me is enough to answer.
+- (void)testChatIsSavedMessages_OwnIdWithoutARow {
+	TGClient *c = T();
+	c.me = @{@"id" : @(777)};
+	XCTAssertTrue([c chatIsSavedMessages:777]);
+	XCTAssertFalse([c chatIsSavedMessages:0]);
 }
 
 /// In a group the row shows who spoke last; your own messages read "You"
@@ -866,6 +921,19 @@ static void joinTestReply(TGClient *c, NSDictionary *request, NSDictionary *answ
 	joinTestReply(c, request, @{@"@type" : @"chatJoinResultSuccess", @"chat_id" : @(903)});
 	XCTAssertTrue(called);
 	XCTAssertTrue(joined, @"chatJoinResultSuccess is a real join");
+}
+
+- (void)testJoinChat_TDLibOkReportsSuccess {
+	TGClient *c = T();
+	__block BOOL called = NO;
+	__block BOOL joined = NO;
+	[c joinChat:905 completion:^(BOOL ok, BOOL requestSent){ called = YES; joined = ok; }];
+
+	NSDictionary *request = joinTestRequest(c, @"joinChat");
+	XCTAssertEqualObjects(request[@"chat_id"], @(905));
+	joinTestReply(c, request, @{@"@type" : @"ok"});
+	XCTAssertTrue(called);
+	XCTAssertTrue(joined, @"TDLib ok is a successful join");
 }
 
 - (void)testJoinChat_ARequestWaitingForAnAdminIsNotAJoin {

@@ -4,6 +4,10 @@
 //
 #import "TGClient+Base.h"
 
+/// The custom emoji id a TDLib emojiStatus draws, or 0: a gift status
+/// falls back to its model's emoji, as Telegram draws it.
+FOUNDATION_EXPORT int64_t TGEmojiStatusCustomEmojiId(NSDictionary *status);
+
 @interface TGClient (EmojiStatus)
 
 /// Up to eight statuses Telegram places after the default Premium badge.

@@ -11,6 +11,7 @@
 // not covered here (see the PR report).
 #import "TGTestRunner.h"
 #import "TGMessageLayout.h"
+#import "TGCapabilities.h"
 #include <string.h>
 #include <time.h>
 
@@ -24,6 +25,63 @@ static NSString *kWord2 = @"antidisestablishmentarianism";
 
 // ──────────────────────────────────────────────────────────────────────────────
 #pragma mark - measurement basics
+
+/// A stamp on the body's last line sits inside the body, its bottom on the
+/// body's bottom. The chat once added the body height twice and drew every
+/// stamp under its own bubble, over the top of the next one.
+- (void)testInlineStamp_SitsOnTheBodysLastLine {
+	CGRect body = CGRectMake(10, 6, 120, 21);
+	CGFloat y = TGInlineStampY(body);
+	XCTAssertTrue(y >= CGRectGetMinY(body));
+	XCTAssertTrue(fabs(y + TGMetricLineMicro - CGRectGetMaxY(body)) < 0.01);
+}
+
+/// What an iOS 7 font list would answer for the characters below: these
+/// emoji yes, a hieroglyph, Bamum, U+1D0D and the 2017 face 🥰 no.
+static BOOL TGTestOldFonts(UTF32Char c) {
+	return c == 0x1F431 || c == 0x1F1FA || c == 0x1F1E6 || c == 0x1F468 ||
+		   c == 0x1F4BB || c == 0x2764;
+}
+
+/// A sticker set titled "\U00013102 Eᴍᴏᴊɪ² | @HANGSEED\U00016A18" cost up to
+/// 2.75 s to draw on a 4S: one character no font had sent CoreText through
+/// every font on disk. What the device fonts lack goes, emoji newer than its
+/// emoji font included; joiners and variation selectors stay; untouched text is the same
+/// object back.
+- (void)testStripScalars_DropsWhatNoFontHasKeepsEmojiAndJoiners {
+	NSString *title = @"\U00013102E\u1D0D\u00B2 | @HANGSEED\U00016A18";
+	XCTAssertEqualObjects(TGStripScalars(title, TGTestOldFonts), @"E\u00B2 | @HANGSEED");
+	NSString *emoji = @"Cats \U0001F431 \U0001F1FA\U0001F1E6 \U0001F468\u200D\U0001F4BB \u2764\uFE0F";
+	XCTAssertTrue(TGStripScalars(emoji, TGTestOldFonts) == emoji);
+	XCTAssertEqualObjects(TGStripScalars(@"Love \U0001F970", TGTestOldFonts), @"Love ");
+	NSString *plain = @"Cats and dogs";
+	XCTAssertTrue(TGStripScalars(plain, TGTestOldFonts) == plain);
+	XCTAssertEqualObjects(TGStripScalars(@"", TGTestOldFonts), @"");
+	// The real coverage test leaves Latin text alone without asking a font.
+	XCTAssertTrue(TGStripUndrawableScalars(plain) == plain);
+}
+
+/// A custom emoji becomes one attachment in place of its fallback emoji,
+/// carrying its id, and the entities after it still land on their own
+/// characters even though the string got shorter.
+- (void)testAttributedMessageText_CustomEmojiBecomesOneAttachment {
+	NSString *text = @"Hi \U0001F44D there";   // the thumbs-up is two UTF-16 units
+	NSArray *entities = @[
+		@{@"offset" : @(3), @"length" : @(2),
+		  @"type" : @{@"@type" : @"textEntityTypeCustomEmoji", @"custom_emoji_id" : @"5368324170671202286"}},
+		@{@"offset" : @(6), @"length" : @(5), @"type" : @{@"@type" : @"textEntityTypeBold"}},
+	];
+	UIFont *font = TGFontBody();
+	NSAttributedString *out = TGAttributedMessageText(text, entities, font, [UIColor blackColor]);
+	XCTAssertEqual((NSInteger)out.length, (NSInteger)text.length - 1);
+	XCTAssertEqual([out.string characterAtIndex:3], (unichar)0xFFFC);
+	XCTAssertEqual([[out attribute:@"TGCustomEmojiId" atIndex:3 effectiveRange:NULL] longLongValue],
+			5368324170671202286LL);
+	XCTAssertEqualObjects([out.string substringFromIndex:5], @"there");
+	UIFont *bold = [out attribute:NSFontAttributeName atIndex:5 effectiveRange:NULL];
+	XCTAssertEqualObjects(bold.fontName, TGFontBoldAtSize(font.pointSize).fontName);
+	XCTAssertTrue([out attribute:@"TGCustomEmojiId" atIndex:5 effectiveRange:NULL] == nil);
+}
 
 - (void)testTextSize_EmptyTextIsZero {
 	CGSize empty = TGTextSize(@"", nil, 246);
@@ -428,6 +486,30 @@ static NSString *kWord2 = @"antidisestablishmentarianism";
 	XCTAssertEqualObjects(line, @"23:40 edited");
 	XCTAssertFalse([line hasPrefix:@"edited"],
 			@"Telegram appends the mark; a prefix reads as a different clock");
+}
+
+/// The emoji check is warmed on a background queue while the main thread
+/// asks too (TGWarmEmojiData). Its cache was a bare dictionary: two threads
+/// filling it at once could corrupt it. Every thread must get the answer a
+/// single thread gets.
+- (void)testCanDrawEmoji_SameAnswersFromManyThreads {
+	NSArray *probe = @[@"😀", @"🇺🇦", @"👍", @"x", @"🏁", @"❤️", @"🍔", @"🚗",
+					   @"🇩🇪", @"⚽️", @"💡", @"🐻", @"a", @"🙈", @"😂", @"🎵"];
+	NSMutableArray *expected = [NSMutableArray array];
+	__block BOOL mismatch = NO;
+	dispatch_apply(64, dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^(size_t i){
+		NSString *e = [NSString stringWithFormat:@"%@%zu", probe[i % probe.count], i];
+		[TGCapabilities canDrawEmoji:e];
+		[TGCapabilities canDrawEmoji:probe[i % probe.count]];
+	});
+	for (NSString *e in probe)
+		[expected addObject:@([TGCapabilities canDrawEmoji:e])];
+	dispatch_apply(64, dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^(size_t i){
+		NSUInteger k = i % probe.count;
+		if ([TGCapabilities canDrawEmoji:probe[k]] != [expected[k] boolValue])
+			mismatch = YES;
+	});
+	XCTAssertFalse(mismatch);
 }
 
 @end

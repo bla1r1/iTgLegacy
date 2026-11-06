@@ -90,6 +90,7 @@ OBJC_SRCS := \
 CLIENT_OBJC_SRCS := \
     $(ROOT)/third_party/yyjson/yyjson.c \
     $(SRC)/Core/TGBase64.m \
+    $(SRC)/Core/TGStyle.m \
     $(SRC)/Core/TGUpdateType.c \
     $(SRC)/Views/TGSVGPath.c \
     $(SRC)/Views/TGIconPaths.m \

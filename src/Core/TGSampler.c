@@ -11,7 +11,7 @@
 #include <string.h>
 #include <unistd.h>
 
-enum { kDepth = 32 };
+enum { kDepth = 64 };      // UIKit text drawing under a CA commit runs past 32
 
 static thread_act_t sMain;
 static pthread_t sThread;

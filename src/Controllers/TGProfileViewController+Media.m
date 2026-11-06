@@ -42,11 +42,34 @@ static BOOL TGKindIsStories(NSString *kind) {
 @implementation TGProfileViewController (Media)
 
 - (void)loadMedia {
-	// The two panes that decide whether their tabs exist at all. Everything
-	// else waits for its tab: the old screen fired four searchChatMessages
-	// calls at open, before the first frame, on a one-core device.
+	// The two panes that decide whether their tabs exist at all.
 	[self fetchMediaForKind:@"stories"];
 	[self fetchMediaForKind:@"gifts"];
+	[self fetchAllMediaCounts];
+}
+
+- (void)fetchAllMediaCounts {
+	if (!self.chatId)
+		return;
+	NSDictionary *filters = @{
+		@"media" : @"searchMessagesFilterPhotoAndVideo",
+		@"files" : @"searchMessagesFilterDocument",
+		@"music" : @"searchMessagesFilterAudio",
+		@"voice" : @"searchMessagesFilterVoiceAndVideoNote",
+		@"links" : @"searchMessagesFilterUrl",
+	};
+	__weak typeof(self) weakSelf = self;
+	[filters enumerateKeysAndObjectsUsingBlock:^(NSString *kind, NSString *filterType, BOOL *stop){
+		[[TGClient shared] messageCountInChat:weakSelf.chatId
+									   filter:filterType
+								   completion:^(NSInteger count){
+			TGProfileViewController *me = weakSelf;
+			if (!me || count <= 0)
+				return;
+			me.mediaCounts[kind] = @(count);
+			[me reloadTableDebounced];
+		}];
+	}];
 }
 
 /// One pane's first page. A kind is fetched once and re-used until the
@@ -171,13 +194,9 @@ static BOOL TGKindIsStories(NSString *kind) {
 	[self.thumbnailsRequested removeAllObjects];
 	[self fetchMediaForKind:kind];
 	CGPoint offset = self.tableView.contentOffset;
-	CGFloat mediaTop = [self.tableView rectForHeaderInSection:kSectionMedia].origin.y;
 	[self.tableView reloadData];
 	CGFloat maxY = self.tableView.contentSize.height - self.tableView.bounds.size.height;
 	maxY = MAX(0, maxY);
-	if (offset.y > maxY + TGMetricHairline ||
-			offset.y < mediaTop - self.tableView.bounds.size.height)
-		offset.y = mediaTop;
 	offset.y = MIN(MAX(offset.y, 0), maxY);
 	[self.tableView setContentOffset:offset animated:NO];
 }

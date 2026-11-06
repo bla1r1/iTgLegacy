@@ -11,6 +11,7 @@
 #import "TGTestRunner.h"
 #import "TGClient.h"
 #import "TGClientInternal.h"
+#import "TGStyle.h"
 
 @interface TGClientAccountTests : XCTestCase @end
 
@@ -949,6 +950,46 @@ static void answerA(TGClient *c, NSDictionary *answer) {
 	XCTAssertEqual(max, 70);
 }
 
+
+#pragma mark - name colours
+
+static BOOL TGSameColour(UIColor *a, UIColor *b) {
+	// getRed: is void on newer macOS hosts, so a sentinel says it wrote.
+	CGFloat r1 = -1, g1, b1, a1, r2 = -1, g2, b2, a2;
+	if (!a || !b)
+		return NO;
+	[a getRed:&r1 green:&g1 blue:&b1 alpha:&a1];
+	[b getRed:&r2 green:&g2 blue:&b2 alpha:&a2];
+	if (r1 < 0 || r2 < 0)
+		return NO;
+	return fabs(r1 - r2) < 0.01 && fabs(g1 - g2) < 0.01 && fabs(b1 - b2) < 0.01;
+}
+
+/// A sender's name is drawn in the accent they chose, not a colour derived
+/// from their id: 0-6 are the built-in seven, 7 and up the server's records.
+- (void)testNameColour_FollowsTheChosenAccent {
+	// 2 is violet, which the id-based order never produces.
+	XCTAssertTrue(TGSameColour(TGColourAccentName(2, nil, NO),
+			[UIColor colorWithRed:0x95/255.0 green:0x5C/255.0 blue:0xDB/255.0 alpha:1]));
+	NSArray *records = @[@{@"@type" : @"accentColor", @"id" : @(9),
+			@"built_in_accent_color_id" : @(1),
+			@"light_theme_colors" : @[@(0x112233), @(0x445566)]},
+		@{@"@type" : @"accentColor", @"id" : @(10), @"built_in_accent_color_id" : @(5),
+			@"light_theme_colors" : @[]}];
+	XCTAssertTrue(TGSameColour(TGColourAccentName(9, records, NO),
+			[UIColor colorWithRed:0x11/255.0 green:0x22/255.0 blue:0x33/255.0 alpha:1]));
+	XCTAssertTrue(TGSameColour(TGColourAccentName(10, records, NO), TGColourAccentName(5, nil, NO)));
+	XCTAssertTrue(TGColourAccentName(42, records, NO) == nil);
+	XCTAssertTrue(TGColourAccentName(-1, records, NO) == nil);
+
+	TGClient *c = A();
+	[c.rawUsersById removeObjectForKey:@(777001)];
+	XCTAssertTrue(TGSameColour([c nameColourForUser:777001], TGColourPeerName(777001, NO)),
+			@"no record yet: the id-based colour");
+	c.rawUsersById[@(777001)] = @{@"@type" : @"user", @"id" : @(777001),
+			@"accent_color_id" : @(2)};
+	XCTAssertTrue(TGSameColour([c nameColourForUser:777001], TGColourAccentName(2, nil, NO)));
+}
 
 @end
 

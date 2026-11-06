@@ -14,6 +14,9 @@ static const CGFloat kSecondLineTop = 32.0f;
 static const CGFloat kPreviewMax    = 40.0f;
 static const CGFloat kMuteGlyph     = 16.0f;
 static const CGFloat kMuteRoom      = 20.0f;
+/// Telegram draws the status a little larger than the mute glyph beside it.
+static const CGFloat kStatusGlyph   = 18.0f;
+static const CGFloat kStatusRoom    = 22.0f;
 static const CGFloat kPinGlyph      = 16.0f;
 static const CGFloat kBadgePad      = TGMetricPadMedium + TGMetricPadTiny;
 /// Three buttons fit beside a 320 pt row without clipping.
@@ -43,6 +46,10 @@ static UIFont *TGChatCellTitleFont(void) {
 }
 
 @implementation TGChatCell
+
++ (CGFloat)statusSide {
+	return kStatusGlyph;
+}
 
 - (id)initWithStyle:(UITableViewCellStyle)style reuseIdentifier:(NSString *)reuseIdentifier {
 	self = [super initWithStyle:style reuseIdentifier:reuseIdentifier];
@@ -132,6 +139,11 @@ static UIFont *TGChatCellTitleFont(void) {
 	self.pin.hidden = YES;
 	[self.contentView addSubview:self.pin];
 
+	self.statusIcon = [[UIImageView alloc] init];
+	self.statusIcon.contentMode = UIViewContentModeScaleAspectFit;
+	self.statusIcon.hidden = YES;
+	[self.contentView addSubview:self.statusIcon];
+
 	self.muteIcon = [[UIImageView alloc] init];
 	self.muteIcon.contentMode = UIViewContentModeScaleAspectFit;
 	self.muteIcon.hidden = YES;
@@ -211,12 +223,20 @@ static UIFont *TGChatCellTitleFont(void) {
 		titleRight -= (TGMetricTicksWidth + TGMetricPadSmall);
 	}
 
+	// Title, then the status, then the mute glyph: the title gives way to both.
 	CGFloat muteW = self.muteIcon.hidden ? 0 : kMuteRoom;
-	CGFloat titleRoom = MAX(0, titleRight - kTextLeft - muteW);
+	CGFloat statusW = self.statusIcon.hidden ? 0 : kStatusRoom;
+	CGFloat titleRoom = MAX(0, titleRight - kTextLeft - muteW - statusW);
 	CGFloat titleW = MIN(ceilf(TGChatCellTextSize(self.titleLabel.text, self.titleLabel.font).width), titleRoom);
 	self.titleLabel.frame = CGRectMake(kTextLeft, kFirstLineTop, titleW, TGMetricLineRow);
+	CGFloat afterTitle = kTextLeft + titleW + TGMetricBubbleRowInset;
+	if (!self.statusIcon.hidden){
+		self.statusIcon.frame = CGRectMake(afterTitle,
+				kFirstLineTop + TGCenteredOrigin(TGMetricLineRow, kStatusGlyph), kStatusGlyph, kStatusGlyph);
+		afterTitle += statusW;
+	}
 	if (!self.muteIcon.hidden)
-		self.muteIcon.frame = CGRectMake(kTextLeft + titleW + TGMetricBubbleRowInset,
+		self.muteIcon.frame = CGRectMake(afterTitle,
 				kFirstLineTop + TGMetricPadTiny, kMuteGlyph, kMuteGlyph);
 
 	// The second line: the unread count at the right edge, the pin beside it,

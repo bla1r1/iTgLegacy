@@ -167,10 +167,6 @@
 
 	// Documents
 	if (layout.isDoc) {
-		NSArray *lines = [m[@"text"] componentsSeparatedByString:@"\n"];
-		NSString *first = lines.count ? lines[0] : @"";
-		NSString *second = lines.count > 1 ? lines[1] : @"";
-
 		TGTheme *cardTheme = [TGTheme shared];
 		CGFloat fwd = [self layoutForwardIn:cell message:m width:layout.bubbleFrame.size.width];
 		cell.bubble.frame = layout.bubbleFrame;
@@ -179,39 +175,108 @@
 		cell.bubble.layer.borderColor = [UIColor clearColor].CGColor;
 		cell.bubble.layer.cornerRadius = [cardTheme bubbleCornerRadius];
 
-		cell.icon.hidden = NO;
-		CGFloat side = kFileTile;
-		cell.icon.frame = CGRectMake(kPadH, fwd + kPadV + TGCenteredOrigin(kFileTile, side), side, side);
-		cell.icon.text = @"";
-		cell.icon.layer.cornerRadius = TGMetricCornerSmall;
-		cell.icon.backgroundColor = [cardTheme fileTileColour];
+		NSArray *docs = nil;
+		if (layout.isAlbum && [m[@"albumMessages"] isKindOfClass:NSArray.class]) {
+			docs = m[@"albumMessages"];
+		}
+		if (!docs.count) {
+			docs = @[m];
+		}
 
-		cell.disc.hidden = NO;
-		cell.disc.image = [TGIcons fileDiscOfSide:kFileDisc];
-		cell.disc.frame = CGRectMake(kPadH + TGCenteredOrigin(kFileTile, kFileDisc),
-									 fwd + kPadV + TGCenteredOrigin(kFileTile, kFileDisc),
-									 kFileDisc, kFileDisc);
-		[cell.bubble bringSubviewToFront:cell.disc];
+		cell.docMessageId = [m[@"id"] longLongValue];
 
-		CGFloat textX = kPadH + side + kTileTextGap;
-		cell.body.hidden = NO;
-		cell.body.numberOfLines = 2;
-		cell.body.font = TGFontBody();
-		cell.body.textColor = [cardTheme fileNameColour];
-		cell.body.text = first;
-		cell.body.frame = CGRectMake(textX, fwd + kPadV + TGMetricPad,
-				layout.bubbleFrame.size.width - textX - kPadH, kFileNameBlock);
+		for (UIView *old in [cell.bubble.subviews copy]) {
+			if (old.tag >= 0x9200 && old.tag < 0x9300) [old removeFromSuperview];
+		}
 
-		cell.subtitle.hidden = NO;
-		cell.subtitle.font = TGFontCaption();
-		cell.subtitle.textColor = [cardTheme fileMetaColour];
-		cell.subtitle.text = second;
-		cell.subtitle.frame = CGRectMake(textX, fwd + kPadV + kFileMetaTop,
-				layout.bubbleFrame.size.width - textX - kPadH, TGMetricLineSubhead);
+		cell.icon.hidden = YES;
+		cell.disc.hidden = YES;
+		cell.body.hidden = YES;
+		cell.subtitle.hidden = YES;
+
+		CGFloat curY = fwd + kPadV;
+		CGFloat bubbleW = layout.bubbleFrame.size.width;
+		CGFloat rowW = bubbleW - TGDoubled(kPadH);
+
+		for (NSUInteger i = 0; i < docs.count; i++) {
+			NSDictionary *docMsg = docs[i];
+			NSString *fileName = [docMsg[@"docName"] length] ? docMsg[@"docName"] : nil;
+			NSString *fileSize = @"";
+			if ([docMsg[@"docSize"] longLongValue] > 0) {
+				fileSize = [NSString stringWithFormat:@"%.1f KB", [docMsg[@"docSize"] doubleValue] / 1024.0];
+			}
+			if (!fileName.length) {
+				NSArray *lines = [docMsg[@"text"] componentsSeparatedByString:@"\n"];
+				fileName = lines.count ? lines[0] : @"Document";
+				if (!fileSize.length && lines.count > 1) fileSize = lines[1];
+			}
+
+			UIButton *rowBtn = [UIButton buttonWithType:UIButtonTypeCustom];
+			rowBtn.tag = 0x9200 + (NSInteger)i;
+			rowBtn.frame = CGRectMake(kPadH, curY, rowW, kFileTile);
+			[rowBtn addTarget:self action:@selector(docRowTapped:) forControlEvents:UIControlEventTouchUpInside];
+			[cell.bubble addSubview:rowBtn];
+
+			UIView *tile = [[UIView alloc] initWithFrame:CGRectMake(TGMetricZero, TGMetricZero, kFileTile, kFileTile)];
+			tile.userInteractionEnabled = NO;
+			tile.backgroundColor = [cardTheme fileTileColour];
+			tile.layer.cornerRadius = TGMetricCornerSmall;
+			[rowBtn addSubview:tile];
+
+			UIImageView *disc = [[UIImageView alloc] initWithFrame:CGRectMake(TGCenteredOrigin(kFileTile, kFileDisc),
+																			  TGCenteredOrigin(kFileTile, kFileDisc),
+																			  kFileDisc, kFileDisc)];
+			disc.userInteractionEnabled = NO;
+			disc.image = [TGIcons fileDiscOfSide:kFileDisc];
+			[tile addSubview:disc];
+
+			CGFloat textX = kFileTile + kTileTextGap;
+			CGFloat textW = rowW - textX;
+
+			UILabel *nameLabel = [[UILabel alloc] initWithFrame:CGRectMake(textX, TGMetricPadTiny, textW, TGMetricLineBody)];
+			nameLabel.userInteractionEnabled = NO;
+			nameLabel.font = TGFontBody();
+			nameLabel.textColor = [cardTheme fileNameColour];
+			nameLabel.lineBreakMode = NSLineBreakByTruncatingMiddle;
+			nameLabel.text = fileName;
+			[rowBtn addSubview:nameLabel];
+
+			UILabel *sizeLabel = [[UILabel alloc] initWithFrame:CGRectMake(textX, TGMetricPadTiny + TGMetricLineBody, textW, TGMetricLineSubhead)];
+			sizeLabel.userInteractionEnabled = NO;
+			sizeLabel.font = TGFontCaption();
+			sizeLabel.textColor = [cardTheme fileMetaColour];
+			sizeLabel.text = fileSize;
+			[rowBtn addSubview:sizeLabel];
+
+			curY += kFileTile + TGMetricPadSmall;
+		}
+
+		NSString *caption = [m[@"caption"] length] ? m[@"caption"] : nil;
+		if (!caption.length && [m[@"text"] length]) {
+			NSString *docName = m[@"docName"] ?: @"";
+			if (docName.length == 0 || ![m[@"text"] hasPrefix:docName]) {
+				caption = m[@"text"];
+			}
+		}
+
+		if (layout.bodyFrame.size.height > 0 && caption.length) {
+			cell.captionLabel.hidden = NO;
+			cell.captionLabel.frame = layout.bodyFrame;
+			cell.captionLabel.text = caption;
+			cell.captionLabel.textColor = [cardTheme primaryTextColour];
+			cell.captionLabel.font = TGFontBody();
+			[cell.bubble bringSubviewToFront:cell.captionLabel];
+		} else {
+			cell.captionLabel.hidden = YES;
+		}
 
 		cell.time.text = layout.stamp;
 		cell.time.textColor = mine ? [cardTheme timeMineColour] : [cardTheme timeColour];
-		TGPlaceStamp(cell, layout.bubbleFrame, layout.timeWidth, mine);
+		if (!CGRectIsEmpty(layout.timeFrame)) {
+			cell.time.frame = layout.timeFrame;
+		} else {
+			TGPlaceStamp(cell, layout.bubbleFrame, layout.timeWidth, mine);
+		}
 		cell.ticks.hidden = !mine;
 		if (mine) {
 			cell.ticks.image = [self ticksForMessage:m white:NO];

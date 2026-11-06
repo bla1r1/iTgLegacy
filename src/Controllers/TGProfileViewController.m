@@ -8,6 +8,9 @@
 #import "TGProfileTrackCell.h"
 #import "TGMusicPlayer.h"
 #import "TGChatViewController.h"
+#import "TGSimilarChannelsViewController.h"
+#import "TGCommunityViewController.h"
+#import "TGDMTopicsViewController.h"
 #import "UIImage+WebP.h"
 #import <AVFoundation/AVFoundation.h>
 
@@ -93,12 +96,73 @@ static const CGFloat kMusicTitleTop   = TGMetricPadSmall;
 static const CGFloat kMusicArtistTop  = TGMetricPadSmall + TGMetricLineMicro;
 static const CGFloat kMusicChevronSide = TGMetricGiftStar;
 
+@interface TGProfileDetailCell : UITableViewCell
+@property (nonatomic, strong) UIImageView *iconView;
+@property (nonatomic, strong) UILabel *titleLabel;
+@property (nonatomic, strong) UILabel *subtitleLabel;
+@end
+
+@implementation TGProfileDetailCell
+
+- (instancetype)initWithStyle:(UITableViewCellStyle)style reuseIdentifier:(NSString *)reuseIdentifier {
+	if ((self = [super initWithStyle:UITableViewCellStyleDefault reuseIdentifier:reuseIdentifier])){
+		_iconView = [[UIImageView alloc] initWithFrame:CGRectZero];
+		_iconView.contentMode = UIViewContentModeScaleAspectFit;
+		_iconView.backgroundColor = [UIColor clearColor];
+		[self.contentView addSubview:_iconView];
+
+		_titleLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+		_titleLabel.font = TGFontMeta();
+		_titleLabel.backgroundColor = [UIColor clearColor];
+		[self.contentView addSubview:_titleLabel];
+
+		_subtitleLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+		_subtitleLabel.font = TGFontBody();
+		_subtitleLabel.numberOfLines = 0;
+		_subtitleLabel.lineBreakMode = NSLineBreakByWordWrapping;
+		_subtitleLabel.backgroundColor = [UIColor clearColor];
+		[self.contentView addSubview:_subtitleLabel];
+	}
+	return self;
+}
+
+- (void)layoutSubviews {
+	[super layoutSubviews];
+	CGFloat width = self.contentView.bounds.size.width;
+	CGFloat left = TGMetricPadLarge;
+	if (self.iconView.image) {
+		self.iconView.frame = CGRectMake(left, TGMetricPadMedium, TGMetricMenuGlyph, TGMetricMenuGlyph);
+		left += TGMetricMenuGlyph + TGMetricPadMedium;
+	} else {
+		self.iconView.frame = CGRectZero;
+	}
+	CGFloat rightMargin = (self.accessoryType != UITableViewCellAccessoryNone)
+			? (TGMetricMenuGlyph + TGMetricPadMedium) : TGMetricPadLarge;
+	CGFloat textWidth = width - left - rightMargin;
+	if (textWidth < 50.0f) textWidth = 50.0f;
+
+	CGFloat y = TGMetricPadSmall;
+	if (self.titleLabel.text.length) {
+		self.titleLabel.frame = CGRectMake(left, y, textWidth, TGMetricLineCaption);
+		y += TGMetricLineCaption + TGMetricPadTiny;
+	} else {
+		self.titleLabel.frame = CGRectZero;
+	}
+
+	CGSize valSize = [self.subtitleLabel.text sizeWithFont:self.subtitleLabel.font
+										constrainedToSize:CGSizeMake(textWidth, CGFLOAT_MAX)
+											lineBreakMode:NSLineBreakByWordWrapping];
+	self.subtitleLabel.frame = CGRectMake(left, y, textWidth, ceilf(valSize.height));
+}
+
+@end
+
 @implementation TGProfileViewController
 
 - (instancetype)initWithChatId:(int64_t)chatId userId:(int64_t)userId title:(NSString *)title {
 	if ((self = [super initWithStyle:UITableViewStyleGrouped])){
 		_chatId = chatId;
-		_userId = userId;
+		_userId = (chatId < 0) ? 0 : userId;
 		_name = title ?: @"";
 		_details = @[];
 		_photos = @[];
@@ -128,7 +192,9 @@ static const CGFloat kMusicChevronSide = TGMetricGiftStar;
 
 - (void)viewDidLoad {
 	[super viewDidLoad];
-	self.title = @"Info";
+	// Your own profile carries no title, as in Telegram: the name under the
+	// picture already says whose it is.
+	self.title = self.isOwnProfile ? @"" : @"Info";
 	if ([self respondsToSelector:@selector(setEdgesForExtendedLayout:)])
 		self.edgesForExtendedLayout = UIRectEdgeNone;
 	[self applyTheme];
@@ -395,6 +461,12 @@ static const CGFloat kMusicChevronSide = TGMetricGiftStar;
 	// profile is open refreshes the line (B4).
 	if ([self showsSavedMessages]){
 		self.statusLabel.text = nil;
+	} else if (self.isOwnProfile){
+		// You are using the app, so to yourself you are online. The server's
+		// last-seen for your own account lags behind and read like a stranger's.
+		self.restingStatus = @"online";
+		self.statusLabel.textColor = [[TGTheme shared] accentColour];
+		[self statusLabelOwnerChanged:nil];
 	} else if (self.userId){
 		__weak typeof(self) weakSelf = self;
 		[[TGClient shared] statusForUser:self.userId completion:^(NSString *status){
@@ -557,6 +629,9 @@ static const CGFloat kMusicChevronSide = TGMetricGiftStar;
 			me.onlineCount = [info[@"online"] integerValue];
 			me.isVerified = [info[@"verified"] boolValue];
 			me.inviteLink = info[@"inviteLink"] ?: @"";
+			me.directMessagesChatId = [info[@"directMessagesChatId"] longLongValue];
+			me.hasDirectMessages = [info[@"hasDirectMessages"] boolValue];
+			me.canManageDirectMessages = [info[@"canManageDirectMessages"] boolValue];
 			[me updateGroupStatus];
 			NSMutableArray *rows = [NSMutableArray array];
 			if ([info[@"description"] length])
@@ -568,9 +643,99 @@ static const CGFloat kMusicChevronSide = TGMetricGiftStar;
 			if (me.inviteLink.length)
 				[rows addObject:@{@"kind" : @"invite", @"label" : @"invite link",
 						@"value" : me.inviteLink}];
+			if (me.linkedChatTitle.length)
+				[rows addObject:@{@"kind" : @"linkedChat",
+						@"label" : (me.isChannel ? @"discussion" : @"linked channel"),
+						@"value" : me.linkedChatTitle}];
+			me.communityId = [info[@"communityId"] longLongValue];
+			if (me.communityId != 0) {
+				NSDictionary *fullComm = [[TGClient shared] cachedCommunityFullInfo:me.communityId];
+				NSArray *commChats = fullComm[@"chats"];
+				NSString *commTitle = nil;
+				if (commChats.count > 0) {
+					commTitle = [NSString stringWithFormat:@"%lu chats and groups", (unsigned long)commChats.count];
+				} else {
+					for (NSDictionary *comm in [TGClient shared].communities) {
+						if ([comm[@"id"] longLongValue] == me.communityId) {
+							commTitle = comm[@"name"];
+							break;
+						}
+					}
+					if (!commTitle.length) {
+						commTitle = @"Chat pool";
+					}
+				}
+				[rows addObject:@{@"kind" : @"community",
+						@"label" : @"community",
+						@"value" : commTitle}];
+			}
+			if (me.isChannel && me.similarChatIds.count)
+				[rows addObject:@{@"kind" : @"similarChannels",
+						@"label" : @"similar channels",
+						@"value" : [NSString stringWithFormat:@"%lu channels", (unsigned long)me.similarChatIds.count]}];
 			me.details = rows;
 			[me buildHeader];
 			[me reloadTableDebounced];
+
+			if (me.communityId != 0 && ![[TGClient shared] cachedCommunityFullInfo:me.communityId]) {
+				[[TGClient shared] communityFullInfo:me.communityId completion:^(NSDictionary *cinfo, NSString *err){
+					TGProfileViewController *again = weakSelf;
+					if (!again) return;
+					[again reloadTableDebounced];
+				}];
+			}
+
+			if (me.isChannel){
+				[[TGClient shared] similarChatsForChat:me.chatId completion:^(NSArray *chats, NSInteger total){
+					TGProfileViewController *again = weakSelf;
+					if (!again || !chats.count)
+						return;
+					again.similarChatIds = chats;
+					NSMutableArray *updated = [again.details mutableCopy];
+					BOOL exists = NO;
+					for (NSDictionary *r in updated){
+						if ([r[@"kind"] isEqualToString:@"similarChannels"]){
+							exists = YES;
+							break;
+						}
+					}
+					if (!exists){
+						[updated addObject:@{@"kind" : @"similarChannels",
+								@"label" : @"similar channels",
+								@"value" : [NSString stringWithFormat:@"%lu channels", (unsigned long)(total > 0 ? total : chats.count)]}];
+						again.details = updated;
+						[again reloadTableDebounced];
+					}
+				}];
+			}
+
+			int64_t linkedId = [info[@"linkedChatId"] longLongValue];
+			if (linkedId != 0 && linkedId != me.linkedChatId){
+				me.linkedChatId = linkedId;
+				[[TGClient shared] chatRecordForChat:linkedId completion:^(NSDictionary *linkedChat){
+					TGProfileViewController *again = weakSelf;
+					if (!again || !linkedChat)
+						return;
+					again.linkedChatTitle = linkedChat[@"title"] ?: @"";
+					if (!again.linkedChatTitle.length)
+						return;
+					NSMutableArray *updated = [again.details mutableCopy];
+					BOOL exists = NO;
+					for (NSDictionary *r in updated){
+						if ([r[@"kind"] isEqualToString:@"linkedChat"]){
+							exists = YES;
+							break;
+						}
+					}
+					if (!exists){
+						[updated addObject:@{@"kind" : @"linkedChat",
+								@"label" : (again.isChannel ? @"discussion" : @"linked channel"),
+								@"value" : again.linkedChatTitle}];
+						again.details = updated;
+						[again reloadTableDebounced];
+					}
+				}];
+			}
 		}];
 		return;
 	}
@@ -687,6 +852,13 @@ static const CGFloat kMusicChevronSide = TGMetricGiftStar;
 /// add-to-contacts row for a stranger.
 - (NSArray *)fullDetailsRowsWithBio:(NSString *)bio birthday:(NSString *)birthday {
 	NSMutableArray *rows = [NSMutableArray array];
+	// On your own profile the bio leads, and an empty one is an invitation to
+	// write it rather than a missing row.
+	BOOL own = self.isOwnProfile;
+	if (own)
+		[rows addObject:bio.length
+				? @{@"kind" : @"bio", @"label" : @"bio", @"value" : bio}
+				: @{@"kind" : @"addBio", @"label" : @"", @"value" : @"Add a bio"}];
 	if (self.phoneNumber.length)
 		[rows addObject:@{@"kind" : @"phone", @"label" : @"mobile",
 				@"value" : [@"+" stringByAppendingString:self.phoneNumber]}];
@@ -706,7 +878,7 @@ static const CGFloat kMusicChevronSide = TGMetricGiftStar;
 		[rows addObject:@{@"kind" : @"warning", @"label" : @"",
 				@"value" : (self.isScam ? @"This account is marked as a scam."
 									   : @"This account is marked as fake.")}];
-	} else if (bio.length){
+	} else if (bio.length && !own){
 		[rows addObject:@{@"kind" : @"bio", @"label" : @"about", @"value" : bio}];
 	}
 	if (birthday.length)
@@ -795,11 +967,15 @@ static const CGFloat kMusicChevronSide = TGMetricGiftStar;
 #pragma mark - table
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
-	return 5;
+	return 6;
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
 	if (section == kSectionDetails) return self.details.count;
+	if (section == kSectionDirectMessages) {
+		BOOL hasDM = (self.directMessagesChatId != 0) || self.hasDirectMessages || self.canManageDirectMessages;
+		return (self.isChannel && hasDM) ? 1 : 0;
+	}
 	// Stories and Gifts live in the bar above the shared section now, so the
 	// standalone sections would show the same rows a second time.
 	if (section == kSectionStories) return 0;
@@ -821,6 +997,8 @@ static const CGFloat kMusicChevronSide = TGMetricGiftStar;
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
 	if (section == kSectionMembers){
+		if (self.members.count == 0)
+			return nil;
 		NSInteger count = self.memberCount > 0 ? self.memberCount
 											   : (NSInteger)self.members.count;
 		if (count <= 0)
@@ -857,7 +1035,7 @@ static const CGFloat kMusicChevronSide = TGMetricGiftStar;
 		NSString *kind = tabs[i][@"kind"];
 		BOOL isSelected = [kind isEqualToString:selected];
 		NSInteger count = [self.mediaCounts[kind] integerValue];
-		NSString *title = isSelected && count > 0
+		NSString *title = count > 0
 				? [NSString stringWithFormat:@"%@ %ld", tabs[i][@"title"], (long)count]
 				: tabs[i][@"title"];
 		UIFont *font = TGFontCaptionStrong();
@@ -909,11 +1087,60 @@ static const CGFloat kMusicChevronSide = TGMetricGiftStar;
 	if ([self tableView:tableView numberOfRowsInSection:section] == 0)
 		return CGFLOAT_MIN;
 	// Its title is the member count; the default height cut the text in half.
-	if (section == kSectionMembers) return TGMetricMediaStripHeader;
+	if (section == kSectionMembers){
+		if (self.members.count == 0) return CGFLOAT_MIN;
+		return TGMetricMediaStripHeader;
+	}
 	return [super tableView:tableView heightForHeaderInSection:section];
 }
 
+/// Your own Stories or Archive tab once it has answered with nothing. A tab
+/// that is still loading stays blank rather than claiming there is nothing.
+- (BOOL)showsEmptyStories {
+	NSString *kind = [self selectedMediaKind];
+	if (!self.isOwnProfile ||
+			!([kind isEqualToString:@"stories"] || [kind isEqualToString:@"archive"]))
+		return NO;
+	return [self.loadedMediaKinds containsObject:kind] && ![self selectedMediaRows].count;
+}
+
+- (UIView *)tableView:(UITableView *)tableView viewForFooterInSection:(NSInteger)section {
+	if (section != kSectionMedia || ![self showsEmptyStories])
+		return nil;
+	TGTheme *theme = [TGTheme shared];
+	CGFloat width = tableView.bounds.size.width;
+	BOOL archive = [[self selectedMediaKind] isEqualToString:@"archive"];
+	UIView *empty = [[UIView alloc] initWithFrame:CGRectMake(0, 0, width,
+			[self tableView:tableView heightForFooterInSection:section])];
+
+	UILabel *line = [[UILabel alloc] initWithFrame:
+			CGRectMake(0, TGMetricPadWide, width, TGMetricLineBody)];
+	line.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+	line.text = archive ? @"No archived stories" : @"No stories yet";
+	line.font = TGFontBody();
+	line.textColor = [theme secondaryTextColour];
+	line.textAlignment = NSTextAlignmentCenter;
+	line.backgroundColor = [UIColor clearColor];
+	[empty addSubview:line];
+
+	// The archive only fills from stories that expire, so it offers nothing.
+	if (!archive){
+		UIButton *add = [UIButton buttonWithType:UIButtonTypeCustom];
+		add.frame = CGRectMake(0, TGMetricPadWide + TGMetricLineBody, width, TGMetricLineBody);
+		add.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+		add.titleLabel.font = TGFontBody();
+		[add setTitle:@"Add a story" forState:UIControlStateNormal];
+		[add setTitleColor:[theme accentColour] forState:UIControlStateNormal];
+		[add addTarget:self action:@selector(addStoryTapped)
+				forControlEvents:UIControlEventTouchUpInside];
+		[empty addSubview:add];
+	}
+	return empty;
+}
+
 - (CGFloat)tableView:(UITableView *)tableView heightForFooterInSection:(NSInteger)section {
+	if (section == kSectionMedia && [self showsEmptyStories])
+		return TGDoubled(TGMetricPadWide) + TGDoubled(TGMetricLineBody);
 	if ([self tableView:tableView numberOfRowsInSection:section] == 0)
 		return CGFLOAT_MIN;
 	if (section == kSectionMedia)
@@ -929,16 +1156,25 @@ static const CGFloat kMusicChevronSide = TGMetricGiftStar;
 	if (indexPath.section == kSectionMedia &&
 			[[self selectedMediaKind] isEqualToString:@"music"])
 		return TGMetricTrackRow;
+	if (indexPath.section == kSectionDirectMessages) return TGMetricPersonRow;
 	if (indexPath.section == kSectionStories) return TGMetricPersonRow;
 	if (indexPath.section == kSectionMembers) return TGMetricPersonRow;
 	if (indexPath.section == kSectionMedia) return TGMetricPersonRow;
 	if (indexPath.section == kSectionDetails && indexPath.row < (NSInteger)self.details.count){
-		// A bio is several lines; a fixed row clipped it to one.
-		CGFloat textWidth = tableView.bounds.size.width - TGDoubled(kDetailInset);
-		CGFloat text = [self.details[indexPath.row][@"value"] sizeWithFont:TGFontBody()
+		NSDictionary *row = self.details[indexPath.row];
+		NSString *kind = row[@"kind"];
+		CGFloat left = TGMetricPadLarge + TGMetricMenuGlyph + TGMetricPadMedium;
+		BOOL hasAccessory = [kind isEqualToString:@"channel"] || [kind isEqualToString:@"businessLocation"] || [kind isEqualToString:@"linkedChat"] || [kind isEqualToString:@"community"];
+		CGFloat rightMargin = hasAccessory ? (TGMetricMenuGlyph + TGMetricPadMedium) : TGMetricPadLarge;
+		CGFloat textWidth = tableView.bounds.size.width - left - rightMargin - TGDoubled(TGMetricPad);
+		if (textWidth < 50.0f) textWidth = 50.0f;
+		NSString *val = row[@"value"] ?: @"";
+		CGFloat textH = [val sizeWithFont:TGFontBody()
 				constrainedToSize:CGSizeMake(textWidth, CGFLOAT_MAX)
 					lineBreakMode:NSLineBreakByWordWrapping].height;
-		return MAX(TGMetricPersonRow, ceilf(text) + TGMetricLineCaption + TGDoubled(TGMetricPadSmall));
+		CGFloat labelH = [row[@"label"] length] ? (TGMetricLineCaption + TGMetricPadTiny) : 0;
+		CGFloat totalH = TGMetricPadSmall + labelH + ceilf(textH) + TGMetricPadMedium;
+		return MAX(TGMetricPersonRow, totalH);
 	}
 	return TGMetricRow;
 }
@@ -983,18 +1219,24 @@ static const CGFloat kMusicChevronSide = TGMetricGiftStar;
 	cell.detailTextLabel.textColor = [[TGTheme shared] secondaryTextColour];
 
 	// The information card: what it is in small grey, the value itself under
-	// it in the accent colour. Theirs reads that way round because the number
-	// matters and the word "mobile" does not.
+	// it in the accent colour.
 	if (indexPath.section == kSectionDetails){
+		static NSString *detailReuse = @"profile-detail";
+		TGProfileDetailCell *detailCell = [tableView dequeueReusableCellWithIdentifier:detailReuse];
+		if (!detailCell)
+			detailCell = [[TGProfileDetailCell alloc] initWithStyle:UITableViewCellStyleDefault
+													reuseIdentifier:detailReuse];
+		[[TGTheme shared] styleCell:detailCell];
+		detailCell.selectionStyle = UITableViewCellSelectionStyleNone;
+
 		NSDictionary *row = self.details[indexPath.row];
 		NSString *kind = row[@"kind"];
 		TGTheme *theme = [TGTheme shared];
-		// The media lists share this reuse id and leave a chevron and an icon behind.
-		cell.accessoryType = ([kind isEqualToString:@"channel"] || [kind isEqualToString:@"businessLocation"])
+		detailCell.accessoryType = ([kind isEqualToString:@"channel"] || [kind isEqualToString:@"businessLocation"] || [kind isEqualToString:@"linkedChat"] || [kind isEqualToString:@"community"])
 				? UITableViewCellAccessoryDisclosureIndicator : UITableViewCellAccessoryNone;
 
 		UIImage *icon = nil;
-		CGFloat iconSide = 22.0f;
+		CGFloat iconSide = TGMetricMenuGlyph;
 		if ([kind isEqualToString:@"phone"]) {
 			icon = [TGIcons glyphNamed:@"call" colour:[theme accentColour] side:iconSide];
 		} else if ([kind isEqualToString:@"username"]) {
@@ -1003,28 +1245,43 @@ static const CGFloat kMusicChevronSide = TGMetricGiftStar;
 			icon = [TGIcons glyphNamed:@"star" colour:self.birthdayToday ? [theme onlineColour] : [theme accentColour] side:iconSide];
 		} else if ([kind isEqualToString:@"bio"] || [kind isEqualToString:@"about"] || [kind isEqualToString:@"note"]) {
 			icon = [TGIcons glyphNamed:@"edit" colour:[theme secondaryTextColour] side:iconSide];
-		} else if ([kind isEqualToString:@"channel"]) {
+		} else if ([kind isEqualToString:@"channel"] || [kind isEqualToString:@"linkedChat"] || [kind isEqualToString:@"community"]) {
 			icon = [TGIcons glyphNamed:@"chat" colour:[theme accentColour] side:iconSide];
 		} else if ([kind isEqualToString:@"businessLocation"]) {
 			icon = [TGIcons glyphNamed:@"archive" colour:[theme accentColour] side:iconSide];
 		}
-		cell.imageView.image = icon;
-		cell.imageView.opaque = NO;
-		cell.imageView.backgroundColor = [UIColor clearColor];
+		detailCell.iconView.image = icon;
 
-		cell.textLabel.text = row[@"label"];
-		cell.textLabel.font = TGFontMeta();
-		cell.textLabel.textColor = [theme secondaryTextColour];
-		cell.detailTextLabel.text = row[@"value"];
-		cell.detailTextLabel.font = TGFontBody();
-		cell.detailTextLabel.numberOfLines = 0;
+		detailCell.titleLabel.text = row[@"label"];
+		detailCell.titleLabel.textColor = [theme secondaryTextColour];
+		detailCell.subtitleLabel.text = row[@"value"];
 		BOOL plain = [kind isEqualToString:@"bio"] || [kind isEqualToString:@"note"] ||
 				[kind isEqualToString:@"about"];
 		BOOL today = [kind isEqualToString:@"birthday"] && self.birthdayToday;
-		cell.detailTextLabel.textColor = [kind isEqualToString:@"warning"] ? [theme destructiveColour]
+		detailCell.subtitleLabel.textColor = [kind isEqualToString:@"warning"] ? [theme destructiveColour]
 				: (today ? [theme onlineColour]
 				: (plain ? [theme primaryTextColour] : [theme accentColour]));
-		return cell;
+		[detailCell setNeedsLayout];
+		return detailCell;
+	}
+
+	if (indexPath.section == kSectionDirectMessages){
+		static NSString *dmReuse = @"profile-dm";
+		TGProfileDetailCell *dmCell = [tableView dequeueReusableCellWithIdentifier:dmReuse];
+		if (!dmCell)
+			dmCell = [[TGProfileDetailCell alloc] initWithStyle:UITableViewCellStyleDefault
+												reuseIdentifier:dmReuse];
+		[[TGTheme shared] styleCell:dmCell];
+		dmCell.selectionStyle = UITableViewCellSelectionStyleNone;
+		TGTheme *theme = [TGTheme shared];
+		dmCell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+		dmCell.iconView.image = [TGIcons glyphNamed:@"chat" colour:[theme accentColour] side:TGMetricMenuGlyph];
+		dmCell.titleLabel.text = @"direct messages";
+		dmCell.titleLabel.textColor = [theme secondaryTextColour];
+		dmCell.subtitleLabel.text = (self.canManageDirectMessages || self.canManage) ? @"Manage Topics" : @"Open Direct Chat";
+		dmCell.subtitleLabel.textColor = [theme accentColour];
+		[dmCell setNeedsLayout];
+		return dmCell;
 	}
 
 	// A story reads as its picture, its caption and when it went up - the
@@ -1261,6 +1518,11 @@ static const CGFloat kMusicChevronSide = TGMetricGiftStar;
 		return;
 	}
 
+	if (indexPath.section == kSectionDirectMessages){
+		[self openDirectMessages];
+		return;
+	}
+
 	if (indexPath.section != kSectionDetails ||
 		indexPath.row >= (NSInteger)self.details.count)
 		return;
@@ -1271,12 +1533,38 @@ static const CGFloat kMusicChevronSide = TGMetricGiftStar;
 	if ([kind isEqualToString:@"channel"]){
 		[self openChat:[self.personalChannel[@"chatId"] longLongValue]
 				 title:self.personalChannel[@"title"] message:0];
+	} else if ([kind isEqualToString:@"linkedChat"]){
+		[self openChat:self.linkedChatId title:self.linkedChatTitle message:0];
+	} else if ([kind isEqualToString:@"community"]){
+		NSDictionary *targetComm = nil;
+		for (NSDictionary *comm in [TGClient shared].communities) {
+			if ([comm[@"id"] longLongValue] == self.communityId) {
+				targetComm = comm;
+				break;
+			}
+		}
+		if (!targetComm) {
+			targetComm = @{@"id": @(self.communityId), @"name": @"Community"};
+		}
+		TGCommunityViewController *commVC = [[TGCommunityViewController alloc] initWithCommunity:targetComm];
+		commVC.hidesBottomBarWhenPushed = YES;
+		[self.navigationController pushViewController:commVC animated:YES];
+	} else if ([kind isEqualToString:@"directMessages"]){
+		[self openDirectMessages];
+	} else if ([kind isEqualToString:@"similarChannels"]){
+		TGSimilarChannelsViewController *similarVC = [[TGSimilarChannelsViewController alloc] init];
+		similarVC.originalChatId = self.chatId;
+		similarVC.channelChatIds = self.similarChatIds;
+		similarVC.hidesBottomBarWhenPushed = YES;
+		[self.navigationController pushViewController:similarVC animated:YES];
 	} else if ([kind isEqualToString:@"businessLocation"]){
 		NSString *encoded = [row[@"value"] stringByAddingPercentEscapesUsingEncoding:NSUTF8StringEncoding];
 		NSString *mapsUrl = [NSString stringWithFormat:@"http://maps.apple.com/?q=%@", encoded ?: @""];
 		[[UIApplication sharedApplication] openURL:[NSURL URLWithString:mapsUrl]];
 	} else if ([kind isEqualToString:@"addContact"]){
 		[self addToContactsTapped];
+	} else if ([kind isEqualToString:@"addBio"]){
+		[self editProfileTapped];
 	} else if ([kind isEqualToString:@"bio"]){
 		NSURL *url = TGProfileFirstURL(row[@"value"], self.bioEntities);
 		if (url)
@@ -1284,6 +1572,44 @@ static const CGFloat kMusicChevronSide = TGMetricGiftStar;
 	} else if ([kind isEqualToString:@"phone"] || [kind isEqualToString:@"username"] ||
 			   [kind isEqualToString:@"invite"] || [kind isEqualToString:@"birthday"]){
 		[self copyDetailValue:row[@"value"]];
+	}
+}
+
+- (void)openDirectMessages {
+	int64_t targetId = self.directMessagesChatId;
+	if (targetId == 0) {
+		__weak typeof(self) weakSelf = self;
+		[[TGClient shared] chatProfile:self.chatId completion:^(NSDictionary *info){
+			TGProfileViewController *me = weakSelf;
+			if (!me) return;
+			int64_t dmId = [info[@"directMessagesChatId"] longLongValue];
+			me.hasDirectMessages = [info[@"hasDirectMessages"] boolValue];
+			me.canManageDirectMessages = [info[@"canManageDirectMessages"] boolValue];
+			if (dmId != 0) {
+				me.directMessagesChatId = dmId;
+				[me openDirectMessages];
+			} else if (me.hasDirectMessages || me.canManageDirectMessages) {
+				me.directMessagesChatId = me.chatId;
+				[me openDirectMessages];
+			} else {
+				[TGAlertSheet showMessage:@"Direct messages are not available for this channel."
+									title:@"Direct Messages"
+								   inView:me.view];
+			}
+		}];
+		return;
+	}
+
+	if (self.canManage || self.canManageDirectMessages) {
+		TGDMTopicsViewController *topics = [[TGDMTopicsViewController alloc] init];
+		topics.chatId = targetId;
+		topics.chatTitle = self.name;
+		topics.hidesBottomBarWhenPushed = YES;
+		[self.navigationController pushViewController:topics animated:YES];
+	} else {
+		[self openChat:targetId
+				 title:[NSString stringWithFormat:@"%@ · Direct", self.name.length ? self.name : @"Channel"]
+			   message:0];
 	}
 }
 

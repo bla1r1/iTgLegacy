@@ -122,4 +122,8 @@
 - (void)clearProfileShareThemeForChat:(int64_t)chatId
 						   completion:(void (^)(BOOL ok, NSString *error))completion;
 
+/// The colour a person's name is drawn in: the accent they chose, from their
+/// user record, or the id-based colour while the record has not arrived.
+- (UIColor *)nameColourForUser:(int64_t)userId;
+
 @end

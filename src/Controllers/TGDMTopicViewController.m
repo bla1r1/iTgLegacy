@@ -27,6 +27,9 @@ static const NSInteger kSectionHistory = 2;
 	self.title = name.length ? name : @"Topic";
 	self.history = @[];
 	self.tableView.rowHeight = TGMetricRow;
+	self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc]
+			initWithTitle:@"Reply" style:UIBarButtonItemStylePlain
+				   target:self action:@selector(replyTapped)];
 	[self applyTheme];
 	[self rebuildActions];
 	[self loadTopic];
@@ -52,6 +55,7 @@ static const NSInteger kSectionHistory = 2;
 
 - (void)rebuildActions {
 	NSMutableArray *actions = [NSMutableArray arrayWithObjects:
+			@"Send Direct Message",
 			(@"Jump to Date"), @"Read All Reactions", @"Unpin All Messages",
 			@"Delete Messages by Date", @"Delete All Messages", nil];
 	if ([self.topic[@"isMarkedUnread"] boolValue])
@@ -59,6 +63,45 @@ static const NSInteger kSectionHistory = 2;
 	else
 		[actions insertObject:@"Mark as Unread" atIndex:0];
 	self.actionTitles = actions;
+}
+
+- (void)replyTapped {
+	__weak typeof(self) weakSelf = self;
+	[TGAlertSheet showInput:@"Direct Message"
+					message:@"Reply to subscriber:"
+				placeholder:@"Type a message…"
+					   text:nil
+					 action:@"Send"
+					 inView:self.view
+				   onSubmit:^(NSString *text){
+		[weakSelf sendDirectMessage:text];
+	}];
+}
+
+- (void)sendDirectMessage:(NSString *)text {
+	if (!text.length)
+		return;
+	NSDictionary *topicIdObj = @{
+		@"@type" : @"messageTopicDirectMessages",
+		@"direct_messages_chat_topic_id" : @(self.topicId)
+	};
+	__weak typeof(self) weakSelf = self;
+	[[TGClient shared] request:@{
+		@"@type" : @"sendMessage",
+		@"chat_id" : @(self.chatId),
+		@"topic_id" : topicIdObj,
+		@"input_message_content" : @{
+			@"@type" : @"inputMessageText",
+			@"text" : @{
+				@"@type" : @"formattedText",
+				@"text" : text ?: @""
+			}
+		}
+	} completion:^(NSDictionary *result){
+		dispatch_async(dispatch_get_main_queue(), ^{
+			[weakSelf loadHistory];
+		});
+	}];
 }
 
 - (void)loadTopic {
@@ -204,6 +247,10 @@ static const NSInteger kSectionHistory = 2;
 	if (indexPath.section != kSectionActions)
 		return;
 	NSString *title = self.actionTitles[indexPath.row];
+	if ([title isEqualToString:@"Send Direct Message"]){
+		[self replyTapped];
+		return;
+	}
 	if ([title hasPrefix:@"Mark as"]){
 		BOOL mark = [title isEqualToString:@"Mark as Unread"];
 		__weak typeof(self) weakSelf = self;

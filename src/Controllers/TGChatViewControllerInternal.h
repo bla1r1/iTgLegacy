@@ -32,7 +32,9 @@
 
 @interface TGChatViewController () <UISearchBarDelegate, CLLocationManagerDelegate, TGEmojiPanelDelegate,
 		UIScrollViewDelegate, AVAudioPlayerDelegate, TGStreamingVoicePlayerDelegate,
-		ABPeoplePickerNavigationControllerDelegate>
+		ABPeoplePickerNavigationControllerDelegate, UIDocumentInteractionControllerDelegate>
+
+@property (nonatomic, strong) UIDocumentInteractionController *docInteractionController;
 
 @property (nonatomic, strong) UITableView *table;
 @property (nonatomic, strong) UIView *inputBar;
@@ -421,6 +423,7 @@
 - (BOOL)continuesAlbumAtRow:(NSInteger)row;
 - (BOOL)albumContinuesAfterRow:(NSInteger)row;
 - (void)pollOptionTapped:(UIButton *)option;
+- (void)docRowTapped:(UIButton *)sender;
 - (void)callCellButtonTapped:(UIButton *)btn;
 - (void)contactCallButtonTapped:(UIButton *)btn;
 - (void)contactAddButtonTapped:(UIButton *)btn;

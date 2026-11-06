@@ -1,4 +1,5 @@
 #import "TGClientInternal.h"
+#import "TGStyle.h"
 
 /// TDLib answers a failed request with @type "error" and a human sentence in
 /// "message". Every screen in this category shows that sentence rather than
@@ -397,6 +398,13 @@ static UIColor *TGColourFromRGB(int32_t rgb) {
 		if (completion)
 			completion(TGProfileError(result) == nil, TGProfileError(result));
 	}];
+}
+
+- (UIColor *)nameColourForUser:(int64_t)userId {
+	NSNumber *accent = self.rawUsersById[@(userId)][@"accent_color_id"];
+	UIColor *chosen = [accent isKindOfClass:NSNumber.class]
+			? TGColourAccentName(accent.integerValue, self.accentColors, NO) : nil;
+	return chosen ?: TGColourPeerName(userId, NO);
 }
 
 @end

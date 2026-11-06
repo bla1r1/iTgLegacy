@@ -147,13 +147,19 @@ static BOOL TGEmojiFontHasGlyphs(CTFontRef font, NSString *s) {
 + (BOOL)canDrawEmoji:(NSString *)emoji {
 	if (!emoji.length)
 		return NO;
+	// Asked from the main thread and from the warm-up queue (TGWarmEmojiData),
+	// so the cache is shared under a lock; the shaping itself runs outside it.
 	static NSMutableDictionary *answers = nil;
 	static CTFontRef font = NULL;
-	if (!answers){
+	static dispatch_once_t once;
+	dispatch_once(&once, ^{
 		answers = [NSMutableDictionary dictionary];
 		font = CTFontCreateWithName(CFSTR("AppleColorEmoji"), 20, NULL);
+	});
+	NSNumber *known;
+	@synchronized (answers){
+		known = answers[emoji];
 	}
-	NSNumber *known = answers[emoji];
 	if (known)
 		return known.boolValue;
 
@@ -181,7 +187,9 @@ static BOOL TGEmojiFontHasGlyphs(CTFontRef font, NSString *s) {
 			CFRelease(line);
 		}
 	}
-	answers[emoji] = @(ok);
+	@synchronized (answers){
+		answers[emoji] = @(ok);
+	}
 	return ok;
 }
 

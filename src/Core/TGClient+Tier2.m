@@ -229,13 +229,13 @@ static NSString *TGTierActionTitle(NSDictionary *action) {
 			int64_t chatId = [chat[@"chat_id"] longLongValue];
 			if (!chatId)
 				continue;
-			[chats addObject:@{
+			[chats addObject:[@{
 				@"chatId"        : @(chatId),
 				@"title"         : TGTierChatTitle(chatId) ?: [NSString stringWithFormat:
 										@"Chat %lld", (long long)chatId],
 				@"canViewHistory": chat[@"can_view_history"] ?: @NO,
 				@"hidden"        : chat[@"is_hidden"] ?: @NO,
-			}];
+			} mutableCopy]];
 		}
 		NSDictionary *info = @{
 			@"photoFileId"         : TGTierPhotoFileId(result[@"photo"]) ?: @(0),
@@ -1405,13 +1405,13 @@ static void TGTierFlattenBlocks(NSArray *blocks, NSMutableArray *lines) {
 		int64_t chatId = [chat[@"chat_id"] longLongValue];
 		if (!chatId)
 			continue;
-		[chats addObject:@{
+		[chats addObject:[@{
 			@"chatId"        : @(chatId),
 			@"title"         : TGTierChatTitle(chatId) ?: [NSString stringWithFormat:
 									@"Chat %lld", (long long)chatId],
 			@"canViewHistory": chat[@"can_view_history"] ?: @NO,
 			@"hidden"        : chat[@"is_hidden"] ?: @NO,
-		}];
+		} mutableCopy]];
 	}
 	self.communityFullInfoById[ident] = @{
 		@"photoFileId"         : TGTierPhotoFileId(info[@"photo"]) ?: @(0),

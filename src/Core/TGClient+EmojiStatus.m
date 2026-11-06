@@ -31,6 +31,20 @@ static NSArray *TGEmojiStatusIds(id value) {
 	return out;
 }
 
+int64_t TGEmojiStatusCustomEmojiId(NSDictionary *status) {
+	if (![status isKindOfClass:NSDictionary.class])
+		return 0;
+	NSDictionary *type = status[@"type"];
+	if (![type isKindOfClass:NSDictionary.class])
+		return 0;
+	NSString *kind = type[@"@type"];
+	if ([kind isEqualToString:@"emojiStatusTypeCustomEmoji"])
+		return [type[@"custom_emoji_id"] longLongValue];
+	if ([kind isEqualToString:@"emojiStatusTypeUpgradedGift"])
+		return [type[@"model_custom_emoji_id"] longLongValue];
+	return 0;
+}
+
 /// One emojiStatus with the type flattened to the three words a row shows.
 static NSDictionary *TGEmojiStatusRow(NSDictionary *status) {
 	if (![status isKindOfClass:NSDictionary.class])

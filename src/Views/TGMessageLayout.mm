@@ -3,6 +3,7 @@
 //
 #import "TGMessageLayout.h"
 #import "TGStyle.h"
+#import <CoreText/CoreText.h>
 #import "TGLruCache.hpp"
 #import "TGPerf.h"
 #include <time.h>
@@ -177,6 +178,106 @@ BOOL TGIsEmojiScalar(UTF32Char c) {
 		   (c >= 0x2B00  && c <= 0x2BFF);      // arrows and stars
 }
 
+/// Joiners, variation selectors, combining marks and tags have no glyph of
+/// their own; they shape the character before them and must stay.
+static BOOL TGIsShapingScalar(UTF32Char c) {
+	return (c >= 0x0300 && c <= 0x036F) || (c >= 0x200B && c <= 0x206F) ||
+		   c == 0x20E3 || (c >= 0xFE00 && c <= 0xFE0F) ||
+		   (c >= 0xE0000 && c <= 0xE007F);
+}
+
+NSString *TGStripScalars(NSString *text, BOOL (*drawable)(UTF32Char)) {
+	NSUInteger len = text.length;
+	if (!len)
+		return text;
+	NSMutableString *out = nil;
+	NSUInteger i = 0;
+	while (i < len){
+		unichar unit = [text characterAtIndex:i];
+		NSUInteger width = 1;
+		UTF32Char c = unit;
+		if (CFStringIsSurrogateHighCharacter(unit) && i + 1 < len &&
+				CFStringIsSurrogateLowCharacter([text characterAtIndex:i + 1])){
+			c = CFStringGetLongCharacterForSurrogatePair(unit, [text characterAtIndex:i + 1]);
+			width = 2;
+		}
+		// Emoji are asked like the rest: one newer than the device's emoji
+		// font sends CoreText to disk exactly as a hieroglyph does.
+		BOOL keep = c < 0x0250 || TGIsShapingScalar(c) || drawable(c);
+		if (!keep && !out)
+			out = [[text substringToIndex:i] mutableCopy];
+		else if (keep && out)
+			[out appendString:[text substringWithRange:NSMakeRange(i, width)]];
+		i += width;
+	}
+	return out ?: text;
+}
+
+/// The system font and the fallback list UIKit itself walks, created once.
+/// A character none of them has is the one that made CoreText open every
+/// font on disk; asking these few directly costs a glyph lookup each.
+static NSArray *TGFallbackFonts(void) {
+	static NSArray *fonts = nil;
+	static dispatch_once_t once;
+	dispatch_once(&once, ^{
+		NSMutableArray *list = [NSMutableArray array];
+		UIFont *body = TGFontBody();
+		CTFontRef base = CTFontCreateWithName((__bridge CFStringRef)body.fontName,
+				body.pointSize, NULL);
+		if (base){
+			[list addObject:(__bridge_transfer id)base];
+			if (&CTFontCopyDefaultCascadeListForLanguages != NULL){
+				CFArrayRef cascade = CTFontCopyDefaultCascadeListForLanguages(base, NULL);
+				for (CFIndex k = 0; cascade && k < CFArrayGetCount(cascade); k++){
+					CTFontDescriptorRef d = (CTFontDescriptorRef)CFArrayGetValueAtIndex(cascade, k);
+					CTFontRef f = CTFontCreateWithFontDescriptor(d, body.pointSize, NULL);
+					if (f)
+						[list addObject:(__bridge_transfer id)f];
+				}
+				if (cascade)
+					CFRelease(cascade);
+			}
+		}
+		CTFontRef emoji = CTFontCreateWithName(CFSTR("AppleColorEmoji"), body.pointSize, NULL);
+		if (emoji)
+			[list addObject:(__bridge_transfer id)emoji];
+		fonts = list;
+	});
+	return fonts;
+}
+
+static BOOL TGFontsHaveScalar(UTF32Char c) {
+	static NSMutableDictionary *answers = nil;
+	static dispatch_once_t once;
+	dispatch_once(&once, ^{ answers = [NSMutableDictionary dictionary]; });
+	NSNumber *key = @(c), *known;
+	@synchronized (answers){
+		known = answers[key];
+	}
+	if (known)
+		return known.boolValue;
+	UniChar units[2];
+	CFIndex count = CFStringGetSurrogatePairForLongCharacter(c, units) ? 2 : 1;
+	if (count == 1)
+		units[0] = (UniChar)c;
+	BOOL found = NO;
+	for (id font in TGFallbackFonts()){
+		CGGlyph glyphs[2] = {0, 0};
+		if (CTFontGetGlyphsForCharacters((__bridge CTFontRef)font, units, glyphs, count) && glyphs[0]){
+			found = YES;
+			break;
+		}
+	}
+	@synchronized (answers){
+		answers[key] = @(found);
+	}
+	return found;
+}
+
+NSString *TGStripUndrawableScalars(NSString *text) {
+	return TGStripScalars(text, TGFontsHaveScalar);
+}
+
 static inline BOOL TGTextContainsEmoji(NSString *text) {
 	NSUInteger len = text.length;
 	if (len == 0) return NO;
@@ -259,6 +360,26 @@ NSAttributedString *TGEmojiAttributedText(NSString *text, UIFont *base) {
 	return styled;
 }
 
+static TGCustomEmojiProvider sCustomEmojiProvider = NULL;
+
+void TGSetCustomEmojiProvider(TGCustomEmojiProvider provider) {
+	sCustomEmojiProvider = provider;
+}
+
+/// An empty picture standing in until the real one arrives. The attachment's
+/// bounds hold the size, so the bubble keeps the size it was measured at and
+/// nothing is drawn in the gap. A nil image would draw iOS's file icon.
+static UIImage *TGEmptyPicture(void) {
+	static UIImage *empty = nil;
+	if (!empty)
+		empty = [[UIImage alloc] init];
+	return empty;
+}
+
+CGFloat TGCustomEmojiSide(UIFont *font) {
+	return ceilf(font.ascender - font.descender);
+}
+
 NSAttributedString *TGAttributedMessageText(NSString *text, NSArray *entities, UIFont *baseFont, UIColor *textColor) {
 	if (!text.length)
 		return nil;
@@ -285,6 +406,7 @@ NSAttributedString *TGAttributedMessageText(NSString *text, NSArray *entities, U
 
 	CGFloat size = baseFont.pointSize;
 	UIColor *linkColour = TGColourLink();
+	NSMutableArray *customEmoji = [NSMutableArray array];
 
 	for (NSDictionary *ent in entities) {
 		if (![ent isKindOfClass:[NSDictionary class]])
@@ -348,6 +470,33 @@ NSAttributedString *TGAttributedMessageText(NSString *text, NSArray *entities, U
 			[str addAttribute:NSForegroundColorAttributeName value:linkColour range:range];
 		} else if ([type isEqualToString:@"textEntityTypeSpoiler"] || [type isEqualToString:@"messageEntitySpoiler"]) {
 			[str addAttribute:NSBackgroundColorAttributeName value:TGColourCodeBlockBackground() range:range];
+		} else if ([type isEqualToString:@"textEntityTypeCustomEmoji"] && [typeObj isKindOfClass:NSDictionary.class]) {
+			int64_t emojiId = [typeObj[@"custom_emoji_id"] longLongValue];
+			if (emojiId)
+				[customEmoji addObject:@[@(offset), @(length), @(emojiId)]];
+		}
+	}
+
+	// Custom emoji last, from the end backwards: each one turns its fallback
+	// characters into a single attachment, which moves everything after it.
+	// No NSTextAttachment before iOS 7, so there the fallback emoji stays.
+	Class attachmentClass = NSClassFromString(@"NSTextAttachment");
+	if (customEmoji.count && attachmentClass) {
+		[customEmoji sortUsingComparator:^NSComparisonResult(NSArray *a, NSArray *b){
+			return [b[0] compare:a[0]];
+		}];
+		CGFloat side = TGCustomEmojiSide(baseFont);
+		for (NSArray *entry in customEmoji) {
+			NSRange range = NSMakeRange([entry[0] unsignedIntegerValue], [entry[1] unsignedIntegerValue]);
+			int64_t emojiId = [entry[2] longLongValue];
+			UIImage *picture = sCustomEmojiProvider ? sCustomEmojiProvider(emojiId, side) : nil;
+			NSTextAttachment *attachment = [[attachmentClass alloc] init];
+			attachment.image = picture ?: TGEmptyPicture();
+			// Sat on the baseline like a glyph, its bottom at the descender.
+			attachment.bounds = CGRectMake(0, baseFont.descender, side, side);
+			NSMutableAttributedString *glyph = [[NSAttributedString attributedStringWithAttachment:attachment] mutableCopy];
+			[glyph addAttribute:@"TGCustomEmojiId" value:@(emojiId) range:NSMakeRange(0, glyph.length)];
+			[str replaceCharactersInRange:range withAttributedString:glyph];
 		}
 	}
 
@@ -419,6 +568,10 @@ CGSize TGTextSizeWithEntities(NSString *text, NSArray *entities, UIFont *font, C
 	sTextSizeCache.put(key, size);
 	TGPerfReport("text measure", NULL, measureStart, 10.0);
 	return size;
+}
+
+CGFloat TGInlineStampY(CGRect bodyFrame) {
+	return CGRectGetMaxY(bodyFrame) - TGMetricLineMicro;
 }
 
 CGSize TGTextSize(NSString *text, UIFont *font, CGFloat width) {

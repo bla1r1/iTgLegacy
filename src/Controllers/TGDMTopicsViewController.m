@@ -34,6 +34,18 @@
 			selector:@selector(topicsChanged:)
 				name:TGDirectMessagesTopicsChangedNotification object:nil];
 	[self loadMore];
+	if (self.chatId != 0) {
+		__weak typeof(self) weakSelf = self;
+		[[TGClient shared] chatProfile:self.chatId completion:^(NSDictionary *info){
+			int64_t dmId = [info[@"directMessagesChatId"] longLongValue];
+			if (dmId != 0 && dmId != weakSelf.chatId) {
+				weakSelf.chatId = dmId;
+				weakSelf.topics = [[TGClient shared] directMessagesChatTopicsForChat:dmId] ?: @[];
+				[weakSelf.tableView reloadData];
+				[weakSelf loadMore];
+			}
+		}];
+	}
 	[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(applyTheme) name:TGThemeChangedNotification object:nil];
 }
 

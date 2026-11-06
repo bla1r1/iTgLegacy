@@ -10,6 +10,8 @@ FOUNDATION_EXPORT dispatch_semaphore_t TGIconsDecodeGate(void);
 + (UIImage *)chats;        ///< tab bar
 + (UIImage *)contacts;
 + (UIImage *)settings;
+/// The optional Calls tab. One filled handset for both states, as Chats has.
++ (UIImage *)calls;
 /// The same three as outlines, for the tabs that are not selected (iOS 7+).
 + (UIImage *)chatsOutline;
 + (UIImage *)contactsOutline;

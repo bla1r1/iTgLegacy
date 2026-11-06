@@ -5,8 +5,9 @@
 #import "TGDevShowcase.h"
 
 UIColor *TGSenderColour(int64_t userId) {
-	// Same slot as the sender's placeholder avatar, so the two always match.
-	return [TGIcons nameColourForId:userId dark:NO];
+	// The colour the person picked in their own profile, as Telegram draws it;
+	// the id-based slot of their placeholder avatar until their record is here.
+	return [[TGClient shared] nameColourForUser:userId];
 }
 
 @implementation TGChatViewController (Layout)
@@ -315,9 +316,41 @@ UIColor *TGSenderColour(int64_t userId) {
 
 	if (isDoc) {
 		CGFloat width = kDocBubble;
-		CGFloat height = kFileTile + TGDoubled(kPadV) + forwarded;
+		NSUInteger docCount = 1;
+		if (isAlbum && [m[@"albumMessages"] isKindOfClass:NSArray.class]) {
+			docCount = [m[@"albumMessages"] count];
+			if (docCount == 0) docCount = 1;
+		}
+		CGFloat docsH = docCount * kFileTile + (docCount > 1 ? (docCount - 1) * TGMetricPadSmall : 0);
+		CGFloat height = docsH + TGDoubled(kPadV) + forwarded;
+
+		NSString *caption = m[@"caption"];
+		if (!caption.length && [m[@"text"] length]) {
+			NSString *docName = m[@"docName"] ?: @"";
+			NSString *text = m[@"text"];
+			if (docName.length == 0 || ![text hasPrefix:docName]) {
+				caption = text;
+			}
+		}
+
+		CGSize capSize = CGSizeZero;
+		if (caption.length) {
+			capSize = TGTextSizeWithEntities(caption, m[@"entities"], TGFontBody(), width - TGDoubled(kPadH));
+			height += capSize.height + TGMetricPadSmall;
+		}
+		height += TGMetricStampHeight;
+
 		CGFloat x = mine ? (tableW - width - TGMetricPad) : TGMetricPad;
 		layout.bubbleFrame = CGRectMake(x, TGMetricBubbleRowInset, width, height);
+		if (capSize.height > 0) {
+			layout.bodyFrame = CGRectMake(kPadH, forwarded + kPadV + docsH + TGMetricPadSmall,
+										  width - TGDoubled(kPadH), capSize.height);
+		} else {
+			layout.bodyFrame = CGRectZero;
+		}
+		layout.timeFrame = CGRectMake(width - layout.timeWidth - kPadH,
+									  height - kPadV - TGMetricStampHeight,
+									  layout.timeWidth, TGMetricStampHeight);
 		layout.rowHeight = height + TGDoubled(TGMetricBubbleRowInset);
 		if (msgId) self.layoutCache[msgId] = layout;
 		return layout;
@@ -580,7 +613,7 @@ UIColor *TGSenderColour(int64_t userId) {
 		layout.linkPreviewFrame = CGRectZero;
 	}
 
-	CGFloat stampY = inlineStamp ? (y + body.height - TGMetricLineMicro)
+	CGFloat stampY = inlineStamp ? TGInlineStampY(layout.bodyFrame)
 			: (bubbleH - kPadV - TGMetricStampHeight);
 	CGFloat tickW = mine ? TGMetricStampTicksRoom : TGMetricZero;
 	layout.timeFrame = CGRectMake(bubbleW - timeW - kPadH, stampY, timeW - tickW, TGMetricStampHeight);

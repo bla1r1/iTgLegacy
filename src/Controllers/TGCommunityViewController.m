@@ -118,7 +118,28 @@ static const CGFloat kCommunityPhotoBar  = 92.0f;
 		me.fullInfo = info;
 		[me loadPhoto];
 		[me rebuild];
+		[me resolveChatTitles];
 	}];
+}
+
+- (void)resolveChatTitles {
+	__weak typeof(self) weakSelf = self;
+	NSArray *chats = self.fullInfo[@"chats"];
+	for (NSDictionary *chat in chats) {
+		int64_t chatId = [chat[@"chatId"] longLongValue];
+		NSString *title = chat[@"title"];
+		if (!title.length || [title hasPrefix:@"Chat -"]) {
+			[[TGClient shared] request:@{@"@type" : @"getChat", @"chat_id" : @(chatId)} completion:^(NSDictionary *cObj){
+				TGCommunityViewController *me = weakSelf;
+				if (!me) return;
+				NSString *resolved = cObj[@"title"];
+				if (resolved.length && [chat isKindOfClass:NSMutableDictionary.class]) {
+					((NSMutableDictionary *)chat)[@"title"] = resolved;
+					[me rebuild];
+				}
+			}];
+		}
+	}
 }
 
 - (void)rebuild {
@@ -126,52 +147,31 @@ static const CGFloat kCommunityPhotoBar  = 92.0f;
 	NSDictionary *info = self.fullInfo ?: [[TGClient shared] cachedCommunityFullInfo:self.communityId];
 	NSArray *chats = info[@"chats"] ?: @[];
 
-	NSMutableArray *infoRows = [NSMutableArray array];
-	[infoRows addObject:TGTier2Row(@"Name", self.community[@"name"], ^{
-		[weakSelf renameCommunity];
-	})];
-	[infoRows addObject:TGTier2Row(@"Photo", self.pickedPhoto ? @"New photo" : nil, ^{
-		[weakSelf pickPhoto];
-	})];
-	NSString *status = self.community[@"status"] ?: @"Member";
-	[infoRows addObject:TGTier2Row(@"Your Role", status, nil)];
-	NSNumber *date = self.community[@"date"];
-	if ([date longLongValue] > 0){
-		NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
-		formatter.dateStyle = NSDateFormatterMediumStyle;
-		formatter.timeStyle = NSDateFormatterNoStyle;
-		[infoRows addObject:TGTier2Row(@"Since",
-				[formatter stringFromDate:[NSDate dateWithTimeIntervalSince1970:
-						[date doubleValue]]], nil)];
-	}
-	[infoRows addObject:TGTier2Row(@"Members Can Edit Chats",
-			[self.community[@"canEditChatList"] boolValue] ? @"On" : @"Off", ^{
-		[weakSelf choosePermissions];
-	})];
+	NSMutableArray *sections = [NSMutableArray array];
 
-	NSMutableArray *countRows = [NSMutableArray array];
-	[countRows addObject:TGTier2Row(@"Chats",
-			[NSString stringWithFormat:@"%lu", (unsigned long)chats.count], nil)];
-	if (info){
-		[countRows addObject:TGTier2Row(@"Administrators",
-				[NSString stringWithFormat:@"%ld", (long)[info[@"administratorCount"] integerValue]],
-				nil)];
-		[countRows addObject:TGTier2Row(@"Banned",
-				[NSString stringWithFormat:@"%ld", (long)[info[@"bannedCount"] integerValue]],
-				nil)];
-		[countRows addObject:TGTier2Row(@"Chat Requests",
-				[NSString stringWithFormat:@"%ld", (long)[info[@"addChatRequestCount"] integerValue]],
-				nil)];
+	NSMutableArray *overviewRows = [NSMutableArray array];
+	NSString *commName = self.community[@"name"];
+	if (commName.length && ![commName isEqualToString:@"Community"]) {
+		[overviewRows addObject:TGTier2Row(@"Name", commName, nil)];
 	}
+	[overviewRows addObject:TGTier2Row(@"Chats", [NSString stringWithFormat:@"%lu", (unsigned long)chats.count], nil)];
+	[sections addObject:TGTier2Section(@"Community", nil, overviewRows)];
 
 	NSMutableArray *chatRows = [NSMutableArray array];
 	for (NSDictionary *chat in chats){
-		NSString *detail = [chat[@"hidden"] boolValue] ? @"Hidden" :
-				([chat[@"canViewHistory"] boolValue] ? nil : @"No history");
-		[chatRows addObject:TGTier2Row(chat[@"title"] ?: @"Chat", detail, ^{
+		int64_t chatId = [chat[@"chatId"] longLongValue];
+		NSString *title = chat[@"title"];
+		if (!title.length || [title hasPrefix:@"Chat -"]) {
+			NSString *known = [[TGClient shared] titleForChat:chatId];
+			if (known.length) {
+				title = known;
+			}
+		}
+		NSString *detail = [chat[@"hidden"] boolValue] ? @"Hidden" : nil;
+		NSString *displayTitle = title.length ? title : [NSString stringWithFormat:@"Chat %lld", (long long)chatId];
+		[chatRows addObject:TGTier2Row(displayTitle, detail, ^{
 			if (weakSelf.navigationController)
-				[weakSelf openChat:[chat[@"chatId"] longLongValue]
-							 title:chat[@"title"] ?: @""];
+				[weakSelf openChat:chatId title:displayTitle];
 		})];
 	}
 	if (!chatRows.count){
@@ -179,20 +179,9 @@ static const CGFloat kCommunityPhotoBar  = 92.0f;
 		empty[TGTier2RowKind] = TGTier2KindPlain;
 		[chatRows addObject:empty];
 	}
+	[sections addObject:TGTier2Section(@"Chats in pool", nil, chatRows)];
 
-	NSMutableArray *dangerRows = [NSMutableArray array];
-	NSMutableDictionary *deleteRow = TGTier2Row(@"Delete Community", nil, ^{
-		[weakSelf confirmDelete];
-	});
-	deleteRow[TGTier2RowKind] = TGTier2KindDestructive;
-	[dangerRows addObject:deleteRow];
-
-	self.sections = @[
-		TGTier2Section(nil, nil, infoRows),
-		TGTier2Section(@"Community", nil, countRows),
-		TGTier2Section(@"Chats", nil, chatRows),
-		TGTier2Section(nil, @"Deleting the community does not delete its chats.", dangerRows),
-	];
+	self.sections = sections;
 	[self reloadRows];
 }
 

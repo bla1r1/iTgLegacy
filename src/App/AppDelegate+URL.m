@@ -69,6 +69,13 @@ static const CGFloat kIconDumpSide = 52.0f;
 
 #pragma mark - remote control by URL
 
+/// Chats is not always the first tab: Contacts leads, and Calls may sit
+/// between them. Dev mode's own tab bar keeps its chats first.
+static NSUInteger TGChatsIndex(UITabBarController *tabs) {
+	return [tabs isKindOfClass:[RootViewController class]]
+			? [(RootViewController *)tabs chatsTabIndex] : 0;
+}
+
 /// The view currently taking keystrokes, wherever it is in the tree.
 - (UIView *)firstResponderUnder:(UIView *)view {
 	if (view.isFirstResponder)
@@ -140,7 +147,7 @@ static const CGFloat kIconDumpSide = 52.0f;
 			UITabBarController *tabs = [self activeTabBarController];
 			for (NSInteger i = 0; i < [arg integerValue]; i++)
 				[tabs.delegate tabBarController:tabs
-					 shouldSelectViewController:tabs.viewControllers.firstObject];
+					 shouldSelectViewController:tabs.viewControllers[TGChatsIndex(tabs)]];
 		});
 		return YES;
 	}
@@ -217,6 +224,28 @@ static const CGFloat kIconDumpSide = 52.0f;
 		return YES;
 	}
 
+	// itglegacy://chat/<username> - a public channel or group opened as a chat,
+	// so a device check can reach real posts (custom emoji, reactions) that
+	// no fixture carries.
+	if ([host isEqualToString:@"chat"] && arg.length){
+		[[TGClient shared] chatWithUsername:arg completion:^(int64_t chatId, NSString *title){
+			dispatch_async(dispatch_get_main_queue(), ^{
+				if (!chatId)
+					return;
+				UITabBarController *tabs = [self activeTabBarController];
+				tabs.selectedIndex = TGChatsIndex(tabs);
+				UINavigationController *nc = tabs.viewControllers[TGChatsIndex(tabs)];
+				[nc popToRootViewControllerAnimated:NO];
+				TGChatViewController *vc = [[TGChatViewController alloc] init];
+				vc.chatId = chatId;
+				vc.chatTitle = title;
+				vc.hidesBottomBarWhenPushed = YES;
+				[nc pushViewController:vc animated:NO];
+			});
+		}];
+		return YES;
+	}
+
 	// itglegacy://profile/<username|me>[:<tab>] - a public profile, so a check on the
 	// device never has to go through somebody's private chat.
 	if ([host isEqualToString:@"profile"] && arg.length){
@@ -247,7 +276,7 @@ static const CGFloat kIconDumpSide = 52.0f;
 	if ([host isEqualToString:@"swiperow"]){
 		dispatch_async(dispatch_get_main_queue(), ^{
 			UITabBarController *tabs = [self activeTabBarController];
-			UINavigationController *nc = tabs.viewControllers[0];
+			UINavigationController *nc = tabs.viewControllers[TGChatsIndex(tabs)];
 			if ([nc.topViewController isKindOfClass:[TGChatListViewController class]])
 				[(id)nc.topViewController openSwipeActionsAtRow:[arg integerValue]];
 		});
@@ -290,8 +319,8 @@ static const CGFloat kIconDumpSide = 52.0f;
 			}
 			if (![tabs isKindOfClass:UITabBarController.class])
 				return;
-			tabs.selectedIndex = 0;
-			UINavigationController *nc = tabs.viewControllers[0];
+			tabs.selectedIndex = TGChatsIndex(tabs);
+			UINavigationController *nc = tabs.viewControllers[TGChatsIndex(tabs)];
 			[nc popToRootViewControllerAnimated:NO];
 
 			TGChatViewController *vc = [[TGChatViewController alloc] init];
@@ -316,8 +345,8 @@ static const CGFloat kIconDumpSide = 52.0f;
 			UITabBarController *tabs = (UITabBarController *)self.rootViewController;
 			if (![tabs isKindOfClass:UITabBarController.class])
 				return;
-			tabs.selectedIndex = 0;
-			UINavigationController *nc = tabs.viewControllers[0];
+			tabs.selectedIndex = TGChatsIndex(tabs);
+			UINavigationController *nc = tabs.viewControllers[TGChatsIndex(tabs)];
 			[nc popToRootViewControllerAnimated:NO];
 
 			TGChatViewController *vc = [[TGChatViewController alloc] init];
@@ -358,11 +387,11 @@ static const CGFloat kIconDumpSide = 52.0f;
 			if (![tabs isKindOfClass:UITabBarController.class])
 				return;
 			if ([tabs isKindOfClass:[RootViewController class]]) {
-				[(RootViewController *)tabs switchToTab:0 popToRoot:YES];
+				[(RootViewController *)tabs switchToTab:TGChatsIndex(tabs) popToRoot:YES];
 			} else {
-				tabs.selectedIndex = 0;
+				tabs.selectedIndex = TGChatsIndex(tabs);
 			}
-			UINavigationController *nc = tabs.viewControllers[0];
+			UINavigationController *nc = tabs.viewControllers[TGChatsIndex(tabs)];
 			[nc popToRootViewControllerAnimated:NO];
 
 			TGChatListViewController *chatList = (TGChatListViewController *)[nc.viewControllers firstObject];
@@ -680,8 +709,8 @@ static const CGFloat kIconDumpSide = 52.0f;
 			int64_t savedId = [[TGClient shared] savedMessagesChatId];
 			if (!tabs || !savedId)
 				return;
-			tabs.selectedIndex = 0;
-			UINavigationController *nc = tabs.viewControllers[0];
+			tabs.selectedIndex = TGChatsIndex(tabs);
+			UINavigationController *nc = tabs.viewControllers[TGChatsIndex(tabs)];
 			[nc popToRootViewControllerAnimated:NO];
 			TGChatViewController *vc = [[TGChatViewController alloc] init];
 			vc.chatId = savedId;
@@ -781,8 +810,8 @@ static const CGFloat kIconDumpSide = 52.0f;
 			}
 			if (![tabs isKindOfClass:UITabBarController.class])
 				return;
-			tabs.selectedIndex = 0;
-			UINavigationController *nc = tabs.viewControllers[0];
+			tabs.selectedIndex = TGChatsIndex(tabs);
+			UINavigationController *nc = tabs.viewControllers[TGChatsIndex(tabs)];
 			[nc popToRootViewControllerAnimated:NO];
 
 			TGGalleryViewController *gallery = [[TGGalleryViewController alloc] init];

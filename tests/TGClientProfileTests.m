@@ -596,6 +596,23 @@ static NSDate *PGDate(NSInteger year, NSInteger month, NSInteger day) {
 	XCTAssertEqualObjects(got[@"verified"], @YES);
 }
 
+- (void)testChatProfile_ChannelWithDirectMessages {
+	TGClient *c = P();
+	__block NSDictionary *got = nil;
+	[c chatProfile:88 completion:^(NSDictionary *info){ got = info; }];
+	answerP(c, plainP(@{@"@type" : @"chat",
+						@"id" : @(88),
+						@"type" : @{@"@type" : @"chatTypeSupergroup", @"supergroup_id" : @(10)}}));
+	answerP(c, plainP(@{@"@type" : @"supergroup",
+						@"has_direct_messages_group" : @YES,
+						@"is_administered_direct_messages_group" : @YES}));
+	answerP(c, plainP(@{@"@type" : @"supergroupFullInfo",
+						@"direct_messages_chat_id" : @(-100999)}));
+	XCTAssertEqualObjects(got[@"directMessagesChatId"], @(-100999));
+	XCTAssertEqualObjects(got[@"hasDirectMessages"], @YES);
+	XCTAssertEqualObjects(got[@"canManageDirectMessages"], @YES);
+}
+
 - (void)testMessageCountForFilter_SendsTheTabFilter {
 	TGClient *c = P();
 	__block NSInteger count = -1;

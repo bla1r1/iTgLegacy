@@ -12,6 +12,8 @@
 #import "TGCall.h"
 #import "TGMemberAvatarStore.h"
 #import "TGEmojiStore.h"
+#import "TGCustomEmojiStore.h"
+#import "TGMessageLayout.h"
 #import "TGMusicPlayer.h"
 #import "TGVoiceRecorder.h"
 #import "TGVideoNoteRecorder.h"
@@ -70,9 +72,18 @@ static void TGDevCommandNotifyCallback(CFNotificationCenterRef center, void *obs
 }
 #endif
 
+/// Message text asks for custom emoji pictures through this. The store is
+/// main-thread only; a measure made off it draws the same-size stand-in.
+static UIImage *TGCustomEmojiFromStore(int64_t emojiId, CGFloat side) {
+	if (![NSThread isMainThread])
+		return nil;
+	return [[TGCustomEmojiStore shared] imageForId:emojiId side:side];
+}
+
 - (BOOL)application:(UIApplication *)application
 		didFinishLaunchingWithOptions:(NSDictionary *)launchOptions
 {
+	TGSetCustomEmojiProvider(TGCustomEmojiFromStore);
 	NSArray *paths = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES);
 	NSString *cacheDir = paths.firstObject;
 
@@ -148,6 +159,7 @@ static void TGDevCommandNotifyCallback(CFNotificationCenterRef center, void *obs
 			// Keyed by this account's user ids, or playing its media.
 			[[TGMemberAvatarStore shared] reset];
 			[[TGEmojiStore shared] reset];
+			[[TGCustomEmojiStore shared] reset];
 			[[TGMusicPlayer shared] stop];
 			[[TGVoiceRecorder shared] cancel];
 			[[TGVideoNoteRecorder shared] cancel];

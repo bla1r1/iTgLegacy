@@ -1,6 +1,7 @@
 //
 // TGStickerPacksViewController.m - see the header.
 //
+#import "TGMessageLayout.h"
 #import "TGStickerPacksViewController.h"
 #import "TGAlertSheet.h"
 #import "TGClient.h"
@@ -206,7 +207,7 @@
 			return cell;
 		}
 		NSDictionary *set = _ownedSets[(NSUInteger)indexPath.row];
-		cell.textLabel.text = [set[@"title"] length] ? set[@"title"] : @"Pack";
+		cell.textLabel.text = [set[@"title"] length] ? TGStripUndrawableScalars(set[@"title"]) : @"Pack";
 		NSString *type = [self typeWord:set[@"stickerType"]];
 		cell.detailTextLabel.text = [NSString stringWithFormat:@"%@  ·  %lu stickers  ·  %@",
 				set[@"shortName"] ?: @"-",
@@ -233,7 +234,7 @@
 			return cell;
 		}
 		NSDictionary *set = _trendingSets[(NSUInteger)indexPath.row];
-		cell.textLabel.text = [set[@"title"] length] ? set[@"title"] : @"Trending pack";
+		cell.textLabel.text = [set[@"title"] length] ? TGStripUndrawableScalars(set[@"title"]) : @"Trending pack";
 		cell.detailTextLabel.text = [NSString stringWithFormat:@"%lu stickers%@",
 				(unsigned long)[set[@"count"] unsignedIntegerValue],
 				[set[@"installed"] boolValue] ? @"  ·  installed" : @""];
@@ -260,7 +261,7 @@
 			return cell;
 		}
 		NSDictionary *set = _archivedSets[(NSUInteger)indexPath.row];
-		cell.textLabel.text = [set[@"title"] length] ? set[@"title"] : @"Archived pack";
+		cell.textLabel.text = [set[@"title"] length] ? TGStripUndrawableScalars(set[@"title"]) : @"Archived pack";
 		cell.detailTextLabel.text = [NSString stringWithFormat:@"%@  ·  %lu stickers",
 				set[@"shortName"] ?: @"-",
 				(unsigned long)[set[@"count"] unsignedIntegerValue]];

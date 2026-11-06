@@ -79,18 +79,42 @@ UIColor *TGIconTileRed(void)    { return TGTILE(1.00f, 0.23f, 0.18f); }
 UIColor *TGIconTileGrey(void)   { return TGTILE(0.56f, 0.56f, 0.58f); }
 UIColor *TGIconTileSlate(void)  { return TGTILE(0.45f, 0.45f, 0.50f); }
 
-UIColor *TGColourPeerName(int64_t colourId, BOOL dark) {
-	// Their name colours, in the same slots as the placeholder palette in
-	// TGIcons+Avatars and through the same [0,7,4,1,6,3,5] order, so a name
-	// never disagrees with the circle beside it. The eighth slot repeats red
-	// there too.
-	static const uint32_t light[8] = {0xCC5049, 0xD67722, 0x955CDB, 0x40A920,
-									  0x309EBA, 0x368AD1, 0xC7508B, 0xCC5049};
-	static const uint32_t night[8] = {0xFC5C51, 0xFA790F, 0x895DD5, 0x0FB297,
-									  0x00C1A6, 0x3CA5EC, 0xD54FAF, 0xFC5C51};
-	static const NSUInteger order[7] = {0, 7, 4, 1, 6, 3, 5};
-	uint32_t c = (dark ? night : light)[order[(NSUInteger)llabs(colourId) % 7]];
+/// Telegram's seven name colours by slot: red, orange, violet, green, cyan,
+/// blue, pink - the order of the schema's built-in accent ids 0-6.
+static UIColor *TGColourNameSlot(NSUInteger slot, BOOL dark) {
+	static const uint32_t light[7] = {0xCC5049, 0xD67722, 0x955CDB, 0x40A920,
+									  0x309EBA, 0x368AD1, 0xC7508B};
+	static const uint32_t night[7] = {0xFC5C51, 0xFA790F, 0x895DD5, 0x0FB297,
+									  0x00C1A6, 0x3CA5EC, 0xD54FAF};
+	uint32_t c = (dark ? night : light)[slot % 7];
 	return TGTILE(((c >> 16) & 0xFF) / 255.0f, ((c >> 8) & 0xFF) / 255.0f, (c & 0xFF) / 255.0f);
+}
+
+UIColor *TGColourPeerName(int64_t colourId, BOOL dark) {
+	// The placeholder palette in TGIcons+Avatars picks through the same
+	// [0,7,4,1,6,3,5] order, so a name never disagrees with the circle beside
+	// it; its eighth slot repeats red.
+	static const NSUInteger order[7] = {0, 7, 4, 1, 6, 3, 5};
+	return TGColourNameSlot(order[(NSUInteger)llabs(colourId) % 7] % 7, dark);
+}
+
+UIColor *TGColourAccentName(NSInteger accentId, NSArray *accentColors, BOOL dark) {
+	if (accentId < 0)
+		return nil;
+	if (accentId < 7)
+		return TGColourNameSlot((NSUInteger)accentId, dark);
+	for (NSDictionary *colour in accentColors){
+		if (![colour isKindOfClass:NSDictionary.class] ||
+				[colour[@"id"] integerValue] != accentId)
+			continue;
+		NSArray *shades = colour[dark ? @"dark_theme_colors" : @"light_theme_colors"];
+		if ([shades isKindOfClass:NSArray.class] && shades.count){
+			uint32_t c = (uint32_t)[shades[0] unsignedIntValue];
+			return TGTILE(((c >> 16) & 0xFF) / 255.0f, ((c >> 8) & 0xFF) / 255.0f, (c & 0xFF) / 255.0f);
+		}
+		return TGColourAccentName([colour[@"built_in_accent_color_id"] integerValue], nil, dark);
+	}
+	return nil;
 }
 
 UIFont *TGFontAtSize(CGFloat size)       { return [UIFont systemFontOfSize:size]; }

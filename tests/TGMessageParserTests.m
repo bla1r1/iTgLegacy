@@ -412,6 +412,26 @@ static NSDictionary *textContent(NSString *text) {
 	XCTAssertEqualObjects(flat[@"senderTag"], @"Admin");
 }
 
+- (void)testFlatten_DocumentWithCaption {
+	NSDictionary *content = @{
+		@"@type" : @"messageDocument",
+		@"document" : @{
+			@"file_name" : @"test.pdf",
+			@"document"  : @{@"id" : @(123), @"size" : @(2048)}
+		},
+		@"caption" : @{
+			@"@type" : @"formattedText",
+			@"text"  : @"Here is the document caption"
+		}
+	};
+	NSDictionary *flat = TGFlattenMessage(msg(content, @{@"media_album_id" : @"998877"}));
+	XCTAssertEqualObjects(flat[@"kind"], @"messageDocument");
+	XCTAssertEqualObjects(flat[@"docName"], @"test.pdf");
+	XCTAssertEqualObjects(flat[@"caption"], @"Here is the document caption");
+	XCTAssertEqualObjects(flat[@"text"], @"Here is the document caption");
+	XCTAssertEqualObjects(flat[@"albumId"], @"998877");
+}
+
 @end
 
 // vim:ft=objc

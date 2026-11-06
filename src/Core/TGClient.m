@@ -9,6 +9,11 @@
 #include <dlfcn.h>
 #include "api_id.h"
 
+/// The saved-chat row rule lives beside mergeChat in TGClient+Chats.mm.
+@interface TGClient (SavedMessagesRow)
+- (void)markSavedMessagesRow;
+@end
+
 /// The plain string a folder is named with. tdlib nests the name two levels
 /// deep: chatFolderInfo.name is a chatFolderName whose "text" is itself a
 /// formattedText, and only THAT "text" is the string. The old chain stopped
@@ -571,6 +576,9 @@ NSDictionary *TGFormattedText(NSString *text) {
 		// both known; the slot list has to carry them so the switcher can
 		// name each account.
 		[self recordActiveAccountFromMe:self.me];
+		// loadChats runs before getMe, so the chat with yourself can arrive
+		// before its id is known; re-mark it now that me is here.
+		[self markSavedMessagesRow];
 		NSLog(@"TGClient: signed in as +%@", self.me[@"phone"]);
 		return;
 	}

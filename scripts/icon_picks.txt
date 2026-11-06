@@ -59,3 +59,5 @@
 57 savedMessagesAvatar mdi mdiBookmark
 58 mapPinBadge mdi mdiMapMarker
 59 ticksSingle mdi mdiCheck
+62 flash mdi mdiFlash
+63 music mdi mdiMusicNote

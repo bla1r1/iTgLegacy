@@ -13,6 +13,10 @@
 @property (nonatomic, assign) int64_t chatId;
 @property (nonatomic, copy)   NSString *chatTitle;
 @property (nonatomic, assign) BOOL isGroup;
+@property (nonatomic, assign) int64_t linkedChatId;
+@property (nonatomic, assign) int64_t directMessagesChatId;
+@property (nonatomic, assign) BOOL hasDirectMessages;
+@property (nonatomic, assign) BOOL canManageDirectMessages;
 /// Non-zero when this is one topic of a forum supergroup.
 @property (nonatomic, assign) int64_t threadId;
 /// The message a link opened this chat to show: scrolled to on the first

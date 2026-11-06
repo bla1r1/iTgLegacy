@@ -50,11 +50,12 @@ static const CGFloat kLinkGlyph     = 24.0f;
 static const CGFloat kToastWidth    = 120.0f;
 static const CGFloat kToastHeight   = 34.0f;
 
-static const NSInteger kSectionDetails = 0;
-static const NSInteger kSectionStories = 1;
-static const NSInteger kSectionGifts   = 2;
-static const NSInteger kSectionMembers = 3;
-static const NSInteger kSectionMedia   = 4;
+static const NSInteger kSectionDetails        = 0;
+static const NSInteger kSectionDirectMessages = 1;
+static const NSInteger kSectionStories        = 2;
+static const NSInteger kSectionGifts          = 3;
+static const NSInteger kSectionMembers        = 4;
+static const NSInteger kSectionMedia          = 5;
 
 static const NSInteger kStoryGridCols  = 3;
 static const CGFloat   kStoryGridGap   = TGMetricCollageGap;
@@ -122,6 +123,11 @@ NSURL *TGProfileFirstURL(NSString *text, NSArray *entities);
 @property (nonatomic, assign) BOOL isScam;
 @property (nonatomic, assign) BOOL isFake;
 @property (nonatomic, assign) BOOL isContact;
+@property (nonatomic, assign) int64_t directMessagesChatId;
+@property (nonatomic, assign) BOOL hasDirectMessages;
+@property (nonatomic, assign) BOOL canManageDirectMessages;
+@property (nonatomic, assign) int64_t communityId;
+@property (nonatomic, strong) NSArray *similarChatIds;
 @property (nonatomic, assign) BOOL isBot;
 @property (nonatomic, assign) BOOL birthdayToday;
 @property (nonatomic, assign) int64_t emojiStatusId;
@@ -149,6 +155,7 @@ NSURL *TGProfileFirstURL(NSString *text, NSArray *entities);
 @property (nonatomic, assign) int64_t playingVoiceId;
 
 - (void)buildHeader;
+- (void)openDirectMessages;
 - (void)loadDetails;
 - (void)reloadTableDebounced;
 - (void)doReloadTable;
@@ -172,6 +179,8 @@ NSURL *TGProfileFirstURL(NSString *text, NSArray *entities);
 @property (nonatomic, assign) BOOL isGroup;
 @property (nonatomic, assign) BOOL isChannel;
 @property (nonatomic, strong) NSDictionary *chatPermissions;
+@property (nonatomic, assign) int64_t linkedChatId;
+@property (nonatomic, copy) NSString *linkedChatTitle;
 /// The invite link the info card and menu copy; kept apart from the rows so
 /// a reload can name it without rebuilding the card.
 @property (nonatomic, copy) NSString *inviteLink;
@@ -181,6 +190,8 @@ NSURL *TGProfileFirstURL(NSString *text, NSArray *entities);
 - (BOOL)isOwner;
 - (BOOL)isOwnProfile;
 - (void)editProfileTapped;
+- (void)addStoryTapped;
+- (void)openChat:(int64_t)chatId title:(NSString *)title message:(int64_t)messageId;
 
 @end
 
@@ -200,6 +211,7 @@ NSURL *TGProfileFirstURL(NSString *text, NSArray *entities);
 
 + (CGFloat)storySideForWidth:(CGFloat)width;
 - (void)loadMedia;
+- (void)fetchAllMediaCounts;
 - (void)fetchMediaForKind:(NSString *)kind;
 - (void)mediaTabSelected:(NSString *)kind;
 - (BOOL)showsSavedMessages;

@@ -247,6 +247,10 @@ static void TGDrawTabPath(CGContextRef ctx, UIBezierPath *path, BOOL filled) {
 	}];
 }
 
++ (UIImage *)calls {
+	return [self pathIconNamed:@"phoneCall" margin:0];
+}
+
 + (UIImage *)settings {
 	UIImage *svg = [self pathIconNamed:@"settings" margin:0];
 	if (svg)

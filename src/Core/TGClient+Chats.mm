@@ -218,18 +218,31 @@ NSDictionary *TGMemberRowForMember(NSDictionary *member, NSString *name) {
 }
 
 - (void)canSendInChat:(int64_t)chatId completion:(void (^)(BOOL, BOOL))completion {
+	__weak typeof(self) weakSelf = self;
 	[self request:@{@"@type" : @"getChat", @"chat_id" : @(chatId)}
 	   completion:^(NSDictionary *chat){
+		TGClient *me = weakSelf;
+		if (!me) {
+			if (completion) completion(NO, NO);
+			return;
+		}
 		NSDictionary *type = chat[@"type"];
-		BOOL isChannel = [type[@"@type"] isEqualToString:@"chatTypeSupergroup"] &&
-						 [type[@"is_channel"] boolValue];
-		// TDLib answers this directly; permissions alone would miss the case
-		// where the user is not a member at all.
+		BOOL isSupergroup = [type[@"@type"] isEqualToString:@"chatTypeSupergroup"];
+		BOOL isChannel = isSupergroup && [type[@"is_channel"] boolValue];
 		BOOL canSend = [chat[@"permissions"][@"can_send_basic_messages"] boolValue];
-		if (isChannel)
+		if (isChannel) {
 			canSend = [chat[@"can_be_edited"] boolValue] ||
 					  [chat[@"permissions"][@"can_send_basic_messages"] boolValue];
-		if (completion) completion(canSend, isChannel);
+		}
+		if (canSend || !isSupergroup) {
+			if (completion) completion(canSend, isChannel);
+			return;
+		}
+		[me request:@{@"@type" : @"getSupergroup", @"supergroup_id" : type[@"supergroup_id"]}
+		 completion:^(NSDictionary *group){
+			BOOL directGroup = [group[@"is_direct_messages_group"] boolValue];
+			if (completion) completion(directGroup, isChannel);
+		}];
 	}];
 }
 
@@ -751,13 +764,22 @@ static NSInteger TGForumTopicColour(NSInteger index) {
 	   completion:^(NSDictionary *chat){
 		NSString *kind = chat[@"type"][@"@type"];
 		__block BOOL verified = NO;
+		__block BOOL hasDM = NO;
+		__block BOOL adminDM = NO;
 		void (^answer)(NSDictionary *) = ^(NSDictionary *full){
+			int64_t dmId = [full[@"direct_messages_chat_id"] longLongValue];
+			int64_t commId = [full[@"community_id"] longLongValue];
 			if (completion) completion(@{
 				@"description" : full[@"description"] ?: @"",
 				@"members"     : full[@"member_count"] ?: @0,
 				@"inviteLink"  : full[@"invite_link"][@"invite_link"] ?: @"",
 				@"online"      : online ?: @0,
 				@"verified"    : @(verified),
+				@"linkedChatId": full[@"linked_chat_id"] ?: @0,
+				@"directMessagesChatId": @(dmId),
+				@"communityId" : @(commId),
+				@"hasDirectMessages": @(hasDM || dmId != 0),
+				@"canManageDirectMessages": @(adminDM),
 			});
 		};
 
@@ -767,6 +789,8 @@ static NSInteger TGForumTopicColour(NSInteger index) {
 			[weakSelf request:@{@"@type" : @"getSupergroup", @"supergroup_id" : supergroupId}
 				   completion:^(NSDictionary *group){
 				verified = [group[@"verification_status"][@"is_verified"] boolValue];
+				hasDM = [group[@"has_direct_messages_group"] boolValue];
+				adminDM = [group[@"is_administered_direct_messages_group"] boolValue];
 				[weakSelf request:@{@"@type" : @"getSupergroupFullInfo",
 									@"supergroup_id" : supergroupId}
 					   completion:answer];
@@ -786,6 +810,8 @@ static NSInteger TGForumTopicColour(NSInteger index) {
 }
 
 - (BOOL)chatIsSavedMessages:(int64_t)chatId {
+	if (chatId != 0 && chatId == [self savedMessagesChatId])
+		return YES;
 	return [self.chatsById[@(chatId)][@"isSaved"] boolValue];
 }
 
@@ -1574,6 +1600,11 @@ static BOOL TGGroupStatusIsMember(NSDictionary *status) {
 			NSDictionary *status = [group[@"status"] isKindOfClass:NSDictionary.class]
 					? group[@"status"] : @{};
 			BOOL member = TGGroupStatusIsMember(status);
+			BOOL isDirectGroup = [group[@"is_direct_messages_group"] boolValue];
+			if (isDirectGroup) {
+				member = YES;
+				answer[@"isDirectMessages"] = @YES;
+			}
 			answer[@"isMember"] = @(member);
 			answer[@"status"] = status[@"@type"] ?: @"";
 			answer[@"memberCount"] = group[@"member_count"] ?: @0;
@@ -1593,12 +1624,23 @@ static BOOL TGGroupStatusIsMember(NSDictionary *status) {
 }
 
 - (void)joinChat:(int64_t)chatId completion:(void (^)(BOOL ok, BOOL requestSent))completion {
+	__weak typeof(self) weakSelf = self;
 	[self request:@{@"@type" : @"joinChat", @"chat_id" : @(chatId)}
 	   completion:^(NSDictionary *result){
 		NSString *kind = result[@"@type"];
+		BOOL ok = [kind isEqualToString:@"ok"] || [kind isEqualToString:@"chatJoinResultSuccess"];
+		BOOL reqSent = [kind isEqualToString:@"chatJoinResultRequestSent"] ||
+			([kind isEqualToString:@"error"] && [result[@"message"] isKindOfClass:NSString.class] &&
+			 [result[@"message"] rangeOfString:@"INVITE_REQUEST_SENT"].location != NSNotFound);
+		if (ok) {
+			[weakSelf send:@{
+				@"@type"     : @"addChatToList",
+				@"chat_id"   : @(chatId),
+				@"chat_list" : @{@"@type" : @"chatListMain"},
+			}];
+		}
 		if (completion)
-			completion([kind isEqualToString:@"chatJoinResultSuccess"],
-					   [kind isEqualToString:@"chatJoinResultRequestSent"]);
+			completion(ok, reqSent);
 	}];
 }
 
@@ -1633,6 +1675,24 @@ static BOOL TGGroupStatusIsMember(NSDictionary *status) {
 		[row removeObjectForKey:@"actionBarText"];
 }
 
+/// The chat with yourself is Saved Messages everywhere in Telegram, not a
+/// conversation under your own name and photo. mergeChat can run before the
+/// getMe answer supplies the id, so this also runs when me arrives.
+- (void)markSavedMessagesRow {
+	int64_t savedId = [self savedMessagesChatId];
+	if (savedId == 0)
+		return;
+	NSMutableDictionary *info = self.chatsById[@(savedId)];
+	if (!info)
+		return;
+	info[@"title"] = @"Saved Messages";
+	info[@"isSaved"] = @YES;
+	[info removeObjectForKey:@"photoFileId"];
+	// Everything in Saved Messages is yours, so there is no "You" author.
+	[info removeObjectForKey:@"lastAuthor"];
+	[self markChatRowDirty:savedId];
+}
+
 - (void)mergeChat:(NSDictionary *)chat {
 	if (![chat isKindOfClass:NSDictionary.class])
 		return;
@@ -1661,11 +1721,12 @@ static BOOL TGGroupStatusIsMember(NSDictionary *status) {
 	// The chat with yourself is Saved Messages everywhere in Telegram, not a
 	// conversation under your own name and photo.
 	if ([chatId longLongValue] == [self savedMessagesChatId] &&
-		[self savedMessagesChatId] != 0){
-		info[@"title"] = @"Saved Messages";
-		info[@"isSaved"] = @YES;
-		[info removeObjectForKey:@"photoFileId"];
-	}
+		[self savedMessagesChatId] != 0)
+		[self markSavedMessagesRow];
+	// The badge after the title: a premium person's status, a channel's.
+	// Kept as the bare id so the list's saved snapshot can carry it.
+	if ([chat[@"emoji_status"] isKindOfClass:NSDictionary.class])
+		info[@"emojiStatusId"] = @(TGEmojiStatusCustomEmojiId(chat[@"emoji_status"]));
 	if (chat[@"unread_count"])
 		info[@"unread"] = chat[@"unread_count"];
 	if (chat[@"unread_mention_count"])
@@ -1884,10 +1945,13 @@ static BOOL TGGroupStatusIsMember(NSDictionary *status) {
 		[info removeObjectForKey:@"availableReactions"];
 	// A chat's badge is an object that a null removes, the same shape as the
 	// photo and the background above it.
-	if ([update[@"emoji_status"] isKindOfClass:NSDictionary.class])
+	if ([update[@"emoji_status"] isKindOfClass:NSDictionary.class]){
 		info[@"emojiStatus"] = update[@"emoji_status"];
-	else if ([update[@"@type"] isEqualToString:@"updateChatEmojiStatus"])
+		info[@"emojiStatusId"] = @(TGEmojiStatusCustomEmojiId(update[@"emoji_status"]));
+	} else if ([update[@"@type"] isEqualToString:@"updateChatEmojiStatus"]){
 		[info removeObjectForKey:@"emojiStatus"];
+		[info removeObjectForKey:@"emojiStatusId"];
+	}
 	if (update[@"theme"])
 		info[@"chatTheme"] = update[@"theme"];
 	if (update[@"accent_color_id"])

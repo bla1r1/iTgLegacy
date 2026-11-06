@@ -77,6 +77,12 @@ static BOOL TGNear(CGFloat a, CGFloat b) {
 	XCTAssertTrue(TGIconPathNamed("reply") != NULL);
 	XCTAssertTrue(TGIconPathNamed("contacts") != NULL);
 	XCTAssertTrue(TGIconPathNamed("nonexistent") == NULL);
+	// Asked for by name with no hand-drawn fallback: the story camera and the
+	// round video recorder (flash), the profile's music strip (music). A
+	// regeneration from icon_picks.txt once dropped both and left the buttons
+	// empty.
+	XCTAssertTrue(TGIconPathNamed("flash") != NULL);
+	XCTAssertTrue(TGIconPathNamed("music") != NULL);
 }
 
 @end

@@ -172,3 +172,57 @@ The arm64 build links (`make ipa-arm64`); what's missing is an arm64 `libtdjson.
 | Secret chats | disabled at TDLib init — one flag — plus key-verification screens |
 | Live locations | background location iOS 7 kills; iOS 9+ has the API |
 | Group calls / live streams | same tgcalls wall as video, plus mixing |
+
+---
+
+## 7 · Audit: Stubbed & Semi-functional Surfaces (Real Closure Backlog)
+
+An audit of `src/Controllers/` reveals that while core messaging, 1:1 voice calls (`tgcalls 9.0.0`), standard stories, stickers, and profile workflows are fully functional, several screens and entry points were added to satisfy TDLib coverage metrics (`scripts/tdlib_wired.py`) or wire protocol stubs. They have dedicated UI controllers but lack underlying media engines, expose bot-only methods to user accounts, or act as raw debug harnesses.
+
+### 1. Group Calls & Video Streaming (Signaling wired, media engine missing)
+- **`TGGroupCallViewController` («Group Call»)**:
+  - *Current state*: Joins call signaling in TDLib, updates participant states and mute flags. However, audio and video pipelines do not exist. Code explicitly states: `self.noteLabel.text = @"Joined. This client has no group-call audio engine."` and `@"TDLib records the flag; there is no frame to pause"`.
+  - *Closure requirement*: Implement WebRTC/RTP multi-peer audio mixing and AudioUnit playback/recording pipeline; wire video decode for active speaker.
+- **`TGVideoChatSetupViewController` & `TGVideoChatStreamViewController`**:
+  - *Current state*: Administrative/debug tables. Screen sharing (`startScreenSharing`) opens a text alert asking the user to manually type the raw join payload string. Stream segment fetcher saves raw OGG/MP4 chunks to `/tmp` with status note: `@"client has no group-call media engine to decode it in-app"`. Cryptographic test buttons run sample AES checks.
+  - *Closure requirement*: Replace manual payload text prompts with internal tgcalls pipeline; integrate stream receiver with a hardware/software player rather than file dump.
+- **`TGLiveStoryViewController` («Live Story»)**:
+  - *Current state*: Opens from `TGStoryViewerViewController` ("Open Live Story"). Inherits from `TGListViewController` and merely lists RTMP address, streamer ID, and reaction buttons. Joining copies the tgcalls payload to `UIPasteboard`. No video player pipeline exists.
+  - *Closure requirement*: AVPlayer / RTMP streaming player overlay inside `TGStoryViewerViewController` for live broadcast playback.
+
+### 2. Bot-Only & Staff Functions Exposed in User UI (Always Refused by Server)
+- **`TGEphemeralViewController` («Ephemeral»)**:
+  - *Current state*: Linked in chat attach menu (+) > More > «Ephemeral». Calls `sendEphemeralMessage`. Explicit comment: `@"sendEphemeralMessage is for bots. A user account sees Telegram's refusal sentence"`.
+  - *Closure requirement*: Remove from user chat attach sheet; gate behind bot session mode or map to self-destructing media.
+- **Settings > «Bot Tools»**:
+  - *Current state*: 7 rows (Prepared Keyboard Button, Close Web App, Bot Name/Description, Bot Menu Button, etc.) prompting user for numeric Bot IDs via `TGAlertSheet` and failing with server refusal.
+  - *Closure requirement*: Hide from user settings; move into a bot management section accessible only when managing a bot token.
+- **`TGAdminRightsViewController` («Default Admin Rights»)**:
+  - *Current state*: Settings > Privacy & Security > Default Admin Rights. Calls `setDefaultGroupAdministratorRights` which is bot-only. Code notes: `@"Both requests are bot-only: a user account is expected to see the refusal"`.
+  - *Closure requirement*: Restrict to bot administration views.
+- **`TGBusinessProfileViewController` (under Telegram Business)**:
+  - *Current state*: Name/Bio/Photo fields call `setBusinessAccount*` with `connectionId`. Without an active bot business connection, Telegram always returns refusal.
+  - *Closure requirement*: Separate user subscriber settings (hours, location, away messages — which work) from bot business connection fields.
+- **`TGBusinessConnectionViewController` & `TGBusinessMessagesViewController`**:
+  - *Current state*: Manual test harness where user must paste a bot connection ID, chat ID, and message ID to trigger bot calls (`sendBusinessMessage`, etc.).
+  - *Closure requirement*: Relocate to developer options or remove.
+
+### 3. Non-Interactive Stubs & Raw Diagnostic Harnesses
+- **`TGDiceViewController` («Stake Dice»)**:
+  - *Current state*: Linked in attach sheet (+) and profile More. Calls TON staking gambling API `getStakeDiceState`. Has **no `didSelectRowAtIndexPath`** (completely read-only, non-interactive dump of state hashes and amounts).
+  - *Closure requirement*: Replace with official Telegram animated dice picker (`🎲`, `🎯`, `🏀`, `⚽`, `🎰`, `🎳`) to send dice emoji messages.
+- **`TGGameScoresViewController` («Game Scores»)**:
+  - *Current state*: Opened from game message context menu. Form asking for manual text input of Chat ID, Message ID, User ID, and Score to call bot-only `setGameScore`.
+  - *Closure requirement*: Convert to a native high scores leaderboard displaying `getGameHighScores`.
+- **`TGStarsGiftsViewController` («Premium, Stars and Gifts»)**:
+  - *Current state*: Linked under Tier 3 Audit as "Read-only". 30 action buttons dumping raw strings into an `answerLines` label. No StoreKit or payment provider.
+  - *Closure requirement*: Build a true visual gifts catalogue and stars balance card, or move raw dumps to debug.
+- **`TGTestHarnessViewController`, `TGSupportInfoViewController`, `TGWebProxyCarrierViewController`, `TGEnvironmentViewController`**:
+  - *Current state*: Settings > Tier 3 Audit. Diagnostic screens directly calling TDLib internal `test*` methods, staff support notes, or manual postMessage carriers.
+  - *Closure requirement*: Move behind `TG_DEV` debug menu, out of release Settings.
+- **`TGChatToolsViewController` Manual ID Prompts**:
+  - *Current state*: "Answer Protected-Content Request" and "Answer Join Request Query" ask user to manually type numeric Message ID / Query ID.
+  - *Closure requirement*: Present structured selection lists for pending requests.
+- **Settings Payment Dev Flows**:
+  - *Current state*: Order validation (`validateOrderFlow`) triggers a sequence of 8 successive text input alerts.
+  - *Closure requirement*: Replace with a single structured checkout form or gate behind developer menu.
