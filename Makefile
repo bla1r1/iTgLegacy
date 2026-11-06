@@ -136,7 +136,8 @@ FRAMEWORKS := -framework UIKit -framework Accelerate -framework Foundation -fram
               -framework CoreLocation -framework MapKit \
               -framework CoreTelephony -framework CoreImage \
               -framework CoreText -framework AssetsLibrary \
-              -framework ImageIO -framework Security -framework OpenGLES
+              -framework ImageIO -framework Security -framework OpenGLES \
+              -framework VideoToolbox
 
 
 # TDLib is loaded at runtime from libtdjson.dylib, never linked.
@@ -453,6 +454,7 @@ APP_SRC_M := \
 	src/Calls/TGCallV2Signaling.m \
 	src/Calls/TGCallV2Session.m \
 	src/Calls/TGCallDtls.m \
+	src/Calls/TGCallVideoRtp.m \
 	src/Media/UIImage+WebP.m \
 	src/Media/TGStickerImage.m \
 	src/Media/TGWebMDecoder.m \
@@ -467,6 +469,7 @@ APP_SRC_M := \
 APP_SRC_MM := \
 	src/Audio/TGVoiceRecorder.mm \
 	src/Calls/TGCallAudioEngine.mm \
+	src/Calls/TGCallVideoEngine.mm \
 	src/Calls/TGCall.mm \
 	src/Core/TGImageLruCache.mm \
 	src/Core/TGClient+Chats.mm \

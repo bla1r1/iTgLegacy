@@ -9,6 +9,7 @@
 #import <CommonCrypto/CommonDigest.h>
 #import "TGStyle.h"
 #import "TGAlertSheet.h"
+#import "TGCallVideoEngine.h"
 
 /// The bar a minimised call leaves at the top of the app. A call does not
 /// stop when its screen is put away, and Telegram keeps a way back to it; the
@@ -195,6 +196,7 @@
 @property (nonatomic, strong) NSString *peerName;
 @property (nonatomic, assign) BOOL outgoing;
 
+@property (nonatomic, strong) UIView *bgContainer;
 @property (nonatomic, strong) CAGradientLayer *bgLayer;
 @property (nonatomic, strong) UILabel *emojiLabel;
 @property (nonatomic, strong) UILabel *nameLabel;
@@ -227,12 +229,20 @@
 /// so a rotation rebuilds the same one instead of guessing from the state.
 @property (nonatomic, assign) BOOL callRowActive;
 
+@property (nonatomic, strong) UIView *remoteVideoContainer;
+@property (nonatomic, strong) UIView *pipContainer;
+@property (nonatomic, strong) UIButton *flipCameraBtn;
+
 @property (nonatomic, strong) NSTimer *ticker;
 /// When the call was answered, for the rating prompt after it; TGCall's own
 /// duration is gone by then, teardown having cleared its start time.
 @property (nonatomic, strong) NSDate *connectedAt;
 @property (nonatomic, assign) BOOL ratedCall;
 @end
+
+static const CGFloat kTGCallPipWidth = 96.0f;
+static const CGFloat kTGCallPipHeight = 128.0f;
+static const CGFloat kTGCallFlipBtnSide = 32.0f;
 
 // A gradient layer wants CGColorRefs; the palette hands out UIColors.
 static NSArray *TGCallGradient(NSArray *colours) {
@@ -296,11 +306,16 @@ static NSArray *TGCallGradient(NSArray *colours) {
 - (void)viewDidLoad {
     [super viewDidLoad];
 
+    // Background container view for the gradient
+    self.bgContainer = [[UIView alloc] initWithFrame:self.view.bounds];
+    self.bgContainer.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    [self.view addSubview:self.bgContainer];
+
     // Gradient Background
     self.bgLayer = [CAGradientLayer layer];
-    self.bgLayer.frame = self.view.bounds;
+    self.bgLayer.frame = self.bgContainer.bounds;
     self.bgLayer.colors = TGCallGradient([[TGTheme shared] callGradientColours]);
-    [self.view.layer addSublayer:self.bgLayer];
+    [self.bgContainer.layer addSublayer:self.bgLayer];
 
     // Down the screen once, each thing under the last, so moving the avatar
     // does not leave the name sitting where it used to be. The placement
@@ -316,6 +331,13 @@ static NSArray *TGCallGradient(NSArray *colours) {
             initWithTarget:self action:@selector(showKeyCard)]];
     [self.view addSubview:self.emojiLabel];
 
+    // Remote video view sits in front of background, but behind avatar, names, and buttons
+    self.remoteVideoContainer = [[UIView alloc] initWithFrame:self.view.bounds];
+    self.remoteVideoContainer.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    self.remoteVideoContainer.backgroundColor = [UIColor blackColor];
+    self.remoteVideoContainer.hidden = YES;
+    [self.view addSubview:self.remoteVideoContainer];
+
     CGFloat side = TGMetricCallAvatarSide;
     self.avatarView = [[UIImageView alloc] initWithFrame:CGRectMake(0, 0, side, side)];
     self.avatarView.layer.cornerRadius = TGHalf(side);
@@ -327,6 +349,25 @@ static NSArray *TGCallGradient(NSArray *colours) {
     self.avatarView.image = [TGIcons avatarWithInitials:[TGIcons initialsForTitle:self.peerName]
                                                    size:side colourId:self.userId];
     [self.view addSubview:self.avatarView];
+
+    // Picture-in-Picture window for local camera preview
+    self.pipContainer = [[UIView alloc] initWithFrame:CGRectMake(0, 0, kTGCallPipWidth, kTGCallPipHeight)];
+    self.pipContainer.backgroundColor = [UIColor blackColor];
+    self.pipContainer.layer.cornerRadius = TGMetricCornerControl;
+    self.pipContainer.clipsToBounds = YES;
+    self.pipContainer.layer.borderColor = [[TGTheme shared] separatorColour].CGColor;
+    self.pipContainer.layer.borderWidth = 1.0f;
+    self.pipContainer.hidden = YES;
+    self.pipContainer.userInteractionEnabled = YES;
+    [self.pipContainer addGestureRecognizer:[[UITapGestureRecognizer alloc]
+            initWithTarget:self action:@selector(switchCamera)]];
+    [self.view addSubview:self.pipContainer];
+
+    self.flipCameraBtn = [UIButton buttonWithType:UIButtonTypeCustom];
+    [self.flipCameraBtn setImage:[TGIcons glyphNamed:@"switchCamera" colour:[[TGTheme shared] onAccentColour] side:TGMetricPadLarge] forState:UIControlStateNormal];
+    [self.flipCameraBtn addTarget:self action:@selector(switchCamera) forControlEvents:UIControlEventTouchUpInside];
+    self.flipCameraBtn.hidden = YES;
+    [self.view addSubview:self.flipCameraBtn];
 
     self.nameLabel = [[UILabel alloc] initWithFrame:CGRectZero];
     self.nameLabel.text = self.peerName.length ? self.peerName
@@ -359,7 +400,9 @@ static NSArray *TGCallGradient(NSArray *colours) {
               forControlEvents:UIControlEventTouchUpInside];
     [self.view addSubview:self.backButton];
 
-    BOOL canVideo = [TGCapabilities canEncodeVideoCall];
+    // Shown wherever the hardware could do it; a release build answers the
+    // tap with "in progress" (toggleVideo) until video calls are finished.
+    BOOL canVideo = [TGCapabilities hasVideoCallHardware];
 
     // Not "unmute": the icon table draws that one as the notifications bell.
     self.speakerBtn = [self createButtonWithTitle:@"Speaker" icon:@"speaker"];
@@ -416,6 +459,9 @@ static NSArray *TGCallGradient(NSArray *colours) {
     [TGCall shared].onStateChanged = ^(TGCallState state){
         [weakSelf applyState:state];
     };
+    [TGCall shared].onPeerVideoChanged = ^(BOOL active){
+        [weakSelf updateVideoLayoutAnimated:YES];
+    };
 
     // A screen presented again from the minimised bar must not place a second
     // call: TGCall already has one.
@@ -442,6 +488,7 @@ static NSArray *TGCallGradient(NSArray *colours) {
     [self applyChromeLayout];
     // The same row variant the call state chose, at the new width.
     [self updateLayoutForCallActive:self.callRowActive];
+    [self updateVideoLayoutAnimated:NO];
 }
 
 - (void)viewWillDisappear:(BOOL)animated {
@@ -515,7 +562,9 @@ static NSArray *TGCallGradient(NSArray *colours) {
     CGFloat gutter = TGMetricPadMedium;
     CGFloat textWidth = b.size.width - TGDoubled(gutter);
     CGFloat y = TGMetricCallEmojiTop;
-    self.bgLayer.frame = b;
+    self.bgContainer.frame = b;
+    self.bgLayer.frame = self.bgContainer.bounds;
+    self.remoteVideoContainer.frame = b;
 
     self.emojiLabel.frame = CGRectMake(gutter, y, textWidth, TGMetricCallEmojiHeight);
     self.backButton.frame = CGRectMake(TGMetricPadSmall, 0,
@@ -595,7 +644,7 @@ static NSArray *TGCallGradient(NSArray *colours) {
     // thumb goes for, and it should not be somewhere else on the screen.
     NSMutableArray *row = [NSMutableArray arrayWithObject:self.speakerBtn];
     NSMutableArray *captions = [NSMutableArray arrayWithObject:self.speakerLbl];
-    if ([TGCapabilities canEncodeVideoCall]){
+    if ([TGCapabilities hasVideoCallHardware]){
         [row addObject:self.videoBtn];
         [captions addObject:self.videoLbl];
     } else {
@@ -819,13 +868,106 @@ static NSArray *TGCallGradient(NSArray *colours) {
     [self refreshControls];
 }
 
-/// The 1:1 engine in this build carries audio. The control is kept where
-/// Telegram puts it, and its answer is the truth rather than a camera that
-/// would never produce a frame.
 - (void)toggleVideo {
-    [TGAlertSheet showMessage:@"Video calls need a camera engine this build "
-            "does not carry. The call continues with audio."
-                        title:@"Video" inView:self.view];
+    TGCall *call = [TGCall shared];
+    if (![TGCapabilities canEncodeVideoCall]) {
+        [TGAlertSheet showMessage:@"Video calls are in progress and will come in a later version."
+                            title:@"Video" inView:self.view];
+        return;
+    }
+    BOOL willEnable = !call.videoActive;
+    [call setVideoEnabled:willEnable];
+    [self refreshControls];
+    [self updateVideoLayoutAnimated:YES];
+}
+
+- (void)switchCamera {
+    [[TGCall shared] switchCamera];
+}
+
+- (void)updateVideoLayoutAnimated:(BOOL)animated {
+    TGCall *call = [TGCall shared];
+    BOOL hasLocalVideo = call.videoActive;
+    BOOL hasRemoteVideo = call.peerVideoActive && call.videoEngine && call.videoEngine.hasRemoteVideo;
+
+    CGRect b = self.view.bounds;
+    self.bgContainer.frame = b;
+    self.bgLayer.frame = self.bgContainer.bounds;
+    self.remoteVideoContainer.frame = b;
+
+    CGFloat pipMargin = TGMetricPadMedium;
+    CGFloat pipY = TGMetricCallEmojiTop + TGMetricCallEmojiHeight + TGMetricPadMedium;
+    self.pipContainer.frame = CGRectMake(b.size.width - kTGCallPipWidth - pipMargin, pipY, kTGCallPipWidth, kTGCallPipHeight);
+
+    self.flipCameraBtn.frame = CGRectMake(self.pipContainer.frame.origin.x + kTGCallPipWidth - kTGCallFlipBtnSide - TGMetricPadTiny,
+                                          self.pipContainer.frame.origin.y + TGMetricPadTiny,
+                                          kTGCallFlipBtnSide, kTGCallFlipBtnSide);
+
+    if (call.videoEngine) {
+        UIView *remoteView = call.videoEngine.remoteVideoView;
+        if (remoteView) {
+            remoteView.frame = self.remoteVideoContainer.bounds;
+            remoteView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+            if (remoteView.superview != self.remoteVideoContainer) {
+                [self.remoteVideoContainer addSubview:remoteView];
+            }
+            [remoteView setNeedsLayout];
+            [remoteView layoutIfNeeded];
+        }
+
+        UIView *localPreview = call.videoEngine.localPreviewView;
+        if (localPreview) {
+            localPreview.frame = self.pipContainer.bounds;
+            localPreview.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+            if (localPreview.superview != self.pipContainer) {
+                [self.pipContainer addSubview:localPreview];
+            }
+            [localPreview setNeedsLayout];
+            [localPreview layoutIfNeeded];
+        }
+    }
+
+    [self.view bringSubviewToFront:self.pipContainer];
+    [self.view bringSubviewToFront:self.flipCameraBtn];
+
+    if (hasLocalVideo) {
+        self.pipContainer.hidden = NO;
+        self.flipCameraBtn.hidden = NO;
+    }
+    if (hasRemoteVideo) {
+        self.remoteVideoContainer.hidden = NO;
+    } else {
+        self.avatarView.hidden = NO;
+        self.bgContainer.hidden = NO;
+    }
+
+    void (^layoutBlock)(void) = ^{
+        self.bgContainer.alpha = hasRemoteVideo ? 0.0f : 1.0f;
+        self.remoteVideoContainer.alpha = hasRemoteVideo ? 1.0f : 0.0f;
+        self.avatarView.alpha = hasRemoteVideo ? 0.0f : 1.0f;
+        self.pipContainer.alpha = hasLocalVideo ? 1.0f : 0.0f;
+        self.flipCameraBtn.alpha = hasLocalVideo ? 1.0f : 0.0f;
+    };
+
+    void (^completionBlock)(BOOL) = ^(BOOL finished) {
+        if (!hasLocalVideo) {
+            self.pipContainer.hidden = YES;
+            self.flipCameraBtn.hidden = YES;
+        }
+        if (hasRemoteVideo) {
+            self.avatarView.hidden = YES;
+            self.bgContainer.hidden = YES;
+        } else {
+            self.remoteVideoContainer.hidden = YES;
+        }
+    };
+
+    if (animated) {
+        [UIView animateWithDuration:TGAnimationDurationNormal animations:layoutBlock completion:completionBlock];
+    } else {
+        layoutBlock();
+        completionBlock(YES);
+    }
 }
 
 // One place decides what the toggles look like, so the drawing can never
@@ -834,6 +976,7 @@ static NSArray *TGCallGradient(NSArray *colours) {
 // for the steel plate, a light one for the lit accent plate.
 - (void)refreshControls {
     BOOL muted = [TGCall shared].muted;
+    BOOL videoActive = [TGCall shared].videoActive;
     TGTheme *theme = [TGTheme shared];
 
     UIImage *mic = muted
@@ -846,14 +989,19 @@ static NSArray *TGCallGradient(NSArray *colours) {
                                 colour:[theme primaryTextColour] side:TGMetricCallGlyphSide];
     UIImage *spkActive = [TGIcons glyphNamed:(self.speakerOn ? @"speakerOn" : @"speaker")
                                       colour:[theme onAccentColour] side:TGMetricCallGlyphSide];
+    UIImage *vid = [TGIcons glyphNamed:@"video" colour:[theme primaryTextColour] side:TGMetricCallGlyphSide];
+    UIImage *vidActive = [TGIcons glyphNamed:@"video" colour:[theme onAccentColour] side:TGMetricCallGlyphSide];
 
     [self setGlyph:mic activeGlyph:micActive on:self.micBtn active:muted];
     [self setGlyph:spk activeGlyph:spkActive on:self.speakerBtn active:self.speakerOn];
+    [self setGlyph:vid activeGlyph:vidActive on:self.videoBtn active:videoActive];
 
     self.micLbl.text = muted ? @"Unmute" : @"Mute";
     self.speakerLbl.text = @"Speaker";
+    self.videoLbl.text = @"Video";
     self.micLbl.textColor = muted ? [theme callControlActiveColour] : [theme onAccentColour];
     self.speakerLbl.textColor = self.speakerOn ? [theme callControlActiveColour] : [theme onAccentColour];
+    self.videoLbl.textColor = videoActive ? [theme callControlActiveColour] : [theme onAccentColour];
 }
 
 // Telegram crosses a control over to white-on-light when it is on; the swap

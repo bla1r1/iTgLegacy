@@ -19,6 +19,7 @@
 #import "TGCallReflectorTests.m"
 #import "TGCallV2Tests.m"
 #import "TGCallIntegrationTests.m"
+#import "TGCallVideoTests.m"
 #import "TGLibTgvoipHooksTests.m"
 #import "TGMessageLayoutTests.m"
 #import "TGSoftVideoClockTests.m"

@@ -10,7 +10,7 @@ FOUND=0
 for word in TGDevShowcase TGBench TGDevModeViewController TGTestHarnessViewController \
 		TGMessageToolsViewController delete_selected itg_cmd handleOpenURL: \
 		"Dev Showcase" "Dev Settings" "Read a String" "Look Up a Card" \
-		"Web Proxy Carrier" "Message Tools" TGGhostMode; do
+		"Web Proxy Carrier" "Message Tools" TGGhostMode "dev builds only"; do
 	# handleOpenURL: the selector stays; its log line and routes must not.
 	[ "$word" = "handleOpenURL:" ] && word="handleOpenURL: %@"
 	if strings -a "$APP/LegacyTG" | grep -qF "$word"; then

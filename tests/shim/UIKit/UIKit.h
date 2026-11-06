@@ -44,9 +44,22 @@ typedef NSImage UIImage;
 @property (nonatomic, readonly) NSString *systemVersion;
 @end
 
+// ─── UIView ──────────────────────────────────────────────────────────────────
+@interface UIView : NSObject
+@property (nonatomic, assign) CGRect frame;
+@property (nonatomic, assign) CGRect bounds;
+@property (nonatomic, strong) CALayer *layer;
+@property (nonatomic, strong) UIColor *backgroundColor;
+@property (nonatomic, assign) BOOL hidden;
+@property (nonatomic, assign) CGFloat alpha;
+@property (nonatomic, readonly) UIView *superview;
+- (void)addSubview:(UIView *)view;
+- (void)removeFromSuperview;
+@end
+
 // ─── UILabel ─────────────────────────────────────────────────────────────────
 // A data-holding stand-in: TGSetBodyText only ever reads and writes these.
-@interface UILabel : NSObject
+@interface UILabel : UIView
 @property (nonatomic, copy)   NSString *text;
 @property (nonatomic, strong) UIFont *font;
 @property (nonatomic, strong) UIColor *textColor;

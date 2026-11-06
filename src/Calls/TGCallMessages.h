@@ -7,8 +7,13 @@ extern const uint8_t TGCallMessageCandidates;   // 1
 extern const uint8_t TGCallMessageVideoFormats; // 2
 extern const uint8_t TGCallMessageMediaState;   // 4
 extern const uint8_t TGCallMessageAudioData;    // 5
+extern const uint8_t TGCallMessageVideoData;    // 6
 extern const uint8_t TGCallMessageRemoteNetworkStatus; // 10
 extern const uint8_t TGCallMessageAck;          // 0xFF, confirms the seq before it
+
+extern const uint32_t TGCallCodecH264;          // 0x41564320 ('AVC ')
+extern const uint8_t TGCallVideoResolution480p; // 3
+extern const uint8_t TGCallVideoResolution720p; // 4
 
 
 @interface TGCallMessages : NSObject
@@ -37,10 +42,21 @@ extern const uint8_t TGCallMessageAck;          // 0xFF, confirms the seq before
 // Mark sequence number with flags.
 + (uint32_t)markSeq:(uint32_t)seq requiresAck:(BOOL)requiresAck;
 
+// Video formats body declaring H.264 support up to maxResolution.
++ (NSData *)videoFormatsBodyWithMaxResolution:(uint8_t)maxResolution;
+
+// Parse video formats received from peer.
++ (NSDictionary *)parseVideoFormats:(NSData *)body;
+
 // Opening media state bundle.
 + (NSData *)mediaStateBundleWithVideoSeq:(uint32_t)videoSeq
 								stateSeq:(uint32_t)stateSeq
 							 audioActive:(BOOL)audioActive;
+
++ (NSData *)mediaStateBundleWithVideoSeq:(uint32_t)videoSeq
+								stateSeq:(uint32_t)stateSeq
+							 audioActive:(BOOL)audioActive
+							 videoActive:(BOOL)videoActive;
 
 // Candidates message body.
 + (NSData *)candidatesBody:(NSArray *)candidates ufrag:(NSString *)ufrag pwd:(NSString *)pwd;

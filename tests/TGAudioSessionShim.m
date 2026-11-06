@@ -9,6 +9,62 @@ AVAudioSessionCategory const AVAudioSessionCategoryPlayAndRecord = @"AVAudioSess
 AVAudioSessionCategoryOptions const AVAudioSessionCategoryOptionAllowBluetooth = 1 << 2;
 AVAudioSessionMode const AVAudioSessionModeVoiceChat = @"AVAudioSessionModeVoiceChat";
 
+AVCaptureSessionPreset const AVCaptureSessionPreset640x480 = @"AVCaptureSessionPreset640x480";
+AVCaptureSessionPreset const AVCaptureSessionPreset352x288 = @"AVCaptureSessionPreset352x288";
+AVCaptureSessionPreset const AVCaptureSessionPresetMedium = @"AVCaptureSessionPresetMedium";
+
+NSString * const AVMediaTypeVideo = @"vide";
+
+@implementation AVCaptureConnection
+@end
+
+@implementation AVCaptureDevice
++ (NSArray *)devicesWithMediaType:(NSString *)mediaType { return @[]; }
++ (AVCaptureDevice *)defaultDeviceWithMediaType:(NSString *)mediaType { return nil; }
+- (BOOL)lockForConfiguration:(NSError **)outError { return YES; }
+- (void)unlockForConfiguration {}
+@end
+
+@implementation AVCaptureDeviceInput
++ (instancetype)deviceInputWithDevice:(AVCaptureDevice *)device error:(NSError **)outError {
+	return [[self alloc] init];
+}
+@end
+
+@implementation AVCaptureOutput
+@end
+
+@implementation AVCaptureVideoDataOutput
+- (void)setSampleBufferDelegate:(id)delegate queue:(dispatch_queue_t)queue {}
+@end
+
+@implementation AVCaptureSession
+- (BOOL)canSetSessionPreset:(id)preset { return YES; }
+- (void)beginConfiguration {}
+- (void)commitConfiguration {}
+- (BOOL)canAddInput:(id)input { return YES; }
+- (void)addInput:(id)input {}
+- (void)removeInput:(id)input {}
+- (BOOL)canAddOutput:(id)output { return YES; }
+- (void)addOutput:(id)output {}
+- (void)removeOutput:(id)output {}
+- (void)startRunning {}
+- (void)stopRunning {}
+@end
+
+@implementation AVCaptureVideoPreviewLayer
++ (instancetype)layerWithSession:(AVCaptureSession *)session {
+	return [[self alloc] init];
+}
+@end
+
+@implementation AVSampleBufferDisplayLayer
+- (void)enqueueSampleBuffer:(CMSampleBufferRef)sampleBuffer {}
+- (void)flush {}
+- (void)flushAndRemoveImage {}
+- (BOOL)isReadyForMoreMediaData { return YES; }
+@end
+
 @implementation AVAudioSession
 
 + (AVAudioSession *)sharedInstance {

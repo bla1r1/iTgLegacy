@@ -13,6 +13,8 @@ typedef NS_ENUM(NSInteger, TGCallState) {
     TGCallStateFailed
 };
 
+@class TGCallVideoEngine;
+
 @interface TGCall : NSObject
 
 + (instancetype)shared;
@@ -25,10 +27,15 @@ typedef NS_ENUM(NSInteger, TGCallState) {
 @property (nonatomic, readonly) int64_t peerUserId;
 @property (nonatomic, readonly) BOOL outgoing;
 @property (nonatomic, readonly) BOOL muted;
+@property (nonatomic, readonly) BOOL videoActive;
+@property (nonatomic, readonly) BOOL peerVideoActive;
+@property (nonatomic, strong, readonly) TGCallVideoEngine *videoEngine;
 @property (nonatomic, readonly) NSData *callKey;
 @property (nonatomic, readonly) NSArray *emojis;
 
 - (void)setSpeaker:(BOOL)speaker;
+- (void)setVideoEnabled:(BOOL)enabled;
+- (void)switchCamera;
 
 /// Why the last call ended, when the other side said. Nil otherwise.
 @property (nonatomic, readonly) NSString *endReason;
@@ -36,6 +43,7 @@ typedef NS_ENUM(NSInteger, TGCallState) {
 /// Main queue, whenever the state changes.
 @property (nonatomic, copy) void (^onStateChanged)(TGCallState state);
 @property (nonatomic, copy) void (^onIncomingCall)(int64_t peerUserId, int32_t callId);
+@property (nonatomic, copy) void (^onPeerVideoChanged)(BOOL active);
 
 /// Ask TDLib to place a call. The rest arrives through -handleUpdate:.
 - (void)callUser:(int64_t)userId;

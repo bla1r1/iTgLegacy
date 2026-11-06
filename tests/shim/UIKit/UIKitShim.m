@@ -44,7 +44,27 @@ static UIDevice *TGSharedDevice = nil;
 }
 @end
 
-#pragma mark - UILabel
+#pragma mark - UIView & UILabel
+
+@implementation UIView
+- (instancetype)init {
+	self = [super init];
+	if (self) {
+		_layer = [CALayer layer];
+	}
+	return self;
+}
+- (instancetype)initWithFrame:(CGRect)frame {
+	self = [self init];
+	if (self) {
+		_frame = frame;
+		_bounds = CGRectMake(0, 0, frame.size.width, frame.size.height);
+	}
+	return self;
+}
+- (void)addSubview:(UIView *)view {}
+- (void)removeFromSuperview {}
+@end
 
 @implementation UILabel
 @end

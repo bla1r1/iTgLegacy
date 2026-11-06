@@ -4,9 +4,14 @@ const uint8_t TGCallMessageCandidates = 1;
 const uint8_t TGCallMessageVideoFormats = 2;
 const uint8_t TGCallMessageMediaState = 4;
 const uint8_t TGCallMessageAudioData  = 5;
+const uint8_t TGCallMessageVideoData  = 6;
 const uint8_t TGCallMessageRemoteNetworkStatus = 10;
 
 const uint8_t TGCallMessageAck = 0xFF;
+
+const uint32_t TGCallCodecH264 = 0x41564320; // 'AVC '
+const uint8_t TGCallVideoResolution480p = 3;
+const uint8_t TGCallVideoResolution720p = 4;
 
 
 static const uint8_t kEmptyId = 0xFE;
@@ -182,6 +187,16 @@ NSUInteger TGCallParseMediaPacketSlices(const uint8_t *bytes, NSUInteger length,
 + (NSData *)mediaStateBundleWithVideoSeq:(uint32_t)videoSeq
 								stateSeq:(uint32_t)stateSeq
 							 audioActive:(BOOL)audioActive {
+	return [self mediaStateBundleWithVideoSeq:videoSeq
+									 stateSeq:stateSeq
+								  audioActive:audioActive
+								  videoActive:NO];
+}
+
++ (NSData *)mediaStateBundleWithVideoSeq:(uint32_t)videoSeq
+								stateSeq:(uint32_t)stateSeq
+							 audioActive:(BOOL)audioActive
+							 videoActive:(BOOL)videoActive {
 	NSMutableData *body = [NSMutableData data];
 	[body appendBytes:&kEmptyId length:1];
 
@@ -193,10 +208,95 @@ NSUInteger TGCallParseMediaPacketSlices(const uint8_t *bytes, NSUInteger length,
 	TGAppendU32(body, stateSeq);
 	uint8_t mediaState = 4;
 	[body appendBytes:&mediaState length:1];
-	uint8_t state = audioActive ? 1 : 0;
+	// In tgcalls: (videoState << 1) | audioActive. VideoState::Active is 2 (2 << 1 = 4).
+	// Audio active + video active = 5 (0x05). Audio active only = 1 (0x01).
+	uint8_t state = (audioActive ? 1 : 0) | (videoActive ? (2 << 1) : 0);
 	[body appendBytes:&state length:1];
 
 	return body;
+}
+
++ (NSData *)videoFormatsBodyWithMaxResolution:(uint8_t)maxResolution {
+	if (maxResolution == 0) {
+		uint8_t empty[2] = { 0, 0 };
+		return [NSData dataWithBytes:empty length:2];
+	}
+	NSMutableData *body = [NSMutableData data];
+	uint8_t decodersCount = 1;
+	[body appendBytes:&decodersCount length:1];
+	TGAppendU32(body, TGCallCodecH264);
+
+	[body appendBytes:&maxResolution length:1];
+
+	uint8_t encodersCount = 1;
+	[body appendBytes:&encodersCount length:1];
+	TGAppendU32(body, TGCallCodecH264);
+
+	return body;
+}
+
++ (NSDictionary *)parseVideoFormats:(NSData *)body {
+	if (!body || body.length < 2) {
+		return @{
+			@"supported"     : @NO,
+			@"decoders"      : @[],
+			@"encoders"      : @[],
+			@"maxResolution" : @(0),
+		};
+	}
+
+	const uint8_t *bytes = (const uint8_t *)body.bytes;
+	NSUInteger len = body.length;
+	NSUInteger at = 0;
+
+	uint8_t decodersCount = bytes[at++];
+	NSMutableArray *decoders = [NSMutableArray arrayWithCapacity:decodersCount];
+	for (uint8_t i = 0; i < decodersCount; i++) {
+		if (at + 4 > len) break;
+		uint32_t codec = TGReadU32(bytes + at);
+		at += 4;
+		[decoders addObject:@(codec)];
+	}
+
+	uint8_t maxRes = 0;
+	if (at < len) {
+		maxRes = bytes[at++];
+	}
+
+	uint8_t encodersCount = 0;
+	NSMutableArray *encoders = [NSMutableArray array];
+	if (at < len) {
+		encodersCount = bytes[at++];
+		for (uint8_t j = 0; j < encodersCount; j++) {
+			if (at + 4 > len) break;
+			uint32_t codec = TGReadU32(bytes + at);
+			at += 4;
+			[encoders addObject:@(codec)];
+		}
+	}
+
+	BOOL supportsH264 = NO;
+	for (NSNumber *num in decoders) {
+		if ([num unsignedIntValue] == TGCallCodecH264) {
+			supportsH264 = YES;
+			break;
+		}
+	}
+	if (!supportsH264 && encoders.count > 0) {
+		for (NSNumber *num in encoders) {
+			if ([num unsignedIntValue] == TGCallCodecH264) {
+				supportsH264 = YES;
+				break;
+			}
+		}
+	}
+
+	return @{
+		@"supported"     : @(supportsH264),
+		@"decoders"      : decoders,
+		@"encoders"      : encoders,
+		@"maxResolution" : @(maxRes),
+	};
 }
 
 + (NSData *)candidatesBody:(NSArray *)candidates ufrag:(NSString *)ufrag pwd:(NSString *)pwd {

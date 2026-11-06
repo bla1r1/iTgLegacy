@@ -58,7 +58,8 @@ LDFLAGS := \
     -lz \
     -lc++ \
     -framework Foundation \
-    -framework AppKit
+    -framework AppKit \
+    -framework VideoToolbox
 
 # ─── sources ──────────────────────────────────────────────────────────────────
 
@@ -74,11 +75,15 @@ OBJC_SRCS := \
     $(SRC)/Calls/TGCallV2Signaling.m \
     $(SRC)/Calls/TGCallV2Session.m \
     $(SRC)/Calls/TGCallDtls.m \
+    $(SRC)/Calls/TGCallVideoRtp.m \
+    $(SRC)/Calls/TGCallVideoEngine.mm \
     $(SRC)/Calls/TGCall.mm \
     $(SRC)/Views/TGMessageLayout.mm \
     $(SRC)/Core/TGStyle.m \
     $(SRC)/Core/TGBase64.m \
-    $(SRC)/Core/TGPerf.m
+    $(SRC)/Core/TGPerf.m \
+    $(SRC)/Core/TGDevice.m \
+    $(SRC)/Core/TGCapabilities.m
 
 # Real TGClient sources, compiled only into the second binary: the main
 # binary links a test stub of TGClient instead, which the call tests need.
@@ -179,6 +184,7 @@ TEST_SRCS := \
     $(TESTS)/TGCallReflectorTests.m \
     $(TESTS)/TGCallV2Tests.m \
     $(TESTS)/TGCallIntegrationTests.m \
+    $(TESTS)/TGCallVideoTests.m \
     $(TESTS)/TGLibTgvoipHooksTests.m \
     $(TESTS)/TGMessageLayoutTests.m \
     $(TESTS)/TGSoftVideoClockTests.m

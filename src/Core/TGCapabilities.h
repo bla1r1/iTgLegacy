@@ -28,10 +28,11 @@
 /// One TDLib client runs at a time, so a second account costs disk, not memory.
 + (BOOL)canHoldMultipleAccounts;
 
-/// Video calls need a hardware H.264 encoder driven in real time, which
-/// starts at the A7. Voice calls are a separate question - libtgvoip ran on
-/// an iPhone 4S when Telegram shipped calls, so that one is a build problem
-/// rather than a hardware one.
+/// The device could carry a video call: Legacy tier and up (dual-core A5+).
+/// The call screen shows its Video button from this.
++ (BOOL)hasVideoCallHardware;
+/// Video calls are switched on: the hardware is there and this is a dev
+/// build. Release builds say NO until video calls are finished.
 + (BOOL)canEncodeVideoCall;
 /// The longest side, in pixels, the H.264 decoder here plays: 720p on the A4,
 /// 1080p to the A8, 4K from the A9. A larger file plays no picture at all.

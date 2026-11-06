@@ -73,10 +73,21 @@ static void TGSetWanted(NSString *key, BOOL wanted) {
 	return YES;
 }
 
++ (BOOL)hasVideoCallHardware {
+	// The single-core A4 cannot encode and decode a call's video while the
+	// audio runs; making it fit would mean cutting the pipeline down the way
+	// stickers were cut for the iPod, and that is not planned.
+	return [TGDevice tier] > TGDeviceTierVintage;
+}
+
 + (BOOL)canEncodeVideoCall {
-	// Video calls require 64-bit hardware (A7+), hardware VideoToolbox
-	// available cleanly on iOS 9+, and at least 2GB of RAM to prevent jetsam.
-	return [self is64Bit] && [self systemVersion] >= 9.0 && [TGDevice tier] >= TGDeviceTierFull;
+#if TG_DEV
+	return [self hasVideoCallHardware];
+#else
+	// Video calls are in progress. A release offers no video formats in the
+	// call's signalling, so the other side never sends any.
+	return NO;
+#endif
 }
 
 + (int)maxVideoSide {
@@ -190,7 +201,11 @@ static BOOL TGEmojiFontHasGlyphs(CTFontRef font, NSString *s) {
 		@[@"Custom emoji",            @NO,   @"shown as their plain emoji for now"],
 		@[@"Mini apps",               @([self canRunWebApps]),         @"iOS 9 or later"],
 		@[@"H.264 High video",        @([TGDevice tier] > TGDeviceTierVintage), @"Legacy - the A4's decoder stops at Main Profile, 720p, 30 fps"],
-		@[@"Video calls",             @([self canEncodeVideoCall]),    @"Full - 64-bit, iOS 9+, 2GB+"],
+#if TG_DEV
+		@[@"Video calls",             @([self canEncodeVideoCall]),    @"Legacy+ - dual-core A5 and later, dev builds only"],
+#else
+		@[@"Video calls",             @NO,                             @"in progress"],
+#endif
 	];
 
 	NSMutableArray *out = [NSMutableArray array];
